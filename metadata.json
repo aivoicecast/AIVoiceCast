@@ -1,0 +1,9 @@
+{
+  "name": "AIVoiceCast Platform",
+  "description": "A decentralized AI operating system and shared network of learning. Create, code, and collaborate with domain-specific AI personas.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera",
+    "geolocation"
+  ]
+}

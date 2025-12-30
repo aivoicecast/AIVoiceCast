@@ -1,0 +1,23 @@
+{
+  "name": "AIVoiceCast Platform",
+  "short_name": "AIVoiceCast",
+  "description": "Shared Network of Learning & Decentralized Intelligence Hub",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='128' fill='%23020617' /%3E%3Cpath d='M256 80 L420 420 M256 80 L92 420' fill='none' stroke='%236366f1' stroke-width='24' stroke-linecap='round' /%3E%3Cpath d='M145 300 h30 l10 -40 l15 80 l15 -100 l15 120 l15 -100 l15 80 l10 -40 h30' fill='none' stroke='%2300f2ff' stroke-width='20' stroke-linecap='round' stroke-linejoin='round' /%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='128' fill='%23020617' /%3E%3Cpath d='M256 80 L420 420 M256 80 L92 420' fill='none' stroke='%236366f1' stroke-width='24' stroke-linecap='round' /%3E%3Cpath d='M145 300 h30 l10 -40 l15 80 l15 -100 l15 120 l15 -100 l15 80 l10 -40 h30' fill='none' stroke='%2300f2ff' stroke-width='20' stroke-linecap='round' stroke-linejoin='round' /%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
