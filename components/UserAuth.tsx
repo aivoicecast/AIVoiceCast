@@ -3,20 +3,20 @@ import React, { useState, useEffect } from 'react';
 import firebase from 'firebase/compat/app';
 import { signInWithGoogle, signOut } from '../services/authService';
 import { auth } from '../services/firebaseConfig';
-import { LogOut, User as UserIcon, Loader2, AlertCircle } from 'lucide-react';
+import { LogOut, User as UserIcon, Loader2, AlertCircle, Copy, ExternalLink, ShieldAlert } from 'lucide-react';
 import { syncUserProfile, logUserActivity } from '../services/firestoreService';
 
 export const UserAuth: React.FC = () => {
   const [user, setUser] = useState<firebase.User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<{ code: string; domain: string } | null>(null);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
       setUser(u);
       setLoading(false);
       if (u) {
-         // Sync profile to Firestore for Role/Group logic
+         setErrorDetails(null);
          syncUserProfile(u).catch(e => console.error("Profile sync failed", e));
       }
     });
@@ -24,7 +24,7 @@ export const UserAuth: React.FC = () => {
   }, []);
 
   const handleLogin = async () => {
-    setErrorMsg(null);
+    setErrorDetails(null);
     try {
       const loggedInUser = await signInWithGoogle();
       if (loggedInUser) {
@@ -33,29 +33,14 @@ export const UserAuth: React.FC = () => {
     } catch (e: any) {
       console.error("Login failed:", e);
       
-      // Handle specific Firebase Auth errors
-      if (e.code === 'auth/configuration-not-found' || e.code === 'auth/operation-not-allowed') {
-        const msg = "Google Sign-In is disabled. Go to Firebase Console > Authentication > Sign-in method and enable 'Google'.";
-        setErrorMsg("Config Error: Enable Google Auth");
-        alert(msg);
-      } else if (e.code === 'auth/operation-not-supported-in-this-environment') {
-        const msg = "Login Failed: This environment does not support Firebase Authentication.\n\nPossible reasons:\n1. You are running from a 'file://' URL. Please use a local web server (http://localhost).\n2. Your browser is blocking third-party cookies or storage.\n3. The application is running in a restricted sandbox.";
-        setErrorMsg("Env Error: Protocol/Storage");
-        alert(msg);
-      } else if (e.code === 'auth/unauthorized-domain') {
-        // Capture both hostname and full host to ensure we get the right value in all environments
-        const hostname = window.location.hostname;
-        const host = window.location.host;
-        const currentDomain = hostname || host || window.location.href;
-        
-        const msg = `⚠️ DOMAIN UNAUTHORIZED ⚠️\n\nYour app is running on: "${currentDomain}"\n\nFirebase blocks login from unknown domains for security.\n\nTO FIX:\n1. Copy this domain: ${currentDomain}\n2. Go to Firebase Console > Authentication > Settings > Authorized Domains\n3. Click "Add Domain" and paste it there.`;
-        console.error(msg); 
-        setErrorMsg("Domain Unauthorized");
-        alert(msg);
+      if (e.code === 'auth/unauthorized-domain') {
+        const domain = window.location.hostname || window.location.host;
+        setErrorDetails({ code: e.code, domain });
+      } else if (e.code === 'auth/configuration-not-found' || e.code === 'auth/operation-not-allowed') {
+        alert("Google Sign-In is disabled. Enable it in Firebase Console > Authentication > Sign-in method.");
       } else if (e.code === 'auth/popup-closed-by-user') {
-        setErrorMsg(null);
+        // Silently ignore
       } else {
-        setErrorMsg("Login Failed");
         alert(`Login failed: ${e.message}`);
       }
     }
@@ -94,16 +79,57 @@ export const UserAuth: React.FC = () => {
   }
 
   return (
-    <div className="flex items-center space-x-2">
-      {errorMsg && (
-         <div className="hidden md:flex items-center space-x-1 text-red-400 text-xs animate-pulse cursor-help" title={errorMsg}>
-            <AlertCircle size={14} />
-            <span className="max-w-[100px] truncate">{errorMsg}</span>
+    <div className="flex items-center space-x-2 relative">
+      {errorDetails && (
+         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm animate-fade-in">
+            <div className="bg-slate-900 border border-red-500/50 rounded-3xl p-8 max-w-lg w-full shadow-2xl space-y-6 text-center">
+                <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
+                    <ShieldAlert size={32} className="text-red-500" />
+                </div>
+                <div className="space-y-2">
+                    <h2 className="text-2xl font-bold text-white">Domain Unauthorized</h2>
+                    <p className="text-slate-400 text-sm">Firebase Authentication is blocking login because this domain is not on your whitelist.</p>
+                </div>
+
+                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4">
+                    <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Your Current Domain</p>
+                        <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-lg border border-slate-800 group">
+                            <code className="text-xs text-indigo-300 flex-1 truncate font-mono">{errorDetails.domain}</code>
+                            <button 
+                                onClick={() => { navigator.clipboard.writeText(errorDetails.domain); alert("Domain copied!"); }}
+                                className="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-white transition-colors"
+                            >
+                                <Copy size={14} />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="text-left space-y-2">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">How to Fix</p>
+                        <ol className="text-xs text-slate-400 list-decimal pl-4 space-y-1">
+                            <li>Go to <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-indigo-400 underline inline-flex items-center gap-0.5">Firebase Console <ExternalLink size={10}/></a></li>
+                            <li><strong>Auth</strong> > <strong>Settings</strong> > <strong>Authorized Domains</strong></li>
+                            <li>Click <strong>Add Domain</strong> and paste the URL above</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                    <button 
+                        onClick={() => setErrorDetails(null)}
+                        className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all"
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
          </div>
       )}
+      
       <button
         onClick={handleLogin}
-        className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-full border border-slate-700 transition-all shadow-md"
+        className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-full border border-slate-700 transition-all shadow-md active:scale-95"
       >
         <UserIcon size={16} />
         <span>Sign In</span>
