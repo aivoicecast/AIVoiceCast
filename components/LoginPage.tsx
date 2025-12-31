@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ArrowRight, Loader2, Sparkles, Rocket, Shield, HardDrive } from 'lucide-react';
+import { ArrowRight, Loader2, Podcast } from 'lucide-react';
 import { signInWithGoogle } from '../services/authService';
 
 interface LoginPageProps {
@@ -26,8 +26,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden">
       <div className="relative z-10 w-full max-w-lg bg-slate-900/80 backdrop-blur-2xl border border-slate-800 rounded-[3rem] p-10 text-center animate-fade-in-up">
-          <div className="w-40 h-40 mx-auto mb-8 bg-indigo-600/10 rounded-[2rem] flex items-center justify-center border border-indigo-500/20">
-             <HardDrive size={64} className="text-indigo-400" />
+          <div className="w-24 h-24 mx-auto mb-8 bg-indigo-600 rounded-3xl flex items-center justify-center shadow-xl shadow-indigo-500/20 transform -rotate-3">
+             <Podcast size={48} className="text-white" />
           </div>
 
           <h1 className="text-3xl font-black text-white mb-2 tracking-tighter uppercase">AIVoiceCast</h1>
