@@ -7,16 +7,12 @@ import { firebaseKeys } from './private_keys';
 
 /**
  * Resolves the true Firebase compat namespace.
- * Handles variations in how ESM loaders like esm.sh wrap the package.
  */
 const resolveFirebase = () => {
     if (typeof window !== 'undefined' && (window as any).firebase) {
         return (window as any).firebase;
     }
     const resolved = (firebase_raw as any).default || firebase_raw;
-    if (!resolved) {
-        console.error("[Firebase] Fatal: Could not resolve Firebase core library.");
-    }
     return resolved;
 };
 
@@ -27,7 +23,6 @@ export const firebase: any = resolveFirebase();
  */
 const initializeApp = () => {
     if (!firebase || typeof firebase.initializeApp !== 'function') {
-        console.error("[Firebase] Core library not correctly loaded or missing initializeApp function.");
         return null;
     }
 
@@ -37,10 +32,7 @@ const initializeApp = () => {
         }
         
         if (firebaseKeys && firebaseKeys.apiKey) {
-            console.log("[Firebase] Initializing with Project ID:", firebaseKeys.projectId);
             return firebase.initializeApp(firebaseKeys);
-        } else {
-            console.warn("[Firebase] Warning: No API Key found in private_keys.ts");
         }
     } catch (err) {
         console.error("[Firebase] Initialization error:", err);
@@ -48,59 +40,73 @@ const initializeApp = () => {
     return null;
 };
 
-const app = initializeApp();
+// Internal instance
+let _app: any = null;
+
+const getApp = () => {
+    if (!_app) _app = initializeApp();
+    return _app;
+};
 
 /**
- * Service instance resolution with graceful fallback and validation.
+ * Service instance resolution with validation.
  */
 export const getAuth = () => {
+    const app = getApp();
     try {
+        // First try to get it from the app instance
         const instance = app ? app.auth() : (firebase && firebase.auth ? firebase.auth() : null);
         if (!instance) {
-            console.warn("[Firebase] Auth service not found. Ensure Firebase library is fully loaded.");
-            return null;
+            // Fallback for some ESM wrappers where it's attached directly to namespace
+            return firebase?.auth?.() || null;
         }
         return instance;
     } catch (e) {
-        console.warn("[Firebase] Auth service retrieval failed", e);
-        return null;
+        // Final fallback to namespace check
+        return firebase?.auth ? firebase.auth() : null;
     }
 };
 
 export const getDb = () => {
+    const app = getApp();
     try {
-        return app ? app.firestore() : (firebase && firebase.firestore ? firebase.firestore() : null);
+        const instance = app ? app.firestore() : (firebase && firebase.firestore ? firebase.firestore() : null);
+        return instance || firebase?.firestore?.() || null;
     } catch (e) {
-        return null;
+        return firebase?.firestore ? firebase.firestore() : null;
     }
 };
 
 export const getStorage = () => {
+    const app = getApp();
     try {
-        return app ? app.storage() : (firebase && firebase.storage ? firebase.storage() : null);
+        const instance = app ? app.storage() : (firebase && firebase.storage ? firebase.storage() : null);
+        return instance || firebase?.storage?.() || null;
     } catch (e) {
-        return null;
+        return firebase?.storage ? firebase.storage() : null;
     }
 };
-
-// Export core service instances immediately for convenience
-export const auth = getAuth();
-export const db = getDb();
-export const storage = getStorage();
 
 /**
  * Flag used by UI to determine status.
  */
 export const isFirebaseConfigured = !!(firebaseKeys && firebaseKeys.apiKey);
 
+// Export named instances to resolve external import errors across the application.
+export const auth = getAuth();
+export const db = getDb();
+export const storage = getStorage();
+
 /**
- * Returns diagnostic information for the system status tools.
+ * Returns diagnostic information.
  */
 export const getFirebaseDiagnostics = () => {
+    const app = getApp();
+    const authInstance = getAuth();
     return {
         isInitialized: !!app,
-        hasAuth: !!(auth || getAuth()),
-        hasFirestore: !!(db || getDb()),
+        hasAuth: !!authInstance,
+        hasFirestore: !!getDb(),
         projectId: firebaseKeys?.projectId || "Missing",
         configSource: "private_keys.ts",
         activeConfig: firebaseKeys ? { ...firebaseKeys, apiKey: firebaseKeys.apiKey ? "PRESENT" : "MISSING" } : null

@@ -46,7 +46,7 @@ import { CardWorkshop } from './components/CardWorkshop';
 import { CardExplorer } from './components/CardExplorer';
 import { IconGenerator } from './components/IconGenerator';
 
-import { firebase, auth, isFirebaseConfigured } from './services/firebaseConfig';
+import { firebase, getAuth, isFirebaseConfigured } from './services/firebaseConfig';
 import { 
   voteChannel, publishChannelToFirestore, updateCommentInChannel, 
   deleteCommentFromChannel, addCommentToChannel, getPublicChannels, 
@@ -350,8 +350,9 @@ const App: React.FC = () => {
 
     let unsubscribeAuth = () => {};
 
-    if (isFirebaseConfigured && auth) {
-        unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+    const activeAuth = getAuth();
+    if (isFirebaseConfigured && activeAuth) {
+        unsubscribeAuth = activeAuth.onAuthStateChanged(async (user: any) => {
           setCurrentUser(user);
           if (user) {
             try {

@@ -5,16 +5,17 @@ import { firebase, getAuth } from './firebaseConfig';
  * Trigger Google Sign-In popup.
  */
 export async function signInWithGoogle(): Promise<any> {
+  // Ensure we get the latest instance
   const activeAuth = getAuth();
   
   if (!activeAuth) {
-      throw new Error("Firebase Auth is not initialized. Please ensure your Firebase Configuration (API Keys) are set in private_keys.ts and that authorized domains are configured in the Firebase console.");
+      throw new Error("Firebase Auth service is unavailable. Please check your internet connection or Firebase configuration in private_keys.ts.");
   }
   
   try {
+    // In compat mode, GoogleAuthProvider is on the namespace
     const provider = new firebase.auth.GoogleAuthProvider();
     
-    // Force the "Choose an account" dialog every time
     provider.setCustomParameters({ 
       prompt: 'select_account' 
     });
@@ -32,7 +33,7 @@ export async function signInWithGoogle(): Promise<any> {
  */
 export async function signInWithGitHub(): Promise<{ user: any, token: string | null }> {
   const activeAuth = getAuth();
-  if (!activeAuth) throw new Error("Firebase Auth is not initialized.");
+  if (!activeAuth) throw new Error("Firebase Auth service is unavailable.");
   
   try {
     const provider = new firebase.auth.GithubAuthProvider();
