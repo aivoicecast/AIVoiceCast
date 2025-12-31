@@ -1,17 +1,18 @@
 
-import { firebase, auth } from './firebaseConfig';
+import { firebase, auth, getAuth } from './firebaseConfig';
 
 /**
  * Safely retrieves the active Auth instance.
- * Priority: 
- * 1. The exported 'auth' constant from firebaseConfig
- * 2. Directly calling .auth() on the firebase namespace
+ * It checks the exported getter first, then falls back to the resolved namespace.
  */
 function getActiveAuth() {
-    if (auth) return auth;
+    // 1. Try the getter (it checks apps.length and function type)
+    const active = getAuth();
+    if (active) return active;
     
+    // 2. Fallback: Try to resolve from the firebase namespace directly
     const fb = (firebase as any).default || firebase;
-    if (fb && typeof fb.auth === 'function' && fb.apps.length > 0) {
+    if (fb && fb.apps && fb.apps.length > 0 && typeof fb.auth === 'function') {
         return fb.auth();
     }
     
@@ -24,18 +25,17 @@ function getActiveAuth() {
 function getGoogleProvider() {
   const fb = (firebase as any).default || firebase;
   
-  // Search in the namespace first
   if (fb && fb.auth && fb.auth.GoogleAuthProvider) {
     return new fb.auth.GoogleAuthProvider();
   }
 
-  // Fallback to searching the instance if needed (some versions/wrappers)
-  const activeAuth = getActiveAuth();
-  if (activeAuth && (activeAuth as any).constructor && (activeAuth as any).constructor.GoogleAuthProvider) {
-      return new (activeAuth as any).constructor.GoogleAuthProvider();
+  // Fallback for some bundling environments
+  const authInstance = getActiveAuth();
+  if (authInstance && (authInstance as any).constructor && (authInstance as any).constructor.GoogleAuthProvider) {
+      return new (authInstance as any).constructor.GoogleAuthProvider();
   }
 
-  throw new Error("GoogleAuthProvider not found. Ensure the Firebase Auth compat library is loaded.");
+  throw new Error("GoogleAuthProvider not found. Check Firebase Auth library.");
 }
 
 /**
@@ -45,7 +45,7 @@ export async function signInWithGoogle(): Promise<any> {
   const activeAuth = getActiveAuth();
   
   if (!activeAuth) {
-      throw new Error("Firebase Auth is not initialized. Please ensure your Firebase configuration is correct.");
+      throw new Error("Firebase Auth is not initialized. Please ensure your Firebase configuration is correct and you have an active internet connection.");
   }
   
   try {
