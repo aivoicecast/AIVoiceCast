@@ -11,12 +11,36 @@ const SCOPES = [
     'https://www.googleapis.com/auth/userinfo.email'
 ].join(' ');
 
+/**
+ * Normalizes the redirect URI to match Google Cloud Console expectations.
+ * Most environments prefer the origin without a trailing slash.
+ */
+function getRedirectUri(): string {
+    // Standardize to origin. Remove trailing slashes.
+    let origin = window.location.origin;
+    if (origin.endsWith('/')) {
+        origin = origin.slice(0, -1);
+    }
+    return origin;
+}
+
 export async function signInWithGoogle(): Promise<any> {
     return new Promise((resolve, reject) => {
-        const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(window.location.origin)}&response_type=token&scope=${encodeURIComponent(SCOPES)}&prompt=select_account`;
+        const redirectUri = getRedirectUri();
+        
+        // Log for developer troubleshooting in browser console
+        console.log(`[OAuth] Attempting login with Redirect URI: ${redirectUri}`);
+        console.log(`[OAuth] Ensure this URI is whitelisted in Google Cloud Console for Client ID: ${CLIENT_ID}`);
+
+        const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(SCOPES)}&prompt=select_account`;
         
         const popup = window.open(url, 'google-login', 'width=500,height=600');
         
+        if (!popup) {
+            reject(new Error("Popup blocked! Please allow popups for this site."));
+            return;
+        }
+
         const checkHash = setInterval(async () => {
             try {
                 if (popup && popup.location.hash) {
@@ -48,7 +72,7 @@ export async function signInWithGoogle(): Promise<any> {
                     }
                 }
             } catch (e) {
-                // Cross-origin errors are expected until the redirect happens
+                // Cross-origin errors are expected until the redirect happens back to our domain
             }
             
             if (popup && popup.closed) {
