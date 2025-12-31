@@ -16,7 +16,8 @@ import JSZip from 'jszip';
 interface PodcastDetailProps {
   channel: Channel;
   onBack: () => void;
-  onStartLiveSession: (context?: string, lectureId?: string, recordingEnabled?: boolean, videoEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, cameraEnabled?: boolean) => void;
+  /* Fix: Updated onStartLiveSession signature to be consistent with unified 7-parameter signature */
+  onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
   language: 'en' | 'zh';
   onEditChannel?: () => void; 
   onViewComments?: () => void;
@@ -70,7 +71,7 @@ const UI_TEXT = {
   }
 };
 
-export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, language, currentUser }) => {
+export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, language, currentUser, onStartLiveSession }) => {
   const t = UI_TEXT[language];
   const [activeLecture, setActiveLecture] = useState<GeneratedLecture | null>(null);
   const [isLoadingLecture, setIsLoadingLecture] = useState(false);

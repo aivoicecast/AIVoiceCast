@@ -18,7 +18,8 @@ interface CalendarViewProps {
   globalVoice: string;
   t: any;
   onCommentClick: (channel: Channel) => void;
-  onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean) => void;
+  /* Fix: Updated onStartLiveSession signature to include optional activeSegment parameter for consistency */
+  onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
   onCreateChannel: (channel: Channel) => void;
   onSchedulePodcast: (date: Date) => void;
 }

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel } from '../types';
 import { getUserRecordings, deleteRecordingReference } from '../services/firestoreService';
@@ -7,7 +6,8 @@ import { auth } from '../services/firebaseConfig';
 
 interface RecordingListProps {
   onBack?: () => void;
-  onStartLiveSession?: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean) => void;
+  /* Fix: Updated onStartLiveSession signature to include optional activeSegment parameter for consistency with unified signature */
+  onStartLiveSession?: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
 }
 
 const TARGET_LANGUAGES = [
@@ -295,7 +295,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                           {/* Camera Toggle */}
                           <div 
                               onClick={() => setRecordCamera(!recordCamera)}
-                              className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${recordCamera ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-slate-800/30 border-slate-700 hover:bg-slate-800'}`}
+                              className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ml-4 ${recordCamera ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-slate-800/30 border-slate-700 hover:bg-slate-800'}`}
                           >
                               <div className="flex items-center gap-3">
                                   <div className={`p-1.5 rounded-full ${recordCamera ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-400'}`}>

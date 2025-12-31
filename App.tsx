@@ -1,10 +1,9 @@
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut
 } from 'lucide-react';
 import { LiveSession } from './components/LiveSession';
 import { PodcastDetail } from './components/PodcastDetail';
@@ -38,14 +37,45 @@ import { CardExplorer } from './components/CardExplorer';
 import { IconGenerator } from './components/IconGenerator';
 import { FirestoreInspector } from './components/FirestoreInspector';
 
-import { getCurrentUser, getDriveToken } from './services/authService';
+import { getCurrentUser, getDriveToken, signOut } from './services/authService';
 import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from './services/googleDriveService';
 import { getUserChannels, saveUserChannel, deleteUserChannel } from './utils/db';
 import { HANDCRAFTED_CHANNELS } from './utils/initialData';
 import { OFFLINE_CHANNEL_ID } from './utils/offlineContent';
 import { warmUpAudioContext, stopAllPlatformAudio, isAnyAudioPlaying, getGlobalAudioContext } from './utils/audioUtils';
 
-const APP_VERSION = "v4.1.0-FIX"; 
+// --- Error Boundary Component ---
+class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) { console.error("Uncaught runtime error:", error, errorInfo); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+          <div className="max-w-2xl w-full bg-slate-900 border border-red-500/50 rounded-3xl p-8 shadow-2xl animate-fade-in-up">
+            <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mb-6 border border-red-500/20">
+              <AlertTriangle className="text-red-500" size={32} />
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-2">Application Crash Detected</h1>
+            <p className="text-slate-400 mb-6">A runtime error occurred in the UI component tree. This is often caused by missing data or a browser incompatibility.</p>
+            <div className="bg-black/50 rounded-xl p-4 mb-8 font-mono text-xs text-red-300 overflow-x-auto border border-slate-800">
+              {this.state.error?.toString()}
+            </div>
+            <div className="flex gap-4">
+              <button onClick={() => window.location.reload()} className="flex-1 bg-white text-slate-950 font-bold py-3 rounded-xl hover:bg-slate-200 transition-colors">Reload Application</button>
+              <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="flex-1 bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-700 transition-colors">Clear Cache & Reset</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const UI_TEXT = {
   en: {
@@ -128,13 +158,20 @@ const App: React.FC = () => {
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [globalVoice, setGlobalVoice] = useState('Auto');
 
-  // Add state for live session parameters to enable session transitions
+  // --- Debug State ---
+  const [bootLogs, setBootLogs] = useState<string[]>([]);
+  const [initError, setInitError] = useState<string | null>(null);
+  const addLog = (msg: string) => { console.log(`[BOOT] ${msg}`); setBootLogs(prev => [...prev, msg]); };
+
+  /* Fix: Expanded liveSessionParams state to include bookingId and activeSegment context */
   const [liveSessionParams, setLiveSessionParams] = useState<{
     channel: Channel;
     context?: string;
     recordingEnabled?: boolean;
     videoEnabled?: boolean;
     cameraEnabled?: boolean;
+    bookingId?: string;
+    activeSegment?: { index: number, lectureId: string };
   } | null>(null);
 
   const allApps = [
@@ -159,22 +196,17 @@ const App: React.FC = () => {
     setIsUserMenuOpen(false);
   };
 
-  // Define handleStartLiveSession to fix the undefined name error and manage transition to LiveSession component
+  /* Fix: Updated handleStartLiveSession signature to match sub-components and capture all context needed for a session */
   const handleStartLiveSession = (
     channel: Channel, 
     context?: string, 
     recordingEnabled?: boolean, 
     bookingId?: string, 
     videoEnabled?: boolean, 
-    cameraEnabled?: boolean
+    cameraEnabled?: boolean,
+    activeSegment?: { index: number, lectureId: string }
   ) => {
-    setLiveSessionParams({
-      channel,
-      context,
-      recordingEnabled,
-      videoEnabled,
-      cameraEnabled
-    });
+    setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment });
     handleSetViewState('live_session');
   };
 
@@ -192,26 +224,47 @@ const App: React.FC = () => {
   }, [userProfile, userChannels, currentUser]);
 
   useEffect(() => {
-    const user = getCurrentUser();
-    if (user) {
-        setCurrentUser(user);
-        const token = getDriveToken();
-        if (token) {
-            ensureCodeStudioFolder(token).then(fid => {
-                loadAppStateFromDrive(token, fid).then(data => {
-                    if (data) {
-                        if (data.userProfile) setUserProfile(data.userProfile);
-                        if (data.userChannels) {
-                            setUserChannels(data.userChannels);
-                            data.userChannels.forEach((ch: any) => saveUserChannel(ch));
-                        }
+    const initializeApp = async () => {
+      try {
+        addLog("Detecting environment...");
+        const user = getCurrentUser();
+        if (user) {
+            addLog(`Found active user: ${user.displayName}`);
+            setCurrentUser(user);
+            const token = getDriveToken();
+            if (token) {
+                addLog("Connecting to Google Drive...");
+                const fid = await ensureCodeStudioFolder(token);
+                addLog("Loading cloud state from Drive...");
+                const data = await loadAppStateFromDrive(token, fid);
+                if (data) {
+                    if (data.userProfile) setUserProfile(data.userProfile);
+                    if (data.userChannels) {
+                        setUserChannels(data.userChannels);
+                        data.userChannels.forEach((ch: any) => saveUserChannel(ch));
                     }
-                }).catch(() => console.warn("Could not load state from Drive."));
-            }).catch(() => console.warn("Drive folder initialization failed."));
+                    addLog("Cloud state restored.");
+                }
+            }
+        } else {
+          addLog("No active user session found.");
         }
-    }
-    getUserChannels().then(setUserChannels).catch(() => console.warn("Local DB inaccessible."));
-    setAuthLoading(false);
+
+        addLog("Opening local IndexedDB...");
+        const localChannels = await getUserChannels();
+        setUserChannels(localChannels);
+        addLog(`Loaded ${localChannels.length} local channels.`);
+        
+        setAuthLoading(false);
+        addLog("Initialization complete.");
+      } catch (err: any) {
+        console.error("BOOT CRITICAL:", err);
+        setInitError(err.message || "Unknown error during initialization");
+        setAuthLoading(false);
+      }
+    };
+
+    initializeApp();
 
     const updateAudioState = () => {};
     window.addEventListener('audio-audit-updated', updateAudioState);
@@ -233,7 +286,38 @@ const App: React.FC = () => {
     await saveUserChannel(channelToSave);
   };
 
-  if (authLoading) return <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-indigo-400"><Loader2 size={48} className="animate-spin mb-4" /><p className="text-sm font-bold uppercase tracking-widest">Initializing Environment...</p></div>;
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-indigo-400 p-6">
+        <Loader2 size={48} className="animate-spin mb-4" />
+        <p className="text-sm font-bold uppercase tracking-widest mb-6">Environment Boot Sequence...</p>
+        <div className="max-w-xs w-full bg-slate-900 border border-slate-800 rounded-xl p-4 font-mono text-[10px] text-slate-500 overflow-hidden">
+           {bootLogs.slice(-3).map((l, i) => <div key={i} className="mb-1">{`> ${l}`}</div>)}
+        </div>
+      </div>
+    );
+  }
+
+  if (initError) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
+        <div className="bg-slate-900 border border-red-900/50 p-8 rounded-3xl max-w-lg w-full">
+           <AlertTriangle size={48} className="text-red-500 mx-auto mb-4" />
+           <h2 className="text-xl font-bold text-white mb-2">Failed to Boot OS</h2>
+           <p className="text-slate-400 text-sm mb-6">The system encountered a critical error during initialization. This is usually due to a blocked storage permission or API failure.</p>
+           <div className="bg-black/50 p-4 rounded-xl text-left font-mono text-xs text-red-300 border border-slate-800 mb-6 max-h-40 overflow-y-auto">
+             {initError}
+           </div>
+           <div className="space-y-3">
+             <button onClick={() => window.location.reload()} className="w-full py-3 bg-white text-slate-950 font-bold rounded-xl flex items-center justify-center gap-2"><RefreshCw size={16}/> Retry Boot</button>
+             <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="w-full py-3 bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center gap-2 border border-slate-700"><Trash2 size={16}/> Clear Storage & Reinstall</button>
+             {currentUser && <button onClick={signOut} className="w-full py-3 bg-red-900/20 text-red-400 font-bold rounded-xl flex items-center justify-center gap-2 border border-red-900/30"><LogOut size={16}/> Force Sign Out</button>}
+           </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isPrivacyOpen) return <PrivacyPolicy onBack={() => setIsPrivacyOpen(false)} />;
   if (viewState === 'mission') return <MissionManifesto onBack={() => handleSetViewState('directory')} />;
 
@@ -251,125 +335,143 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
-      <nav className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 h-16 flex items-center">
-        <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
-            <div className="flex items-center cursor-pointer" onClick={() => { handleSetViewState('directory'); setActiveTab('categories'); }}>
-              <div className="bg-indigo-600 p-2 rounded-xl"><Podcast className="text-white w-6 h-6" /></div>
-              <span className="ml-3 text-xl font-bold">AIVoiceCast</span>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button onClick={() => setLanguage(prev => prev === 'en' ? 'zh' : 'en')} className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold">{language === 'en' ? '中' : 'EN'}</button>
-              <UserAuth />
-              {currentUser && <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="p-2 rounded-full hover:bg-slate-800"><Menu size={24}/></button>}
-            </div>
-        </div>
-      </nav>
+    <ErrorBoundary>
+      <div className="min-h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
+        <nav className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 h-16 flex items-center">
+          <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
+              <div className="flex items-center cursor-pointer" onClick={() => { handleSetViewState('directory'); setActiveTab('categories'); }}>
+                <div className="bg-indigo-600 p-2 rounded-xl shadow-lg shadow-indigo-500/20"><Podcast className="text-white w-6 h-6" /></div>
+                <span className="ml-3 text-xl font-black tracking-tighter">AIVoiceCast</span>
+              </div>
+              <div className="flex items-center space-x-4">
+                <button onClick={() => setLanguage(prev => prev === 'en' ? 'zh' : 'en')} className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold transition-all hover:bg-slate-700">{language === 'en' ? '中' : 'EN'}</button>
+                <UserAuth />
+                {currentUser && <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="p-2 rounded-full hover:bg-slate-800 transition-colors"><Menu size={24}/></button>}
+              </div>
+          </div>
+        </nav>
 
-      {!currentUser && <LoginPage onPrivacyClick={() => setIsPrivacyOpen(false)} onMissionClick={() => handleSetViewState('mission')} />}
+        {!currentUser ? (
+          <LoginPage onPrivacyClick={() => setIsPrivacyOpen(true)} onMissionClick={() => handleSetViewState('mission')} />
+        ) : (
+          <>
+              <div className="flex-1 overflow-hidden h-[calc(100vh-64px)] pb-16 md:pb-0">
+                  {viewState === 'directory' && (
+                      <div className="h-full flex flex-col">
+                          {activeTab === 'categories' && (
+                              <PodcastFeed 
+                                  channels={channels.filter(c => !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase()))} 
+                                  onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} 
+                                  onStartLiveSession={handleStartLiveSession} 
+                                  userProfile={userProfile} 
+                                  globalVoice={globalVoice} 
+                                  currentUser={currentUser} 
+                              />
+                          )}
+                          {activeTab !== 'categories' && (
+                               <div className="h-full overflow-y-auto p-4 max-w-7xl mx-auto w-full">
+                                  {activeTab === 'calendar' && <CalendarView channels={channels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={()=>{}} setIsSettingsModalOpen={()=>{}} globalVoice={globalVoice} t={t} onCommentClick={()=>{}} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={()=>{}} />}
+                                  {activeTab === 'recordings' && <RecordingList onStartLiveSession={handleStartLiveSession} />}
+                                  {activeTab === 'docs' && <DocumentList />}
+                               </div>
+                          )}
+                      </div>
+                  )}
+                  
+                  {/* --- Robust View Dispatcher --- */}
+                  {viewState === 'podcast_detail' && activeChannelId && activeChannel && (
+                    <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} />
+                  )}
+                  {viewState === 'live_session' && liveSessionParams && (
+                      <LiveSession 
+                          channel={liveSessionParams.channel} 
+                          initialContext={liveSessionParams.context} 
+                          recordingEnabled={liveSessionParams.recordingEnabled}
+                          videoEnabled={liveSessionParams.videoEnabled}
+                          cameraEnabled={liveSessionParams.cameraEnabled}
+                          /* Fix: Pass missing context parameters to LiveSession */
+                          activeSegment={liveSessionParams.activeSegment}
+                          existingDiscussionId={liveSessionParams.bookingId}
+                          onEndSession={() => handleSetViewState('directory')}
+                          language={language}
+                      />
+                  )}
+                  {viewState === 'code_studio' && <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={handleStartLiveSession} />}
+                  {viewState === 'whiteboard' && <Whiteboard onBack={() => handleSetViewState('directory')} />}
+                  {viewState === 'blog' && <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
+                  {viewState === 'chat' && <WorkplaceChat currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
+                  {viewState === 'careers' && <CareerCenter currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
+                  {viewState === 'notebook_viewer' && <NotebookViewer currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
+                  {viewState === 'card_workshop' && <CardWorkshop onBack={() => handleSetViewState('directory')} />}
+                  {viewState === 'card_explorer' && <CardExplorer onBack={() => handleSetViewState('directory')} onOpenCard={(id) => handleSetViewState('card_workshop')} onCreateNew={() => handleSetViewState('card_workshop')} />}
+                  {viewState === 'user_guide' && <UserManual onBack={() => handleSetViewState('directory')} />}
+                  {viewState === 'icon_generator' && <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} />}
+                  {viewState === 'firestore_debug' && <FirestoreInspector onBack={() => handleSetViewState('directory')} />}
+                  
+                  {/* Fallback to Directory if state is unhandled or missing */}
+                  {!['directory', 'podcast_detail', 'live_session', 'code_studio', 'whiteboard', 'blog', 'chat', 'careers', 'notebook_viewer', 'card_workshop', 'card_explorer', 'user_guide', 'icon_generator', 'firestore_debug'].includes(viewState) && (
+                     <div className="h-full flex flex-col items-center justify-center p-8 text-center">
+                        <Terminal className="text-slate-700 mb-4" size={48} />
+                        <h3 className="text-lg font-bold text-slate-400">Context Missing</h3>
+                        <p className="text-sm text-slate-600 mb-6">The requested view could not be rendered because its data context is unavailable.</p>
+                        <button onClick={() => handleSetViewState('directory')} className="px-6 py-2 bg-indigo-600 rounded-lg text-white font-bold">Return Home</button>
+                     </div>
+                  )}
+              </div>
 
-      {currentUser && (
-        <>
-            <div className="flex-1 overflow-hidden h-[calc(100vh-64px)] pb-16 md:pb-0">
-                {viewState === 'directory' && (
-                    <div className="h-full flex flex-col">
-                        {activeTab === 'categories' && (
-                            <PodcastFeed 
-                                channels={channels.filter(c => !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase()))} 
-                                onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} 
-                                onStartLiveSession={handleStartLiveSession} 
-                                userProfile={userProfile} 
-                                globalVoice={globalVoice} 
-                                currentUser={currentUser} 
-                            />
-                        )}
-                        {activeTab !== 'categories' && (
-                             <div className="h-full overflow-y-auto p-4 max-w-7xl mx-auto w-full">
-                                {activeTab === 'calendar' && <CalendarView channels={channels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={()=>{}} setIsSettingsModalOpen={()=>{}} globalVoice={globalVoice} t={t} onCommentClick={()=>{}} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={()=>{}} />}
-                                {activeTab === 'recordings' && <RecordingList onStartLiveSession={handleStartLiveSession} />}
-                                {activeTab === 'docs' && <DocumentList />}
-                             </div>
-                        )}
-                    </div>
-                )}
-                {viewState === 'podcast_detail' && activeChannelId && activeChannel && <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} />}
-                {/* Fixed: Render LiveSession component when viewState is live_session */}
-                {viewState === 'live_session' && liveSessionParams && (
-                    <LiveSession 
-                        channel={liveSessionParams.channel} 
-                        initialContext={liveSessionParams.context} 
-                        recordingEnabled={liveSessionParams.recordingEnabled}
-                        videoEnabled={liveSessionParams.videoEnabled}
-                        cameraEnabled={liveSessionParams.cameraEnabled}
-                        onEndSession={() => handleSetViewState('directory')}
-                        language={language}
-                    />
-                )}
-                {viewState === 'code_studio' && <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={handleStartLiveSession} />}
-                {viewState === 'whiteboard' && <Whiteboard onBack={() => handleSetViewState('directory')} />}
-                {viewState === 'blog' && <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
-                {viewState === 'chat' && <WorkplaceChat currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
-                {viewState === 'careers' && <CareerCenter currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
-                {viewState === 'notebook_viewer' && <NotebookViewer currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
-                {viewState === 'card_workshop' && <CardWorkshop onBack={() => handleSetViewState('directory')} />}
-                {viewState === 'card_explorer' && <CardExplorer onBack={() => handleSetViewState('directory')} onOpenCard={(id) => handleSetViewState('card_workshop')} onCreateNew={() => handleSetViewState('card_workshop')} />}
-                {viewState === 'user_guide' && <UserManual onBack={() => handleSetViewState('directory')} />}
-                {viewState === 'icon_generator' && <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} />}
-                {viewState === 'firestore_debug' && <FirestoreInspector onBack={() => handleSetViewState('directory')} />}
-            </div>
+              <MobileBottomNav />
 
-            <MobileBottomNav />
+              {isUserMenuOpen && (
+                  <StudioMenu 
+                      isUserMenuOpen={isUserMenuOpen} 
+                      setIsUserMenuOpen={setIsUserMenuOpen} 
+                      userProfile={userProfile} 
+                      setUserProfile={setUserProfile} 
+                      currentUser={currentUser} 
+                      globalVoice={globalVoice} 
+                      setGlobalVoice={setGlobalVoice} 
+                      setIsCreateModalOpen={setIsCreateModalOpen} 
+                      setIsVoiceCreateOpen={setIsVoiceCreateOpen} 
+                      setIsSyncModalOpen={()=>{}} 
+                      setIsSettingsModalOpen={setIsSettingsModalOpen} 
+                      onOpenUserGuide={() => handleSetViewState('user_guide')} 
+                      onNavigate={handleSetViewState} 
+                      onOpenPrivacy={() => setIsPrivacyOpen(true)} 
+                      t={t} 
+                      className="fixed top-16 right-4 z-[100] w-72" 
+                      channels={channels} 
+                      language={language} 
+                      setLanguage={setLanguage} 
+                  />
+              )}
 
-            {isUserMenuOpen && (
-                <StudioMenu 
-                    isUserMenuOpen={isUserMenuOpen} 
-                    setIsUserMenuOpen={setIsUserMenuOpen} 
-                    userProfile={userProfile} 
-                    setUserProfile={setUserProfile} 
-                    currentUser={currentUser} 
-                    globalVoice={globalVoice} 
-                    setGlobalVoice={setGlobalVoice} 
-                    setIsCreateModalOpen={setIsCreateModalOpen} 
-                    setIsVoiceCreateOpen={setIsVoiceCreateOpen} 
-                    setIsSyncModalOpen={()=>{}} 
-                    setIsSettingsModalOpen={setIsSettingsModalOpen} 
-                    onOpenUserGuide={() => handleSetViewState('user_guide')} 
-                    onNavigate={handleSetViewState} 
-                    onOpenPrivacy={() => setIsPrivacyOpen(true)} 
-                    t={t} 
-                    className="fixed top-16 right-4 z-[100] w-72" 
-                    channels={channels} 
-                    language={language} 
-                    setLanguage={setLanguage} 
-                />
-            )}
+              {isAppsMenuOpen && (
+                  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+                      <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-6 animate-fade-in-up">
+                          <div className="flex justify-between items-center mb-6">
+                              <h2 className="text-xl font-bold text-white">Application Suite</h2>
+                              <button onClick={() => setIsAppsMenuOpen(false)} className="text-slate-400 hover:text-white transition-colors"><X/></button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4">
+                              {allApps.map(app => (
+                                  <button key={app.id} onClick={() => { app.action(); setIsAppsMenuOpen(false); }} className="flex flex-col items-center gap-2 p-4 rounded-2xl hover:bg-slate-800 transition-all border border-transparent hover:border-slate-700 group">
+                                      <div className={`p-3 rounded-2xl bg-slate-800 group-hover:scale-110 transition-transform ${app.color}`}>
+                                          <app.icon size={24} />
+                                      </div>
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{app.label}</span>
+                                  </button>
+                              ))}
+                          </div>
+                      </div>
+                  </div>
+              )}
 
-            {isAppsMenuOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
-                    <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-6 animate-fade-in-up">
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-white">Application Suite</h2>
-                            <button onClick={() => setIsAppsMenuOpen(false)} className="text-slate-400 hover:text-white"><X/></button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4">
-                            {allApps.map(app => (
-                                <button key={app.id} onClick={() => { app.action(); setIsAppsMenuOpen(false); }} className="flex flex-col items-center gap-2 p-4 rounded-2xl hover:bg-slate-800 transition-all border border-transparent hover:border-slate-700 group">
-                                    <div className={`p-3 rounded-2xl bg-slate-800 group-hover:scale-110 transition-transform ${app.color}`}>
-                                        <app.icon size={24} />
-                                    </div>
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{app.label}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateChannel} />
-            <VoiceCreateModal isOpen={isVoiceCreateOpen} onClose={() => setIsVoiceCreateOpen(false)} onCreate={handleCreateChannel} />
-        </>
-      )}
-    </div>
+              <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateChannel} />
+              <VoiceCreateModal isOpen={isVoiceCreateOpen} onClose={() => setIsVoiceCreateOpen(false)} onCreate={handleCreateChannel} />
+          </>
+        )}
+      </div>
+    </ErrorBoundary>
   );
 };
 
