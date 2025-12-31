@@ -1,3 +1,4 @@
+
 import { firebase, auth, db, storage } from './firebaseConfig';
 import { 
   UserProfile, Channel, ChannelStats, Comment, Attachment, 
@@ -36,15 +37,13 @@ const SAVED_WORDS_COLLECTION = 'saved_words';
 const CARDS_COLLECTION = 'cards';
 
 /**
- * ADMIN REQUIREMENT: All writes must be tagged with this email.
- * This ensures the security rules allow the operation and the owner
- * maintains data authority.
+ * ADMIN REQUIREMENT: The master owner account.
  */
-const ADMIN_EMAIL = 'shengliang.song.ai@gmail.com';
+export const ADMIN_EMAIL = 'shengliang.song.ai@gmail.com';
 
 const sanitizeData = (data: any) => {
     const cleaned = JSON.parse(JSON.stringify(data));
-    // Enforce administrative ownership context on all saved data
+    // Tagging data with admin context for rule validation
     cleaned.adminOwnerEmail = ADMIN_EMAIL;
     return cleaned;
 };

@@ -12,20 +12,21 @@ function getActiveAuth() {
  * Safely creates a Google Auth Provider instance.
  */
 function getGoogleProvider() {
-  const fb = (firebase as any).default || firebase;
-  if (fb && fb.auth && fb.auth.GoogleAuthProvider) {
-    return new fb.auth.GoogleAuthProvider();
+  if (firebase && firebase.auth && firebase.auth.GoogleAuthProvider) {
+    return new firebase.auth.GoogleAuthProvider();
   }
-  throw new Error("GoogleAuthProvider not found. Check Firebase Auth library.");
+  throw new Error("GoogleAuthProvider not found. Ensure firebase/compat/auth is imported.");
 }
 
 /**
  * Trigger Google Sign-In popup.
  */
 export async function signInWithGoogle(): Promise<any> {
-  const activeAuth = getActiveAuth();
+  let activeAuth = getActiveAuth();
+  
   if (!activeAuth) {
-      throw new Error("Firebase Auth is not initialized. Please check your configuration.");
+      // One last check: maybe the config is missing
+      throw new Error("Firebase Auth is not initialized. Please ensure your Firebase Configuration (API Keys) are set in the app settings or private_keys.ts.");
   }
   
   try {
@@ -45,9 +46,7 @@ export async function signInWithGitHub(): Promise<{ user: any, token: string | n
   const activeAuth = getActiveAuth();
   if (!activeAuth) throw new Error("Firebase Auth is not initialized.");
   
-  const fb = (firebase as any).default || firebase;
-  const GithubProvider = fb.auth?.GithubAuthProvider;
-  
+  const GithubProvider = firebase.auth?.GithubAuthProvider;
   if (!GithubProvider) {
     throw new Error("GithubAuthProvider is not available.");
   }

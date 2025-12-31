@@ -12,16 +12,19 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Hardcoded Admin Email for debugging/management
+    // Master Owner account check
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.email == 'shengliang.song.ai@gmail.com';
+      return isAuthenticated() && (
+        request.auth.token.email == 'shengliang.song.ai@gmail.com' || 
+        request.auth.token.email == 'shengliang.song@gmail.com'
+      );
     }
 
     // ----------------------------------------------------------------------
     // Global Default: Deny everything unless explicitly allowed
     // ----------------------------------------------------------------------
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if isAdmin(); // Admin always has full access
     }
 
     // ----------------------------------------------------------------------
@@ -29,180 +32,57 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated(); 
       allow create: if isOwner(userId);
-      // Allow owner to update profile 
-      // OR Admin to update anything (e.g. subscriptionTier)
-      // OR any auth user to update ONLY the followers list (e.g. Follow button)
-      allow update: if isOwner(userId) || isAdmin() || (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followers', 'likedChannelIds', 'following'])); 
+      allow update: if isOwner(userId) || isAdmin(); 
     }
 
     // ----------------------------------------------------------------------
-    // GROUPS COLLECTION
+    // GROUPS & CHAT
     match /groups/{groupId} {
-      allow create: if isAuthenticated();
-      allow read: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if (isAuthenticated() && resource.data.ownerId == request.auth.uid) || isAdmin();
-
+      allow read, write: if isAuthenticated();
       match /messages/{msgId} {
         allow read, write: if isAuthenticated();
       }
     }
 
-    // ----------------------------------------------------------------------
-    // WORKPLACE CHAT
     match /chat_channels/{channelId} {
       allow read, write: if isAuthenticated();
-      
       match /messages/{msgId} {
         allow read, write: if isAuthenticated();
       }
     }
 
     // ----------------------------------------------------------------------
-    // PODCAST CHANNELS & STATS
-    // ----------------------------------------------------------------------
-    
-    // Main Channel Metadata: STRICT. Only Owner/Admin can write.
+    // PODCAST CHANNELS
     match /channels/{channelId} {
       allow read: if true; 
       allow create: if isAuthenticated();
-      
-      allow update: if isAuthenticated() && (
-        resource.data.ownerId == request.auth.uid || 
-        resource.data.ownerId == null ||
-        resource.data.ownerId == 'system' ||
-        isAdmin() ||
-        // Only allow non-owners to update comments/appendix, but NOT counters
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments', 'appendix'])
+      allow update: if isAdmin() || isOwner(resource.data.ownerId) || (
+        isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments', 'appendix'])
       );
-      
-      allow delete: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || resource.data.ownerId == null || isAdmin());
+      allow delete: if isAdmin() || isOwner(resource.data.ownerId);
       
       match /lectures/{lectureId} { allow read, write: if true; }
-      match /comments/{commentId} { allow read, write: if true; }
-      match /meta/{docId} { allow read, write: if true; }
     }
 
-    // Separate Stats Table for Counters (Likes, Dislikes, Shares)
-    // Allows any authenticated member to update counters for ANY channel.
+    // Separate Stats Table for Counters
     match /channel_stats/{channelId} {
       allow read: if true;
-      allow write: if isAuthenticated() 
-                   && request.resource.data.likes is number;
-    }
-
-    // ----------------------------------------------------------------------
-    // GLOBAL STATS
-    match /stats/{statId} {
-      allow read: if true; 
       allow write: if isAuthenticated();
     }
 
     // ----------------------------------------------------------------------
-    // CUSTOMERS (STRIPE)
-    match /customers/{uid} {
-      allow create, read, update, delete: if isOwner(uid) || isAdmin();
-
-      match /checkout_sessions/{id} {
-        allow read, write: if isOwner(uid) || isAdmin();
-      }
-      match /subscriptions/{id} {
-        allow read: if isOwner(uid) || isAdmin();
-      }
-      match /payments/{id} {
-        allow read: if isOwner(uid) || isAdmin();
-      }
-      match /portal_sessions/{id} {
-        allow read, write: if isOwner(uid) || isAdmin();
-      }
+    // DISCUSSIONS & DOCUMENTS
+    match /discussions/{discussionId} {
+      allow read: if resource.data.visibility == 'public' || isOwner(resource.data.userId) || isAdmin();
+      allow write: if isAuthenticated();
     }
 
     // ----------------------------------------------------------------------
-    // SOCIAL FEATURES
+    // SHARED ASSETS
     match /invitations/{inviteId} { allow read, write: if isAuthenticated(); }
     match /bookings/{bookingId} { allow read, write: if isAuthenticated(); }
-    match /discussions/{discussionId} { allow read, write: if isAuthenticated(); }
     match /recordings/{recordingId} { allow read, write: if isAuthenticated(); }
     match /saved_words/{wordId} { allow read, write: if isAuthenticated(); }
-    match /activity_logs/{logId} { allow read, create: if isAuthenticated(); }
-    
-    // ----------------------------------------------------------------------
-    // CAREER CENTER
-    // ----------------------------------------------------------------------
-    match /career_applications/{appId} {
-      allow create: if isAuthenticated();
-      // Allow all members to read resumes (Talent Pool)
-      allow read: if isAuthenticated(); 
-    }
-    
-    match /job_postings/{jobId} {
-      allow read: if true;
-      allow create: if isAuthenticated();
-      allow update, delete: if (isAuthenticated() && resource.data.postedBy == request.auth.uid) || isAdmin();
-    }
-
-    // ----------------------------------------------------------------------
-    // COLLABORATION & CLOUD STORAGE
-    match /code_projects/{projectId} {
-      allow read, write: if resource == null || 
-                            resource.data.accessLevel != 'restricted' || 
-                            isAdmin() ||
-                            (request.auth != null && (
-                                resource.data.ownerId == request.auth.uid || 
-                                (resource.data.allowedUserIds != null && request.auth.uid in resource.data.allowedUserIds)
-                            ));
-    }
-    
-    // Metadata for files stored in the "Private Cloud"
-    match /cloud_files/{fileId} {
-       allow read, write: if isAuthenticated() && (
-         resource == null || 
-         resource.data.ownerId == request.auth.uid || 
-         isAdmin()
-       );
-    }
-
-    match /whiteboards/{boardId} {
-      allow read, write: if true;
-    }
-
-    // ----------------------------------------------------------------------
-    // HOLIDAY CARDS (Public Read, Owner Write)
-    // ----------------------------------------------------------------------
-    match /cards/{cardId} {
-      allow read: if true;
-      allow create: if isAuthenticated();
-      allow update, delete: if isOwner(resource.data.ownerId) || isAdmin();
-    }
-
-    // ----------------------------------------------------------------------
-    // HOLIDAY CARDS (Public Read, Owner Write)
-    // ----------------------------------------------------------------------
-    match /cards/{cardId} {
-      allow read: if true;
-      allow create: if isAuthenticated();
-      allow update, delete: if isOwner(resource.data.ownerId) || isAdmin();
-    }
-
-    // ----------------------------------------------------------------------
-    // BLOGS
-    match /blog_posts/{postId} { 
-      allow read: if true; 
-      allow create: if isAuthenticated();
-      allow update, delete: if (isAuthenticated() && resource.data.authorId == request.auth.uid) || isAdmin();
-    }
-    
-    match /blogs/{blogId} { allow read: if true; allow write: if isAuthenticated(); }
-
-    // ----------------------------------------------------------------------
-    // PRIVATE DATA
-    match /private_data/{documentId} {
-      allow read, delete: if isOwner(resource.data.ownerId) || isAdmin();
-      allow create: if isOwner(request.resource.data.ownerId) &&
-                       request.resource.data.status in ['pending', 'approved', 'rejected'];
-      allow update: if (isOwner(resource.data.ownerId) &&
-                       request.resource.data.status in ['pending', 'approved', 'rejected'] &&
-                       request.resource.data.ownerId == resource.data.ownerId) || isAdmin();
-    }
+    match /activity_logs/{logId} { allow create: if isAuthenticated(); allow read: if isAdmin(); }
   }
 }
