@@ -1,6 +1,6 @@
 
+import firebase from 'firebase/app';
 import { auth } from './firebaseConfig';
-import firebase from 'firebase/compat/app';
 
 export async function signInWithGoogle(): Promise<firebase.User | null> {
   // Proactive check for file protocol which is a common cause of "operation not supported"
@@ -19,8 +19,9 @@ export async function signInWithGoogle(): Promise<firebase.User | null> {
     
     const result = await auth.signInWithPopup(provider);
     return result.user;
-  } catch (error) {
-    console.error("Login failed:", error);
+  } catch (error: any) {
+    console.error("Login failed with error code:", error.code);
+    console.error("Login failed message:", error.message);
     throw error;
   }
 }

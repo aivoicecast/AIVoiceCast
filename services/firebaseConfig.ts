@@ -1,11 +1,10 @@
-import firebase from "firebase/compat/app";
-import "firebase/compat/auth";
-import "firebase/compat/firestore";
-import "firebase/compat/storage";
+
+import firebase from "firebase/app";
+import "firebase/auth";
+import "firebase/firestore";
+import "firebase/storage";
 import { firebaseKeys } from './private_keys';
 
-// Directly use the keys from the private file.
-// We removed all complex Env var detection to prevent build errors.
 const configToUse = firebaseKeys;
 
 // Flag to tell UI if we are running on meaningful config
@@ -18,3 +17,5 @@ export const app = !firebase.apps.length ? firebase.initializeApp(configToUse) :
 export const auth = firebase.auth();
 export const db = firebase.firestore();
 export const storage = firebase.storage();
+
+export default firebase;
