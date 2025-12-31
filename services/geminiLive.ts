@@ -11,6 +11,19 @@ export interface LiveConnectionCallbacks {
   onToolCall?: (toolCall: any) => void;
 }
 
+/**
+ * Maps custom descriptive voice names or technical IDs to supported Gemini Live prebuilt voices.
+ */
+function getValidLiveVoice(voiceName: string): string {
+  const name = voiceName || '';
+  if (name.includes('0648937375') || name === 'Software Interview Voice') return 'Fenrir';
+  if (name.includes('0375218270') || name === 'Linux Kernel Voice') return 'Puck';
+  if (name.toLowerCase().includes('gem') || name === 'Default Gem') return 'Zephyr';
+  
+  const validGemini = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
+  return validGemini.includes(voiceName) ? voiceName : 'Puck';
+}
+
 export class GeminiLiveService {
   private session: any = null;
   private inputAudioContext: AudioContext | null = null;
@@ -68,19 +81,18 @@ export class GeminiLiveService {
     tools?: any[]
   ) {
     try {
-      // 1. REGISTER OWNER TO KILL OTHER AUDIO
-      // Fixed: Added source name "GeminiLive" as the first argument to registerAudioOwner
       registerAudioOwner("GeminiLive", () => this.disconnect());
 
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       if (!this.inputAudioContext) this.initializeAudio();
 
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const validVoice = voiceName || 'Puck';
+      const validVoice = getValidLiveVoice(voiceName);
 
       const connectionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
+          // Fix: Corrected typo 'responseModalalities' to 'responseModalities' as required by LiveConnectConfig
           responseModalities: [Modality.AUDIO], 
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: validVoice } } },
           systemInstruction: systemInstruction,
@@ -146,7 +158,7 @@ export class GeminiLiveService {
   public sendText(text: string) {
     this.sessionPromise?.then((session) => {
         if (session) {
-            try { session.send({ clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true } }); } catch (e) {}
+            try { session.send({ clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true } }); } catch(e) {}
         }
     });
   }

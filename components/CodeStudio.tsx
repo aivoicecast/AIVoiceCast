@@ -459,7 +459,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
 
   const handleCloudToggle = async (node: TreeNode) => { const isExpanded = expandedFolders[node.id]; setExpandedFolders(prev => ({ ...prev, [node.id]: !isExpanded })); if (!isExpanded) { setLoadingFolders(prev => ({ ...prev, [node.id]: true })); try { await refreshCloudPath(node.id); } catch(e) { console.error(e); } finally { setLoadingFolders(prev => ({ ...prev, [node.id]: false })); } } };
   const handleDriveToggle = async (node: TreeNode) => { const driveFile = node.data as DriveFile; const isExpanded = expandedFolders[node.id]; setExpandedFolders(prev => ({ ...prev, [node.id]: !isExpanded })); if (!isExpanded && driveToken && (!node.children || node.children.length === 0)) { setLoadingFolders(prev => ({ ...prev, [node.id]: true })); try { const files = await listDriveFiles(driveToken, driveFile.id); setDriveItems(prev => { const newItems = files.map(f => ({ ...f, parentId: node.id, isLoaded: false })); return Array.from(new Map([...prev, ...newItems].map(item => [item.id, item])).values()); }); } catch(e) { console.error(e); } finally { setLoadingFolders(prev => ({ ...prev, [node.id]: false })); } } };
-  const handleConnectDrive = async () => { try { const token = await connectGoogleDrive(); setDriveToken(token); const rootId = await ensureCodeStudioFolder(token); setDriveRootId(rootId); const files = await listDriveFiles(token, rootId); setDriveItems([{ id: rootId, name: 'CodeStudio', mimeType: 'application/vnd.google-apps.folder', isLoaded: true }, ...files.map(f => ({ ...f, parentId: rootId, isLoaded: false }))]); setActiveTab('drive'); } catch(e: any) { console.error(e); } };
+  const handleConnectDrive = async () => { try { const token = await connectGoogleDrive(); setDriveToken(token); const rootId = await ensureCodeStudioFolder(token); setDriveRootId(rootId); const files = await listDriveFiles(token, rootId); setDriveItems([{ id: rootId, name: 'CodeStudio', mimeType: 'application/vnd.google-apps.folder', isLoaded: true }, ...files.map(f => ({ ...f, parentId: driveRootId, isLoaded: false }))]); setActiveTab('drive'); } catch(e: any) { console.error(e); } };
 
   const handleCreateFile = async () => { const name = prompt("File Name:"); if (!name) return;
       try {
@@ -515,7 +515,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           if (resp.functionCalls) {
               for (const fc of resp.functionCalls) {
                   if (fc.name === 'update_active_file') {
-                      const { new_content, summary } = fc.args;
+                      // Fix: Cast fc.args to any to access properties from unknown type, resolving assignment to handleCodeChangeInSlot
+                      const { new_content, summary } = fc.args as any;
                       if (activeFile) {
                           handleCodeChangeInSlot(new_content, focusedSlot);
                           setChatMessages(prev => [...prev, { role: 'ai', text: `✨ **In-place Edit Applied to ${activeFile.name}**\n\n${summary || "Code updated successfully."}` }]);

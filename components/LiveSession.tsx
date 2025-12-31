@@ -1060,6 +1060,14 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     });
   };
 
+  const getRoleName = (role: string) => {
+      if (role === 'user') return t.you;
+      if (role.includes('0648937375')) return 'Software Interview Voice';
+      if (role.includes('0375218270')) return 'Linux Kernel Voice';
+      if (role.toLowerCase().includes('gem')) return 'Default Gem';
+      return channel.voiceName;
+  };
+
   if (isUploadingRecording) {
       return (
           <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center p-4">
@@ -1162,14 +1170,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                    </div>
                )}
                {transcript.map((item, index) => {
-                   // Robust mapping for technical gen-lang-client roles and specific IDs
                    const isAIVoice = item.role === 'ai' || 
                                      item.role.includes('gen-lang-client') || 
-                                     item.role.toLowerCase().includes('gem') ||
-                                     item.role === 'Software Interview Voice' ||
-                                     item.role === 'Linux Kernel Voice';
+                                     item.role.toLowerCase().includes('gem');
                                      
-                   const roleLabel = isAIVoice ? channel.voiceName : t.you;
+                   const roleLabel = getRoleName(item.role);
                    const colorClass = isAIVoice ? 'text-emerald-400' : 'text-indigo-400';
 
                    return (
