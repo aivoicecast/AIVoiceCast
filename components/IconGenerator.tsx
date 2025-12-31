@@ -1,8 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 /* Added Check to lucide-react imports to fix "Cannot find name 'Check'" errors */
-import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check } from 'lucide-react';
+import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
+import { resizeImage } from '../utils/imageUtils';
 
 interface IconGeneratorProps {
   onBack: () => void;
@@ -23,8 +24,10 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
   const [selectedStyle, setSelectedStyle] = useState(STYLE_PRESETS[0]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedIcon, setGeneratedIcon] = useState<string | null>(null);
+  const [baseImage, setBaseImage] = useState<string | null>(null);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -40,6 +43,18 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     setHasApiKey(true);
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files[0]) {
+          try {
+              const base64 = await resizeImage(e.target.files[0], 1024, 0.8);
+              setBaseImage(base64);
+              setError(null);
+          } catch (err) {
+              setError("Failed to process image.");
+          }
+      }
+  };
+
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     
@@ -47,20 +62,33 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     setError(null);
     
     try {
-      /* Guideline: Create a new GoogleGenAI instance right before making an API call to ensure it always uses the most up-to-date API key from the dialog. */
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
-      const fullPrompt = `Professional app icon design for: ${prompt}. ${selectedStyle.prompt}. Isolated on a solid background, centered composition, no text, masterpiece quality, 8k resolution.`;
+      const isEdit = !!baseImage;
+      const model = isEdit ? 'gemini-2.5-flash-image' : 'gemini-3-pro-image-preview';
+      
+      const styleInstruction = isEdit ? `Modify the provided image according to this request: ${prompt}. Maintain the core structure but update the style to: ${selectedStyle.name}. ${selectedStyle.prompt}.` : `Professional app icon design for: ${prompt}. ${selectedStyle.prompt}. Isolated on a solid background, centered composition, no text, masterpiece quality, 8k resolution.`;
+
+      const parts: any[] = [{ text: styleInstruction }];
+      
+      if (isEdit && baseImage) {
+          const base64Data = baseImage.split(',')[1];
+          const mimeType = baseImage.substring(baseImage.indexOf(':') + 1, baseImage.indexOf(';'));
+          parts.push({
+              inlineData: {
+                  data: base64Data,
+                  mimeType: mimeType
+              }
+          });
+      }
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-image-preview',
-        contents: {
-          parts: [{ text: fullPrompt }],
-        },
+        model,
+        contents: isEdit ? { parts } : styleInstruction,
         config: {
           imageConfig: {
             aspectRatio: "1:1",
-            imageSize: "1K"
+            imageSize: isEdit ? undefined : "1K" // gemini-3-pro specific
           }
         },
       });
@@ -72,12 +100,15 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
             setGeneratedIcon(`data:image/png;base64,${part.inlineData.data}`);
             foundImage = true;
             break;
+          } else if (part.text && isEdit) {
+              // Sometimes models return text explanation first in multi-part responses
+              console.log("AI Text Note:", part.text);
           }
         }
       }
 
       if (!foundImage) {
-        throw new Error("No image was generated in the response.");
+        throw new Error("No image was generated in the response. The model might have been blocked or failed to process the request.");
       }
     } catch (e: any) {
       console.error(e);
@@ -159,8 +190,13 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
               </h1>
           </div>
           <div className="flex items-center gap-4">
+              {baseImage && (
+                  <div className="flex items-center gap-2 bg-pink-900/30 text-pink-400 px-3 py-1 rounded-full border border-pink-500/30 text-[10px] font-bold uppercase tracking-widest animate-pulse">
+                      <Edit3 size={12}/> Edit Mode
+                  </div>
+              )}
               <span className="text-[10px] bg-indigo-900/50 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/30 font-bold uppercase tracking-widest">
-                  Gemini 3 Pro Image
+                  {baseImage ? 'Gemini 2.5 Flash' : 'Gemini 3 Pro Image'}
               </span>
           </div>
       </header>
@@ -170,21 +206,48 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
           {/* Controls Panel */}
           <div className="w-full lg:w-[400px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-8 space-y-10 scrollbar-thin">
               
+              {/* Base Image Section */}
+              <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center justify-between">
+                      <div className="flex items-center gap-2"><ImageIcon size={14} className="text-emerald-400"/> Base Icon (Optional)</div>
+                      {baseImage && <button onClick={() => setBaseImage(null)} className="text-red-400 hover:text-red-300 transition-colors"><X size={14}/></button>}
+                  </h3>
+                  {baseImage ? (
+                      <div className="relative aspect-square w-32 mx-auto rounded-2xl overflow-hidden border-2 border-indigo-500 shadow-xl group">
+                          <img src={baseImage} className="w-full h-full object-cover" alt="Base" />
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                              <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-indigo-600 rounded-full text-white"><RefreshCw size={16}/></button>
+                          </div>
+                      </div>
+                  ) : (
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full aspect-square border-2 border-dashed border-slate-700 rounded-3xl flex flex-col items-center justify-center gap-3 text-slate-500 hover:border-indigo-500 hover:text-indigo-400 transition-all bg-slate-900/20 group"
+                      >
+                          <div className="p-4 bg-slate-800 rounded-full group-hover:bg-indigo-900/30 transition-colors">
+                              <Upload size={24} />
+                          </div>
+                          <span className="text-xs font-bold uppercase tracking-wider">Upload Icon to Edit</span>
+                      </button>
+                  )}
+                  <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
+              </div>
+
               <div className="space-y-4">
                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                      <Layers size={14} className="text-indigo-400"/> Icon Concept
+                      <Layers size={14} className="text-indigo-400"/> {baseImage ? 'Modification Request' : 'Icon Concept'}
                   </h3>
                   <textarea 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Describe your app or icon (e.g. 'a golden compass for a travel app')..."
+                    placeholder={baseImage ? "What changes should I make to this icon? (e.g. 'Make it look more futuristic' or 'Change the red to blue')..." : "Describe your app or icon (e.g. 'a golden compass for a travel app')..."}
                     className="w-full h-32 bg-slate-900 border border-slate-700 rounded-2xl p-4 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none leading-relaxed transition-all"
                   />
               </div>
 
               <div className="space-y-4">
                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                      <Palette size={14} className="text-pink-400"/> Design Style
+                      <Palette size={14} className="text-pink-400"/> {baseImage ? 'Target Style' : 'Design Style'}
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
                       {STYLE_PRESETS.map((style) => (
@@ -203,10 +266,10 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                   <button 
                     onClick={handleGenerate}
                     disabled={isGenerating || !prompt.trim()}
-                    className={`w-full py-4 rounded-2xl font-black flex items-center justify-center gap-3 transition-all shadow-xl active:scale-[0.98] ${isGenerating || !prompt.trim() ? 'bg-slate-800 text-slate-500 opacity-50' : 'bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white shadow-cyan-500/10'}`}
+                    className={`w-full py-4 rounded-2xl font-black flex items-center justify-center gap-3 transition-all shadow-xl active:scale-[0.98] ${isGenerating || !prompt.trim() ? 'bg-slate-800 text-slate-500 opacity-50' : (baseImage ? 'bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500' : 'bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500') + ' text-white shadow-cyan-500/10'}`}
                   >
                       {isGenerating ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
-                      <span>{isGenerating ? 'Generating...' : 'Generate Icon'}</span>
+                      <span>{isGenerating ? 'Synthesizing...' : baseImage ? 'Modify Icon' : 'Generate Icon'}</span>
                   </button>
                   
                   {error && (
@@ -223,7 +286,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                       Pro Tip
                   </div>
                   <p className="text-[10px] text-slate-400 leading-relaxed">
-                      Icons without text perform better. Focus on metaphors and strong visual symbols that represent your app's core value.
+                      {baseImage ? "The AI will use your image as a reference. Be specific about what to keep and what to change for best results." : "Icons without text perform better. Focus on metaphors and strong visual symbols that represent your app's core value."}
                   </p>
               </div>
           </div>
@@ -233,7 +296,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
               
               <div className="absolute top-8 left-8 text-slate-600 flex items-center gap-2 select-none">
                   <Globe size={14} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Neural Canvas v1.0</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest">Neural Canvas v2.0</span>
               </div>
 
               {generatedIcon ? (
@@ -288,7 +351,9 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                       </div>
                       <div className="space-y-2">
                           <h3 className="text-xl font-bold text-slate-600">Preview Studio</h3>
-                          <p className="text-sm text-slate-700">Enter a concept and select a style to generate your first professional icon.</p>
+                          <p className="text-sm text-slate-700">
+                              {baseImage ? "Upload your base icon and request changes. We'll use neural synthesis to reimagine it." : "Enter a concept and select a style to generate your first professional icon."}
+                          </p>
                       </div>
                   </div>
               )}
