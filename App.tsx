@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
-/* Fixed: Added missing Rocket and Book icons to lucide-react imports */
 import { 
   Podcast, Search, Sparkles, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
@@ -37,13 +36,15 @@ import { NotebookViewer } from './components/NotebookViewer';
 import { CardWorkshop } from './components/CardWorkshop';
 import { CardExplorer } from './components/CardExplorer';
 import { IconGenerator } from './components/IconGenerator';
+// Added missing import for FirestoreInspector
+import { FirestoreInspector } from './components/FirestoreInspector';
 
 import { getCurrentUser, getDriveToken } from './services/authService';
 import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from './services/googleDriveService';
 import { getUserChannels, saveUserChannel, deleteUserChannel } from './utils/db';
 import { HANDCRAFTED_CHANNELS } from './utils/initialData';
 import { OFFLINE_CHANNEL_ID } from './utils/offlineContent';
-import { warmUpAudioContext, stopAllPlatformAudio, isAnyAudioPlaying } from './utils/audioUtils';
+import { warmUpAudioContext, stopAllPlatformAudio, isAnyAudioPlaying, getGlobalAudioContext } from './utils/audioUtils';
 
 const APP_VERSION = "v4.0.0-DRIVE"; 
 
@@ -115,8 +116,6 @@ const App: React.FC = () => {
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
-  const [isDesktopAppsOpen, setIsDesktopAppsOpen] = useState(false);
-  const [audioIsPlaying, setAudioIsPlaying] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -126,15 +125,8 @@ const App: React.FC = () => {
   const [userChannels, setUserChannels] = useState<Channel[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isVoiceCreateOpen, setIsVoiceCreateOpen] = useState(false);
-  const [isPricingOpen, setIsPricingOpen] = useState(false); 
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [channelToEdit, setChannelToEdit] = useState<Channel | null>(null);
-  const [isCommentsModalOpen, setIsCommentsModalOpen] = useState(false);
-  const [commentsChannel, setCommentsChannel] = useState<Channel | null>(null);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
-  const [mobileFeedTab, setMobileFeedTab] = useState<'foryou' | 'following'>('foryou');
-  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
-  const [mobileSearchQuery, setMobileSearchQuery] = useState('');
   const [globalVoice, setGlobalVoice] = useState('Auto');
 
   const allApps = [
@@ -185,14 +177,14 @@ const App: React.FC = () => {
                             data.userChannels.forEach((ch: any) => saveUserChannel(ch));
                         }
                     }
-                });
-            });
+                }).catch(() => console.warn("Could not load state from Drive."));
+            }).catch(() => console.warn("Drive folder initialization failed."));
         }
     }
-    getUserChannels().then(setUserChannels);
+    getUserChannels().then(setUserChannels).catch(() => console.warn("Local DB inaccessible."));
     setAuthLoading(false);
 
-    const updateAudioState = () => setAudioIsPlaying(isAnyAudioPlaying());
+    const updateAudioState = () => {};
     window.addEventListener('audio-audit-updated', updateAudioState);
     return () => window.removeEventListener('audio-audit-updated', updateAudioState);
   }, []);
@@ -212,7 +204,7 @@ const App: React.FC = () => {
     await saveUserChannel(channelToSave);
   };
 
-  if (authLoading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-indigo-400"><Loader2 size={48} className="animate-spin mb-4" /></div>;
+  if (authLoading) return <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-indigo-400"><Loader2 size={48} className="animate-spin mb-4" /><p className="text-sm font-bold uppercase tracking-widest">Initializing Environment...</p></div>;
   if (isPrivacyOpen) return <PrivacyPolicy onBack={() => setIsPrivacyOpen(false)} />;
   if (viewState === 'mission') return <MissionManifesto onBack={() => handleSetViewState('directory')} />;
 
@@ -252,7 +244,16 @@ const App: React.FC = () => {
             <div className="flex-1 overflow-hidden h-[calc(100vh-64px)] pb-16 md:pb-0">
                 {viewState === 'directory' && (
                     <div className="h-full flex flex-col">
-                        {activeTab === 'categories' && <PodcastFeed channels={channels.filter(c => !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase()))} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} onStartLiveSession={()=>{}} userProfile={userProfile} globalVoice={globalVoice} currentUser={currentUser} />}
+                        {activeTab === 'categories' && (
+                            <PodcastFeed 
+                                channels={channels.filter(c => !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase()))} 
+                                onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} 
+                                onStartLiveSession={()=>{}} 
+                                userProfile={userProfile} 
+                                globalVoice={globalVoice} 
+                                currentUser={currentUser} 
+                            />
+                        )}
                         {activeTab !== 'categories' && (
                              <div className="h-full overflow-y-auto p-4 max-w-7xl mx-auto w-full">
                                 {activeTab === 'calendar' && <CalendarView channels={channels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={()=>{}} setIsSettingsModalOpen={()=>{}} globalVoice={globalVoice} t={t} onCommentClick={()=>{}} onStartLiveSession={()=>{}} onCreateChannel={handleCreateChannel} onSchedulePodcast={()=>{}} />}
@@ -265,12 +266,33 @@ const App: React.FC = () => {
                 {viewState === 'podcast_detail' && activeChannelId && activeChannel && <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={()=>{}} language={language} currentUser={currentUser} />}
                 {viewState === 'code_studio' && <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} />}
                 {viewState === 'icon_generator' && <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} />}
+                {viewState === 'firestore_debug' && <FirestoreInspector onBack={() => handleSetViewState('directory')} />}
             </div>
 
             <MobileBottomNav />
 
             {isUserMenuOpen && (
-                <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} userProfile={userProfile} setUserProfile={setUserProfile} currentUser={currentUser} globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} setIsSyncModalOpen={()=>{}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={()=>{}} onNavigate={handleSetViewState} onOpenPrivacy={()=>{}} t={t} className="fixed top-16 right-4 z-[100] w-72" channels={channels} language={language} setLanguage={setLanguage} />
+                <StudioMenu 
+                    isUserMenuOpen={isUserMenuOpen} 
+                    setIsUserMenuOpen={setIsUserMenuOpen} 
+                    userProfile={userProfile} 
+                    setUserProfile={setUserProfile} 
+                    currentUser={currentUser} 
+                    globalVoice={globalVoice} 
+                    setGlobalVoice={setGlobalVoice} 
+                    setIsCreateModalOpen={setIsCreateModalOpen} 
+                    setIsVoiceCreateOpen={setIsVoiceCreateOpen} 
+                    setIsSyncModalOpen={()=>{}} 
+                    setIsSettingsModalOpen={setIsSettingsModalOpen} 
+                    onOpenUserGuide={()=>{}} 
+                    onNavigate={handleSetViewState} 
+                    onOpenPrivacy={()=>{}} 
+                    t={t} 
+                    className="fixed top-16 right-4 z-[100] w-72" 
+                    channels={channels} 
+                    language={language} 
+                    setLanguage={setLanguage} 
+                />
             )}
 
             <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateChannel} />

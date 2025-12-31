@@ -31,7 +31,7 @@ const initializeApp = () => {
             return firebase.app();
         }
 
-        if (firebaseKeys && firebaseKeys.apiKey) {
+        if (firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY") {
             // Dynamically determine authDomain
             const currentHostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
             
@@ -49,8 +49,6 @@ const initializeApp = () => {
 
             if (authorizedDomains.includes(currentHostname)) {
                 dynamicAuthDomain = currentHostname;
-            } else {
-                console.warn(`[Firebase] Current hostname '${currentHostname}' is not explicitly listed in dynamic authorized domains. Using project default.`);
             }
 
             const configWithDynamicAuthDomain = {
@@ -61,7 +59,7 @@ const initializeApp = () => {
             return firebase.initializeApp(configWithDynamicAuthDomain);
         }
     } catch (err) {
-        console.error("[Firebase] Initialization error:", err);
+        console.warn("[Firebase] Initialization skipped or failed:", err);
     }
     return null;
 };
@@ -78,45 +76,36 @@ const getApp = () => {
  * Service instance resolution with validation.
  */
 export const getAuth = () => {
-    const app = getApp();
     try {
-        // First try to get it from the app instance
-        const instance = app ? app.auth() : (firebase && firebase.auth ? firebase.auth() : null);
-        if (!instance) {
-            // Fallback for some ESM wrappers where it's attached directly to namespace
-            return firebase?.auth?.() || null;
-        }
-        return instance;
+        const app = getApp();
+        return app ? app.auth() : null;
     } catch (e) {
-        // Final fallback to namespace check
-        return firebase?.auth ? firebase.auth() : null;
+        return null;
     }
 };
 
 export const getDb = () => {
-    const app = getApp();
     try {
-        const instance = app ? app.firestore() : (firebase && firebase.firestore ? firebase.firestore() : null);
-        return instance || firebase?.firestore?.() || null;
+        const app = getApp();
+        return app ? app.firestore() : null;
     } catch (e) {
-        return firebase?.firestore ? firebase.firestore() : null;
+        return null;
     }
 };
 
 export const getStorage = () => {
-    const app = getApp();
     try {
-        const instance = app ? app.storage() : (firebase && firebase.storage ? firebase.storage() : null);
-        return instance || firebase?.storage?.() || null;
+        const app = getApp();
+        return app ? app.storage() : null;
     } catch (e) {
-        return firebase?.storage ? firebase.storage() : null;
+        return null;
     }
 };
 
 /**
  * Flag used by UI to determine status.
  */
-export const isFirebaseConfigured = !!(firebaseKeys && firebaseKeys.apiKey);
+export const isFirebaseConfigured = !!(firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY");
 
 // Export named instances to resolve external import errors across the application.
 export const auth = getAuth();

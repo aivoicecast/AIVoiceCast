@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, MessageCircle, FileText, Loader2, CornerDownRight, Edit2, Save, Sparkles, ExternalLink, Cloud, Trash2, RefreshCw, Info, Lock, Globe, Users, ChevronDown, Check } from 'lucide-react';
 import { CommunityDiscussion, Group, ChannelVisibility } from '../types';
-import { getDiscussionById, saveDiscussionDesignDoc, saveDiscussion, deleteDiscussion, updateDiscussionVisibility, getUserGroups } from '../services/firestoreService';
+import { getDiscussionById, subscribeToDiscussion, saveDiscussionDesignDoc, saveDiscussion, deleteDiscussion, updateDiscussionVisibility, getUserGroups } from '../services/firestoreService';
 import { generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { MarkdownView } from './MarkdownView';
 import { connectGoogleDrive } from '../services/authService';
@@ -43,38 +43,56 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
   const [isExportingGDoc, setIsExportingGDoc] = useState(false);
   const [gDocUrl, setGDocUrl] = useState<string | null>(null);
 
+  // Sync Prevention Ref
+  const lastSavedContent = useRef<string>('');
+
   useEffect(() => {
     if (isOpen) {
       setGDocUrl(null);
-      if (!initialDiscussion || (initialDiscussion.id !== discussionId && discussionId !== 'new')) {
+      let unsubscribe = () => {};
+
+      if (discussionId !== 'new') {
         setLoading(true);
+        // Initial Fetch
         getDiscussionById(discussionId).then(data => {
-          if (data) {
-              setActiveDiscussion(data);
-              setDocTitle(data.title || 'Untitled Document');
-              setEditedDocContent(data.designDoc || '');
-              
-              const hasTranscript = data.transcript && data.transcript.length > 0;
-              if (data.isManual || data.designDoc || !hasTranscript) {
-                  setViewMode('doc');
-                  if (!data.designDoc && !hasTranscript) setIsEditingDoc(true);
-              } else {
-                  setViewMode('transcript');
-              }
+            if (data) {
+                setActiveDiscussion(data);
+                setDocTitle(data.title || 'Untitled Document');
+                setEditedDocContent(data.designDoc || '');
+                lastSavedContent.current = data.designDoc || '';
+                
+                const hasTranscript = data.transcript && data.transcript.length > 0;
+                if (data.isManual || data.designDoc || !hasTranscript) {
+                    setViewMode('doc');
+                    if (!data.designDoc && !hasTranscript) setIsEditingDoc(true);
+                } else {
+                    setViewMode('transcript');
+                }
+
+                // COLLABORATION: Subscribe to live changes
+                unsubscribe = subscribeToDiscussion(discussionId, (updated) => {
+                    setActiveDiscussion(prev => {
+                        // Only update if someone else changed it (or major change occurred)
+                        if (updated.designDoc !== lastSavedContent.current) {
+                            if (!isEditingDoc) setEditedDocContent(updated.designDoc || '');
+                            lastSavedContent.current = updated.designDoc || '';
+                        }
+                        return updated;
+                    });
+                });
+            }
+            setLoading(false);
+        }).catch(() => setLoading(false));
+      } else if (initialDiscussion) {
+          setActiveDiscussion(initialDiscussion);
+          setDocTitle(initialDiscussion.title || 'Untitled Document');
+          setEditedDocContent(initialDiscussion.designDoc || '');
+          lastSavedContent.current = initialDiscussion.designDoc || '';
+          const hasTranscript = initialDiscussion.transcript && initialDiscussion.transcript.length > 0;
+          if (initialDiscussion.id === 'new' || initialDiscussion.designDoc || !hasTranscript) {
+              setViewMode('doc');
+              if (initialDiscussion.id === 'new' || !initialDiscussion.designDoc) setIsEditingDoc(true);
           }
-          setLoading(false);
-        }).catch(() => {
-          setLoading(false);
-        });
-      } else {
-        setActiveDiscussion(initialDiscussion);
-        setDocTitle(initialDiscussion.title || 'Untitled Document');
-        setEditedDocContent(initialDiscussion.designDoc || '');
-        const hasTranscript = initialDiscussion.transcript && initialDiscussion.transcript.length > 0;
-        if (initialDiscussion.id === 'new' || initialDiscussion.designDoc || !hasTranscript) {
-            setViewMode('doc');
-            if (initialDiscussion.id === 'new' || !initialDiscussion.designDoc) setIsEditingDoc(true);
-        }
       }
 
       if (currentUser) {
@@ -84,6 +102,8 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
               setLoadingGroups(false);
           });
       }
+
+      return () => unsubscribe();
     }
   }, [isOpen, discussionId, initialDiscussion, currentUser]);
 
@@ -108,6 +128,7 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
           if (doc) {
               if (activeDiscussion.id && activeDiscussion.id !== 'new') {
                 await saveDiscussionDesignDoc(activeDiscussion.id, doc, docTitle);
+                lastSavedContent.current = doc;
               }
               setActiveDiscussion({ ...activeDiscussion, designDoc: doc, title: docTitle });
               setEditedDocContent(doc);
@@ -140,12 +161,13 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
           delete docToSave.id;
           
           const newId = await saveDiscussion(docToSave as CommunityDiscussion);
-          // CRITICAL: Update local state with the actual Database ID
           setActiveDiscussion({ ...docToSave, id: newId });
           setDocTitle(docToSave.title);
           setEditedDocContent(docToSave.designDoc || '');
+          lastSavedContent.current = docToSave.designDoc || '';
       } else {
           await saveDiscussionDesignDoc(activeDiscussion.id, editedDocContent, docTitle || 'Untitled Document');
+          lastSavedContent.current = editedDocContent;
           setActiveDiscussion({ ...activeDiscussion, title: docTitle || 'Untitled Document', designDoc: editedDocContent });
       }
       setIsEditingDoc(false);
@@ -159,7 +181,6 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
 
   const handleUpdateVisibility = async (v: ChannelVisibility, gId?: string) => {
       if (!activeDiscussion || activeDiscussion.id === 'new') {
-          // Update locally for new draft
           setActiveDiscussion(prev => prev ? ({ 
               ...prev, 
               visibility: v, 
@@ -172,13 +193,10 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
           const nextGroupIds = [...(activeDiscussion.groupIds || [])];
           if (v === 'group' && gId && !nextGroupIds.includes(gId)) {
               nextGroupIds.push(gId);
-          } else if (v !== 'group') {
-              // Reset groups if switching away? Or keep them? Let's reset for clarity.
-          }
+          } 
 
           await updateDiscussionVisibility(activeDiscussion.id, v, nextGroupIds);
           setActiveDiscussion({ ...activeDiscussion, visibility: v, groupIds: nextGroupIds });
-          showToast(`Visibility updated to ${v}`, 'success');
       } catch (e) {
           alert("Failed to update visibility.");
       }
@@ -199,8 +217,6 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
           setActiveDiscussion({ ...activeDiscussion, visibility: nextVisibility, groupIds: nextGroups });
       } catch(e) {}
   };
-
-  const showToast = (msg: string, type: string) => console.log(msg); // Simplified for this component
 
   const handleDelete = async () => {
       if (!activeDiscussion || activeDiscussion.id === 'new' || activeDiscussion.id === 'system-doc-001') return;
@@ -235,7 +251,7 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
       }
   };
 
-  const isOwner = currentUser && activeDiscussion && (activeDiscussion.userId === currentUser.uid || currentUser.email === 'shengliang.song@gmail.com');
+  const isOwner = currentUser && activeDiscussion && (activeDiscussion.userId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
@@ -407,6 +423,11 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
                                                 <RefreshCw size={14} className={isGeneratingDoc ? 'animate-spin' : ''}/>
                                                 <span>Re-Synthesize</span>
                                             </button>
+                                        )}
+                                        {activeDiscussion.id !== 'new' && (
+                                            <div className="flex items-center gap-1 px-3 py-1.5 bg-emerald-900/20 border border-emerald-500/30 rounded-lg text-[10px] font-bold text-emerald-400 uppercase tracking-widest animate-pulse">
+                                                <Users size={12}/> Shared Editing Active
+                                            </div>
                                         )}
                                     </div>
                                     <div className="flex space-x-2">
