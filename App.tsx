@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
 import { 
@@ -234,6 +235,7 @@ const App: React.FC = () => {
                 // Fallback to localStorage if Firebase hasn't resolved yet but we have local session
                 const local = getCurrentUser();
                 if (local) setCurrentUser(local);
+                else setCurrentUser(null);
             }
         });
         return () => unsubscribe();
@@ -374,7 +376,13 @@ const App: React.FC = () => {
                       >
                           <LayoutGrid size={24}/>
                       </button>
-                      <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="p-2 rounded-full hover:bg-slate-800 transition-colors"><Menu size={24}/></button>
+                      {/* Integrated Menu Trigger: User Photo via UserAuth acts as visual anchor */}
+                      <button 
+                        onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} 
+                        className={`p-2 rounded-full transition-colors ${isUserMenuOpen ? 'bg-slate-800' : 'hover:bg-slate-800'}`}
+                      >
+                        <Menu size={24}/>
+                      </button>
                     </div>
                 </div>
               </nav>

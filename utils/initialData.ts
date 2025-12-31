@@ -2,7 +2,7 @@
 import { Channel, ChannelVisibility } from '../types';
 import { OFFLINE_CHANNEL_ID } from './offlineContent';
 
-export const VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr', 'Software Interview Voice', 'Linux Kernel Voice', 'Default Gem'];
+export const VOICES = ['Software Interview Voice', 'Linux Kernel Voice', 'Default Gem', 'Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
 
 // Use a fixed past date (Jan 15, 2024) to ensure initial data doesn't clutter the "Today" view in Calendar
 const INITIAL_DATE = 1705276800000; 

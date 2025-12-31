@@ -53,18 +53,19 @@ export const UserAuth: React.FC = () => {
 
   if (user) {
     return (
-      <div className="flex items-center space-x-2 bg-slate-800 rounded-full pl-2 pr-3 py-1 border border-slate-700">
+      <div className="flex items-center space-x-2 bg-slate-800/50 rounded-full pl-2 pr-3 py-1 border border-slate-700 hover:bg-slate-800 transition-colors">
         <img 
           src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=6366f1&color=fff`} 
           alt={user.displayName || 'User'} 
           className="w-7 h-7 rounded-full border border-indigo-500 object-cover"
         />
-        <span className="text-xs font-bold text-slate-200 hidden sm:inline max-w-[100px] truncate">
+        <span className="text-xs font-bold text-slate-200 hidden lg:inline max-w-[100px] truncate">
           {user.displayName?.split(' ')[0]}
         </span>
+        <div className="w-px h-4 bg-slate-700 mx-1 hidden lg:block"></div>
         <button 
           onClick={handleLogout}
-          className="ml-1 text-slate-500 hover:text-red-400 transition-colors"
+          className="p-1 text-slate-500 hover:text-red-400 transition-colors"
           title="Sign Out"
         >
           <LogOut size={14} />
