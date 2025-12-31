@@ -6,30 +6,12 @@ import "firebase/compat/storage";
 import { firebaseKeys as defaultKeys } from './private_keys';
 
 /**
- * Resiliently resolves the Firebase Compat namespace.
+ * Robustly resolves the Firebase namespace for compat mode.
+ * Handles different ESM bundling behaviors (like esm.sh).
  */
-function resolveFirebaseNamespace(obj: any): any {
-    if (!obj) return null;
-    let current = obj;
-    // Standard ESM resolution
-    if (current.default && typeof current.default.auth === 'function') {
-        return current.default;
-    }
-    // Deep resolution for some proxy environments
-    for (let i = 0; i < 3; i++) {
-        if (typeof current.auth === 'function') return current;
-        if (current.default && current.default !== current) {
-            current = current.default;
-        } else {
-            break;
-        }
-    }
-    return current;
-}
+const fb = (firebase as any).default || firebase;
 
-const fb = resolveFirebaseNamespace(firebase);
-
-// 1. Determine which keys to use (Priority: LocalStorage > private_keys.ts)
+// 1. Determine configuration
 let activeConfig = defaultKeys;
 let usingStoredConfig = false;
 
@@ -46,9 +28,10 @@ try {
     console.warn("[Firebase] Failed to parse saved config", e);
 }
 
-// 2. Initialize the Firebase app instance
 const hasValidKey = activeConfig.apiKey && !activeConfig.apiKey.includes("YOUR_FIREBASE");
 
+// 2. Initialize the app
+// We must initialize before we attempt to export the service instances.
 if (fb && hasValidKey && !fb.apps.length) {
     try {
         fb.initializeApp(activeConfig);
@@ -58,16 +41,21 @@ if (fb && hasValidKey && !fb.apps.length) {
     }
 }
 
-// 3. Export instances of the core services with defensive checks.
-// If fb.auth is not yet attached as a function, return null to allow App.tsx to handle it gracefully via its 'if (auth)' checks.
+/**
+ * 3. Export service instances.
+ * We use getter-style evaluation or ensure initialization has happened.
+ * In compat mode, fb.auth(), fb.firestore(), and fb.storage() return
+ * the service instance for the default initialized app.
+ * We defensively check if the functions exist before calling them to avoid TypeErrors.
+ */
 export const auth = (fb && fb.apps.length > 0 && typeof fb.auth === 'function') ? fb.auth() : null;
 export const db = (fb && fb.apps.length > 0 && typeof fb.firestore === 'function') ? fb.firestore() : null;
 export const storage = (fb && fb.apps.length > 0 && typeof fb.storage === 'function') ? fb.storage() : null;
 
 /**
- * isFirebaseConfigured is true if valid keys are present.
+ * isFirebaseConfigured is true if valid keys are present and the app is ready.
  */
-export const isFirebaseConfigured = hasValidKey;
+export const isFirebaseConfigured = hasValidKey && fb && fb.apps.length > 0;
 
 export { fb as firebase };
 export default fb;

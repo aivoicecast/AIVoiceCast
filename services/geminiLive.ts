@@ -16,6 +16,7 @@ export interface LiveConnectionCallbacks {
  */
 function getValidLiveVoice(voiceName: string): string {
   const name = voiceName || '';
+  // Explicit ID Mapping
   if (name.includes('0648937375') || name === 'Software Interview Voice') return 'Fenrir';
   if (name.includes('0375218270') || name === 'Linux Kernel Voice') return 'Puck';
   if (name.toLowerCase().includes('gem') || name === 'Default Gem') return 'Zephyr';
@@ -92,7 +93,6 @@ export class GeminiLiveService {
       const connectionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
-          // Fix: Corrected typo 'responseModalalities' to 'responseModalities' as required by LiveConnectConfig
           responseModalities: [Modality.AUDIO], 
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: validVoice } } },
           systemInstruction: systemInstruction,

@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, getGlobalAudioContext, hashString } from '../utils/audioUtils';
 import { getCachedAudioBuffer, cacheAudioBuffer } from '../utils/db';
@@ -23,7 +24,7 @@ const pendingRequests = new Map<string, Promise<TtsResult>>();
 function getValidVoiceName(voiceName: string, provider: 'gemini' | 'openai'): string {
     const isInterview = voiceName.includes('0648937375') || voiceName === 'Software Interview Voice';
     const isLinux = voiceName.includes('0375218270') || voiceName === 'Linux Kernel Voice';
-    const isDefaultGem = voiceName === 'Default Gem' || voiceName.includes('default-gem');
+    const isDefaultGem = voiceName.toLowerCase().includes('gem') || voiceName === 'Default Gem';
 
     if (provider === 'openai') {
         if (isInterview) return 'onyx';
@@ -62,7 +63,6 @@ async function synthesizeOpenAI(text: string, voice: string, apiKey: string): Pr
 
 async function synthesizeGemini(text: string, voice: string): Promise<ArrayBuffer> {
     const targetVoice = getValidVoiceName(voice, 'gemini');
-    // Using process.env.API_KEY directly as per guidelines
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-preview-tts',
@@ -77,9 +77,6 @@ async function synthesizeGemini(text: string, voice: string): Promise<ArrayBuffe
     return base64ToBytes(base64).buffer;
 }
 
-/**
- * Checks Firebase Storage for a previously generated version of this segment.
- */
 async function checkCloudCache(cacheKey: string): Promise<ArrayBuffer | null> {
     if (!auth.currentUser) return null;
     
@@ -87,14 +84,9 @@ async function checkCloudCache(cacheKey: string): Promise<ArrayBuffer | null> {
         const hash = await hashString(cacheKey);
         const uid = auth.currentUser.uid;
         const cloudPath = `backups/${uid}/audio/${hash}`;
-        
-        // Attempt to get a direct download URL
         const url = await storage.ref(cloudPath).getDownloadURL();
         const response = await fetch(url);
-        
-        if (response.ok) {
-            return await response.arrayBuffer();
-        }
+        if (response.ok) return await response.arrayBuffer();
     } catch (e) {}
     return null;
 }
@@ -113,44 +105,32 @@ export async function synthesizeSpeech(
 
   const requestPromise = (async (): Promise<TtsResult> => {
     try {
-      // 1. Check Local IndexedDB
       const cached = await getCachedAudioBuffer(cacheKey);
       if (cached) {
-        const isOp = OPENAI_VOICES.some(v => voiceName.toLowerCase().includes(v)) 
+        const isHighQuality = OPENAI_VOICES.some(v => voiceName.toLowerCase().includes(v)) 
                   || voiceName.includes('06489') 
-                  || voiceName.includes('03752');
+                  || voiceName.includes('03752')
+                  || voiceName.toLowerCase().includes('gem');
                   
-        const audioBuffer = isOp 
+        const audioBuffer = isHighQuality 
             ? await audioContext.decodeAudioData(cached.slice(0)) 
             : await decodeRawPcm(new Uint8Array(cached), audioContext, 24000);
         memoryCache.set(cacheKey, audioBuffer);
         return { buffer: audioBuffer, errorType: 'none' };
       }
 
-      // 2. Check System Voice Preference
-      if (preferredProvider === 'system') {
-          return { buffer: null, errorType: 'none', provider: 'system' };
-      }
+      if (preferredProvider === 'system') return { buffer: null, errorType: 'none', provider: 'system' };
 
-      // 3. Check Firebase Cloud Storage (JIT Cache Check)
       const cloudBuffer = await checkCloudCache(cacheKey);
       if (cloudBuffer) {
-          // Save to local IndexedDB for future offline use
           await cacheAudioBuffer(cacheKey, cloudBuffer);
-          
-          const isOp = OPENAI_VOICES.some(v => voiceName.toLowerCase().includes(v));
-          const audioBuffer = isOp 
-            ? await audioContext.decodeAudioData(cloudBuffer.slice(0)) 
-            : await decodeRawPcm(new Uint8Array(cloudBuffer), audioContext, 24000);
-            
+          const audioBuffer = await audioContext.decodeAudioData(cloudBuffer.slice(0));
           memoryCache.set(cacheKey, audioBuffer);
           return { buffer: audioBuffer, errorType: 'none' };
       }
 
-      // 4. API Synthesis (Last Resort)
       let rawBuffer: ArrayBuffer;
       let usedProvider: 'gemini' | 'openai' = 'gemini';
-
       const openAiKey = localStorage.getItem('openai_api_key') || OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
       
       if (preferredProvider === 'openai' && openAiKey) {
@@ -161,9 +141,7 @@ export async function synthesizeSpeech(
           rawBuffer = await synthesizeGemini(cleanText, voiceName);
       }
 
-      // 5. Save to Local Cache
       await cacheAudioBuffer(cacheKey, rawBuffer);
-      
       const audioBuffer = usedProvider === 'openai' 
           ? await audioContext.decodeAudioData(rawBuffer.slice(0)) 
           : await decodeRawPcm(new Uint8Array(rawBuffer), audioContext, 24000);
