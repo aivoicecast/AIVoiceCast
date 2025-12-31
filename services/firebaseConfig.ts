@@ -30,9 +30,35 @@ const initializeApp = () => {
         if (firebase.apps && firebase.apps.length > 0) {
             return firebase.app();
         }
-        
+
         if (firebaseKeys && firebaseKeys.apiKey) {
-            return firebase.initializeApp(firebaseKeys);
+            // Dynamically determine authDomain
+            const currentHostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+            
+            // Fallback default
+            let dynamicAuthDomain = "fir-cfb5e.firebaseapp.com";
+
+            // List of explicitly authorized domains for this project
+            const authorizedDomains = [
+                "localhost",
+                "fir-cfb5e.firebaseapp.com",
+                "fir-cfb5e.web.app",
+                "aivoicecast-platform-836641670384.us-west1.run.app",
+                "dev.aivoicecast.com"
+            ];
+
+            if (authorizedDomains.includes(currentHostname)) {
+                dynamicAuthDomain = currentHostname;
+            } else {
+                console.warn(`[Firebase] Current hostname '${currentHostname}' is not explicitly listed in dynamic authorized domains. Using project default.`);
+            }
+
+            const configWithDynamicAuthDomain = {
+                ...firebaseKeys,
+                authDomain: dynamicAuthDomain
+            };
+
+            return firebase.initializeApp(configWithDynamicAuthDomain);
         }
     } catch (err) {
         console.error("[Firebase] Initialization error:", err);
