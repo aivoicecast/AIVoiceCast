@@ -263,7 +263,7 @@ const App: React.FC = () => {
 
   // Registry Initialization Helper
   useEffect(() => {
-    if (isFirebaseConfigured && currentUser && currentUser.email === 'shengliang.song@gmail.com') {
+    if (isFirebaseConfigured && currentUser && currentUser.email === 'shengliang.song.ai@gmail.com') {
         isRegistryEmpty().then(empty => {
             if (empty) {
                 if (confirm("Firebase project detected as empty. Would you like to seed the initial Public Registry with default podcasts?")) {
@@ -626,7 +626,7 @@ const App: React.FC = () => {
           await addCommentToChannel(commentsChannel.id, newComment);
       } else {
           await saveUserChannel(updatedChannel);
-          setUserChannels(prev => prev.map(c => c.id === updatedChannel.id ? updatedChannel : c));
+          setUserChannels(prev => prev.map(c => c.id === commentsChannel.id ? updatedChannel : c));
       }
   };
 

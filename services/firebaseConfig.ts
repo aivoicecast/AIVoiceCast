@@ -23,7 +23,7 @@ export const firebase: any = resolveFirebase();
  */
 const initializeApp = () => {
     if (!firebase || typeof firebase.initializeApp !== 'function') {
-        console.error("[Firebase] Firebase core library not correctly loaded.");
+        console.error("[Firebase] Core library not correctly loaded.");
         return null;
     }
 
@@ -44,12 +44,18 @@ const initializeApp = () => {
 const app = initializeApp();
 
 /**
- * Service instance resolution with graceful fallback.
+ * Service instance resolution with graceful fallback and validation.
  */
 export const getAuth = () => {
     try {
-        return app ? app.auth() : (firebase.auth ? firebase.auth() : null);
+        const instance = app ? app.auth() : (firebase.auth ? firebase.auth() : null);
+        if (!instance) {
+            // Last resort: try initializing a default if global firebase exists
+            return firebase.auth ? firebase.auth() : null;
+        }
+        return instance;
     } catch (e) {
+        console.warn("[Firebase] Auth service retrieval failed", e);
         return null;
     }
 };
@@ -88,7 +94,8 @@ export const getFirebaseDiagnostics = () => {
         isInitialized: !!app,
         hasAuth: !!(auth || getAuth()),
         hasFirestore: !!(db || getDb()),
-        projectId: firebaseKeys?.projectId || "Missing"
+        projectId: firebaseKeys?.projectId || "Missing",
+        configSource: "private_keys.ts"
     };
 };
 

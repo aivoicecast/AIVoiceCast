@@ -55,7 +55,7 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack }
   };
 
   const handleClaimOwnership = async () => {
-      const email = prompt("Enter email address to assign ownership to:", "shengliang.song@gmail.com");
+      const email = prompt("Enter email address to assign ownership to:", "shengliang.song.ai@gmail.com");
       if (!email) return;
       
       setIsLoading(true);
@@ -184,7 +184,7 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack }
                                     <button 
                                         onClick={handleClaimOwnership} 
                                         disabled={isLoading}
-                                        className="flex items-center space-x-2 px-3 py-1 bg-amber-900/30 hover:bg-amber-900/50 border border-amber-900 text-amber-400 hover:text-amber-200 rounded text-xs font-bold ml-2 transition-colors"
+                                        className="flex items-center space-x-2 px-3 py-1 bg-amber-900/30 hover:bg-amber-900/50 border border-amber-900 text-amber-400 hover:text-emerald-200 rounded text-xs font-bold ml-2 transition-colors"
                                         title="Assign all system channels to Admin"
                                     >
                                         <ShieldCheck size={14} />

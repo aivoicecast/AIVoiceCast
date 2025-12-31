@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { X, User, MessageSquare, Heart, Users, Check, Bell, Play } from 'lucide-react';
 import { Channel, UserProfile } from '../types';
@@ -38,10 +39,10 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
         setIsLoading(true);
         let oid = channel.ownerId;
 
-        // If system channel (no ownerId), default to Admin (shengliang.song@gmail.com)
+        // If system channel (no ownerId), default to Admin (shengliang.song.ai@gmail.com)
         if (!oid) {
             try {
-                const adminProfile = await getUserProfileByEmail('shengliang.song@gmail.com');
+                const adminProfile = await getUserProfileByEmail('shengliang.song.ai@gmail.com');
                 if (adminProfile) oid = adminProfile.uid;
             } catch (e) {
                 console.warn("Failed to resolve admin profile for system channel", e);

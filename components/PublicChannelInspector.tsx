@@ -76,7 +76,7 @@ export const PublicChannelInspector: React.FC<PublicChannelInspectorProps> = ({ 
            </div>
            
            <div className="flex gap-2">
-               {currentUser?.email === 'shengliang.song@gmail.com' && (
+               {currentUser?.email === 'shengliang.song.ai@gmail.com' && (
                    <button onClick={handleSeed} disabled={isLoading} className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-lg font-bold text-xs transition-colors">
                      <UploadCloud size={16} />
                      <span>Publish System Channels</span>
@@ -126,7 +126,7 @@ export const PublicChannelInspector: React.FC<PublicChannelInspectorProps> = ({ 
                       </td>
                       <td className="px-6 py-4 text-right">
                          {/* STRICT: Allow deletion ONLY if current user is logged in AND (is owner OR channel is orphaned OR is Super Admin) */}
-                         {currentUser && (currentUser.uid === ch.ownerId || !ch.ownerId || currentUser.email === 'shengliang.song@gmail.com') && (
+                         {currentUser && (currentUser.uid === ch.ownerId || !ch.ownerId || currentUser.email === 'shengliang.song.ai@gmail.com') && (
                             <button 
                                 onClick={() => handleDelete(ch.id, ch.title)}
                                 className="text-slate-500 hover:text-red-400 transition-colors p-2 hover:bg-slate-800 rounded-full"

@@ -170,7 +170,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const waitingTimerRef = useRef<any>(null);
 
   const currentUser = auth.currentUser;
-  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song@gmail.com');
+  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
 
   const getDescriptiveTitle = () => {
     const podcastTitle = channel.title;

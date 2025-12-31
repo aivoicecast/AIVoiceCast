@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Channel, Attachment, AttachmentType, Comment } from '../types';
 import { X, Send, MessageSquare, User, Image as ImageIcon, Video, Mic, Loader2, StopCircle, Trash2, Edit2, Save, FileText } from 'lucide-react';
@@ -231,7 +232,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
               <div key={comment.id || idx} className={`bg-slate-800/50 border border-slate-700/50 p-4 rounded-xl relative group ${editingCommentId === comment.id ? 'ring-2 ring-indigo-500' : ''}`}>
                  
                  {/* Action Buttons (Edit/Delete) */}
-                 {currentUser && (comment.userId === currentUser.uid || comment.user === currentUser.displayName || currentUser.email === 'shengliang.song@gmail.com') && !editingCommentId && (
+                 {currentUser && (comment.userId === currentUser.uid || comment.user === currentUser.displayName || currentUser.email === 'shengliang.song.ai@gmail.com') && !editingCommentId && (
                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1">
                         <button 
                            onClick={() => handleStartEdit(comment)}

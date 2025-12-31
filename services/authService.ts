@@ -13,8 +13,11 @@ export async function signInWithGoogle(): Promise<any> {
   
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
-    // Force account selection to prevent auto-login with wrong account during testing
-    provider.setCustomParameters({ prompt: 'select_account' });
+    
+    // Force the "Choose an account" dialog every time
+    provider.setCustomParameters({ 
+      prompt: 'select_account' 
+    });
     
     const result = await activeAuth.signInWithPopup(provider);
     return result.user;
