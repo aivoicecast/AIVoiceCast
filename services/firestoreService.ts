@@ -1,4 +1,3 @@
-
 import firebase from 'firebase/compat/app';
 import { auth, db, storage } from './firebaseConfig';
 import { 
@@ -19,7 +18,7 @@ import {
 } from '../types';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 
-// Constants - Synced with firestore.rules
+// Constants
 const USERS_COLLECTION = 'users';
 const CHANNELS_COLLECTION = 'channels';
 const CHANNEL_STATS_COLLECTION = 'channel_stats';
@@ -37,36 +36,99 @@ const WHITEBOARDS_COLLECTION = 'whiteboards';
 const SAVED_WORDS_COLLECTION = 'saved_words';
 const CARDS_COLLECTION = 'cards';
 
-// --- Helpers ---
 const sanitizeData = (data: any) => JSON.parse(JSON.stringify(data));
+
+// --- Initialization Check ---
+
+/**
+ * Checks if the public registry is empty and needs seeding.
+ */
+export async function isRegistryEmpty(): Promise<boolean> {
+    try {
+        const snap = await db.collection(CHANNELS_COLLECTION).limit(1).get();
+        return snap.empty;
+    } catch (e) {
+        console.warn("Registry check failed (likely no permissions or empty DB)", e);
+        return true;
+    }
+}
+
+/**
+ * Performs a safe initial seed of Handcrafted channels.
+ */
+export async function seedDatabase() {
+    console.log("Seeding initial database content...");
+    const batch = db.batch();
+    for (const channel of HANDCRAFTED_CHANNELS) {
+        const ref = db.collection(CHANNELS_COLLECTION).doc(channel.id);
+        batch.set(ref, sanitizeData({
+            ...channel,
+            visibility: 'public',
+            ownerId: 'system'
+        }), { merge: true });
+        
+        // Init stats
+        const statsRef = db.collection(CHANNEL_STATS_COLLECTION).doc(channel.id);
+        batch.set(statsRef, { likes: channel.likes, dislikes: 0, shares: 0 }, { merge: true });
+    }
+    
+    // Ensure global stats doc exists
+    const statsRef = db.collection('stats').doc('global');
+    batch.set(statsRef, { totalLogins: firebase.firestore.FieldValue.increment(1), uniqueUsers: firebase.firestore.FieldValue.increment(0) }, { merge: true });
+
+    await batch.commit();
+    console.log("Seeding complete.");
+}
 
 // --- Users & Auth ---
 
 export async function syncUserProfile(user: firebase.User): Promise<void> {
+  if (!user) return;
   const userRef = db.collection(USERS_COLLECTION).doc(user.uid);
-  const snap = await userRef.get();
   
-  if (!snap.exists) {
-    await userRef.set({
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-      photoURL: user.photoURL,
-      createdAt: Date.now(),
-      lastLogin: Date.now(),
-      subscriptionTier: 'free',
-      apiUsageCount: 0
-    });
-  } else {
-    await userRef.update({
-      lastLogin: Date.now()
-    });
+  try {
+      const snap = await userRef.get();
+      if (!snap.exists) {
+        await userRef.set({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          createdAt: Date.now(),
+          lastLogin: Date.now(),
+          subscriptionTier: 'free',
+          apiUsageCount: 0,
+          groups: []
+        });
+        
+        // Update unique user count
+        await db.collection('stats').doc('global').set({
+            uniqueUsers: firebase.firestore.FieldValue.increment(1)
+        }, { merge: true });
+
+      } else {
+        await userRef.update({
+          lastLogin: Date.now(),
+          photoURL: user.photoURL || snap.data()?.photoURL, // Keep photo updated
+          displayName: user.displayName || snap.data()?.displayName
+        });
+      }
+      
+      // Update login count
+      await db.collection('stats').doc('global').set({
+          totalLogins: firebase.firestore.FieldValue.increment(1)
+      }, { merge: true });
+
+  } catch (e) {
+      console.error("Profile sync error (likely first-run permissions):", e);
   }
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  const doc = await db.collection(USERS_COLLECTION).doc(uid).get();
-  return doc.exists ? (doc.data() as UserProfile) : null;
+  try {
+    const doc = await db.collection(USERS_COLLECTION).doc(uid).get();
+    return doc.exists ? (doc.data() as UserProfile) : null;
+  } catch(e) { return null; }
 }
 
 export async function updateUserProfile(uid: string, data: Partial<UserProfile>): Promise<void> {
@@ -89,17 +151,15 @@ export function logUserActivity(action: string, details: any) {
     action,
     details,
     timestamp: firebase.firestore.FieldValue.serverTimestamp()
-  }).catch(console.error);
+  }).catch(() => {});
 }
 
 export async function followUser(followerId: string, targetId: string) {
   const batch = db.batch();
   const followerRef = db.collection(USERS_COLLECTION).doc(followerId);
   const targetRef = db.collection(USERS_COLLECTION).doc(targetId);
-  
   batch.update(followerRef, { following: firebase.firestore.FieldValue.arrayUnion(targetId) });
-  batch.update(targetRef, { followers: firebase.firestore.FieldValue.arrayRemove(followerId) });
-  
+  batch.update(targetRef, { followers: firebase.firestore.FieldValue.arrayUnion(followerId) });
   await batch.commit();
 }
 
@@ -107,10 +167,8 @@ export async function unfollowUser(followerId: string, targetId: string) {
   const batch = db.batch();
   const followerRef = db.collection(USERS_COLLECTION).doc(followerId);
   const targetRef = db.collection(USERS_COLLECTION).doc(targetId);
-  
   batch.update(followerRef, { following: firebase.firestore.FieldValue.arrayRemove(targetId) });
   batch.update(targetRef, { followers: firebase.firestore.FieldValue.arrayRemove(followerId) });
-  
   await batch.commit();
 }
 
@@ -118,7 +176,7 @@ export function setupSubscriptionListener(uid: string, callback: (tier: Subscrip
   return db.collection(USERS_COLLECTION).doc(uid).onSnapshot(doc => {
     const data = doc.data();
     if (data) callback(data.subscriptionTier || 'free');
-  });
+  }, () => {});
 }
 
 export async function setUserSubscriptionTier(uid: string, tier: 'free' | 'pro') {
@@ -180,7 +238,7 @@ export function subscribeToChannelStats(channelId: string, callback: (stats: Cha
         } else {
             callback(initialStats);
         }
-    });
+    }, () => callback(initialStats));
 }
 
 export async function shareChannel(channelId: string) {
@@ -250,7 +308,7 @@ export async function claimSystemChannels(ownerEmail: string): Promise<number> {
     const batch = db.batch();
     snap.docs.forEach(doc => {
         const data = doc.data();
-        if (!data.ownerId) {
+        if (!data.ownerId || data.ownerId === 'system') {
             batch.update(doc.ref, { ownerId: user.uid });
             count++;
         }
@@ -458,13 +516,15 @@ export async function uploadResumeToStorage(uid: string, file: File): Promise<st
 
 export async function listCloudDirectory(path: string): Promise<CloudItem[]> {
     const ref = storage.ref(path);
-    const res = await ref.listAll();
-    const items = await Promise.all(res.items.map(async (i) => {
-        const meta = await i.getMetadata();
-        return { name: i.name, fullPath: i.fullPath, url: await i.getDownloadURL(), isFolder: false, size: meta.size };
-    }));
-    const folders = res.prefixes.map(p => ({ name: p.name, fullPath: p.fullPath, isFolder: true }));
-    return [...folders, ...items];
+    try {
+        const res = await ref.listAll();
+        const items = await Promise.all(res.items.map(async (i) => {
+            const meta = await i.getMetadata();
+            return { name: i.name, fullPath: i.fullPath, url: await i.getDownloadURL(), isFolder: false, size: meta.size };
+        }));
+        const folders = res.prefixes.map(p => ({ name: p.name, fullPath: p.fullPath, isFolder: true }));
+        return [...folders, ...items];
+    } catch(e) { return []; }
 }
 
 export async function saveProjectToCloud(path: string, name: string, content: string) {
@@ -477,20 +537,13 @@ export async function deleteCloudItem(itemOrPath: CloudItem | string) {
     await storage.ref(path).delete();
 }
 
-/**
- * Recursively deletes a folder in Firebase Storage by listing all items and subfolders.
- */
 export async function deleteCloudFolderRecursive(path: string, onProgress?: (msg: string) => void) {
     const ref = storage.ref(path);
     const res = await ref.listAll();
-    
-    // Delete files in this level
     for (const item of res.items) {
         if (onProgress) onProgress(`Deleting file: ${item.fullPath}`);
         await item.delete();
     }
-    
-    // Recurse into subfolders
     for (const prefix of res.prefixes) {
         await deleteCloudFolderRecursive(prefix.fullPath, onProgress);
     }
@@ -516,7 +569,7 @@ export async function moveCloudFile(oldPath: string, newPath: string) {
 export function subscribeToCodeProject(id: string, callback: (project: CodeProject) => void) {
     return db.collection(CODE_PROJECTS_COLLECTION).doc(id).onSnapshot(doc => {
         if (doc.exists) callback({ ...doc.data(), id: doc.id } as CodeProject);
-    });
+    }, () => {});
 }
 
 export async function saveCodeProject(project: CodeProject) {
@@ -589,7 +642,7 @@ export async function saveWhiteboardSession(id: string, elements: WhiteboardElem
 export function subscribeToWhiteboard(id: string, callback: (elements: WhiteboardElement[]) => void) {
     return db.collection(WHITEBOARDS_COLLECTION).doc(id).onSnapshot(doc => {
         if (doc.exists) callback(doc.data()?.elements || []);
-    });
+    }, () => {});
 }
 
 export async function updateWhiteboardElement(id: string, element: WhiteboardElement) {
@@ -775,7 +828,7 @@ export async function sendMessage(channelId: string, text: string, collectionPat
 export function subscribeToMessages(channelId: string, callback: (msgs: any[]) => void, collectionPath: string) {
     return db.collection(collectionPath).orderBy('timestamp', 'asc').limitToLast(50).onSnapshot(snap => {
         callback(snap.docs.map(d => ({ ...d.data(), id: d.id })));
-    });
+    }, () => {});
 }
 
 export async function deleteMessage(channelId: string, messageId: string, collectionPath: string) {
@@ -829,8 +882,10 @@ export async function getUserCards(uid: string): Promise<AgentMemory[]> {
 // --- Stats & Debug ---
 
 export async function getGlobalStats(): Promise<GlobalStats> {
-    const doc = await db.collection('stats').doc('global').get();
-    return doc.exists ? (doc.data() as GlobalStats) : { totalLogins: 0, uniqueUsers: 0 };
+    try {
+        const doc = await db.collection('stats').doc('global').get();
+        return doc.exists ? (doc.data() as GlobalStats) : { totalLogins: 0, uniqueUsers: 0 };
+    } catch(e) { return { totalLogins: 0, uniqueUsers: 0 }; }
 }
 
 export async function recalculateGlobalStats(): Promise<number> {
@@ -846,15 +901,6 @@ export async function recalculateGlobalStats(): Promise<number> {
 export async function getDebugCollectionDocs(collectionName: string, limitCount: number = 20): Promise<any[]> {
     const snap = await db.collection(collectionName).limit(limitCount).get();
     return snap.docs.map(d => ({ ...d.data(), id: d.id }));
-}
-
-export async function seedDatabase() {
-    const batch = db.batch();
-    for (const channel of HANDCRAFTED_CHANNELS) {
-        const ref = db.collection(CHANNELS_COLLECTION).doc(channel.id);
-        batch.set(ref, sanitizeData(channel), { merge: true });
-    }
-    await batch.commit();
 }
 
 // --- Saved Words ---

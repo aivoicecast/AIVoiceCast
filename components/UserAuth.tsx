@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { signInWithGoogle, signOut } from '../services/authService';
 import firebase from 'firebase/compat/app';
@@ -10,7 +9,7 @@ export const UserAuth: React.FC = () => {
   // Fix: Use direct compat import for firebase.User type
   const [user, setUser] = useState<firebase.User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [errorDetails, setErrorDetails] = useState<{ code: string; domain: string } | null>(null);
+  const [errorDetails, setErrorDetails] = useState<{ code: string; domain: string; title: string; message: string } | null>(null);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((u) => {
@@ -33,12 +32,22 @@ export const UserAuth: React.FC = () => {
       }
     } catch (e: any) {
       console.error("Login failed:", e);
+      const domain = window.location.hostname || window.location.host;
       
       if (e.code === 'auth/unauthorized-domain') {
-        const domain = window.location.hostname || window.location.host;
-        setErrorDetails({ code: e.code, domain });
+        setErrorDetails({ 
+          code: e.code, 
+          domain,
+          title: "Domain Unauthorized",
+          message: "Firebase Authentication is blocking login because this domain is not on your whitelist."
+        });
       } else if (e.code === 'auth/configuration-not-found' || e.code === 'auth/operation-not-allowed') {
-        alert("Google Sign-In is disabled. Enable it in Firebase Console > Authentication > Sign-in method.");
+        setErrorDetails({
+          code: e.code,
+          domain,
+          title: "Provider Disabled",
+          message: "Google Sign-In is not enabled in your Firebase project. Please enable it in the console."
+        });
       } else if (e.code === 'auth/popup-closed-by-user') {
         // Silently ignore
       } else {
@@ -88,8 +97,8 @@ export const UserAuth: React.FC = () => {
                     <ShieldAlert size={32} className="text-red-500" />
                 </div>
                 <div className="space-y-2">
-                    <h2 className="text-2xl font-bold text-white">Domain Unauthorized</h2>
-                    <p className="text-slate-400 text-sm">Firebase Authentication is blocking login because this domain is not on your whitelist.</p>
+                    <h2 className="text-2xl font-bold text-white">{errorDetails.title}</h2>
+                    <p className="text-slate-400 text-sm">{errorDetails.message}</p>
                 </div>
 
                 <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4">
@@ -110,8 +119,17 @@ export const UserAuth: React.FC = () => {
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">How to Fix</p>
                         <ol className="text-xs text-slate-400 list-decimal pl-4 space-y-1">
                             <li>Go to <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-indigo-400 underline inline-flex items-center gap-0.5">Firebase Console <ExternalLink size={10}/></a></li>
-                            <li><strong>Auth</strong> > <strong>Settings</strong> > <strong>Authorized Domains</strong></li>
-                            <li>Click <strong>Add Domain</strong> and paste the URL above</li>
+                            {errorDetails.code === 'auth/unauthorized-domain' ? (
+                              <>
+                                <li><strong>Auth</strong> > <strong>Settings</strong> > <strong>Authorized Domains</strong></li>
+                                <li>Click <strong>Add Domain</strong> and paste the URL above</li>
+                              </>
+                            ) : (
+                              <>
+                                <li><strong>Auth</strong> > <strong>Sign-in method</strong></li>
+                                <li>Enable <strong>Google</strong> provider</li>
+                              </>
+                            )}
                         </ol>
                     </div>
                 </div>
