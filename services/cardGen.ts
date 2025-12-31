@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality } from '@google/genai';
 import { AgentMemory } from '../types';
 import { base64ToBytes, pcmToWavBlobUrl } from '../utils/audioUtils';
@@ -192,12 +193,12 @@ export async function generateCardImage(
         }
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-image-preview',
+            // FIX: Use gemini-2.5-flash-image by default to avoid mandatory user-selected API key logic requirement in CardWorkshop.
+            model: 'gemini-2.5-flash-image',
             contents: { parts },
             config: {
                 imageConfig: {
-                    aspectRatio: aspectRatio,
-                    imageSize: "1K"
+                    aspectRatio: aspectRatio
                 }
             }
         });

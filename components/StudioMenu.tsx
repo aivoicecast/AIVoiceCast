@@ -60,15 +60,6 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
       } catch(e) {}
   };
 
-  const handleSetQuickApp = async (appId: string) => {
-      if (!userProfile) return;
-      const updated = { ...userProfile, preferredMobileQuickApp: appId };
-      setUserProfile(updated);
-      try {
-          await updateUserProfile(currentUser.uid, { preferredMobileQuickApp: appId });
-      } catch(e) {}
-  };
-
   const tierInfo = (userProfile?.subscriptionTier === 'pro') 
       ? { label: 'PRO MEMBER', color: 'text-amber-400 bg-amber-900/50 border border-amber-500/20' }
       : { label: 'FREE TIER', color: 'text-slate-400 bg-slate-800' };
@@ -80,8 +71,6 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
           <span className="text-sm font-bold text-white">{value}</span>
       </div>
   );
-
-  const quickNavApps = allApps.filter(a => a.id !== 'podcasts');
 
   return (
     <>

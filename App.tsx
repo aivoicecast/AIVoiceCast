@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
 import { 
@@ -13,7 +14,6 @@ import { UserAuth } from './components/UserAuth';
 import { CreateChannelModal } from './components/CreateChannelModal';
 import { VoiceCreateModal } from './components/VoiceCreateModal';
 import { DataSyncModal } from './components/DataSyncModal';
-import { FirebaseConfigModal } from './components/FirebaseConfigModal';
 import { DebugView } from './components/DebugView';
 import { CloudDebugView } from './components/CloudDebugView';
 import { PublicChannelInspector } from './components/PublicChannelInspector';
@@ -169,7 +169,6 @@ const App: React.FC = () => {
   
   const [isVoiceCreateOpen, setIsVoiceCreateOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
-  const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false); 
   const [isPricingOpen, setIsPricingOpen] = useState(false); 
   
@@ -230,14 +229,8 @@ const App: React.FC = () => {
   useEffect(() => {
     const updateAudioState = () => setAudioIsPlaying(isAnyAudioPlaying());
     window.addEventListener('audio-audit-updated', updateAudioState);
-    
-    // Add Firebase Config trigger listener
-    const openConfig = () => setIsFirebaseModalOpen(true);
-    window.addEventListener('open-firebase-config', openConfig);
-
     return () => {
         window.removeEventListener('audio-audit-updated', updateAudioState);
-        window.removeEventListener('open-firebase-config', openConfig);
     };
   }, []);
 
@@ -862,6 +855,7 @@ const App: React.FC = () => {
       return (
           <div className="md:hidden fixed top-0 left-0 w-full z-40 bg-gradient-to-b from-black/80 to-transparent p-4 flex items-center justify-between pointer-events-none">
               <div className="flex items-center gap-3 pointer-events-auto">
+                  {/* Fixed: Property 'handleMobileQuickStart' does not exist on type 'DetailedHTMLProps<ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>' */}
                   <button onClick={handleMobileQuickStart} className="text-white/80 hover:text-white" title="Quick Session">
                       <VideoIcon size={24} />
                   </button>
@@ -1079,15 +1073,6 @@ const App: React.FC = () => {
                 title="Switch Language"
               >
                 {language === 'en' ? '中' : 'EN'}
-              </button>
-
-              {/* Backend Status Icon */}
-              <button 
-                  onClick={() => setIsFirebaseModalOpen(true)}
-                  className={`p-2 rounded-full border transition-colors ${isFirebaseConfigured ? 'text-emerald-500 bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40' : 'text-amber-500 bg-amber-900/20 border-amber-900/50 hover:bg-amber-900/40'}`}
-                  title={isFirebaseConfigured ? "Backend Connected" : "Backend Disconnected"}
-              >
-                  {isFirebaseConfigured ? <RefreshCw size={18} /> : <AlertTriangle size={18} />}
               </button>
 
               {currentUser && (
@@ -1344,7 +1329,6 @@ const App: React.FC = () => {
             <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setCreateModalDate(null); }} onCreate={handleCreateChannel} initialDate={createModalDate} />
             <VoiceCreateModal isOpen={isVoiceCreateOpen} onClose={() => setIsVoiceCreateOpen(false)} onCreate={handleCreateChannel} />
             <DataSyncModal isOpen={isSyncModalOpen} onClose={() => setIsSyncModalOpen(false)} />
-            <FirebaseConfigModal isOpen={isFirebaseModalOpen} onClose={() => setIsFirebaseModalOpen(false)} onConfigUpdate={() => {}} />
 
             {isAccountSettingsOpen && safeUserProfile && (
                 <SettingsModal 

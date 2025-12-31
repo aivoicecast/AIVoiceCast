@@ -1,108 +1,115 @@
+
 import firebase_raw from "firebase/compat/app";
 import "firebase/compat/auth";
 import "firebase/compat/firestore";
 import "firebase/compat/storage";
-import { firebaseKeys } from './private_keys';
+import { firebaseKeys as defaultKeys } from './private_keys';
 
 /**
- * Robust Firebase instance resolution.
- * ESM loaders (like esm.sh) often wrap the Firebase compat namespace in a .default property.
- * Additionally, side-effect imports for Auth/Firestore/Storage usually register themselves 
- * on the global window.firebase object in compat mode.
+ * Retrieves the effective Firebase configuration.
+ * Static configuration from private_keys.ts.
+ */
+const getFirebaseConfig = () => defaultKeys;
+
+const firebaseKeys = getFirebaseConfig();
+
+/**
+ * Resolves the true Firebase compat namespace.
+ * Handles variations in how ESM loaders wrap the package.
  */
 const resolveFirebase = () => {
-    // 1. Try global window instance first (most reliable for compat plugins in ESM)
+    // 1. Try the global window object first (Standard for browser scripts)
     const winFb = (window as any).firebase;
-    if (winFb && typeof winFb.auth === 'function' && typeof winFb.initializeApp === 'function') {
-        return winFb;
-    }
-    // 2. Check if the raw import has the methods
+    if (winFb) return winFb;
+
+    // 2. Check the raw module import
     const raw: any = firebase_raw;
-    if (raw && typeof raw.auth === 'function') {
-        return raw;
-    }
-    // 3. Check for .default wrapper
-    if (raw && raw.default && typeof raw.default.auth === 'function') {
-        return raw.default;
-    }
-    // Fallback
-    return raw?.default || raw;
+    if (raw?.initializeApp) return raw;
+
+    // 3. Check for .default property (Common in ESM)
+    if (raw?.default?.initializeApp) return raw.default;
+
+    return raw;
 };
 
-const firebase: any = resolveFirebase();
+// The resolved Firebase namespace
+export const firebase: any = resolveFirebase();
 
 /**
- * Initialize the default Firebase app if not already present.
+ * Initialize the Firebase App instance.
  */
-const app = (() => {
+const initializeApp = () => {
+    if (!firebase || typeof firebase.initializeApp !== 'function') {
+        console.error("[Firebase] Firebase core library not correctly loaded.");
+        return null;
+    }
+
     try {
         if (firebase.apps && firebase.apps.length > 0) {
             return firebase.app();
         }
-        return firebase.initializeApp(firebaseKeys);
+        
+        if (firebaseKeys && firebaseKeys.apiKey) {
+            return firebase.initializeApp(firebaseKeys);
+        }
     } catch (err) {
         console.error("[Firebase] Initialization error:", err);
-        return null;
     }
-})();
+    return null;
+};
+
+const app = initializeApp();
 
 /**
- * Service instance getters.
- * In Firebase compat, services can be accessed via firebase.auth() or app.auth().
+ * Service instance resolution.
  */
-const getAuthInstance = () => {
+const resolveService = (name: 'auth' | 'firestore' | 'storage') => {
     try {
-        if (typeof firebase.auth === 'function') return firebase.auth();
-        if (app && typeof app.auth === 'function') return app.auth();
-    } catch (e) { console.warn("Auth service not ready"); }
-    return null;
-};
-
-const getDbInstance = () => {
-    try {
-        if (typeof firebase.firestore === 'function') return firebase.firestore();
-        if (app && typeof app.firestore === 'function') return app.firestore();
-    } catch (e) { console.warn("Firestore service not ready"); }
-    return null;
-};
-
-const getStorageInstance = () => {
-    try {
-        if (typeof firebase.storage === 'function') return firebase.storage();
-        if (app && typeof app.storage === 'function') return app.storage();
-    } catch (e) { console.warn("Storage service not ready"); }
+        // Try the app instance first (Standard way)
+        if (app && typeof (app as any)[name] === 'function') {
+            return (app as any)[name]();
+        }
+        // Fallback to root namespace (Some legacy compat setups)
+        if (firebase && typeof firebase[name] === 'function') {
+            return firebase[name]();
+        }
+    } catch (e) {
+        console.warn(`[Firebase] Service ${name} not yet available:`, e);
+    }
     return null;
 };
 
 // Export core service instances
-export const auth = getAuthInstance();
-export const db = getDbInstance();
-export const storage = getStorageInstance();
+export const auth = resolveService('auth');
+export const db = resolveService('firestore');
+export const storage = resolveService('storage');
 
-// Compatibility getters for functional service layers
-export const getAuth = () => getAuthInstance();
-export const getDb = () => getDbInstance();
-export const getStorage = () => getStorageInstance();
+// Functional getters for a safer access pattern
+export const getAuth = () => auth || resolveService('auth');
+export const getDb = () => db || resolveService('firestore');
+export const getStorage = () => storage || resolveService('storage');
 
 /**
- * Flag used by the UI to determine if initialization was successful.
+ * Flag used by UI to determine status.
  */
-export const isFirebaseConfigured = !!app && !!auth;
+export const isFirebaseConfigured = !!(firebaseKeys && firebaseKeys.apiKey);
 
 /**
  * Returns diagnostic information for the system status tools.
  */
 export const getFirebaseDiagnostics = () => {
+    const activeKeys = getFirebaseConfig();
     return {
-        isInitialized: isFirebaseConfigured,
-        configSource: 'file',
+        isInitialized: !!app,
+        configSource: 'private_keys.ts',
         activeConfig: {
-            ...firebaseKeys,
-            apiKey: firebaseKeys.apiKey ? firebaseKeys.apiKey.substring(0, 6) + "..." : "None"
+            ...activeKeys,
+            apiKey: activeKeys.apiKey ? activeKeys.apiKey.substring(0, 6) + "..." : "None"
         },
-        projectId: firebaseKeys.projectId
+        projectId: activeKeys.projectId,
+        hasAuthMethod: !!(firebase?.auth || app?.auth),
+        hasFirestoreMethod: !!(firebase?.firestore || app?.firestore)
     };
 };
 
-export { firebase };
 export default firebase;
