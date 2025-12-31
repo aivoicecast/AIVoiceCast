@@ -1,9 +1,9 @@
-
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedLecture, SubTopic, TranscriptItem } from '../types';
 import { incrementApiUsage, getUserProfile } from './firestoreService';
 import { auth } from './firebaseConfig';
-import { GEMINI_API_KEY, OPENAI_API_KEY } from './private_keys';
+/* Removed non-existent GEMINI_API_KEY from private_keys import */
+import { OPENAI_API_KEY } from './private_keys';
 
 // Helper to safely parse JSON from AI response
 function safeJsonParse(text: string): any {
@@ -130,6 +130,7 @@ export async function generateLectureScript(
     if (activeProvider === 'openai') {
         text = await callOpenAI(systemPrompt, userPrompt, openaiKey);
     } else {
+        /* Initializing Gemini exclusively using process.env.API_KEY as per guidelines */
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const modelName = (channelId === '1' || channelId === '2') ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
         
@@ -222,6 +223,7 @@ export async function generateBatchLectures(
     if (activeProvider === 'openai') {
         text = await callOpenAI(systemPrompt, userPrompt, openaiKey);
     } else {
+        /* Initializing Gemini exclusively using process.env.API_KEY as per guidelines */
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview', 
@@ -304,6 +306,7 @@ export async function summarizeDiscussionAsSection(
     if (activeProvider === 'openai') {
         text = await callOpenAI(systemPrompt, userPrompt, openaiKey);
     } else {
+        /* Initializing Gemini exclusively using process.env.API_KEY as per guidelines */
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview', 
@@ -402,6 +405,7 @@ export async function generateDesignDocFromTranscript(
             text = data.choices[0]?.message?.content || null;
         }
     } else {
+        /* Initializing Gemini exclusively using process.env.API_KEY as per guidelines */
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview', 

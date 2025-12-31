@@ -1,11 +1,11 @@
-
 import { GoogleGenAI } from '@google/genai';
 import { Channel, Chapter } from '../types';
 import { incrementApiUsage, getUserProfile } from './firestoreService';
 import { auth } from './firebaseConfig';
 import { generateLectureScript } from './lectureGenerator';
 import { cacheLectureScript } from '../utils/db';
-import { GEMINI_API_KEY, OPENAI_API_KEY } from './private_keys';
+/* Removed non-existent GEMINI_API_KEY from private_keys import */
+import { OPENAI_API_KEY } from './private_keys';
 
 const VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
 
@@ -96,6 +96,7 @@ export async function generateChannelFromPrompt(
     if (activeProvider === 'openai') {
         text = await callOpenAI(systemPrompt, userRequest, openaiKey);
     } else {
+        /* Initializing Gemini exclusively using process.env.API_KEY as per guidelines */
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',
@@ -203,6 +204,7 @@ export async function modifyCurriculumWithAI(
     if (activeProvider === 'openai') {
         text = await callOpenAI(systemPrompt, userRequest, openaiKey);
     } else {
+        /* Initializing Gemini exclusively using process.env.API_KEY as per guidelines */
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',
@@ -297,6 +299,7 @@ export async function generateChannelFromDocument(
     if (activeProvider === 'openai') {
         text = await callOpenAI(systemPrompt, userRequest, openaiKey, 'gpt-4o'); 
     } else {
+        /* Initializing Gemini exclusively using process.env.API_KEY as per guidelines */
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',

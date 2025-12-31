@@ -6,7 +6,8 @@ import "firebase/compat/storage";
 import { firebaseKeys as defaultKeys } from './private_keys';
 
 /**
- * Robustly resolves the Firebase namespace for compat mode.
+ * Robustly resolves the Firebase namespace.
+ * In some environments (like esm.sh), the default export is the namespace itself.
  */
 const fb = (firebase as any).default || firebase;
 
@@ -58,27 +59,44 @@ export const getFirebaseDiagnostics = () => {
 };
 
 /**
- * 3. Export service instances as dynamic getters to avoid initialization race conditions.
+ * Service instance getters - Ensure these check for existence of service functions
  */
 export const getAuth = () => {
-    const activeFb = (firebase as any).default || firebase;
-    return (activeFb && activeFb.apps.length > 0 && typeof activeFb.auth === 'function') ? activeFb.auth() : null;
+    if (fb && fb.apps.length > 0 && typeof fb.auth === 'function') return fb.auth();
+    return null;
 };
 
 export const getDb = () => {
-    const activeFb = (firebase as any).default || firebase;
-    return (activeFb && activeFb.apps.length > 0 && typeof activeFb.firestore === 'function') ? activeFb.firestore() : null;
+    if (fb && fb.apps.length > 0 && typeof fb.firestore === 'function') return fb.firestore();
+    return null;
 };
 
 export const getStorage = () => {
-    const activeFb = (firebase as any).default || firebase;
-    return (activeFb && activeFb.apps.length > 0 && typeof activeFb.storage === 'function') ? activeFb.storage() : null;
+    if (fb && fb.apps.length > 0 && typeof fb.storage === 'function') return fb.storage();
+    return null;
 };
 
-// Exporting as getters ensures that these are always fresh and never stale 'null' values.
-export const auth = getAuth();
-export const db = getDb();
-export const storage = getStorage();
+/**
+ * Proxy exports that always call the getter.
+ * This prevents the "null on first load" issue when other modules import these constants.
+ */
+export const auth = {
+    get currentUser() { return getAuth()?.currentUser || null; },
+    onAuthStateChanged: (cb: any) => getAuth()?.onAuthStateChanged(cb) || (() => {}),
+    signInWithPopup: (p: any) => getAuth()?.signInWithPopup(p),
+    signOut: () => getAuth()?.signOut()
+} as any;
+
+export const db = {
+    collection: (p: string) => getDb()?.collection(p),
+    doc: (p: string) => getDb()?.doc(p),
+    runTransaction: (cb: any) => getDb()?.runTransaction(cb),
+    batch: () => getDb()?.batch()
+} as any;
+
+export const storage = {
+    ref: (p: string) => getStorage()?.ref(p)
+} as any;
 
 export const isFirebaseConfigured = hasValidKey && fb && fb.apps.length > 0;
 

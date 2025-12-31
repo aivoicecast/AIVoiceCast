@@ -7,7 +7,8 @@ import { followUser, unfollowUser } from '../services/firestoreService';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { synthesizeSpeech } from '../services/tts';
 import { getCachedLectureScript, cacheLectureScript, getUserChannels } from '../utils/db';
-import { GEMINI_API_KEY, OPENAI_API_KEY } from '../services/private_keys';
+/* Removed non-existent GEMINI_API_KEY from private_keys import */
+import { OPENAI_API_KEY } from '../services/private_keys';
 import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
 import { OFFLINE_CHANNEL_ID, OFFLINE_CURRICULUM, OFFLINE_LECTURES } from '../utils/offlineContent';
 import { warmUpAudioContext, getGlobalAudioContext, stopAllPlatformAudio, registerAudioOwner, logAudioEvent, isAudioOwner, getGlobalAudioGeneration } from '../utils/audioUtils';
@@ -58,7 +59,8 @@ const MobileFeedCard = ({
     const [provider, setProvider] = useState<'system' | 'gemini' | 'openai'>(() => {
         const hasOpenAI = !!(localStorage.getItem('openai_api_key') || process.env.OPENAI_API_KEY);
         if (hasOpenAI) return 'openai';
-        const hasGemini = !!(localStorage.getItem('gemini_api_key') || process.env.API_KEY);
+        /* Adhering to strict process.env.API_KEY usage for Gemini features */
+        const hasGemini = !!process.env.API_KEY;
         return hasGemini ? 'gemini' : 'system';
     });
     
@@ -390,8 +392,8 @@ const MobileFeedCard = ({
         const cacheKey = `lecture_${channel.id}_${meta.id}_en`;
         let data = await getCachedLectureScript(cacheKey);
         if (!data) {
-            const apiKey = localStorage.getItem('gemini_api_key') || process.env.API_KEY;
-            if (apiKey) {
+            /* Adhering to strict process.env.API_KEY usage for Gemini features */
+            if (process.env.API_KEY) {
                 data = await generateLectureScript(meta.title, `Podcast: ${channel.title}. ${channel.description}`, 'en');
                 if (data) await cacheLectureScript(cacheKey, data);
             }

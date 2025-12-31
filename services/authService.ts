@@ -3,20 +3,9 @@ import { firebase, getAuth } from './firebaseConfig';
 
 /**
  * Safely retrieves the active Auth instance.
- * It checks the exported getter first, then falls back to the resolved namespace.
  */
 function getActiveAuth() {
-    // 1. Try the getter
-    const active = getAuth();
-    if (active) return active;
-    
-    // 2. Fallback: Try to resolve from the firebase namespace directly
-    const fb = (firebase as any).default || firebase;
-    if (fb && fb.apps && fb.apps.length > 0 && typeof fb.auth === 'function') {
-        return fb.auth();
-    }
-    
-    return null;
+    return getAuth();
 }
 
 /**
@@ -24,17 +13,9 @@ function getActiveAuth() {
  */
 function getGoogleProvider() {
   const fb = (firebase as any).default || firebase;
-  
   if (fb && fb.auth && fb.auth.GoogleAuthProvider) {
     return new fb.auth.GoogleAuthProvider();
   }
-
-  // Fallback for some bundling environments
-  const authInstance = getActiveAuth();
-  if (authInstance && (authInstance as any).constructor && (authInstance as any).constructor.GoogleAuthProvider) {
-      return new (authInstance as any).constructor.GoogleAuthProvider();
-  }
-
   throw new Error("GoogleAuthProvider not found. Check Firebase Auth library.");
 }
 
@@ -43,9 +24,8 @@ function getGoogleProvider() {
  */
 export async function signInWithGoogle(): Promise<any> {
   const activeAuth = getActiveAuth();
-  
   if (!activeAuth) {
-      throw new Error("Firebase Auth is not initialized. Please ensure your Firebase configuration is correct and you have an active internet connection.");
+      throw new Error("Firebase Auth is not initialized. Please check your configuration.");
   }
   
   try {
