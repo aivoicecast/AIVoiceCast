@@ -2,47 +2,36 @@
 import { firebase, auth, isFirebaseConfigured } from './firebaseConfig';
 
 /**
- * Safely retrieves an Auth Provider from the firebase compat namespace.
- * In some ESM environments, side-effect modules (like compat/auth) might attach 
- * to the firebase object in slightly different ways.
+ * Safely retrieves an Auth Provider.
+ * Firebase providers like GoogleAuthProvider are attached to the firebase.auth namespace
+ * as side-effects. This helper ensures they are available before instantiation.
  */
 function getAuthProvider(providerName: 'GoogleAuthProvider' | 'GitHubAuthProvider') {
-  // 1. Check the standard firebase.auth namespace (standard for compat/auth side-effects)
-  // In many ESM builds, firebase.auth is both the function to get the instance 
-  // and the container for provider constructors.
   const authNamespace = (firebase as any).auth;
   
   if (authNamespace && typeof authNamespace[providerName] === 'function') {
     return new authNamespace[providerName]();
   }
-  
-  // 2. Fallback: Try the default export's auth property if it exists separately
-  const defaultAuth = (firebase as any).default?.auth;
-  if (defaultAuth && typeof defaultAuth[providerName] === 'function') {
-    return new defaultAuth[providerName]();
-  }
 
-  // 3. Fallback: Try to find it on the window object (global fallthrough)
-  const windowFirebase = (window as any).firebase?.auth;
-  if (windowFirebase && typeof windowFirebase[providerName] === 'function') {
-      return new windowFirebase[providerName]();
+  // Fallback for different build environments/ESM loads
+  const providerCtor = (firebase as any).default?.auth?.[providerName] || (window as any).firebase?.auth?.[providerName];
+  
+  if (typeof providerCtor === 'function') {
+    return new providerCtor();
   }
 
   throw new Error(
-    `Firebase Auth provider ${providerName} is not initialized. ` +
-    `This usually happens if the Firebase Auth module failed to load or ` +
-    `if the Firebase configuration is invalid/missing.`
+    `The ${providerName} is not yet loaded. This happens if the Firebase Auth script is still initializing or if the connection settings are missing.`
   );
 }
 
 export async function signInWithGoogle(): Promise<any> {
-  // We still need a configuration to initialize the underlying network requests for OAuth.
   if (!isFirebaseConfigured) {
-    throw new Error("Application is not configured with a Firebase Project. Please set your Firebase Config in Connection Settings first.");
+    throw new Error("Missing Firebase Configuration. Please go to 'Connection Settings' in the user menu and paste your Firebase config object.");
   }
 
   if (window.location.protocol === 'file:') {
-    const error: any = new Error("Firebase Auth cannot run on 'file://' protocol. Please serve the app using a local web server.");
+    const error: any = new Error("Firebase Auth requires a web server. It cannot run on 'file://' protocol.");
     error.code = 'auth/operation-not-supported-in-this-environment';
     throw error;
   }
@@ -50,19 +39,11 @@ export async function signInWithGoogle(): Promise<any> {
   try {
     const provider = getAuthProvider('GoogleAuthProvider');
     
-    // Configure provider
-    if (typeof (provider as any).setCustomParameters === 'function') {
-        (provider as any).setCustomParameters({
-          prompt: 'select_account'
-        });
-    }
-    
-    // We use the 'auth' instance which might be our resilient proxy or the real thing.
-    // Both implement signInWithPopup.
+    // We use the 'auth' instance from config which is a resilient proxy
     const result = await auth.signInWithPopup(provider);
     return result.user;
   } catch (error: any) {
-    console.error("Login failed:", error.code, error.message);
+    console.error("Google Sign-In Error:", error.code, error.message);
     throw error;
   }
 }
@@ -80,8 +61,6 @@ export async function connectGoogleDrive(): Promise<string> {
   try {
     const result = await auth.currentUser.reauthenticateWithPopup(provider);
     const credential = result.credential as any;
-    
-    if (!credential || !credential.accessToken) throw new Error("Failed to retrieve Google Access Token.");
     return credential.accessToken;
   } catch (error) {
     console.error("Drive connection failed:", error);
@@ -89,77 +68,22 @@ export async function connectGoogleDrive(): Promise<string> {
   }
 }
 
-export async function reauthenticateWithGitHub(): Promise<{ user: any, token: string | null }> {
-    const provider = getAuthProvider('GitHubAuthProvider');
-    if (typeof (provider as any).addScope === 'function') {
-        (provider as any).addScope('repo');
-        (provider as any).addScope('user');
-    }
-    
-    if (!auth?.currentUser) throw new Error("No user logged in to re-authenticate.");
-
-    try {
-        const result = await auth.currentUser.reauthenticateWithPopup(provider);
-        const credential = result.credential as any;
-        return { user: result.user, token: credential?.accessToken || null };
-    } catch (error) {
-        console.error("Re-auth failed:", error);
-        throw error;
-    }
-}
-
 export async function signInWithGitHub(): Promise<{ user: any, token: string | null }> {
+  if (!isFirebaseConfigured) throw new Error("Firebase not configured");
   const provider = getAuthProvider('GitHubAuthProvider');
-  if (typeof (provider as any).addScope === 'function') {
-    (provider as any).addScope('repo');
-    (provider as any).addScope('user');
-  }
-
-  if (!isFirebaseConfigured) throw new Error("Application configuration missing.");
-
+  
   try {
-    if (auth.currentUser) {
-       try {
-         const result = await auth.currentUser.linkWithPopup(provider);
-         const credential = result.credential as any;
-         return { user: result.user, token: credential?.accessToken || null };
-       } catch (linkError: any) {
-         if (linkError.code === 'auth/provider-already-linked') {
-             const result = await auth.signInWithPopup(provider);
-             const credential = result.credential as any;
-             return { user: result.user, token: credential?.accessToken || null };
-         }
-         
-         if (linkError.code === 'auth/credential-already-in-use') {
-            if (linkError.credential && (linkError.credential as any).accessToken) {
-                return { 
-                    user: auth.currentUser, 
-                    token: (linkError.credential as any).accessToken 
-                };
-            }
-            throw new Error("This GitHub account is already linked to another user profile.");
-         }
-         throw linkError;
-       }
-    } 
-    
     const result = await auth.signInWithPopup(provider);
     const credential = result.credential as any;
     return { user: result.user, token: credential?.accessToken || null };
-
   } catch (error: any) {
     console.error("GitHub Auth Error:", error);
-    if (error.code === 'auth/popup-closed-by-user') throw new Error("Sign-in cancelled.");
     throw error;
   }
 }
 
 export async function signOut(): Promise<void> {
-  try {
-    if (auth) await auth.signOut();
-  } catch (error) {
-    console.error("Logout failed:", error);
-  }
+  if (auth) await auth.signOut();
 }
 
 export function getCurrentUser(): any {

@@ -5,7 +5,7 @@ import "firebase/compat/firestore";
 import "firebase/compat/storage";
 import { firebaseKeys } from './private_keys';
 
-// 1. Resolve configuration
+// 1. Resolve configuration (Priority: LocalStorage -> PrivateKeys)
 let configToUse = firebaseKeys;
 const savedConfig = localStorage.getItem('firebase_config');
 if (savedConfig) {
@@ -17,7 +17,6 @@ if (savedConfig) {
     }
 }
 
-// Consider the app configured if we have at least an API Key and Project ID
 export const isFirebaseConfigured = !!configToUse && !!configToUse.apiKey && !!configToUse.projectId;
 
 /**
@@ -34,10 +33,10 @@ if (isFirebaseConfigured) {
     }
 }
 
-// Dummy implementations for initial/failed states to prevent runtime crashes
+// Dummy implementations to prevent runtime crashes if Firebase is unconfigured
 const authDummy = {
     onAuthStateChanged: (cb: any) => { cb(null); return () => {}; },
-    signInWithPopup: async () => { throw new Error("Authentication service not initialized. Check your Firebase configuration."); },
+    signInWithPopup: async () => { throw new Error("Auth not configured. Go to 'Connection Settings' and paste your Firebase config."); },
     signOut: async () => {},
     currentUser: null
 };
@@ -51,14 +50,8 @@ const dbDummy = {
             update: async () => {},
             delete: async () => {}
         }),
-        where: () => ({ 
-            get: async () => ({ empty: true, docs: [] }), 
-            onSnapshot: (cb: any) => { cb({ docs: [] }); return () => {}; } 
-        }),
-        limit: () => ({ 
-            get: async () => ({ empty: true, docs: [] }),
-            onSnapshot: (cb: any) => { cb({ docs: [] }); return () => {}; }
-        }),
+        where: () => ({ get: async () => ({ empty: true, docs: [] }), onSnapshot: (cb: any) => { cb({ docs: [] }); return () => {}; } }),
+        limit: () => ({ get: async () => ({ empty: true, docs: [] }), onSnapshot: (cb: any) => { cb({ docs: [] }); return () => {}; } }),
         orderBy: () => ({ limitToLast: () => ({ onSnapshot: () => () => {} }) })
     }),
     batch: () => ({ set: () => {}, commit: async () => {} }),
@@ -77,27 +70,25 @@ const storageDummy = {
 
 /**
  * SERVICE PROXY GENERATOR
- * This creates a proxy that intercepts property access.
- * It attempts to find the real Firebase service (auth, firestore, storage).
+ * Intercepts property access to the Firebase services. 
+ * If the real service isn't ready (app unconfigured or module loading), it returns the dummy.
  */
 const createResilientService = (name: 'auth' | 'firestore' | 'storage', dummy: any) => {
     return new Proxy({} as any, {
         get: (target, prop) => {
             let service: any = null;
-            
             try {
-                // Only try to call the service getter if the app is initialized
                 if (firebaseAppInstance && typeof (firebase as any)[name] === 'function') {
                     service = (firebase as any)[name]();
                 }
             } catch (e) {
-                // Service not ready or project not configured correctly
+                // Service not ready yet
             }
 
             const activeSource = service || dummy;
             const value = activeSource[prop];
             
-            // Critical: Bind functions to the correct context
+            // Ensure functions stay bound to their original context (real service or dummy)
             if (typeof value === 'function') {
                 return value.bind(activeSource);
             }
