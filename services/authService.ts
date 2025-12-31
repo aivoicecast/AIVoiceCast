@@ -7,24 +7,38 @@ import { firebase, auth, isFirebaseConfigured } from './firebaseConfig';
  * to the firebase object in slightly different ways.
  */
 function getAuthProvider(providerName: 'GoogleAuthProvider' | 'GitHubAuthProvider') {
-  // 1. Check the standard firebase.auth namespace (mutation from compat/auth)
-  const authModule = (firebase as any).auth;
-  if (authModule && authModule[providerName]) {
-    return new authModule[providerName]();
+  // 1. Check the standard firebase.auth namespace (standard for compat/auth side-effects)
+  // In many ESM builds, firebase.auth is both the function to get the instance 
+  // and the container for provider constructors.
+  const authNamespace = (firebase as any).auth;
+  
+  if (authNamespace && typeof authNamespace[providerName] === 'function') {
+    return new authNamespace[providerName]();
   }
   
-  // 2. Fallback: try accessing via the auth instance constructor if available
-  // (Standard compat doesn't always put it here, but some shims do)
-  if (auth && (auth as any).constructor && (auth as any).constructor[providerName]) {
-      return new (auth as any).constructor[providerName]();
+  // 2. Fallback: Try the default export's auth property if it exists separately
+  const defaultAuth = (firebase as any).default?.auth;
+  if (defaultAuth && typeof defaultAuth[providerName] === 'function') {
+    return new defaultAuth[providerName]();
   }
 
-  throw new Error(`Firebase Auth provider ${providerName} is not initialized. Please ensure your Firebase configuration is valid and the Auth module is properly loaded.`);
+  // 3. Fallback: Try to find it on the window object (global fallthrough)
+  const windowFirebase = (window as any).firebase?.auth;
+  if (windowFirebase && typeof windowFirebase[providerName] === 'function') {
+      return new windowFirebase[providerName]();
+  }
+
+  throw new Error(
+    `Firebase Auth provider ${providerName} is not initialized. ` +
+    `This usually happens if the Firebase Auth module failed to load or ` +
+    `if the Firebase configuration is invalid/missing.`
+  );
 }
 
 export async function signInWithGoogle(): Promise<any> {
+  // We still need a configuration to initialize the underlying network requests for OAuth.
   if (!isFirebaseConfigured) {
-    throw new Error("Firebase is not configured. Please update your settings.");
+    throw new Error("Application is not configured with a Firebase Project. Please set your Firebase Config in Connection Settings first.");
   }
 
   if (window.location.protocol === 'file:') {
@@ -35,11 +49,16 @@ export async function signInWithGoogle(): Promise<any> {
 
   try {
     const provider = getAuthProvider('GoogleAuthProvider');
-    provider.setCustomParameters({
-      prompt: 'select_account'
-    });
     
-    // Use the auth instance for the popup call
+    // Configure provider
+    if (typeof (provider as any).setCustomParameters === 'function') {
+        (provider as any).setCustomParameters({
+          prompt: 'select_account'
+        });
+    }
+    
+    // We use the 'auth' instance which might be our resilient proxy or the real thing.
+    // Both implement signInWithPopup.
     const result = await auth.signInWithPopup(provider);
     return result.user;
   } catch (error: any) {
@@ -52,15 +71,17 @@ export async function connectGoogleDrive(): Promise<string> {
   if (!isFirebaseConfigured) throw new Error("Firebase not configured");
   
   const provider = getAuthProvider('GoogleAuthProvider');
-  provider.addScope('https://www.googleapis.com/auth/drive.file');
+  if (typeof (provider as any).addScope === 'function') {
+    (provider as any).addScope('https://www.googleapis.com/auth/drive.file');
+  }
   
-  if (!auth?.currentUser) throw new Error("Must be logged in");
+  if (!auth?.currentUser) throw new Error("Must be logged in to connect services.");
 
   try {
     const result = await auth.currentUser.reauthenticateWithPopup(provider);
     const credential = result.credential as any;
     
-    if (!credential || !credential.accessToken) throw new Error("Failed to get Google Access Token");
+    if (!credential || !credential.accessToken) throw new Error("Failed to retrieve Google Access Token.");
     return credential.accessToken;
   } catch (error) {
     console.error("Drive connection failed:", error);
@@ -70,8 +91,10 @@ export async function connectGoogleDrive(): Promise<string> {
 
 export async function reauthenticateWithGitHub(): Promise<{ user: any, token: string | null }> {
     const provider = getAuthProvider('GitHubAuthProvider');
-    provider.addScope('repo');
-    provider.addScope('user');
+    if (typeof (provider as any).addScope === 'function') {
+        (provider as any).addScope('repo');
+        (provider as any).addScope('user');
+    }
     
     if (!auth?.currentUser) throw new Error("No user logged in to re-authenticate.");
 
@@ -87,10 +110,12 @@ export async function reauthenticateWithGitHub(): Promise<{ user: any, token: st
 
 export async function signInWithGitHub(): Promise<{ user: any, token: string | null }> {
   const provider = getAuthProvider('GitHubAuthProvider');
-  provider.addScope('repo');
-  provider.addScope('user');
+  if (typeof (provider as any).addScope === 'function') {
+    (provider as any).addScope('repo');
+    (provider as any).addScope('user');
+  }
 
-  if (!isFirebaseConfigured) throw new Error("Auth service unavailable");
+  if (!isFirebaseConfigured) throw new Error("Application configuration missing.");
 
   try {
     if (auth.currentUser) {
@@ -112,7 +137,7 @@ export async function signInWithGitHub(): Promise<{ user: any, token: string | n
                     token: (linkError.credential as any).accessToken 
                 };
             }
-            throw new Error("This GitHub account is already linked to another user.");
+            throw new Error("This GitHub account is already linked to another user profile.");
          }
          throw linkError;
        }

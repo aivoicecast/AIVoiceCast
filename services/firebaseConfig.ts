@@ -17,7 +17,8 @@ if (savedConfig) {
     }
 }
 
-export const isFirebaseConfigured = !!configToUse && !!configToUse.apiKey;
+// Consider the app configured if we have at least an API Key and Project ID
+export const isFirebaseConfigured = !!configToUse && !!configToUse.apiKey && !!configToUse.projectId;
 
 /**
  * Initialize the Firebase app instance safely.
@@ -36,7 +37,7 @@ if (isFirebaseConfigured) {
 // Dummy implementations for initial/failed states to prevent runtime crashes
 const authDummy = {
     onAuthStateChanged: (cb: any) => { cb(null); return () => {}; },
-    signInWithPopup: async () => { throw new Error("Auth unavailable"); },
+    signInWithPopup: async () => { throw new Error("Authentication service not initialized. Check your Firebase configuration."); },
     signOut: async () => {},
     currentUser: null
 };
@@ -78,7 +79,6 @@ const storageDummy = {
  * SERVICE PROXY GENERATOR
  * This creates a proxy that intercepts property access.
  * It attempts to find the real Firebase service (auth, firestore, storage).
- * If not found (module not loaded), it falls back to the dummy objects.
  */
 const createResilientService = (name: 'auth' | 'firestore' | 'storage', dummy: any) => {
     return new Proxy({} as any, {
@@ -86,15 +86,12 @@ const createResilientService = (name: 'auth' | 'firestore' | 'storage', dummy: a
             let service: any = null;
             
             try {
-                // Try retrieving from global namespace (standard for compat)
-                if (typeof (firebase as any)[name] === 'function') {
+                // Only try to call the service getter if the app is initialized
+                if (firebaseAppInstance && typeof (firebase as any)[name] === 'function') {
                     service = (firebase as any)[name]();
-                } else if (firebaseAppInstance && typeof (firebaseAppInstance as any)[name] === 'function') {
-                    // Fallback to app instance
-                    service = (firebaseAppInstance as any)[name]();
                 }
             } catch (e) {
-                // Service not ready or not configured
+                // Service not ready or project not configured correctly
             }
 
             const activeSource = service || dummy;
