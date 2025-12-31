@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
 import { 
-  Podcast, Search, Sparkles, LayoutGrid, RefreshCw, 
+  Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
   Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book
 } from 'lucide-react';
@@ -36,7 +36,6 @@ import { NotebookViewer } from './components/NotebookViewer';
 import { CardWorkshop } from './components/CardWorkshop';
 import { CardExplorer } from './components/CardExplorer';
 import { IconGenerator } from './components/IconGenerator';
-// Added missing import for FirestoreInspector
 import { FirestoreInspector } from './components/FirestoreInspector';
 
 import { getCurrentUser, getDriveToken } from './services/authService';
@@ -46,7 +45,7 @@ import { HANDCRAFTED_CHANNELS } from './utils/initialData';
 import { OFFLINE_CHANNEL_ID } from './utils/offlineContent';
 import { warmUpAudioContext, stopAllPlatformAudio, isAnyAudioPlaying, getGlobalAudioContext } from './utils/audioUtils';
 
-const APP_VERSION = "v4.0.0-DRIVE"; 
+const APP_VERSION = "v4.1.0-FIX"; 
 
 const UI_TEXT = {
   en: {
@@ -112,7 +111,7 @@ const UI_TEXT = {
 const App: React.FC = () => {
   const [language, setLanguage] = useState<'en' | 'zh'>('en');
   const t = UI_TEXT[language];
-  const [viewState, setViewState] = useState<ViewState | 'firestore_debug' | 'my_channel_debug' | 'card_viewer'>('directory');
+  const [viewState, setViewState] = useState<ViewState | 'firestore_debug'>('directory');
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
@@ -128,6 +127,15 @@ const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [globalVoice, setGlobalVoice] = useState('Auto');
+
+  // Add state for live session parameters to enable session transitions
+  const [liveSessionParams, setLiveSessionParams] = useState<{
+    channel: Channel;
+    context?: string;
+    recordingEnabled?: boolean;
+    videoEnabled?: boolean;
+    cameraEnabled?: boolean;
+  } | null>(null);
 
   const allApps = [
     { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); setActiveTab('categories'); }, color: 'text-indigo-400' },
@@ -147,6 +155,27 @@ const App: React.FC = () => {
   const handleSetViewState = (newState: any) => {
     stopAllPlatformAudio(`Navigation:${viewState}->${newState}`);
     setViewState(newState);
+    setIsAppsMenuOpen(false);
+    setIsUserMenuOpen(false);
+  };
+
+  // Define handleStartLiveSession to fix the undefined name error and manage transition to LiveSession component
+  const handleStartLiveSession = (
+    channel: Channel, 
+    context?: string, 
+    recordingEnabled?: boolean, 
+    bookingId?: string, 
+    videoEnabled?: boolean, 
+    cameraEnabled?: boolean
+  ) => {
+    setLiveSessionParams({
+      channel,
+      context,
+      recordingEnabled,
+      videoEnabled,
+      cameraEnabled
+    });
+    handleSetViewState('live_session');
   };
 
   // Sync Logic: Auto-save to Drive
@@ -248,7 +277,7 @@ const App: React.FC = () => {
                             <PodcastFeed 
                                 channels={channels.filter(c => !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase()))} 
                                 onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} 
-                                onStartLiveSession={()=>{}} 
+                                onStartLiveSession={handleStartLiveSession} 
                                 userProfile={userProfile} 
                                 globalVoice={globalVoice} 
                                 currentUser={currentUser} 
@@ -256,15 +285,35 @@ const App: React.FC = () => {
                         )}
                         {activeTab !== 'categories' && (
                              <div className="h-full overflow-y-auto p-4 max-w-7xl mx-auto w-full">
-                                {activeTab === 'calendar' && <CalendarView channels={channels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={()=>{}} setIsSettingsModalOpen={()=>{}} globalVoice={globalVoice} t={t} onCommentClick={()=>{}} onStartLiveSession={()=>{}} onCreateChannel={handleCreateChannel} onSchedulePodcast={()=>{}} />}
-                                {activeTab === 'recordings' && <RecordingList />}
+                                {activeTab === 'calendar' && <CalendarView channels={channels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={()=>{}} setIsSettingsModalOpen={()=>{}} globalVoice={globalVoice} t={t} onCommentClick={()=>{}} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={()=>{}} />}
+                                {activeTab === 'recordings' && <RecordingList onStartLiveSession={handleStartLiveSession} />}
                                 {activeTab === 'docs' && <DocumentList />}
                              </div>
                         )}
                     </div>
                 )}
-                {viewState === 'podcast_detail' && activeChannelId && activeChannel && <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={()=>{}} language={language} currentUser={currentUser} />}
-                {viewState === 'code_studio' && <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} />}
+                {viewState === 'podcast_detail' && activeChannelId && activeChannel && <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} />}
+                {/* Fixed: Render LiveSession component when viewState is live_session */}
+                {viewState === 'live_session' && liveSessionParams && (
+                    <LiveSession 
+                        channel={liveSessionParams.channel} 
+                        initialContext={liveSessionParams.context} 
+                        recordingEnabled={liveSessionParams.recordingEnabled}
+                        videoEnabled={liveSessionParams.videoEnabled}
+                        cameraEnabled={liveSessionParams.cameraEnabled}
+                        onEndSession={() => handleSetViewState('directory')}
+                        language={language}
+                    />
+                )}
+                {viewState === 'code_studio' && <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={handleStartLiveSession} />}
+                {viewState === 'whiteboard' && <Whiteboard onBack={() => handleSetViewState('directory')} />}
+                {viewState === 'blog' && <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
+                {viewState === 'chat' && <WorkplaceChat currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
+                {viewState === 'careers' && <CareerCenter currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
+                {viewState === 'notebook_viewer' && <NotebookViewer currentUser={currentUser} onBack={() => handleSetViewState('directory')} />}
+                {viewState === 'card_workshop' && <CardWorkshop onBack={() => handleSetViewState('directory')} />}
+                {viewState === 'card_explorer' && <CardExplorer onBack={() => handleSetViewState('directory')} onOpenCard={(id) => handleSetViewState('card_workshop')} onCreateNew={() => handleSetViewState('card_workshop')} />}
+                {viewState === 'user_guide' && <UserManual onBack={() => handleSetViewState('directory')} />}
                 {viewState === 'icon_generator' && <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} />}
                 {viewState === 'firestore_debug' && <FirestoreInspector onBack={() => handleSetViewState('directory')} />}
             </div>
@@ -284,15 +333,36 @@ const App: React.FC = () => {
                     setIsVoiceCreateOpen={setIsVoiceCreateOpen} 
                     setIsSyncModalOpen={()=>{}} 
                     setIsSettingsModalOpen={setIsSettingsModalOpen} 
-                    onOpenUserGuide={()=>{}} 
+                    onOpenUserGuide={() => handleSetViewState('user_guide')} 
                     onNavigate={handleSetViewState} 
-                    onOpenPrivacy={()=>{}} 
+                    onOpenPrivacy={() => setIsPrivacyOpen(true)} 
                     t={t} 
                     className="fixed top-16 right-4 z-[100] w-72" 
                     channels={channels} 
                     language={language} 
                     setLanguage={setLanguage} 
                 />
+            )}
+
+            {isAppsMenuOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+                    <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-6 animate-fade-in-up">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold text-white">Application Suite</h2>
+                            <button onClick={() => setIsAppsMenuOpen(false)} className="text-slate-400 hover:text-white"><X/></button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4">
+                            {allApps.map(app => (
+                                <button key={app.id} onClick={() => { app.action(); setIsAppsMenuOpen(false); }} className="flex flex-col items-center gap-2 p-4 rounded-2xl hover:bg-slate-800 transition-all border border-transparent hover:border-slate-700 group">
+                                    <div className={`p-3 rounded-2xl bg-slate-800 group-hover:scale-110 transition-transform ${app.color}`}>
+                                        <app.icon size={24} />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{app.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
             )}
 
             <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateChannel} />
