@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { signInWithGoogle, signOut } from '../services/authService';
 import { getAuth } from '../services/firebaseConfig';
@@ -38,11 +37,9 @@ export const UserAuth: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    const uid = user?.uid;
-    if (uid) {
-       logUserActivity('logout', { uid });
+    if (confirm("Sign out?")) {
+        await signOut();
     }
-    await signOut();
   };
 
   if (loading) return (
@@ -53,25 +50,18 @@ export const UserAuth: React.FC = () => {
 
   if (user) {
     return (
-      <div className="flex items-center space-x-3">
-        <div className="hidden sm:flex items-center space-x-2 bg-slate-800/50 rounded-full pl-1 pr-3 py-1 border border-slate-700 hover:border-slate-600 transition-all">
-          <img 
-            src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=6366f1&color=fff`} 
-            alt={user.displayName || 'User'} 
-            className="w-8 h-8 rounded-full border-2 border-indigo-500 object-cover shadow-lg"
-          />
-          <span className="text-xs font-bold text-slate-200 max-w-[120px] truncate">
-            {user.displayName}
-          </span>
-        </div>
-        
+      <div className="flex items-center space-x-2 bg-slate-800/50 rounded-full pl-1 pr-2 py-0.5 border border-slate-700">
+        <img 
+          src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=6366f1&color=fff`} 
+          alt={user.displayName || 'User'} 
+          className="w-7 h-7 rounded-full border border-indigo-500 object-cover"
+        />
         <button 
           onClick={handleLogout}
-          className="flex items-center space-x-2 px-3 py-2 bg-red-900/20 hover:bg-red-900/40 text-red-400 hover:text-red-300 text-xs font-bold rounded-lg border border-red-900/30 transition-all group"
-          title="Sign Out"
+          className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+          title="Quick Sign Out"
         >
-          <LogOut size={16} className="group-hover:scale-110 transition-transform" />
-          <span className="hidden lg:inline">Sign Out</span>
+          <LogOut size={14} />
         </button>
       </div>
     );
@@ -80,10 +70,10 @@ export const UserAuth: React.FC = () => {
   return (
     <button
       onClick={handleLogin}
-      className="flex items-center space-x-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-full transition-all shadow-lg active:scale-95"
+      className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-full transition-all shadow-lg active:scale-95"
     >
       <UserIcon size={16} />
-      <span>Sign In with Google</span>
+      <span>Sign In</span>
     </button>
   );
 };
