@@ -14,7 +14,7 @@ service cloud.firestore {
 
     // Hardcoded Admin Email for debugging/management
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.email == 'shengliang.song@gmail.com';
+      return isAuthenticated() && request.auth.token.email == 'shengliang.song.ai@gmail.com';
     }
 
     // ----------------------------------------------------------------------
@@ -164,6 +164,15 @@ service cloud.firestore {
 
     match /whiteboards/{boardId} {
       allow read, write: if true;
+    }
+
+    // ----------------------------------------------------------------------
+    // HOLIDAY CARDS (Public Read, Owner Write)
+    // ----------------------------------------------------------------------
+    match /cards/{cardId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update, delete: if isOwner(resource.data.ownerId) || isAdmin();
     }
 
     // ----------------------------------------------------------------------

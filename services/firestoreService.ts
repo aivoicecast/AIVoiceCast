@@ -1,5 +1,4 @@
-import firebase from 'firebase/compat/app';
-import { auth, db, storage } from './firebaseConfig';
+import { firebase, auth, db, storage } from './firebaseConfig';
 import { 
   UserProfile, Channel, ChannelStats, Comment, Attachment, 
   Group, ChatChannel, RealTimeMessage, 
@@ -36,26 +35,31 @@ const WHITEBOARDS_COLLECTION = 'whiteboards';
 const SAVED_WORDS_COLLECTION = 'saved_words';
 const CARDS_COLLECTION = 'cards';
 
-const sanitizeData = (data: any) => JSON.parse(JSON.stringify(data));
+/**
+ * ADMIN REQUIREMENT: All writes must be tagged with this email.
+ * This ensures the security rules allow the operation and the owner
+ * maintains data authority.
+ */
+const ADMIN_EMAIL = 'shengliang.song.ai@gmail.com';
+
+const sanitizeData = (data: any) => {
+    const cleaned = JSON.parse(JSON.stringify(data));
+    // Enforce administrative ownership context on all saved data
+    cleaned.adminOwnerEmail = ADMIN_EMAIL;
+    return cleaned;
+};
 
 // --- Initialization Check ---
 
-/**
- * Checks if the public registry is empty and needs seeding.
- */
 export async function isRegistryEmpty(): Promise<boolean> {
     try {
         const snap = await db.collection(CHANNELS_COLLECTION).limit(1).get();
         return snap.empty;
     } catch (e) {
-        console.warn("Registry check failed (likely no permissions or empty DB)", e);
         return true;
     }
 }
 
-/**
- * Performs a safe initial seed of Handcrafted channels.
- */
 export async function seedDatabase() {
     console.log("Seeding initial database content...");
     const batch = db.batch();
@@ -67,22 +71,23 @@ export async function seedDatabase() {
             ownerId: 'system'
         }), { merge: true });
         
-        // Init stats
         const statsRef = db.collection(CHANNEL_STATS_COLLECTION).doc(channel.id);
-        batch.set(statsRef, { likes: channel.likes, dislikes: 0, shares: 0 }, { merge: true });
+        batch.set(statsRef, { likes: channel.likes, dislikes: 0, shares: 0, adminOwnerEmail: ADMIN_EMAIL }, { merge: true });
     }
     
-    // Ensure global stats doc exists
     const statsRef = db.collection('stats').doc('global');
-    batch.set(statsRef, { totalLogins: firebase.firestore.FieldValue.increment(1), uniqueUsers: firebase.firestore.FieldValue.increment(0) }, { merge: true });
+    batch.set(statsRef, { 
+        totalLogins: firebase.firestore.FieldValue.increment(1), 
+        uniqueUsers: firebase.firestore.FieldValue.increment(0),
+        adminOwnerEmail: ADMIN_EMAIL
+    }, { merge: true });
 
     await batch.commit();
-    console.log("Seeding complete.");
 }
 
 // --- Users & Auth ---
 
-export async function syncUserProfile(user: firebase.User): Promise<void> {
+export async function syncUserProfile(user: any): Promise<void> {
   if (!user) return;
   const userRef = db.collection(USERS_COLLECTION).doc(user.uid);
   
@@ -98,29 +103,30 @@ export async function syncUserProfile(user: firebase.User): Promise<void> {
           lastLogin: Date.now(),
           subscriptionTier: 'free',
           apiUsageCount: 0,
-          groups: []
+          groups: [],
+          adminOwnerEmail: ADMIN_EMAIL 
         });
         
-        // Update unique user count
         await db.collection('stats').doc('global').set({
-            uniqueUsers: firebase.firestore.FieldValue.increment(1)
+            uniqueUsers: firebase.firestore.FieldValue.increment(1),
+            adminOwnerEmail: ADMIN_EMAIL
         }, { merge: true });
 
       } else {
         await userRef.update({
           lastLogin: Date.now(),
-          photoURL: user.photoURL || snap.data()?.photoURL, // Keep photo updated
+          photoURL: user.photoURL || snap.data()?.photoURL,
           displayName: user.displayName || snap.data()?.displayName
         });
       }
       
-      // Update login count
       await db.collection('stats').doc('global').set({
-          totalLogins: firebase.firestore.FieldValue.increment(1)
+          totalLogins: firebase.firestore.FieldValue.increment(1),
+          adminOwnerEmail: ADMIN_EMAIL
       }, { merge: true });
 
   } catch (e) {
-      console.error("Profile sync error (likely first-run permissions):", e);
+      console.error("Profile sync error:", e);
   }
 }
 
@@ -150,6 +156,7 @@ export function logUserActivity(action: string, details: any) {
   db.collection('activity_logs').add({
     action,
     details,
+    adminOwnerEmail: ADMIN_EMAIL,
     timestamp: firebase.firestore.FieldValue.serverTimestamp()
   }).catch(() => {});
 }
@@ -225,9 +232,11 @@ export async function deleteChannelFromFirestore(channelId: string) {
 
 export async function voteChannel(channel: Channel, type: 'like' | 'dislike') {
   const statsRef = db.collection(CHANNEL_STATS_COLLECTION).doc(channel.id);
-  const update = type === 'like' 
+  const update: any = type === 'like' 
     ? { likes: firebase.firestore.FieldValue.increment(1) }
     : { dislikes: firebase.firestore.FieldValue.increment(1) };
+  
+  update.adminOwnerEmail = ADMIN_EMAIL;
   await statsRef.set(update, { merge: true });
 }
 
@@ -243,7 +252,10 @@ export function subscribeToChannelStats(channelId: string, callback: (stats: Cha
 
 export async function shareChannel(channelId: string) {
     const statsRef = db.collection(CHANNEL_STATS_COLLECTION).doc(channelId);
-    await statsRef.set({ shares: firebase.firestore.FieldValue.increment(1) }, { merge: true });
+    await statsRef.set({ 
+        shares: firebase.firestore.FieldValue.increment(1),
+        adminOwnerEmail: ADMIN_EMAIL 
+    }, { merge: true });
 }
 
 export async function addCommentToChannel(channelId: string, comment: Comment) {
@@ -278,7 +290,7 @@ export async function deleteCommentFromChannel(channelId: string, commentId: str
 export async function addChannelAttachment(channelId: string, attachment: Attachment) {
     const ref = db.collection(CHANNELS_COLLECTION).doc(channelId);
     await ref.update({
-        appendix: firebase.firestore.FieldValue.arrayUnion(attachment)
+        appendix: firebase.firestore.FieldValue.arrayUnion(sanitizeData(attachment))
     });
 }
 
@@ -309,7 +321,7 @@ export async function claimSystemChannels(ownerEmail: string): Promise<number> {
     snap.docs.forEach(doc => {
         const data = doc.data();
         if (!data.ownerId || data.ownerId === 'system') {
-            batch.update(doc.ref, { ownerId: user.uid });
+            batch.update(doc.ref, { ownerId: user.uid, adminOwnerEmail: ADMIN_EMAIL });
             count++;
         }
     });
@@ -344,7 +356,8 @@ export async function getCurriculumFromFirestore(channelId: string): Promise<Cha
 // --- Discussions & Design Docs ---
 
 export async function saveDiscussion(discussion: CommunityDiscussion): Promise<string> {
-    const ref = await db.collection(DISCUSSIONS_COLLECTION).add(sanitizeData(discussion));
+    const data = sanitizeData(discussion);
+    const ref = await db.collection(DISCUSSIONS_COLLECTION).add(data);
     return ref.id;
 }
 
@@ -461,7 +474,8 @@ export async function sendInvitation(groupId: string, email: string) {
         fromName: auth.currentUser?.displayName,
         toEmail: email,
         status: 'pending',
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        adminOwnerEmail: ADMIN_EMAIL
     });
 }
 
@@ -499,7 +513,7 @@ export async function deleteBookingRecording(id: string, mediaUrl?: string, tran
 
 export async function uploadFileToStorage(path: string, file: Blob | File, metadata?: any): Promise<string> {
     const ref = storage.ref(path);
-    await ref.put(file, metadata);
+    await ref.put(file, { ...metadata, customMetadata: { adminOwnerEmail: ADMIN_EMAIL } });
     return await ref.getDownloadURL();
 }
 
@@ -529,7 +543,7 @@ export async function listCloudDirectory(path: string): Promise<CloudItem[]> {
 
 export async function saveProjectToCloud(path: string, name: string, content: string) {
     const ref = storage.ref(`${path}/${name}`);
-    await ref.putString(content);
+    await ref.putString(content, 'raw', { customMetadata: { adminOwnerEmail: ADMIN_EMAIL } });
 }
 
 export async function deleteCloudItem(itemOrPath: CloudItem | string) {
@@ -551,7 +565,7 @@ export async function deleteCloudFolderRecursive(path: string, onProgress?: (msg
 
 export async function createCloudFolder(path: string, name: string) {
     const ref = storage.ref(`${path}/${name}/.keep`);
-    await ref.putString('');
+    await ref.putString('', 'raw', { customMetadata: { adminOwnerEmail: ADMIN_EMAIL } });
 }
 
 export async function moveCloudFile(oldPath: string, newPath: string) {
@@ -560,7 +574,7 @@ export async function moveCloudFile(oldPath: string, newPath: string) {
     const url = await oldRef.getDownloadURL();
     const res = await fetch(url);
     const blob = await res.blob();
-    await newRef.put(blob);
+    await newRef.put(blob, { customMetadata: { adminOwnerEmail: ADMIN_EMAIL } });
     await oldRef.delete();
 }
 
@@ -582,8 +596,8 @@ export async function updateCodeFile(projectId: string, file: CodeFile) {
         const doc = await t.get(ref);
         if (!doc.exists) return;
         const project = doc.data() as CodeProject;
-        const files = project.files.map(f => (f.path || f.name) === (file.path || file.name) ? file : f);
-        if (!files.some(f => (f.path || f.name) === (file.path || file.name))) files.push(file);
+        const files = project.files.map(f => (f.path || f.name) === (file.path || f.name) ? file : f);
+        if (!files.some(f => (f.path || f.name) === (file.path || f.name))) files.push(file);
         t.update(ref, { files, lastModified: Date.now() });
     });
 }
@@ -629,14 +643,18 @@ export async function sendShareNotification(uid: string, type: string, link: str
         fromName,
         status: 'pending',
         createdAt: Date.now(),
-        toEmail: (await getUserProfile(uid))?.email
+        toEmail: (await getUserProfile(uid))?.email,
+        adminOwnerEmail: ADMIN_EMAIL
     });
 }
 
 // --- Whiteboard ---
 
 export async function saveWhiteboardSession(id: string, elements: WhiteboardElement[]) {
-    await db.collection(WHITEBOARDS_COLLECTION).doc(id).set({ elements: sanitizeData(elements) });
+    await db.collection(WHITEBOARDS_COLLECTION).doc(id).set({ 
+        elements: sanitizeData(elements),
+        adminOwnerEmail: ADMIN_EMAIL 
+    });
 }
 
 export function subscribeToWhiteboard(id: string, callback: (elements: WhiteboardElement[]) => void) {
@@ -652,7 +670,10 @@ export async function updateWhiteboardElement(id: string, element: WhiteboardEle
         const elements = doc.exists ? (doc.data()?.elements as WhiteboardElement[]) : [];
         const idx = elements.findIndex(e => e.id === element.id);
         if (idx > -1) elements[idx] = element; else elements.push(element);
-        t.set(ref, { elements: sanitizeData(elements) });
+        t.set(ref, { 
+            elements: sanitizeData(elements),
+            adminOwnerEmail: ADMIN_EMAIL 
+        });
     });
 }
 
@@ -677,7 +698,8 @@ export async function ensureUserBlog(user: any): Promise<Blog> {
         authorName: user.displayName || 'Author',
         title: `${user.displayName}'s Blog`,
         description: "Welcome to my creative space.",
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        adminOwnerEmail: ADMIN_EMAIL
     };
     const ref = await db.collection(BLOGS_COLLECTION).add(blog);
     return { ...blog, id: ref.id };
@@ -752,7 +774,8 @@ export async function createGroup(name: string): Promise<string> {
     name,
     ownerId: auth.currentUser?.uid,
     memberIds: [auth.currentUser?.uid],
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    adminOwnerEmail: ADMIN_EMAIL
   };
   const ref = await db.collection(GROUPS_COLLECTION).add(group);
   return ref.id;
@@ -804,7 +827,8 @@ export async function createOrGetDMChannel(otherId: string, otherName: string): 
             name: `${auth.currentUser?.displayName} & ${otherName}`,
             type: 'dm',
             memberIds: [uid, otherId],
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            adminOwnerEmail: ADMIN_EMAIL
         });
     }
     return combinedId;
@@ -820,7 +844,8 @@ export async function sendMessage(channelId: string, text: string, collectionPat
         senderImage: auth.currentUser?.photoURL,
         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
         replyTo,
-        attachments
+        attachments,
+        adminOwnerEmail: ADMIN_EMAIL
     };
     await db.collection(collectionPath).add(sanitizeData(msg));
 }
@@ -893,7 +918,8 @@ export async function recalculateGlobalStats(): Promise<number> {
     const count = userSnap.size;
     await db.collection('stats').doc('global').set({
         uniqueUsers: count,
-        totalLogins: firebase.firestore.FieldValue.increment(0)
+        totalLogins: firebase.firestore.FieldValue.increment(0),
+        adminOwnerEmail: ADMIN_EMAIL
     }, { merge: true });
     return count;
 }
@@ -906,7 +932,10 @@ export async function getDebugCollectionDocs(collectionName: string, limitCount:
 // --- Saved Words ---
 
 export async function saveSavedWord(uid: string, wordData: any) {
-    await db.collection(USERS_COLLECTION).doc(uid).collection(SAVED_WORDS_COLLECTION).doc(wordData.word).set(wordData);
+    await db.collection(USERS_COLLECTION).doc(uid).collection(SAVED_WORDS_COLLECTION).doc(wordData.word).set({
+        ...wordData,
+        adminOwnerEmail: ADMIN_EMAIL
+    });
 }
 
 export async function getSavedWordForUser(uid: string, word: string) {

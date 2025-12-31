@@ -1,17 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithGoogle, signOut } from '../services/authService';
-import firebase from 'firebase/compat/app';
-import { auth } from '../services/firebaseConfig';
+import { firebase, auth } from '../services/firebaseConfig';
 import { LogOut, User as UserIcon, Loader2, AlertCircle, Copy, ExternalLink, ShieldAlert } from 'lucide-react';
 import { syncUserProfile, logUserActivity } from '../services/firestoreService';
 
 export const UserAuth: React.FC = () => {
-  // Fix: Use direct compat import for firebase.User type
-  const [user, setUser] = useState<firebase.User | null>(null);
+  // Fix: changed 'firebase.User' to 'any' because 'firebase' from config is a value, not a namespace with exported 'User' type
+  const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorDetails, setErrorDetails] = useState<{ code: string; domain: string; title: string; message: string } | null>(null);
 
   useEffect(() => {
+    // Safety check for environments where Firebase may not be initialized correctly
+    if (!auth) {
+        setLoading(false);
+        return;
+    }
+
     const unsubscribe = auth.onAuthStateChanged((u) => {
       setUser(u);
       setLoading(false);

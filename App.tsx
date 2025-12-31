@@ -45,7 +45,7 @@ import { CardWorkshop } from './components/CardWorkshop';
 import { CardExplorer } from './components/CardExplorer';
 import { IconGenerator } from './components/IconGenerator';
 
-import { auth, isFirebaseConfigured } from './services/firebaseConfig';
+import { firebase, auth, isFirebaseConfigured } from './services/firebaseConfig';
 import { 
   voteChannel, publishChannelToFirestore, updateCommentInChannel, 
   deleteCommentFromChannel, addCommentToChannel, getPublicChannels, 
@@ -446,7 +446,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (isFirebaseConfigured && currentUser) {
-        if (currentUser.email === 'shengliang.song@gmail.com') {
+        if (currentUser.email === 'shengliang.song.ai@gmail.com') {
              const unsubAdmin = subscribeToAllChannelsAdmin(
                  (data) => setPublicChannels(data), 
                  (err) => console.error("Admin sub error", err)
@@ -1086,7 +1086,7 @@ const App: React.FC = () => {
       </nav>
       )}
 
-      {!currentUser && <LoginPage onPrivacyClick={() => setIsPrivacyOpen(true)} onMissionClick={() => handleSetViewState('mission')} />}
+      {!currentUser && <LoginPage onPrivacyClick={() => setIsPrivacyOpen(false)} onMissionClick={() => handleSetViewState('mission')} />}
 
       {currentUser && (
         <>

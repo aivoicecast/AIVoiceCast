@@ -1,45 +1,26 @@
-
-import { firebase, auth, isFirebaseConfigured } from './firebaseConfig';
+import { firebase, auth } from './firebaseConfig';
 
 /**
- * Safely retrieves an Auth Provider.
- * Firebase providers like GoogleAuthProvider are attached to the firebase.auth namespace
- * as side-effects. This helper ensures they are available before instantiation.
+ * Safely creates a Google Auth Provider instance.
  */
-function getAuthProvider(providerName: 'GoogleAuthProvider' | 'GitHubAuthProvider') {
-  const authNamespace = (firebase as any).auth;
+function getGoogleProvider() {
+  const fb = (firebase as any);
   
-  if (authNamespace && typeof authNamespace[providerName] === 'function') {
-    return new authNamespace[providerName]();
+  if (fb.auth && fb.auth.GoogleAuthProvider) {
+    return new fb.auth.GoogleAuthProvider();
   }
 
-  // Fallback for different build environments/ESM loads
-  const providerCtor = (firebase as any).default?.auth?.[providerName] || (window as any).firebase?.auth?.[providerName];
-  
-  if (typeof providerCtor === 'function') {
-    return new providerCtor();
-  }
-
-  throw new Error(
-    `The ${providerName} is not yet loaded. This happens if the Firebase Auth script is still initializing or if the connection settings are missing.`
-  );
+  throw new Error("GoogleAuthProvider is not available. Ensure 'firebase/compat/auth' is loaded correctly.");
 }
 
+/**
+ * Trigger Google Sign-In popup for any public Google user.
+ */
 export async function signInWithGoogle(): Promise<any> {
-  if (!isFirebaseConfigured) {
-    throw new Error("Missing Firebase Configuration. Please go to 'Connection Settings' in the user menu and paste your Firebase config object.");
-  }
-
-  if (window.location.protocol === 'file:') {
-    const error: any = new Error("Firebase Auth requires a web server. It cannot run on 'file://' protocol.");
-    error.code = 'auth/operation-not-supported-in-this-environment';
-    throw error;
-  }
-
+  if (!auth) throw new Error("Firebase Auth is not initialized.");
   try {
-    const provider = getAuthProvider('GoogleAuthProvider');
-    
-    // We use the 'auth' instance from config which is a resilient proxy
+    const provider = getGoogleProvider();
+    // Allow any google user to sign in
     const result = await auth.signInWithPopup(provider);
     return result.user;
   } catch (error: any) {
@@ -48,15 +29,35 @@ export async function signInWithGoogle(): Promise<any> {
   }
 }
 
-export async function connectGoogleDrive(): Promise<string> {
-  if (!isFirebaseConfigured) throw new Error("Firebase not configured");
+/**
+ * Trigger GitHub Sign-In.
+ */
+export async function signInWithGitHub(): Promise<{ user: any, token: string | null }> {
+  if (!auth) throw new Error("Firebase Auth is not initialized.");
+  const fb = (firebase as any);
   
-  const provider = getAuthProvider('GoogleAuthProvider');
+  if (!fb.auth || !fb.auth.GithubAuthProvider) {
+    throw new Error("GithubAuthProvider is not available.");
+  }
+  const provider = new fb.auth.GithubAuthProvider();
+  try {
+    const result = await auth.signInWithPopup(provider);
+    const credential = result.credential as any;
+    return { user: result.user, token: credential?.accessToken || null };
+  } catch (error: any) {
+    console.error("GitHub Auth Error:", error);
+    throw error;
+  }
+}
+
+export async function connectGoogleDrive(): Promise<string> {
+  if (!auth) throw new Error("Firebase Auth is not initialized.");
+  const provider = getGoogleProvider();
   if (typeof (provider as any).addScope === 'function') {
     (provider as any).addScope('https://www.googleapis.com/auth/drive.file');
   }
   
-  if (!auth?.currentUser) throw new Error("Must be logged in to connect services.");
+  if (!auth.currentUser) throw new Error("Must be logged in to connect services.");
 
   try {
     const result = await auth.currentUser.reauthenticateWithPopup(provider);
@@ -68,22 +69,10 @@ export async function connectGoogleDrive(): Promise<string> {
   }
 }
 
-export async function signInWithGitHub(): Promise<{ user: any, token: string | null }> {
-  if (!isFirebaseConfigured) throw new Error("Firebase not configured");
-  const provider = getAuthProvider('GitHubAuthProvider');
-  
-  try {
-    const result = await auth.signInWithPopup(provider);
-    const credential = result.credential as any;
-    return { user: result.user, token: credential?.accessToken || null };
-  } catch (error: any) {
-    console.error("GitHub Auth Error:", error);
-    throw error;
-  }
-}
-
 export async function signOut(): Promise<void> {
-  if (auth) await auth.signOut();
+  if (auth) {
+    await auth.signOut();
+  }
 }
 
 export function getCurrentUser(): any {

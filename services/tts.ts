@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, getGlobalAudioContext, hashString } from '../utils/audioUtils';
 import { getCachedAudioBuffer, cacheAudioBuffer } from '../utils/db';
-import { GEMINI_API_KEY, OPENAI_API_KEY } from './private_keys';
+import { OPENAI_API_KEY } from './private_keys';
 import { auth, storage } from './firebaseConfig';
 
 export type TtsErrorType = 'none' | 'quota' | 'network' | 'unknown' | 'auth';
@@ -62,6 +62,7 @@ async function synthesizeOpenAI(text: string, voice: string, apiKey: string): Pr
 
 async function synthesizeGemini(text: string, voice: string): Promise<ArrayBuffer> {
     const targetVoice = getValidVoiceName(voice, 'gemini');
+    // Using process.env.API_KEY directly as per guidelines
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-preview-tts',
@@ -92,12 +93,9 @@ async function checkCloudCache(cacheKey: string): Promise<ArrayBuffer | null> {
         const response = await fetch(url);
         
         if (response.ok) {
-            console.log(`[TTS] Cloud Cache Hit: ${hash}`);
             return await response.arrayBuffer();
         }
-    } catch (e) {
-        // 404 or permission error - ignore and proceed to synthesis
-    }
+    } catch (e) {}
     return null;
 }
 
@@ -154,15 +152,8 @@ export async function synthesizeSpeech(
       let usedProvider: 'gemini' | 'openai' = 'gemini';
 
       const openAiKey = localStorage.getItem('openai_api_key') || OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
-      const geminiKey = localStorage.getItem('gemini_api_key') || GEMINI_API_KEY || process.env.API_KEY || '';
       
       if (preferredProvider === 'openai' && openAiKey) {
-          usedProvider = 'openai';
-          rawBuffer = await synthesizeOpenAI(cleanText, voiceName, openAiKey);
-      } else if (preferredProvider === 'gemini' && geminiKey) {
-          usedProvider = 'gemini';
-          rawBuffer = await synthesizeGemini(cleanText, voiceName);
-      } else if (openAiKey && !geminiKey) {
           usedProvider = 'openai';
           rawBuffer = await synthesizeOpenAI(cleanText, voiceName, openAiKey);
       } else {
