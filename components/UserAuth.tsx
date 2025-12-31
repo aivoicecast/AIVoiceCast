@@ -53,22 +53,25 @@ export const UserAuth: React.FC = () => {
 
   if (user) {
     return (
-      <div className="flex items-center space-x-2 bg-slate-800/50 rounded-full pl-2 pr-3 py-1 border border-slate-700 hover:bg-slate-800 transition-colors">
-        <img 
-          src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=6366f1&color=fff`} 
-          alt={user.displayName || 'User'} 
-          className="w-7 h-7 rounded-full border border-indigo-500 object-cover"
-        />
-        <span className="text-xs font-bold text-slate-200 hidden lg:inline max-w-[100px] truncate">
-          {user.displayName?.split(' ')[0]}
-        </span>
-        <div className="w-px h-4 bg-slate-700 mx-1 hidden lg:block"></div>
+      <div className="flex items-center space-x-3">
+        <div className="hidden sm:flex items-center space-x-2 bg-slate-800/50 rounded-full pl-1 pr-3 py-1 border border-slate-700 hover:border-slate-600 transition-all">
+          <img 
+            src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=6366f1&color=fff`} 
+            alt={user.displayName || 'User'} 
+            className="w-8 h-8 rounded-full border-2 border-indigo-500 object-cover shadow-lg"
+          />
+          <span className="text-xs font-bold text-slate-200 max-w-[120px] truncate">
+            {user.displayName}
+          </span>
+        </div>
+        
         <button 
           onClick={handleLogout}
-          className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+          className="flex items-center space-x-2 px-3 py-2 bg-red-900/20 hover:bg-red-900/40 text-red-400 hover:text-red-300 text-xs font-bold rounded-lg border border-red-900/30 transition-all group"
           title="Sign Out"
         >
-          <LogOut size={14} />
+          <LogOut size={16} className="group-hover:scale-110 transition-transform" />
+          <span className="hidden lg:inline">Sign Out</span>
         </button>
       </div>
     );
@@ -77,10 +80,10 @@ export const UserAuth: React.FC = () => {
   return (
     <button
       onClick={handleLogin}
-      className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-full transition-all shadow-lg active:scale-95"
+      className="flex items-center space-x-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-full transition-all shadow-lg active:scale-95"
     >
       <UserIcon size={16} />
-      <span>Sign In</span>
+      <span>Sign In with Google</span>
     </button>
   );
 };

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
 import { 
@@ -48,14 +47,29 @@ import { OFFLINE_CHANNEL_ID } from './utils/offlineContent';
 import { warmUpAudioContext, stopAllPlatformAudio, isAnyAudioPlaying, getGlobalAudioContext } from './utils/audioUtils';
 
 // --- Error Boundary Component ---
-class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
-  constructor(props: any) {
+// Added explicit Prop and State interfaces to fix "Property 'state/props' does not exist" errors
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
-  static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) { console.error("Uncaught runtime error:", error, errorInfo); }
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
+    return { hasError: true, error }; 
+  }
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) { 
+    console.error("Uncaught runtime error:", error, errorInfo); 
+  }
   render() {
+    // Fixed: Explicit use of this.state.hasError which is now correctly recognized on ErrorBoundaryState
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -76,6 +90,7 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
         </div>
       );
     }
+    // Fixed: Explicit use of this.props.children which is now correctly recognized on ErrorBoundaryProps
     return this.props.children;
   }
 }
@@ -376,12 +391,19 @@ const App: React.FC = () => {
                       >
                           <LayoutGrid size={24}/>
                       </button>
-                      {/* Integrated Menu Trigger: User Photo via UserAuth acts as visual anchor */}
+                      {/* Using the Google Photo as the menu trigger for Desktop users */}
                       <button 
                         onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} 
-                        className={`p-2 rounded-full transition-colors ${isUserMenuOpen ? 'bg-slate-800' : 'hover:bg-slate-800'}`}
+                        className={`group relative p-1 rounded-full border-2 transition-all ${isUserMenuOpen ? 'border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.4)]' : 'border-transparent hover:border-slate-600'}`}
                       >
-                        <Menu size={24}/>
+                        <img 
+                          src={currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.displayName || 'U')}&background=6366f1&color=fff`} 
+                          alt="Menu" 
+                          className="w-8 h-8 rounded-full object-cover"
+                        />
+                        <div className="absolute -bottom-1 -right-1 bg-slate-950 rounded-full p-0.5 border border-slate-800">
+                           <Menu size={10} className="text-slate-400 group-hover:text-white" />
+                        </div>
                       </button>
                     </div>
                 </div>
