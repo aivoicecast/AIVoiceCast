@@ -22,7 +22,7 @@ export const DataSyncModal: React.FC<DataSyncModalProps> = ({ isOpen, onClose })
       checkStorage();
       fetchCloudStats();
       // Normalize ID logic
-      const currentUser = auth.currentUser;
+      const currentUser = auth?.currentUser;
       setUserId(currentUser ? currentUser.uid : 'public');
     }
   }, [isOpen]);

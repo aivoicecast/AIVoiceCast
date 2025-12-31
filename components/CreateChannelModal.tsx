@@ -38,7 +38,7 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
   // Membership State
   const [isPro, setIsPro] = useState(false);
 
-  const currentUser = auth.currentUser;
+  const currentUser = auth?.currentUser;
 
   useEffect(() => {
     if (isOpen && currentUser) {

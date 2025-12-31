@@ -169,7 +169,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const waitingAudioCtxRef = useRef<AudioContext | null>(null);
   const waitingTimerRef = useRef<any>(null);
 
-  const currentUser = auth.currentUser;
+  const currentUser = auth?.currentUser;
   const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
 
   const getDescriptiveTitle = () => {

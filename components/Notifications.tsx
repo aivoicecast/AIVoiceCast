@@ -12,7 +12,7 @@ export const Notifications: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  const currentUser = auth.currentUser;
+  const currentUser = auth?.currentUser;
 
   const fetchData = async () => {
     if (!currentUser || !currentUser.email) return;
