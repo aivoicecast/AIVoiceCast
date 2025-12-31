@@ -3,36 +3,19 @@ import firebase_raw from "firebase/compat/app";
 import "firebase/compat/auth";
 import "firebase/compat/firestore";
 import "firebase/compat/storage";
-import { firebaseKeys as defaultKeys } from './private_keys';
-
-/**
- * Retrieves the effective Firebase configuration.
- * Static configuration from private_keys.ts.
- */
-const getFirebaseConfig = () => defaultKeys;
-
-const firebaseKeys = getFirebaseConfig();
+import { firebaseKeys } from './private_keys';
 
 /**
  * Resolves the true Firebase compat namespace.
- * Handles variations in how ESM loaders wrap the package.
+ * Handles variations in how ESM loaders like esm.sh wrap the package.
  */
 const resolveFirebase = () => {
-    // 1. Try the global window object first (Standard for browser scripts)
-    const winFb = (window as any).firebase;
-    if (winFb) return winFb;
-
-    // 2. Check the raw module import
-    const raw: any = firebase_raw;
-    if (raw?.initializeApp) return raw;
-
-    // 3. Check for .default property (Common in ESM)
-    if (raw?.default?.initializeApp) return raw.default;
-
-    return raw;
+    if (typeof window !== 'undefined' && (window as any).firebase) {
+        return (window as any).firebase;
+    }
+    return (firebase_raw as any).default || firebase_raw;
 };
 
-// The resolved Firebase namespace
 export const firebase: any = resolveFirebase();
 
 /**
@@ -61,33 +44,36 @@ const initializeApp = () => {
 const app = initializeApp();
 
 /**
- * Service instance resolution.
+ * Service instance resolution with graceful fallback.
  */
-const resolveService = (name: 'auth' | 'firestore' | 'storage') => {
+export const getAuth = () => {
     try {
-        // Try the app instance first (Standard way)
-        if (app && typeof (app as any)[name] === 'function') {
-            return (app as any)[name]();
-        }
-        // Fallback to root namespace (Some legacy compat setups)
-        if (firebase && typeof firebase[name] === 'function') {
-            return firebase[name]();
-        }
+        return app ? app.auth() : (firebase.auth ? firebase.auth() : null);
     } catch (e) {
-        console.warn(`[Firebase] Service ${name} not yet available:`, e);
+        return null;
     }
-    return null;
 };
 
-// Export core service instances
-export const auth = resolveService('auth');
-export const db = resolveService('firestore');
-export const storage = resolveService('storage');
+export const getDb = () => {
+    try {
+        return app ? app.firestore() : (firebase.firestore ? firebase.firestore() : null);
+    } catch (e) {
+        return null;
+    }
+};
 
-// Functional getters for a safer access pattern
-export const getAuth = () => auth || resolveService('auth');
-export const getDb = () => db || resolveService('firestore');
-export const getStorage = () => storage || resolveService('storage');
+export const getStorage = () => {
+    try {
+        return app ? app.storage() : (firebase.storage ? firebase.storage() : null);
+    } catch (e) {
+        return null;
+    }
+};
+
+// Export core service instances immediately for convenience
+export const auth = getAuth();
+export const db = getDb();
+export const storage = getStorage();
 
 /**
  * Flag used by UI to determine status.
@@ -98,17 +84,11 @@ export const isFirebaseConfigured = !!(firebaseKeys && firebaseKeys.apiKey);
  * Returns diagnostic information for the system status tools.
  */
 export const getFirebaseDiagnostics = () => {
-    const activeKeys = getFirebaseConfig();
     return {
         isInitialized: !!app,
-        configSource: 'private_keys.ts',
-        activeConfig: {
-            ...activeKeys,
-            apiKey: activeKeys.apiKey ? activeKeys.apiKey.substring(0, 6) + "..." : "None"
-        },
-        projectId: activeKeys.projectId,
-        hasAuthMethod: !!(firebase?.auth || app?.auth),
-        hasFirestoreMethod: !!(firebase?.firestore || app?.firestore)
+        hasAuth: !!(auth || getAuth()),
+        hasFirestore: !!(db || getDb()),
+        projectId: firebaseKeys?.projectId || "Missing"
     };
 };
 
