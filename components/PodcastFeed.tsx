@@ -1,3 +1,4 @@
+
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture } from '../types';
 import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles } from 'lucide-react';
@@ -7,7 +8,6 @@ import { followUser, unfollowUser } from '../services/firestoreService';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { synthesizeSpeech } from '../services/tts';
 import { getCachedLectureScript, cacheLectureScript, getUserChannels } from '../utils/db';
-/* Removed non-existent GEMINI_API_KEY from private_keys import */
 import { OPENAI_API_KEY } from '../services/private_keys';
 import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
 import { OFFLINE_CHANNEL_ID, OFFLINE_CURRICULUM, OFFLINE_LECTURES } from '../utils/offlineContent';
@@ -59,7 +59,6 @@ const MobileFeedCard = ({
     const [provider, setProvider] = useState<'system' | 'gemini' | 'openai'>(() => {
         const hasOpenAI = !!(localStorage.getItem('openai_api_key') || process.env.OPENAI_API_KEY);
         if (hasOpenAI) return 'openai';
-        /* Adhering to strict process.env.API_KEY usage for Gemini features */
         const hasGemini = !!process.env.API_KEY;
         return hasGemini ? 'gemini' : 'system';
     });
@@ -108,7 +107,6 @@ const MobileFeedCard = ({
         logAudioEvent(MY_TOKEN, 'STOP', `Session Reset to ${localSessionIdRef.current} via ${source}`);
     }, [MY_TOKEN]);
 
-    // External wrapper that informs the global manager
     const stopAudioGlobal = useCallback(() => {
         stopAllPlatformAudio(`CardAction:${channel.id}`);
     }, [channel.id]);
@@ -189,7 +187,6 @@ const MobileFeedCard = ({
     const handleTogglePlay = async (e: React.MouseEvent) => {
         e.stopPropagation();
         
-        // Navigation case
         if (!isActive) { 
             stopAllPlatformAudio(`NavigationTransition:${channel.id}`);
             onChannelClick(channel.id); 
@@ -197,8 +194,6 @@ const MobileFeedCard = ({
         }
         
         const ctx = getGlobalAudioContext();
-        
-        // Critical for iPhone: Resume on user gesture
         if (ctx.state === 'suspended' || (ctx.state as any) === 'interrupted' || isAutoplayBlocked) {
             try {
                 await warmUpAudioContext(ctx);
@@ -208,9 +203,8 @@ const MobileFeedCard = ({
             }
         }
 
-        // Logical Toggle
         if (isBusy || isLoopingRef.current) { 
-            stopAudioGlobal(); // Reset global lock and increment gen
+            stopAudioGlobal();
             return; 
         }
         
@@ -392,7 +386,6 @@ const MobileFeedCard = ({
         const cacheKey = `lecture_${channel.id}_${meta.id}_en`;
         let data = await getCachedLectureScript(cacheKey);
         if (!data) {
-            /* Adhering to strict process.env.API_KEY usage for Gemini features */
             if (process.env.API_KEY) {
                 data = await generateLectureScript(meta.title, `Podcast: ${channel.title}. ${channel.description}`, 'en');
                 if (data) await cacheLectureScript(cacheKey, data);
@@ -549,8 +542,13 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
       if (!isFeedActive) return []; 
       if (filterMode === 'mine') return channels.filter(c => currentUser && c.ownerId === currentUser.uid).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       if (filterMode === 'following') return [...channels].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      
       const scored = channels.map(ch => {
           let score = 0;
+          
+          // CRITICAL PERSONA PRIORITIZATION
+          if (ch.id === '1' || ch.id === '2' || ch.id === 'default-gem') score += 1000000;
+          
           if (currentUser && ch.ownerId === currentUser.uid) score += 100000;
           if (userProfile?.interests?.length) { if (userProfile.interests.some(i => ch.tags.includes(i))) score += 20; }
           if (ch.createdAt) { const ageHours = (Date.now() - ch.createdAt) / (1000 * 60 * 60); if (ageHours < 1) score += 50; }

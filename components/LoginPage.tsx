@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, ShieldCheck, Loader2, Sparkles, Rocket, Shield } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Loader2, Sparkles, Rocket, Shield, AlertCircle, Settings, Globe } from 'lucide-react';
 import { signInWithGoogle } from '../services/authService';
 import { logUserActivity } from '../services/firestoreService';
+import { isFirebaseConfigured, getFirebaseDiagnostics } from '../services/firebaseConfig';
+import { FirebaseConfigModal } from './FirebaseConfigModal';
 
 interface LoginPageProps {
   onPrivacyClick?: () => void;
@@ -11,6 +13,9 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionClick }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false);
+  const diagnostics = getFirebaseDiagnostics();
 
   // Auto-reset loading after 30 seconds
   useEffect(() => {
@@ -30,6 +35,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
       }
     } catch (e: any) {
       console.error("Login Error:", e);
+      setShowTroubleshoot(true);
       if (e.code !== 'auth/popup-closed-by-user') {
         alert(`Login failed: ${e.message}`);
       }
@@ -98,6 +104,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
               </>
             )}
           </button>
+
+          {showTroubleshoot && (
+              <div className="mt-8 p-4 bg-red-900/10 border border-red-900/20 rounded-2xl text-left animate-fade-in">
+                  <div className="flex items-center gap-2 text-red-400 mb-2">
+                      <AlertCircle size={16} />
+                      <span className="text-xs font-bold uppercase tracking-wider">Connection Problem</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
+                      Initialization failed. This usually occurs if the current domain is not in your <strong>Firebase Authorized Domains</strong> list or if the configuration is missing.
+                  </p>
+                  <button 
+                    onClick={() => setIsConfigModalOpen(true)}
+                    className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                  >
+                      <Settings size={14} />
+                      Manage Configuration
+                  </button>
+              </div>
+          )}
           
           <div className="flex items-center justify-center gap-6 mt-8">
               {onMissionClick && (
@@ -120,6 +145,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
             </p>
         </div>
       </div>
+
+      <FirebaseConfigModal 
+        isOpen={isConfigModalOpen} 
+        onClose={() => setIsConfigModalOpen(false)} 
+        onConfigUpdate={() => window.location.reload()} 
+      />
     </div>
   );
 };

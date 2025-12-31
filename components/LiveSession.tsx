@@ -287,11 +287,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   const getRoleName = (role: string) => {
       if (role === 'user') return t.you;
-      // Handle ID-based persona mapping for transcript headers
+      
       const r = role || '';
+      // Support for technical gen-lang-client IDs mapping
       if (r.includes('0648937375') || r === 'Software Interview Voice') return 'Software Interview Voice';
       if (r.includes('0375218270') || r === 'Linux Kernel Voice') return 'Linux Kernel Voice';
       if (r.toLowerCase().includes('gem') || r === 'Default Gem') return 'Default Gem';
+      
       return channel.voiceName;
   };
 

@@ -13,7 +13,11 @@ const resolveFirebase = () => {
     if (typeof window !== 'undefined' && (window as any).firebase) {
         return (window as any).firebase;
     }
-    return (firebase_raw as any).default || firebase_raw;
+    const resolved = (firebase_raw as any).default || firebase_raw;
+    if (!resolved) {
+        console.error("[Firebase] Fatal: Could not resolve Firebase core library.");
+    }
+    return resolved;
 };
 
 export const firebase: any = resolveFirebase();
@@ -23,7 +27,7 @@ export const firebase: any = resolveFirebase();
  */
 const initializeApp = () => {
     if (!firebase || typeof firebase.initializeApp !== 'function') {
-        console.error("[Firebase] Core library not correctly loaded.");
+        console.error("[Firebase] Core library not correctly loaded or missing initializeApp function.");
         return null;
     }
 
@@ -33,7 +37,10 @@ const initializeApp = () => {
         }
         
         if (firebaseKeys && firebaseKeys.apiKey) {
+            console.log("[Firebase] Initializing with Project ID:", firebaseKeys.projectId);
             return firebase.initializeApp(firebaseKeys);
+        } else {
+            console.warn("[Firebase] Warning: No API Key found in private_keys.ts");
         }
     } catch (err) {
         console.error("[Firebase] Initialization error:", err);
@@ -48,10 +55,10 @@ const app = initializeApp();
  */
 export const getAuth = () => {
     try {
-        const instance = app ? app.auth() : (firebase.auth ? firebase.auth() : null);
+        const instance = app ? app.auth() : (firebase && firebase.auth ? firebase.auth() : null);
         if (!instance) {
-            // Last resort: try initializing a default if global firebase exists
-            return firebase.auth ? firebase.auth() : null;
+            console.warn("[Firebase] Auth service not found. Ensure Firebase library is fully loaded.");
+            return null;
         }
         return instance;
     } catch (e) {
@@ -62,7 +69,7 @@ export const getAuth = () => {
 
 export const getDb = () => {
     try {
-        return app ? app.firestore() : (firebase.firestore ? firebase.firestore() : null);
+        return app ? app.firestore() : (firebase && firebase.firestore ? firebase.firestore() : null);
     } catch (e) {
         return null;
     }
@@ -70,7 +77,7 @@ export const getDb = () => {
 
 export const getStorage = () => {
     try {
-        return app ? app.storage() : (firebase.storage ? firebase.storage() : null);
+        return app ? app.storage() : (firebase && firebase.storage ? firebase.storage() : null);
     } catch (e) {
         return null;
     }
@@ -95,7 +102,8 @@ export const getFirebaseDiagnostics = () => {
         hasAuth: !!(auth || getAuth()),
         hasFirestore: !!(db || getDb()),
         projectId: firebaseKeys?.projectId || "Missing",
-        configSource: "private_keys.ts"
+        configSource: "private_keys.ts",
+        activeConfig: firebaseKeys ? { ...firebaseKeys, apiKey: firebaseKeys.apiKey ? "PRESENT" : "MISSING" } : null
     };
 };
 
