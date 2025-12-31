@@ -355,8 +355,11 @@ const App: React.FC = () => {
           setCurrentUser(user);
           if (user) {
             try {
-              const profile = await getUserProfile(user.uid);
-              setUserProfile(profile);
+              // Safety: Don't let a hanging profile fetch block the entire app
+              const profilePromise = getUserProfile(user.uid);
+              const profileTimeout = new Promise(resolve => setTimeout(() => resolve(null), 5000));
+              const profile = await Promise.race([profilePromise, profileTimeout]) as UserProfile | null;
+              if (profile) setUserProfile(profile);
             } catch (e) {
               console.error("Profile fetch error", e);
             }
@@ -370,7 +373,21 @@ const App: React.FC = () => {
         setAuthLoading(false);
     }
 
-    return () => unsubscribeAuth();
+    // Safety fallback: Release the loading screen if initialization hangs for more than 8 seconds
+    const safetyTimeout = setTimeout(() => {
+        setAuthLoading(prev => {
+            if (prev) {
+                console.warn("Auth initialization timed out. Proceeding to app...");
+                return false;
+            }
+            return false;
+        });
+    }, 8000);
+
+    return () => {
+        unsubscribeAuth();
+        clearTimeout(safetyTimeout);
+    };
   }, []);
 
   useEffect(() => {
