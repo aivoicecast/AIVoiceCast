@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { createGroup, getUserGroups, sendInvitation, getGroupMembers, removeMemberFromGroup, deleteGroup, renameGroup } from '../services/firestoreService';
 import { Group, UserProfile } from '../types';
@@ -25,10 +24,12 @@ export const GroupManager: React.FC = () => {
   const [loadingMembers, setLoadingMembers] = useState(false);
 
   const loadGroups = async () => {
-    if (!auth.currentUser) return;
+    // Safely check for currentUser via optional chaining on auth
+    const currentUser = auth?.currentUser;
+    if (!currentUser) return;
     setLoading(true);
     try {
-      const data = await getUserGroups(auth.currentUser.uid);
+      const data = await getUserGroups(currentUser.uid);
       setGroups(data);
       setError(null);
     } catch (e: any) {
@@ -153,6 +154,8 @@ export const GroupManager: React.FC = () => {
     }
   };
 
+  const currentUser = auth?.currentUser;
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-8 animate-fade-in-up">
       
@@ -220,7 +223,7 @@ export const GroupManager: React.FC = () => {
                             ) : (
                               <>
                                 <p className="text-white font-bold text-lg">{g.name}</p>
-                                {g.ownerId === auth.currentUser?.uid && (
+                                {currentUser && g.ownerId === currentUser.uid && (
                                   <div className="flex items-center gap-2">
                                     <span className="bg-indigo-900/50 text-indigo-400 text-[10px] px-2 py-0.5 rounded uppercase font-bold">Owner</span>
                                     <button onClick={() => startRenaming(g)} className="p-1 text-slate-500 hover:text-white transition-colors"><Edit2 size={14}/></button>
@@ -247,7 +250,7 @@ export const GroupManager: React.FC = () => {
                     </div>
 
                     {/* Owner Only: Invite UI */}
-                    {g.ownerId === auth.currentUser?.uid && (
+                    {currentUser && g.ownerId === currentUser.uid && (
                     <div className="flex flex-col space-y-2 md:w-1/2 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
                         <p className="text-[10px] text-slate-500 uppercase font-bold flex items-center space-x-1">
                             <Mail size={10} />
@@ -301,13 +304,13 @@ export const GroupManager: React.FC = () => {
                                                 </p>
                                                 {/* Privacy: Only Owner sees actual emails */}
                                                 <p className="text-[10px] text-slate-500">
-                                                    {g.ownerId === auth.currentUser?.uid ? member.email : 'Member (Email Hidden)'}
+                                                    {currentUser && g.ownerId === currentUser.uid ? member.email : 'Member (Email Hidden)'}
                                                 </p>
                                             </div>
                                         </div>
                                         
                                         {/* Remove Button (Owner only, cannot remove self) */}
-                                        {g.ownerId === auth.currentUser?.uid && member.uid !== g.ownerId && (
+                                        {currentUser && g.ownerId === currentUser.uid && member.uid !== g.ownerId && (
                                             <button 
                                                 onClick={() => handleRemoveMember(g.id, member.uid)}
                                                 className="text-slate-600 hover:text-red-400 p-1.5 rounded hover:bg-slate-800 transition-colors"

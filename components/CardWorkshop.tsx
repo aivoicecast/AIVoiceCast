@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { AgentMemory, TranscriptItem } from '../types';
 import { ArrowLeft, Sparkles, Wand2, Image as ImageIcon, Download, Share2, RefreshCw, Mic, MicOff, Gift, Loader2, ChevronRight, ChevronLeft, Upload, QrCode, X, Music, Play, Pause, Volume2, Camera, CloudUpload, Lock, Globe, Check, Edit, Package, ArrowDown, Type as TypeIcon, Minus, Plus, Edit3, Link } from 'lucide-react';
@@ -82,7 +81,9 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
 
-  const isOwner = auth.currentUser && (!memory.ownerId || memory.ownerId === auth.currentUser.uid);
+  // Safely access currentUser with optional chaining on auth
+  const currentUser = auth?.currentUser;
+  const isOwner = currentUser && (!memory.ownerId || memory.ownerId === currentUser.uid);
 
   useEffect(() => {
       if (cardId) {
@@ -252,7 +253,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
   };
 
   const handlePublishAndShare = async () => {
-      if (!auth.currentUser) return alert("Please sign in to share your card.");
+      if (!auth?.currentUser) return alert("Please sign in to share your card.");
       setIsPublishing(true);
       setPublishProgress('Uploading assets...');
       
@@ -387,7 +388,6 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                 </div>
                 
                 <div className="flex-1 w-full overflow-y-auto scrollbar-hide text-center text-slate-600 italic text-sm px-8 leading-relaxed">
-                    {/* Use my-auto on text block to center while allowing scrolling to beginning if tall */}
                     <div className="min-h-full flex flex-col justify-center py-4">
                         <p className="whitespace-pre-wrap">"{memory.cardMessage}"</p>
                     </div>
@@ -596,7 +596,6 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
               </div>
 
               {/* SCROLLABLE BODY: PREVIEW AREA */}
-              {/* Removed items-center and justify-center when in viewer mode to fix starting scroll position */}
               <div className={`flex-1 w-full flex flex-col min-h-0 overflow-y-auto scrollbar-hide pb-10 ${isViewer ? '' : 'items-center justify-center'}`}>
                   {isViewer ? (
                       <div className="w-full flex flex-col items-center gap-12 py-8">
