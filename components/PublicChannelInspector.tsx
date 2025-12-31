@@ -12,7 +12,9 @@ interface PublicChannelInspectorProps {
 export const PublicChannelInspector: React.FC<PublicChannelInspectorProps> = ({ onBack }) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const currentUser = auth.currentUser;
+  
+  // Use optional chaining for safety
+  const currentUser = auth?.currentUser;
 
   const loadData = async () => {
     setIsLoading(true);

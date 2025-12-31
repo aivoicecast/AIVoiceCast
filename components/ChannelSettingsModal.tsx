@@ -34,7 +34,7 @@ export const ChannelSettingsModal: React.FC<ChannelSettingsModalProps> = ({ isOp
   const [isAIProcessing, setIsAIProcessing] = useState(false);
   const recognitionRef = useRef<any>(null);
 
-  const currentUser = auth.currentUser;
+  const currentUser = auth?.currentUser;
 
   useEffect(() => {
     if (isOpen && currentUser && visibility === 'group') {

@@ -15,7 +15,9 @@ export const MyChannelInspector: React.FC<MyChannelInspectorProps> = ({ onBack }
   const [channels, setChannels] = useState<Channel[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const currentUser = auth.currentUser;
+  
+  // Use optional chaining for safety
+  const currentUser = auth?.currentUser;
 
   const loadData = async () => {
     setIsLoading(true);

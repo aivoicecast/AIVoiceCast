@@ -62,8 +62,9 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
   };
 
   useEffect(() => {
-    if (currentUser) {
-      getUserGroups(currentUser.uid).then(setGroups);
+    const activeUser = currentUser || auth?.currentUser;
+    if (activeUser) {
+      getUserGroups(activeUser.uid).then(setGroups);
       getUserDMChannels().then(dmData => {
           setDms(dmData);
           // If deep link provided, switch to it
@@ -72,14 +73,14 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
               if (target) {
                   setActiveChannelId(target.id);
                   setActiveChannelType(target.type as any);
-                  setActiveChannelName(target.name.replace(currentUser?.displayName || '', '').replace('&', '').trim() || 'Chat');
+                  setActiveChannelName(target.name.replace(activeUser?.displayName || '', '').replace('&', '').trim() || 'Chat');
                   
                   // On mobile, close sidebar if deep linked
                   if (window.innerWidth < 768) setIsSidebarOpen(false);
               }
           }
       });
-      getAllUsers().then(users => setAllUsers(users.filter(u => u.uid !== currentUser.uid)));
+      getAllUsers().then(users => setAllUsers(users.filter(u => u.uid !== activeUser.uid)));
     }
   }, [currentUser, initialChannelId]);
 
@@ -135,7 +136,8 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!newMessage.trim() && selectedFiles.length === 0) return;
+    const activeUser = currentUser || auth?.currentUser;
+    if ((!newMessage.trim() && selectedFiles.length === 0) || !activeUser) return;
 
     let collectionPath;
     if (activeChannelType === 'group') {
@@ -215,10 +217,12 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
       }
   };
 
+  const activeUser = currentUser || auth?.currentUser;
+
   // Only filter by name/email but DO NOT display email in UI
   const filteredUsers = allUsers.filter(u => 
       u.displayName.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
-      u.email.toLowerCase().includes(userSearchQuery.toLowerCase())
+      (u.email && u.email.toLowerCase().includes(userSearchQuery.toLowerCase()))
   );
 
   return (
@@ -250,18 +254,6 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
               </div>
 
               <div>
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 px-2">Teams</h3>
-                  <div className="space-y-0.5">
-                      {groups.length === 0 && <p className="text-xs text-slate-600 px-2 italic">No groups joined</p>}
-                      {groups.map(group => (
-                          <button key={group.id} onClick={() => { setActiveChannelId(group.id); setActiveChannelType('group'); setActiveChannelName(group.name); }} className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm ${activeChannelId === group.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
-                              <Lock size={14} /> {group.name}
-                          </button>
-                      ))}
-                  </div>
-              </div>
-
-              <div>
                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 px-2 flex justify-between items-center">
                       Direct Messages <button onClick={() => setIsSearchingUsers(!isSearchingUsers)} className="hover:text-white"><Plus size={14}/></button>
                   </h3>
@@ -273,7 +265,7 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
                               {filteredUsers.map(u => (
                                   <button key={u.uid} onClick={() => handleStartDM(u.uid, u.displayName)} className="w-full text-left px-2 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white flex items-center gap-2">
                                       <div className="w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center text-[8px] font-bold">{u.displayName[0]}</div>
-                                      <span>{u.displayName}</span> {/* Privacy: Do not show email here */}
+                                      <span>{u.displayName}</span>
                                   </button>
                               ))}
                           </div>
@@ -282,22 +274,22 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
 
                   <div className="space-y-0.5">
                       {dms.map(dm => (
-                          <button key={dm.id} onClick={() => { setActiveChannelId(dm.id); setActiveChannelType('dm'); setActiveChannelName(dm.name.replace(currentUser?.displayName || '', '').replace('&', '').trim() || 'DM'); }} className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm ${activeChannelId === dm.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                          <button key={dm.id} onClick={() => { setActiveChannelId(dm.id); setActiveChannelType('dm'); setActiveChannelName(dm.name.replace(activeUser?.displayName || '', '').replace('&', '').trim() || 'DM'); }} className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm ${activeChannelId === dm.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                               <User size={14} />
-                              <span className="truncate">{dm.name.replace(currentUser?.displayName || '', '').replace('&', '').trim() || 'Chat'}</span>
+                              <span className="truncate">{dm.name.replace(activeUser?.displayName || '', '').replace('&', '').trim() || 'Chat'}</span>
                           </button>
                       ))}
                   </div>
               </div>
           </div>
           
-          {currentUser && (
+          {activeUser && (
               <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold overflow-hidden">
-                      {currentUser.photoURL ? <img src={currentUser.photoURL} className="w-full h-full object-cover"/> : currentUser.displayName?.[0]}
+                      {activeUser.photoURL ? <img src={activeUser.photoURL} className="w-full h-full object-cover"/> : activeUser.displayName?.[0]}
                   </div>
                   <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-white truncate">{currentUser.displayName}</p>
+                      <p className="text-sm font-bold text-white truncate">{activeUser.displayName}</p>
                       <p className="text-xs text-slate-500 truncate">Online</p>
                   </div>
               </div>
@@ -326,7 +318,7 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
                   </div>
               ) : (
                   messages.map((msg, i) => {
-                      const isMe = msg.senderId === currentUser?.uid;
+                      const isMe = msg.senderId === activeUser?.uid;
                       const showHeader = i === 0 || messages[i-1].senderId !== msg.senderId || (msg.timestamp?.toMillis && messages[i-1].timestamp?.toMillis && (msg.timestamp.toMillis() - messages[i-1].timestamp.toMillis() > 300000));
                       const isSelected = selectedMessageId === msg.id;
                       const attachments = (msg as any).attachments || [];

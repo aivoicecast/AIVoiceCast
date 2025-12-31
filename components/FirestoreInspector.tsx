@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { getDebugCollectionDocs, seedDatabase, recalculateGlobalStats, claimSystemChannels, setUserSubscriptionTier } from '../services/firestoreService';
 import { ArrowLeft, RefreshCw, Database, Table, Code, Search, UploadCloud, Users, ShieldCheck, Crown, XCircle } from 'lucide-react';
+import { auth } from '../services/firebaseConfig';
 
 interface FirestoreInspectorProps {
   onBack: () => void;
@@ -25,6 +26,8 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack }
   const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'json'>('table');
   const [error, setError] = useState<string | null>(null);
+
+  const currentUser = auth?.currentUser;
 
   const fetchCollection = async (name: string) => {
     setActiveCollection(name);

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel } from '../types';
 import { getUserRecordings, deleteRecordingReference } from '../services/firestoreService';
@@ -28,7 +29,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const [recordScreen, setRecordScreen] = useState(false);
   const [recordCamera, setRecordCamera] = useState(false);
 
-  const currentUser = auth.currentUser;
+  // Use optional chaining for safety
+  const currentUser = auth?.currentUser;
 
   useEffect(() => {
     loadData();

@@ -18,7 +18,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({ onBack }) => {
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   
-  const currentUser = auth.currentUser;
+  // Use optional chaining for safety
+  const currentUser = auth?.currentUser;
 
   const loadData = async () => {
     if (!currentUser) return;
@@ -269,8 +270,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({ onBack }) => {
               id: 'new',
               lectureId: 'manual',
               channelId: 'manual',
-              userId: currentUser.uid,
-              userName: currentUser.displayName || 'User',
+              userId: currentUser?.uid,
+              userName: currentUser?.displayName || 'User',
               transcript: [],
               createdAt: Date.now(),
               designDoc: "# New Specification\n\nStart writing...",
