@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
 import { 
@@ -231,7 +230,15 @@ const App: React.FC = () => {
   useEffect(() => {
     const updateAudioState = () => setAudioIsPlaying(isAnyAudioPlaying());
     window.addEventListener('audio-audit-updated', updateAudioState);
-    return () => window.removeEventListener('audio-audit-updated', updateAudioState);
+    
+    // Add Firebase Config trigger listener
+    const openConfig = () => setIsFirebaseModalOpen(true);
+    window.addEventListener('open-firebase-config', openConfig);
+
+    return () => {
+        window.removeEventListener('audio-audit-updated', updateAudioState);
+        window.removeEventListener('open-firebase-config', openConfig);
+    };
   }, []);
 
   useEffect(() => {
@@ -355,7 +362,6 @@ const App: React.FC = () => {
           setCurrentUser(user);
           if (user) {
             try {
-              // Safety: Don't let a hanging profile fetch block the entire app
               const profilePromise = getUserProfile(user.uid);
               const profileTimeout = new Promise(resolve => setTimeout(() => resolve(null), 5000));
               const profile = await Promise.race([profilePromise, profileTimeout]) as UserProfile | null;
@@ -373,7 +379,6 @@ const App: React.FC = () => {
         setAuthLoading(false);
     }
 
-    // Safety fallback: Release the loading screen if initialization hangs for more than 8 seconds
     const safetyTimeout = setTimeout(() => {
         setAuthLoading(prev => {
             if (prev) {
@@ -1076,16 +1081,14 @@ const App: React.FC = () => {
                 {language === 'en' ? '中' : 'EN'}
               </button>
 
-              {/* Configuration Warning - Hidden if keys detected in private_keys.ts */}
-              {!isFirebaseConfigured && (
-                  <button 
-                      onClick={() => setIsFirebaseModalOpen(true)}
-                      className="p-2 text-amber-500 bg-amber-900/20 rounded-full border border-amber-900/50 hover:bg-amber-900/40 transition-colors"
-                      title="Setup Firebase Configuration"
-                  >
-                      <AlertTriangle size={18} />
-                  </button>
-              )}
+              {/* Backend Status Icon */}
+              <button 
+                  onClick={() => setIsFirebaseModalOpen(true)}
+                  className={`p-2 rounded-full border transition-colors ${isFirebaseConfigured ? 'text-emerald-500 bg-emerald-900/20 border-emerald-900/50 hover:bg-emerald-900/40' : 'text-amber-500 bg-amber-900/20 border-amber-900/50 hover:bg-amber-900/40'}`}
+                  title={isFirebaseConfigured ? "Backend Connected" : "Backend Disconnected"}
+              >
+                  {isFirebaseConfigured ? <RefreshCw size={18} /> : <AlertTriangle size={18} />}
+              </button>
 
               {currentUser && (
                   <div className="hidden sm:block">

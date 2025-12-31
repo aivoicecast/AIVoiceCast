@@ -1,4 +1,3 @@
-
 // Service for Google Drive and Google Docs API interactions
 
 export interface DriveFile {
@@ -197,7 +196,6 @@ export async function readDriveFile(accessToken: string, fileId: string): Promis
       const errText = await res.text();
       throw new Error(`Drive Read Failed (${res.status}): ${errText}`);
   }
-  /* Fix: changed 'return await text;' to 'return await res.text();' */
   return await res.text();
 }
 

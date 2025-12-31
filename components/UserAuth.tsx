@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { signInWithGoogle, signOut } from '../services/authService';
-import { firebase, getAuth } from '../services/firebaseConfig';
-import { LogOut, User as UserIcon, Loader2, AlertCircle, Copy, ExternalLink, ShieldAlert, Settings } from 'lucide-react';
+import { firebase, getAuth, isFirebaseConfigured } from '../services/firebaseConfig';
+import { LogOut, User as UserIcon, Loader2, AlertCircle, Copy, ExternalLink, ShieldAlert, Settings, Flame } from 'lucide-react';
 import { syncUserProfile, logUserActivity } from '../services/firestoreService';
 
 export const UserAuth: React.FC = () => {
@@ -13,20 +12,8 @@ export const UserAuth: React.FC = () => {
   useEffect(() => {
     const authInstance = getAuth();
     if (!authInstance) {
-        // Retry logic for cases where Firebase initialization takes a few extra ticks
-        const retryTimer = setTimeout(() => {
-            const secondAttempt = getAuth();
-            if (secondAttempt) {
-                secondAttempt.onAuthStateChanged((u: any) => {
-                    setUser(u);
-                    setLoading(false);
-                    if (u) syncUserProfile(u).catch(e => console.error("Profile sync failed", e));
-                });
-            } else {
-                setLoading(false);
-            }
-        }, 1000);
-        return () => clearTimeout(retryTimer);
+        setLoading(false);
+        return;
     }
 
     const unsubscribe = authInstance.onAuthStateChanged((u: any) => {
@@ -65,12 +52,12 @@ export const UserAuth: React.FC = () => {
           title: "Provider Disabled",
           message: "Google Sign-In is not enabled in your Firebase project. Please enable it in the console."
         });
-      } else if (e.message?.includes("initialized")) {
+      } else if (e.message?.includes("initialized") || e.message?.includes("configuration")) {
         setErrorDetails({
             code: 'init-error',
             domain,
-            title: "Configuration Error",
-            message: "Firebase Auth is not initialized. This typically means your Firebase Config JSON is missing or incorrect."
+            title: "Configuration Missing",
+            message: "Firebase is not correctly configured. Please provide a valid Firebase config object in the Setup tool."
         });
       } else if (e.code === 'auth/popup-closed-by-user') {
         // Silently ignore
@@ -88,13 +75,17 @@ export const UserAuth: React.FC = () => {
     await signOut();
   };
 
-  if (loading) return null;
+  if (loading) return (
+    <div className="flex items-center px-4 py-2 bg-slate-800/50 rounded-full border border-slate-700">
+        <Loader2 size={16} className="animate-spin text-indigo-400" />
+    </div>
+  );
 
   if (user) {
     return (
       <div className="flex items-center space-x-2 bg-slate-800 rounded-full pl-2 pr-3 py-1 border border-slate-700">
         <img 
-          src={user.photoURL || ''} 
+          src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=6366f1&color=fff`} 
           alt={user.displayName || 'User'} 
           className="w-6 h-6 rounded-full border border-indigo-500"
         />
@@ -130,7 +121,7 @@ export const UserAuth: React.FC = () => {
                         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">How to resolve</p>
                         <div className="text-left text-xs text-slate-400 space-y-2">
                             <p>1. Ensure you have provided a valid Firebase Config in the application settings.</p>
-                            <p>2. Click the <strong>Setup Icon</strong> (Alert Triangle) in the navigation bar to open the config tool.</p>
+                            <p>2. Click the <strong>Setup Icon</strong> (Flame) in the navigation bar to open the config tool.</p>
                         </div>
                     </div>
 
@@ -165,13 +156,26 @@ export const UserAuth: React.FC = () => {
          </div>
       )}
       
-      <button
-        onClick={handleLogin}
-        className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-full border border-slate-700 transition-all shadow-md active:scale-95"
-      >
-        <UserIcon size={16} />
-        <span>Sign In</span>
-      </button>
+      {!isFirebaseConfigured ? (
+          <button
+            onClick={() => {
+                const event = new CustomEvent('open-firebase-config');
+                window.dispatchEvent(event);
+            }}
+            className="flex items-center space-x-2 px-4 py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 text-sm font-bold rounded-full border border-amber-600/30 transition-all shadow-md active:scale-95"
+          >
+            <Flame size={16} className="animate-pulse" />
+            <span>Setup Backend</span>
+          </button>
+      ) : (
+          <button
+            onClick={handleLogin}
+            className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-full border border-slate-700 transition-all shadow-md active:scale-95"
+          >
+            <UserIcon size={16} />
+            <span>Sign In</span>
+          </button>
+      )}
     </div>
   );
 };
