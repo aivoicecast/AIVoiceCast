@@ -13,13 +13,9 @@ export async function signInWithGoogle(): Promise<any> {
   }
 
   try {
-    // Access GoogleAuthProvider safely from the augmented firebase object
-    const authModule = (firebase as any).auth;
-    if (!authModule || !authModule.GoogleAuthProvider) {
-        throw new Error("Firebase Auth module failed to initialize correctly.");
-    }
-
-    const provider = new authModule.GoogleAuthProvider();
+    // In compat mode, providers are accessed via the firebase.auth namespace.
+    // The side-effect import in firebaseConfig.ts ensures this is populated.
+    const provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({
       prompt: 'select_account'
     });
@@ -35,8 +31,7 @@ export async function signInWithGoogle(): Promise<any> {
 export async function connectGoogleDrive(): Promise<string> {
   if (!isFirebaseConfigured) throw new Error("Firebase not configured");
   
-  const authModule = (firebase as any).auth;
-  const provider = new authModule.GoogleAuthProvider();
+  const provider = new firebase.auth.GoogleAuthProvider();
   provider.addScope('https://www.googleapis.com/auth/drive.file');
   
   if (!auth?.currentUser) throw new Error("Must be logged in");
@@ -54,8 +49,7 @@ export async function connectGoogleDrive(): Promise<string> {
 }
 
 export async function reauthenticateWithGitHub(): Promise<{ user: any, token: string | null }> {
-    const authModule = (firebase as any).auth;
-    const provider = new authModule.GitHubAuthProvider();
+    const provider = new firebase.auth.GitHubAuthProvider();
     provider.addScope('repo');
     provider.addScope('user');
     
@@ -72,8 +66,7 @@ export async function reauthenticateWithGitHub(): Promise<{ user: any, token: st
 }
 
 export async function signInWithGitHub(): Promise<{ user: any, token: string | null }> {
-  const authModule = (firebase as any).auth;
-  const provider = new authModule.GitHubAuthProvider();
+  const provider = new firebase.auth.GitHubAuthProvider();
   provider.addScope('repo');
   provider.addScope('user');
 
