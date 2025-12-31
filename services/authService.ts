@@ -1,6 +1,27 @@
 
 import { firebase, auth, isFirebaseConfigured } from './firebaseConfig';
 
+/**
+ * Safely retrieves an Auth Provider from the firebase compat namespace.
+ * In some ESM environments, side-effect modules (like compat/auth) might attach 
+ * to the firebase object in slightly different ways.
+ */
+function getAuthProvider(providerName: 'GoogleAuthProvider' | 'GitHubAuthProvider') {
+  // 1. Check the standard firebase.auth namespace (mutation from compat/auth)
+  const authModule = (firebase as any).auth;
+  if (authModule && authModule[providerName]) {
+    return new authModule[providerName]();
+  }
+  
+  // 2. Fallback: try accessing via the auth instance constructor if available
+  // (Standard compat doesn't always put it here, but some shims do)
+  if (auth && (auth as any).constructor && (auth as any).constructor[providerName]) {
+      return new (auth as any).constructor[providerName]();
+  }
+
+  throw new Error(`Firebase Auth provider ${providerName} is not initialized. Please ensure your Firebase configuration is valid and the Auth module is properly loaded.`);
+}
+
 export async function signInWithGoogle(): Promise<any> {
   if (!isFirebaseConfigured) {
     throw new Error("Firebase is not configured. Please update your settings.");
@@ -13,13 +34,12 @@ export async function signInWithGoogle(): Promise<any> {
   }
 
   try {
-    // In compat mode, providers are accessed via the firebase.auth namespace.
-    // The side-effect import in firebaseConfig.ts ensures this is populated.
-    const provider = new firebase.auth.GoogleAuthProvider();
+    const provider = getAuthProvider('GoogleAuthProvider');
     provider.setCustomParameters({
       prompt: 'select_account'
     });
     
+    // Use the auth instance for the popup call
     const result = await auth.signInWithPopup(provider);
     return result.user;
   } catch (error: any) {
@@ -31,7 +51,7 @@ export async function signInWithGoogle(): Promise<any> {
 export async function connectGoogleDrive(): Promise<string> {
   if (!isFirebaseConfigured) throw new Error("Firebase not configured");
   
-  const provider = new firebase.auth.GoogleAuthProvider();
+  const provider = getAuthProvider('GoogleAuthProvider');
   provider.addScope('https://www.googleapis.com/auth/drive.file');
   
   if (!auth?.currentUser) throw new Error("Must be logged in");
@@ -49,7 +69,7 @@ export async function connectGoogleDrive(): Promise<string> {
 }
 
 export async function reauthenticateWithGitHub(): Promise<{ user: any, token: string | null }> {
-    const provider = new firebase.auth.GitHubAuthProvider();
+    const provider = getAuthProvider('GitHubAuthProvider');
     provider.addScope('repo');
     provider.addScope('user');
     
@@ -66,7 +86,7 @@ export async function reauthenticateWithGitHub(): Promise<{ user: any, token: st
 }
 
 export async function signInWithGitHub(): Promise<{ user: any, token: string | null }> {
-  const provider = new firebase.auth.GitHubAuthProvider();
+  const provider = getAuthProvider('GitHubAuthProvider');
   provider.addScope('repo');
   provider.addScope('user');
 
