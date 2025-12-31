@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { signInWithGoogle, signOut } from '../services/authService';
-import { firebase, getAuth, isFirebaseConfigured } from '../services/firebaseConfig';
-import { LogOut, User as UserIcon, Loader2, AlertCircle, Copy, ExternalLink, ShieldAlert, Settings, Flame } from 'lucide-react';
+import { getAuth } from '../services/firebaseConfig';
+import { LogOut, User as UserIcon, Loader2 } from 'lucide-react';
 import { syncUserProfile, logUserActivity } from '../services/firestoreService';
 
 export const UserAuth: React.FC = () => {
@@ -34,11 +34,6 @@ export const UserAuth: React.FC = () => {
       }
     } catch (e: any) {
       console.error("Login failed:", e);
-      if (e.code === 'auth/popup-closed-by-user') {
-        // Silently ignore
-      } else {
-        alert(`Login failed: ${e.message}`);
-      }
     }
   };
 
@@ -62,14 +57,14 @@ export const UserAuth: React.FC = () => {
         <img 
           src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'U')}&background=6366f1&color=fff`} 
           alt={user.displayName || 'User'} 
-          className="w-6 h-6 rounded-full border border-indigo-500"
+          className="w-7 h-7 rounded-full border border-indigo-500 object-cover"
         />
-        <span className="text-xs font-medium text-slate-300 hidden sm:inline max-w-[100px] truncate">
-          {user.displayName}
+        <span className="text-xs font-bold text-slate-200 hidden sm:inline max-w-[100px] truncate">
+          {user.displayName?.split(' ')[0]}
         </span>
         <button 
           onClick={handleLogout}
-          className="ml-2 text-slate-500 hover:text-red-400 transition-colors"
+          className="ml-1 text-slate-500 hover:text-red-400 transition-colors"
           title="Sign Out"
         >
           <LogOut size={14} />
@@ -79,14 +74,12 @@ export const UserAuth: React.FC = () => {
   }
 
   return (
-    <div className="flex items-center space-x-2 relative">
-      <button
-        onClick={handleLogin}
-        className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium rounded-full border border-slate-700 transition-all shadow-md active:scale-95"
-      >
-        <UserIcon size={16} />
-        <span>Sign In</span>
-      </button>
-    </div>
+    <button
+      onClick={handleLogin}
+      className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-full transition-all shadow-lg active:scale-95"
+    >
+      <UserIcon size={16} />
+      <span>Sign In</span>
+    </button>
   );
 };

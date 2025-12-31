@@ -36,8 +36,10 @@ import { CardWorkshop } from './components/CardWorkshop';
 import { CardExplorer } from './components/CardExplorer';
 import { IconGenerator } from './components/IconGenerator';
 import { FirestoreInspector } from './components/FirestoreInspector';
+import { BrandLogo } from './components/BrandLogo';
 
 import { getCurrentUser, getDriveToken, signOut } from './services/authService';
+import { getAuth } from './services/firebaseConfig';
 import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from './services/googleDriveService';
 import { getUserChannels, saveUserChannel, deleteUserChannel } from './utils/db';
 import { HANDCRAFTED_CHANNELS } from './utils/initialData';
@@ -163,7 +165,6 @@ const App: React.FC = () => {
   const [initError, setInitError] = useState<string | null>(null);
   const addLog = (msg: string) => { console.log(`[BOOT] ${msg}`); setBootLogs(prev => [...prev, msg]); };
 
-  /* Fix: Expanded liveSessionParams state to include bookingId and activeSegment context */
   const [liveSessionParams, setLiveSessionParams] = useState<{
     channel: Channel;
     context?: string;
@@ -190,13 +191,12 @@ const App: React.FC = () => {
   ];
 
   const handleSetViewState = (newState: any) => {
-    stopAllPlatformAudio(`Navigation:${viewState}->${newState}`);
+    stopAllPlatformAudio(`NavigationTransition:${viewState}->${newState}`);
     setViewState(newState);
     setIsAppsMenuOpen(false);
     setIsUserMenuOpen(false);
   };
 
-  /* Fix: Updated handleStartLiveSession signature to match sub-components and capture all context needed for a session */
   const handleStartLiveSession = (
     channel: Channel, 
     context?: string, 
@@ -224,12 +224,29 @@ const App: React.FC = () => {
   }, [userProfile, userChannels, currentUser]);
 
   useEffect(() => {
+    const authInstance = getAuth();
+    if (authInstance) {
+        const unsubscribe = authInstance.onAuthStateChanged((u: any) => {
+            if (u) {
+                setCurrentUser(u);
+                addLog(`Auth synchronized: ${u.displayName}`);
+            } else {
+                // Fallback to localStorage if Firebase hasn't resolved yet but we have local session
+                const local = getCurrentUser();
+                if (local) setCurrentUser(local);
+            }
+        });
+        return () => unsubscribe();
+    }
+  }, []);
+
+  useEffect(() => {
     const initializeApp = async () => {
       try {
         addLog("Detecting environment...");
         const user = getCurrentUser();
         if (user) {
-            addLog(`Found active user: ${user.displayName}`);
+            addLog(`Found active user session.`);
             setCurrentUser(user);
             const token = getDriveToken();
             if (token) {
@@ -337,24 +354,31 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <div className="min-h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
-        <nav className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 h-16 flex items-center">
-          <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
-              <div className="flex items-center cursor-pointer" onClick={() => { handleSetViewState('directory'); setActiveTab('categories'); }}>
-                <div className="bg-indigo-600 p-2 rounded-xl shadow-lg shadow-indigo-500/20"><Podcast className="text-white w-6 h-6" /></div>
-                <span className="ml-3 text-xl font-black tracking-tighter">AIVoiceCast</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <button onClick={() => setLanguage(prev => prev === 'en' ? 'zh' : 'en')} className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold transition-all hover:bg-slate-700">{language === 'en' ? '中' : 'EN'}</button>
-                <UserAuth />
-                {currentUser && <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="p-2 rounded-full hover:bg-slate-800 transition-colors"><Menu size={24}/></button>}
-              </div>
-          </div>
-        </nav>
-
         {!currentUser ? (
           <LoginPage onPrivacyClick={() => setIsPrivacyOpen(true)} onMissionClick={() => handleSetViewState('mission')} />
         ) : (
           <>
+              <nav className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 h-16 flex items-center">
+                <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
+                    <div className="flex items-center cursor-pointer" onClick={() => { handleSetViewState('directory'); setActiveTab('categories'); }}>
+                      <BrandLogo size={36} className="mr-3" />
+                      <span className="text-xl font-black tracking-tighter uppercase italic">AIVoiceCast</span>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      <button onClick={() => setLanguage(prev => prev === 'en' ? 'zh' : 'en')} className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold transition-all hover:bg-slate-700">{language === 'en' ? '中' : 'EN'}</button>
+                      <UserAuth />
+                      <button 
+                          onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)} 
+                          className={`p-2 rounded-full transition-colors hidden md:block ${isAppsMenuOpen ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                          title="Application Suite"
+                      >
+                          <LayoutGrid size={24}/>
+                      </button>
+                      <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="p-2 rounded-full hover:bg-slate-800 transition-colors"><Menu size={24}/></button>
+                    </div>
+                </div>
+              </nav>
+
               <div className="flex-1 overflow-hidden h-[calc(100vh-64px)] pb-16 md:pb-0">
                   {viewState === 'directory' && (
                       <div className="h-full flex flex-col">
@@ -378,7 +402,6 @@ const App: React.FC = () => {
                       </div>
                   )}
                   
-                  {/* --- Robust View Dispatcher --- */}
                   {viewState === 'podcast_detail' && activeChannelId && activeChannel && (
                     <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} />
                   )}
@@ -389,7 +412,6 @@ const App: React.FC = () => {
                           recordingEnabled={liveSessionParams.recordingEnabled}
                           videoEnabled={liveSessionParams.videoEnabled}
                           cameraEnabled={liveSessionParams.cameraEnabled}
-                          /* Fix: Pass missing context parameters to LiveSession */
                           activeSegment={liveSessionParams.activeSegment}
                           existingDiscussionId={liveSessionParams.bookingId}
                           onEndSession={() => handleSetViewState('directory')}
@@ -407,16 +429,6 @@ const App: React.FC = () => {
                   {viewState === 'user_guide' && <UserManual onBack={() => handleSetViewState('directory')} />}
                   {viewState === 'icon_generator' && <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} />}
                   {viewState === 'firestore_debug' && <FirestoreInspector onBack={() => handleSetViewState('directory')} />}
-                  
-                  {/* Fallback to Directory if state is unhandled or missing */}
-                  {!['directory', 'podcast_detail', 'live_session', 'code_studio', 'whiteboard', 'blog', 'chat', 'careers', 'notebook_viewer', 'card_workshop', 'card_explorer', 'user_guide', 'icon_generator', 'firestore_debug'].includes(viewState) && (
-                     <div className="h-full flex flex-col items-center justify-center p-8 text-center">
-                        <Terminal className="text-slate-700 mb-4" size={48} />
-                        <h3 className="text-lg font-bold text-slate-400">Context Missing</h3>
-                        <p className="text-sm text-slate-600 mb-6">The requested view could not be rendered because its data context is unavailable.</p>
-                        <button onClick={() => handleSetViewState('directory')} className="px-6 py-2 bg-indigo-600 rounded-lg text-white font-bold">Return Home</button>
-                     </div>
-                  )}
               </div>
 
               <MobileBottomNav />
@@ -446,8 +458,8 @@ const App: React.FC = () => {
               )}
 
               {isAppsMenuOpen && (
-                  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
-                      <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-6 animate-fade-in-up">
+                  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md" onClick={() => setIsAppsMenuOpen(false)}>
+                      <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg p-6 animate-fade-in-up" onClick={e => e.stopPropagation()}>
                           <div className="flex justify-between items-center mb-6">
                               <h2 className="text-xl font-bold text-white">Application Suite</h2>
                               <button onClick={() => setIsAppsMenuOpen(false)} className="text-slate-400 hover:text-white transition-colors"><X/></button>
