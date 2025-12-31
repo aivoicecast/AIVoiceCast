@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
 import { 
@@ -13,6 +14,7 @@ import { UserAuth } from './components/UserAuth';
 import { CreateChannelModal } from './components/CreateChannelModal';
 import { VoiceCreateModal } from './components/VoiceCreateModal';
 import { DataSyncModal } from './components/DataSyncModal';
+import { FirebaseConfigModal } from './components/FirebaseConfigModal';
 import { DebugView } from './components/DebugView';
 import { CloudDebugView } from './components/CloudDebugView';
 import { PublicChannelInspector } from './components/PublicChannelInspector';
@@ -168,6 +170,7 @@ const App: React.FC = () => {
   
   const [isVoiceCreateOpen, setIsVoiceCreateOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false); 
   const [isPricingOpen, setIsPricingOpen] = useState(false); 
   
@@ -1056,10 +1059,15 @@ const App: React.FC = () => {
                 {language === 'en' ? '中' : 'EN'}
               </button>
 
+              {/* Configuration Warning */}
               {!isFirebaseConfigured && (
-                  <div className="p-2 text-amber-500 bg-amber-900/20 rounded-full border border-amber-900/50">
+                  <button 
+                      onClick={() => setIsFirebaseModalOpen(true)}
+                      className="p-2 text-amber-500 bg-amber-900/20 rounded-full border border-amber-900/50 hover:bg-amber-900/40 transition-colors"
+                      title="Setup Firebase Configuration"
+                  >
                       <AlertTriangle size={18} />
-                  </div>
+                  </button>
               )}
 
               {currentUser && (
@@ -1316,6 +1324,7 @@ const App: React.FC = () => {
             <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setCreateModalDate(null); }} onCreate={handleCreateChannel} initialDate={createModalDate} />
             <VoiceCreateModal isOpen={isVoiceCreateOpen} onClose={() => setIsVoiceCreateOpen(false)} onCreate={handleCreateChannel} />
             <DataSyncModal isOpen={isSyncModalOpen} onClose={() => setIsSyncModalOpen(false)} />
+            <FirebaseConfigModal isOpen={isFirebaseModalOpen} onClose={() => setIsFirebaseModalOpen(false)} onConfigUpdate={() => {}} />
 
             {isAccountSettingsOpen && safeUserProfile && (
                 <SettingsModal 

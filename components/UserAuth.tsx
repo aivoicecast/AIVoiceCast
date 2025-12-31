@@ -1,17 +1,16 @@
+
 import React, { useState, useEffect } from 'react';
 import { signInWithGoogle, signOut } from '../services/authService';
 import { firebase, auth } from '../services/firebaseConfig';
-import { LogOut, User as UserIcon, Loader2, AlertCircle, Copy, ExternalLink, ShieldAlert } from 'lucide-react';
+import { LogOut, User as UserIcon, Loader2, AlertCircle, Copy, ExternalLink, ShieldAlert, Settings } from 'lucide-react';
 import { syncUserProfile, logUserActivity } from '../services/firestoreService';
 
 export const UserAuth: React.FC = () => {
-  // Fix: changed 'firebase.User' to 'any' because 'firebase' from config is a value, not a namespace with exported 'User' type
   const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorDetails, setErrorDetails] = useState<{ code: string; domain: string; title: string; message: string } | null>(null);
 
   useEffect(() => {
-    // Safety check for environments where Firebase may not be initialized correctly
     if (!auth) {
         setLoading(false);
         return;
@@ -52,6 +51,13 @@ export const UserAuth: React.FC = () => {
           domain,
           title: "Provider Disabled",
           message: "Google Sign-In is not enabled in your Firebase project. Please enable it in the console."
+        });
+      } else if (e.message?.includes("initialized")) {
+        setErrorDetails({
+            code: 'init-error',
+            domain,
+            title: "Configuration Error",
+            message: "Firebase Auth is not initialized. This typically means your Firebase Config JSON is missing or incorrect."
         });
       } else if (e.code === 'auth/popup-closed-by-user') {
         // Silently ignore
@@ -108,26 +114,21 @@ export const UserAuth: React.FC = () => {
 
                 <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4">
                     <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Your Current Domain</p>
-                        <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-lg border border-slate-800 group">
-                            <code className="text-xs text-indigo-300 flex-1 truncate font-mono">{errorDetails.domain}</code>
-                            <button 
-                                onClick={() => { navigator.clipboard.writeText(errorDetails.domain); alert("Domain copied!"); }}
-                                className="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-white transition-colors"
-                            >
-                                <Copy size={14} />
-                            </button>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">How to resolve</p>
+                        <div className="text-left text-xs text-slate-400 space-y-2">
+                            <p>1. Ensure you have provided a valid Firebase Config in the application settings.</p>
+                            <p>2. Click the <strong>Setup Icon</strong> (Alert Triangle) in the navigation bar to open the config tool.</p>
                         </div>
                     </div>
 
                     <div className="text-left space-y-2">
-                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">How to Fix</p>
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Verify Console Settings</p>
                         <ol className="text-xs text-slate-400 list-decimal pl-4 space-y-1">
                             <li>Go to <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-indigo-400 underline inline-flex items-center gap-0.5">Firebase Console <ExternalLink size={10}/></a></li>
                             {errorDetails.code === 'auth/unauthorized-domain' ? (
                               <>
                                 <li><strong>Auth</strong> > <strong>Settings</strong> > <strong>Authorized Domains</strong></li>
-                                <li>Click <strong>Add Domain</strong> and paste the URL above</li>
+                                <li>Click <strong>Add Domain</strong> and paste: <code className="text-indigo-300">{errorDetails.domain}</code></li>
                               </>
                             ) : (
                               <>
@@ -144,7 +145,7 @@ export const UserAuth: React.FC = () => {
                         onClick={() => setErrorDetails(null)}
                         className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all"
                     >
-                        Close
+                        Dismiss
                     </button>
                 </div>
             </div>
