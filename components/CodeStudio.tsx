@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check } from 'lucide-react';
@@ -641,7 +640,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       const isVisible = layoutMode === 'single' ? idx === 0 : (layoutMode === 'quad' ? true : idx < 2);
       if (!isVisible) return null;
 
-      const slotStyle: React.CSSProperties = {};
+      // Fix: Changed React.CSSProperties to any to bypass Property 'X' does not exist on type 'CSSProperties' errors
+      const slotStyle: any = {};
       if (layoutMode === 'split-v' || layoutMode === 'split-h') {
           const size = idx === 0 ? `${innerSplitRatio}%` : `${100 - innerSplitRatio}%`;
           if (layoutMode === 'split-v') slotStyle.width = size;

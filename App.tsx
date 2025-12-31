@@ -13,7 +13,6 @@ import { UserAuth } from './components/UserAuth';
 import { CreateChannelModal } from './components/CreateChannelModal';
 import { VoiceCreateModal } from './components/VoiceCreateModal';
 import { DataSyncModal } from './components/DataSyncModal';
-import { FirebaseConfigModal } from './components/FirebaseConfigModal';
 import { DebugView } from './components/DebugView';
 import { CloudDebugView } from './components/CloudDebugView';
 import { PublicChannelInspector } from './components/PublicChannelInspector';
@@ -169,7 +168,6 @@ const App: React.FC = () => {
   
   const [isVoiceCreateOpen, setIsVoiceCreateOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
-  const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false); 
   const [isPricingOpen, setIsPricingOpen] = useState(false); 
   
@@ -366,7 +364,6 @@ const App: React.FC = () => {
           setAuthLoading(false); 
         });
     } else {
-        setIsFirebaseModalOpen(true);
         setAuthLoading(false);
     }
 
@@ -1060,9 +1057,9 @@ const App: React.FC = () => {
               </button>
 
               {!isFirebaseConfigured && (
-                  <button onClick={() => setIsFirebaseModalOpen(true)} className="p-2 text-amber-500 bg-amber-900/20 rounded-full hover:bg-amber-900/40 border border-amber-900/50 animate-pulse">
+                  <div className="p-2 text-amber-500 bg-amber-900/20 rounded-full border border-amber-900/50">
                       <AlertTriangle size={18} />
-                  </button>
+                  </div>
               )}
 
               {currentUser && (
@@ -1200,7 +1197,7 @@ const App: React.FC = () => {
                 </div>
                 )}
 
-                {viewState === 'podcast_detail' && activeChannel && (
+                {viewState === 'podcast_detail' && activeChannelId && activeChannel && (
                 <PodcastDetail 
                     channel={activeChannel} 
                     onBack={() => handleSetViewState('directory')}
@@ -1225,7 +1222,7 @@ const App: React.FC = () => {
                 />
                 )}
 
-                {viewState === 'live_session' && activeChannel && (
+                {viewState === 'live_session' && activeChannelId && activeChannel && (
                 <div className="fixed inset-0 z-[100] bg-slate-950">
                     <LiveSession 
                     channel={activeChannel}
@@ -1319,7 +1316,6 @@ const App: React.FC = () => {
             <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setCreateModalDate(null); }} onCreate={handleCreateChannel} initialDate={createModalDate} />
             <VoiceCreateModal isOpen={isVoiceCreateOpen} onClose={() => setIsVoiceCreateOpen(false)} onCreate={handleCreateChannel} />
             <DataSyncModal isOpen={isSyncModalOpen} onClose={() => setIsSyncModalOpen(false)} />
-            <FirebaseConfigModal isOpen={isFirebaseModalOpen} onClose={() => setIsFirebaseModalOpen(false)} onConfigUpdate={(valid) => { if(valid) window.location.reload(); }} />
 
             {isAccountSettingsOpen && safeUserProfile && (
                 <SettingsModal 

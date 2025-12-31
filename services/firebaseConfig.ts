@@ -32,40 +32,7 @@ if (isFirebaseConfigured) {
     }
 }
 
-/**
- * SAFE PROXY GENERATOR
- * This creates an object that won't throw 'not a function' errors even if the 
- * underlying Firebase module fails to load. It returns a no-op function for 
- * any missing property.
- */
-const createSafeService = (name: 'auth' | 'firestore' | 'storage', dummyObj: any) => {
-    return new Proxy({} as any, {
-        get: (target, prop) => {
-            // 1. Check if the app instance has the service function
-            if (firebaseAppInstance && typeof (firebaseAppInstance as any)[name] === 'function') {
-                const service = (firebaseAppInstance as any)[name]();
-                return service[prop];
-            }
-            // 2. Fallback to global firebase namespace
-            if (typeof (firebase as any)[name] === 'function') {
-                const service = (firebase as any)[name]();
-                return service[prop];
-            }
-            // 3. Use the dummy object if still unavailable
-            if (prop in dummyObj) return dummyObj[prop];
-            
-            // 4. Ultimate fallback: return a no-op function to prevent crashes
-            return () => {
-                console.warn(`Firebase ${name} method '${String(prop)}' called but service is not hydrated.`);
-                return typeof dummyObj.onAuthStateChanged === 'function' && prop === 'onAuthStateChanged' 
-                    ? () => {} 
-                    : undefined;
-            };
-        }
-    });
-};
-
-// Dummy implementations for initial/failed states
+// Dummy implementations for initial/failed states to prevent runtime crashes
 const authDummy = {
     onAuthStateChanged: (cb: any) => { cb(null); return () => {}; },
     signInWithPopup: async () => { throw new Error("Auth unavailable"); },
@@ -79,12 +46,21 @@ const dbDummy = {
             get: async () => ({ exists: false }),
             onSnapshot: (cb: any) => { cb({ docs: [] }); return () => {}; },
             set: async () => {},
-            update: async () => {}
+            update: async () => {},
+            delete: async () => {}
         }),
-        where: () => ({ get: async () => ({ empty: true, docs: [] }), onSnapshot: (cb: any) => { cb({ docs: [] }); return () => {}; } }),
-        limit: () => ({ get: async () => ({ docs: [] }) }),
+        where: () => ({ 
+            get: async () => ({ empty: true, docs: [] }), 
+            onSnapshot: (cb: any) => { cb({ docs: [] }); return () => {}; } 
+        }),
+        limit: () => ({ 
+            get: async () => ({ empty: true, docs: [] }),
+            onSnapshot: (cb: any) => { cb({ docs: [] }); return () => {}; }
+        }),
         orderBy: () => ({ limitToLast: () => ({ onSnapshot: () => () => {} }) })
-    })
+    }),
+    batch: () => ({ set: () => {}, commit: async () => {} }),
+    runTransaction: async (fn: any) => { return await fn({ get: async () => ({ exists: false }), update: () => {}, set: () => {} }); }
 };
 
 const storageDummy = {
@@ -92,14 +68,50 @@ const storageDummy = {
         put: async () => ({}),
         getDownloadURL: async () => "",
         listAll: async () => ({ items: [], prefixes: [] }),
-        getMetadata: async () => ({})
+        getMetadata: async () => ({}),
+        delete: async () => {}
     })
 };
 
+/**
+ * SERVICE PROXY GENERATOR
+ * This creates a proxy that intercepts property access.
+ * It attempts to find the real Firebase service (auth, firestore, storage).
+ * If not found (module not loaded), it falls back to the dummy objects.
+ */
+const createResilientService = (name: 'auth' | 'firestore' | 'storage', dummy: any) => {
+    return new Proxy({} as any, {
+        get: (target, prop) => {
+            let service: any = null;
+            
+            try {
+                // Try retrieving from global namespace (standard for compat)
+                if (typeof (firebase as any)[name] === 'function') {
+                    service = (firebase as any)[name]();
+                } else if (firebaseAppInstance && typeof (firebaseAppInstance as any)[name] === 'function') {
+                    // Fallback to app instance
+                    service = (firebaseAppInstance as any)[name]();
+                }
+            } catch (e) {
+                // Service not ready or not configured
+            }
+
+            const activeSource = service || dummy;
+            const value = activeSource[prop];
+            
+            // Critical: Bind functions to the correct context
+            if (typeof value === 'function') {
+                return value.bind(activeSource);
+            }
+            return value;
+        }
+    });
+};
+
 export const app = firebaseAppInstance;
-export const auth = createSafeService('auth', authDummy);
-export const db = createSafeService('firestore', dbDummy);
-export const storage = createSafeService('storage', storageDummy);
+export const auth: firebase.auth.Auth = createResilientService('auth', authDummy);
+export const db: firebase.firestore.Firestore = createResilientService('firestore', dbDummy);
+export const storage: firebase.storage.Storage = createResilientService('storage', storageDummy);
 
 export { firebase };
 export default firebase;
