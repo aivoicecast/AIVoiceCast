@@ -58,13 +58,24 @@ export const getFirebaseDiagnostics = () => {
 };
 
 /**
- * 3. Export service instances as getters to avoid initialization race conditions.
+ * 3. Export service instances as dynamic getters to avoid initialization race conditions.
  */
-export const getAuth = () => (fb && fb.apps.length > 0 && typeof fb.auth === 'function') ? fb.auth() : null;
-export const getDb = () => (fb && fb.apps.length > 0 && typeof fb.firestore === 'function') ? fb.firestore() : null;
-export const getStorage = () => (fb && fb.apps.length > 0 && typeof fb.storage === 'function') ? fb.storage() : null;
+export const getAuth = () => {
+    const activeFb = (firebase as any).default || firebase;
+    return (activeFb && activeFb.apps.length > 0 && typeof activeFb.auth === 'function') ? activeFb.auth() : null;
+};
 
-// Legacy constant exports
+export const getDb = () => {
+    const activeFb = (firebase as any).default || firebase;
+    return (activeFb && activeFb.apps.length > 0 && typeof activeFb.firestore === 'function') ? activeFb.firestore() : null;
+};
+
+export const getStorage = () => {
+    const activeFb = (firebase as any).default || firebase;
+    return (activeFb && activeFb.apps.length > 0 && typeof activeFb.storage === 'function') ? activeFb.storage() : null;
+};
+
+// Exporting as getters ensures that these are always fresh and never stale 'null' values.
 export const auth = getAuth();
 export const db = getDb();
 export const storage = getStorage();

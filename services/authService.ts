@@ -1,12 +1,12 @@
 
-import { firebase, auth, getAuth } from './firebaseConfig';
+import { firebase, getAuth } from './firebaseConfig';
 
 /**
  * Safely retrieves the active Auth instance.
  * It checks the exported getter first, then falls back to the resolved namespace.
  */
 function getActiveAuth() {
-    // 1. Try the getter (it checks apps.length and function type)
+    // 1. Try the getter
     const active = getAuth();
     if (active) return active;
     

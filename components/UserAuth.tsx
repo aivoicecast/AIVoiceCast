@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { signInWithGoogle, signOut } from '../services/authService';
-import { firebase, auth } from '../services/firebaseConfig';
+import { firebase, getAuth } from '../services/firebaseConfig';
 import { LogOut, User as UserIcon, Loader2, AlertCircle, Copy, ExternalLink, ShieldAlert, Settings } from 'lucide-react';
 import { syncUserProfile, logUserActivity } from '../services/firestoreService';
 
@@ -11,12 +11,25 @@ export const UserAuth: React.FC = () => {
   const [errorDetails, setErrorDetails] = useState<{ code: string; domain: string; title: string; message: string } | null>(null);
 
   useEffect(() => {
-    if (!auth) {
-        setLoading(false);
-        return;
+    const authInstance = getAuth();
+    if (!authInstance) {
+        // Retry logic for cases where Firebase initialization takes a few extra ticks
+        const retryTimer = setTimeout(() => {
+            const secondAttempt = getAuth();
+            if (secondAttempt) {
+                secondAttempt.onAuthStateChanged((u: any) => {
+                    setUser(u);
+                    setLoading(false);
+                    if (u) syncUserProfile(u).catch(e => console.error("Profile sync failed", e));
+                });
+            } else {
+                setLoading(false);
+            }
+        }, 1000);
+        return () => clearTimeout(retryTimer);
     }
 
-    const unsubscribe = auth.onAuthStateChanged((u) => {
+    const unsubscribe = authInstance.onAuthStateChanged((u: any) => {
       setUser(u);
       setLoading(false);
       if (u) {
