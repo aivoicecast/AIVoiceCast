@@ -31,33 +31,43 @@ const fb = resolveFirebaseNamespace(firebase);
 
 // 1. Determine which keys to use (Priority: LocalStorage > private_keys.ts)
 let activeConfig = defaultKeys;
+let usingStoredConfig = false;
+
 try {
     const savedConfig = localStorage.getItem('firebase_config');
     if (savedConfig) {
-        activeConfig = JSON.parse(savedConfig);
-        console.log("[Firebase] Using configuration from LocalStorage.");
+        const parsed = JSON.parse(savedConfig);
+        if (parsed.apiKey && !parsed.apiKey.includes("YOUR_FIREBASE")) {
+            activeConfig = parsed;
+            usingStoredConfig = true;
+        }
     }
 } catch (e) {
-    console.warn("[Firebase] Failed to parse saved config from LocalStorage", e);
+    console.warn("[Firebase] Failed to parse saved config", e);
 }
 
 // 2. Initialize the Firebase app instance
-if (fb && fb.apps && !fb.apps.length && activeConfig.apiKey) {
+const hasValidKey = activeConfig.apiKey && !activeConfig.apiKey.includes("YOUR_FIREBASE");
+
+if (fb && hasValidKey && !fb.apps.length) {
     try {
         fb.initializeApp(activeConfig);
+        console.log("[Firebase] Initialized with", usingStoredConfig ? "LocalStorage" : "private_keys.ts");
     } catch (err) {
         console.error("[Firebase] Initialization error:", err);
     }
 }
 
-// 3. Export instances of the core services.
-// We use a safe check to see if the services were successfully augmented by compat imports.
-export const auth = (fb && typeof fb.auth === 'function') ? fb.auth() : null;
-export const db = (fb && typeof fb.firestore === 'function') ? fb.firestore() : null;
-export const storage = (fb && typeof fb.storage === 'function') ? fb.storage() : null;
+// 3. Export instances of the core services with defensive checks.
+// If fb.auth is not yet attached as a function, return null to allow App.tsx to handle it gracefully via its 'if (auth)' checks.
+export const auth = (fb && fb.apps.length > 0 && typeof fb.auth === 'function') ? fb.auth() : null;
+export const db = (fb && fb.apps.length > 0 && typeof fb.firestore === 'function') ? fb.firestore() : null;
+export const storage = (fb && fb.apps.length > 0 && typeof fb.storage === 'function') ? fb.storage() : null;
 
-// isFirebaseConfigured should be true if essential services are ready
-export const isFirebaseConfigured = !!(fb && fb.apps && fb.apps.length > 0 && auth);
+/**
+ * isFirebaseConfigured is true if valid keys are present.
+ */
+export const isFirebaseConfigured = hasValidKey;
 
 export { fb as firebase };
 export default fb;

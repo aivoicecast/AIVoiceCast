@@ -350,7 +350,7 @@ const App: React.FC = () => {
 
     let unsubscribeAuth = () => {};
 
-    if (isFirebaseConfigured) {
+    if (isFirebaseConfigured && auth) {
         unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
           setCurrentUser(user);
           if (user) {
@@ -1059,7 +1059,7 @@ const App: React.FC = () => {
                 {language === 'en' ? '中' : 'EN'}
               </button>
 
-              {/* Configuration Warning */}
+              {/* Configuration Warning - Hidden if keys detected in private_keys.ts */}
               {!isFirebaseConfigured && (
                   <button 
                       onClick={() => setIsFirebaseModalOpen(true)}
