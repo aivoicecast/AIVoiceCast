@@ -1,7 +1,8 @@
 
-import firebase from 'firebase/app';
+import firebase from 'firebase/compat/app';
 import { auth } from './firebaseConfig';
 
+// Fix: Use direct compat library import for firebase types
 export async function signInWithGoogle(): Promise<firebase.User | null> {
   // Proactive check for file protocol which is a common cause of "operation not supported"
   if (window.location.protocol === 'file:') {
@@ -11,6 +12,7 @@ export async function signInWithGoogle(): Promise<firebase.User | null> {
   }
 
   try {
+    // Fix: access properties on the compat firebase object
     const provider = new firebase.auth.GoogleAuthProvider();
     // Force the account selection screen to allow switching users
     provider.setCustomParameters({
@@ -46,6 +48,7 @@ export async function connectGoogleDrive(): Promise<string> {
   }
 }
 
+// Fix: specify firebase.User return type correctly via compat import
 export async function reauthenticateWithGitHub(): Promise<{ user: firebase.User | null, token: string | null }> {
     const provider = new firebase.auth.GithubAuthProvider();
     provider.addScope('repo');
@@ -63,6 +66,7 @@ export async function reauthenticateWithGitHub(): Promise<{ user: firebase.User 
     }
 }
 
+// Fix: use direct compat types for return value
 export async function signInWithGitHub(): Promise<{ user: firebase.User | null, token: string | null }> {
   const provider = new firebase.auth.GithubAuthProvider();
   // Request repo scope to allow reading and writing private/public repositories
@@ -140,6 +144,7 @@ export async function signOut(): Promise<void> {
   }
 }
 
+// Fix: correct return type for compat user
 export function getCurrentUser(): firebase.User | null {
   return auth.currentUser;
 }

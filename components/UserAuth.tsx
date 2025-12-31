@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import firebase from 'firebase/compat/app';
 import { signInWithGoogle, signOut } from '../services/authService';
+import firebase from 'firebase/compat/app';
 import { auth } from '../services/firebaseConfig';
 import { LogOut, User as UserIcon, Loader2, AlertCircle, Copy, ExternalLink, ShieldAlert } from 'lucide-react';
 import { syncUserProfile, logUserActivity } from '../services/firestoreService';
 
 export const UserAuth: React.FC = () => {
+  // Fix: Use direct compat import for firebase.User type
   const [user, setUser] = useState<firebase.User | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorDetails, setErrorDetails] = useState<{ code: string; domain: string } | null>(null);
