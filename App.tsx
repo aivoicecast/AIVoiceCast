@@ -58,11 +58,14 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fixed ErrorBoundary inheritance to resolve "Property 'state' does not exist on type 'ErrorBoundary'"
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+// Fixed ErrorBoundary inheritance to resolve "Property 'state' does not exist on type 'ErrorBoundary'" 
+// and "Property 'props' does not exist on type 'ErrorBoundary'" by explicitly using React.Component.
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Using property initializer for state to ensure it is correctly typed and accessible in strict TS environments.
+  public override state: ErrorBoundaryState = { hasError: false, error: null };
+  
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
   }
   
   static getDerivedStateFromError(error: Error) { 
@@ -74,7 +77,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
   
   render() {
-    // Fixed: Accessed state property safely as part of class component
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -85,7 +87,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             <h1 className="text-2xl font-bold text-white mb-2">Application Crash Detected</h1>
             <p className="text-slate-400 mb-6">A runtime error occurred in the UI component tree. This is often caused by missing data or a browser incompatibility.</p>
             <div className="bg-black/50 rounded-xl p-4 mb-8 font-mono text-xs text-red-300 overflow-x-auto border border-slate-800">
-              {/* Fixed: Accessed error from state */}
               {this.state.error?.toString()}
             </div>
             <div className="flex gap-4">
@@ -96,7 +97,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         </div>
       );
     }
-    // Fixed: Accessed children from props
     return this.props.children;
   }
 }
@@ -361,7 +361,7 @@ const App: React.FC = () => {
     );
   }
 
-  if (!currentUser) return <LoginPage onPrivacyClick={() => setIsPrivacyOpen(true)} onMissionClick={() => handleSetViewState('mission')} />;
+  if (!currentUser) return <LoginPage onPrivacyClick={() => setIsPrivacyOpen(false)} onMissionClick={() => handleSetViewState('mission')} />;
 
   if (isPrivacyOpen) return <PrivacyPolicy onBack={() => setIsPrivacyOpen(false)} />;
   if (viewState === 'mission') return <MissionManifesto onBack={() => handleSetViewState('directory')} />;
