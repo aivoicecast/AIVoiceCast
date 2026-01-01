@@ -26,6 +26,22 @@ export interface ShippingLabel {
   createdAt: number;
 }
 
+export interface BankingCheck {
+  id: string;
+  payee: string;
+  amount: number;
+  amountWords: string;
+  date: string;
+  memo: string;
+  checkNumber: string;
+  routingNumber: string;
+  accountNumber: string;
+  bankName: string;
+  senderName: string;
+  senderAddress: string;
+  signature: string;
+}
+
 export interface Invitation {
   id: string;
   fromUserId: string;
@@ -178,7 +194,8 @@ export type ViewState =
   | 'card_explorer' 
   | 'card_viewer'
   | 'icon_generator'
-  | 'shipping_labels';
+  | 'shipping_labels'
+  | 'check_designer';
 
 export interface AudioState {
   isConnected: boolean;

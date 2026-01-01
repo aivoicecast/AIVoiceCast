@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet
 } from 'lucide-react';
 import { LiveSession } from './components/LiveSession';
 import { PodcastDetail } from './components/PodcastDetail';
@@ -36,6 +37,7 @@ import { CardWorkshop } from './components/CardWorkshop';
 import { CardExplorer } from './components/CardExplorer';
 import { IconGenerator } from './components/IconGenerator';
 import { ShippingLabelApp } from './components/ShippingLabelApp';
+import { CheckDesigner } from './components/CheckDesigner';
 import { FirestoreInspector } from './components/FirestoreInspector';
 import { BrandLogo } from './components/BrandLogo';
 
@@ -132,6 +134,7 @@ const UI_TEXT = {
     cards: "Card Workshop",
     icons: "Icon Lab",
     shipping: "Shipping Lab",
+    checks: "Check Designer",
     fullscreen: "Toggle Fullscreen"
   },
   zh: {
@@ -163,6 +166,7 @@ const UI_TEXT = {
     cards: "贺卡工坊",
     icons: "图标生成器",
     shipping: "物流实验室",
+    checks: "支票设计器",
     fullscreen: "全屏切换"
   }
 };
@@ -214,6 +218,7 @@ const App: React.FC = () => {
 
   const allApps = [
     { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); setActiveTab('categories'); }, color: 'text-indigo-400' },
+    { id: 'check_designer', label: t.checks, icon: Wallet, action: () => handleSetViewState('check_designer'), color: 'text-amber-400' },
     { id: 'shipping_labels', label: t.shipping, icon: Truck, action: () => handleSetViewState('shipping_labels'), color: 'text-emerald-400' },
     { id: 'icon_lab', label: t.icons, icon: AppWindow, action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400' },
     { id: 'mission', label: t.mission, icon: Rocket, action: () => handleSetViewState('mission'), color: 'text-orange-500' },
@@ -497,6 +502,7 @@ const App: React.FC = () => {
             {viewState === 'user_guide' && <UserManual onBack={() => handleSetViewState('directory')} />}
             {viewState === 'icon_generator' && <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} />}
             {viewState === 'shipping_labels' && <ShippingLabelApp onBack={() => handleSetViewState('directory')} />}
+            {viewState === 'check_designer' && <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} />}
             {viewState === 'firestore_debug' && <FirestoreInspector onBack={() => handleSetViewState('directory')} />}
         </div>
 
