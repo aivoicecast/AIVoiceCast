@@ -61,9 +61,9 @@ interface ErrorBoundaryState {
 
 /**
  * ErrorBoundary component to catch runtime errors in the component tree.
- * Fixed: Changed React.Component to Component to ensure 'props' and other members are correctly typed.
+ * Fixed: Explicitly extend React.Component to resolve typing issue where 'props' was not recognized.
  */
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
@@ -95,6 +95,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         </div>
       );
     }
+    // Fixed: 'this.props' is now correctly recognized due to explicit inheritance from React.Component
     const { children } = this.props;
     return children;
   }

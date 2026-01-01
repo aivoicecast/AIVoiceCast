@@ -1,8 +1,8 @@
-
 import React, { useState } from 'react';
 import { X, Check, Zap, Loader2, Sparkles, Crown, CreditCard, AlertCircle, ShieldCheck } from 'lucide-react';
 import { UserProfile, SubscriptionTier } from '../types';
 import { setUserSubscriptionTier } from '../services/firestoreService';
+import { auth } from '../services/firebaseConfig';
 
 interface PricingModalProps {
   isOpen: boolean;
@@ -18,9 +18,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, use
 
   if (!isOpen) return null;
 
+  // Use the profile UID or fall back to the raw auth UID to prevent hanging
+  const effectiveUid = user?.uid || auth?.currentUser?.uid;
+  const currentTier = user?.subscriptionTier || 'free';
+
   const handleUpgrade = async () => {
-    if (!user || !user.uid) {
-        setError("User profile not found. Please wait for sync or sign in again.");
+    if (!effectiveUid) {
+        setError("User identification failed. Please sign in again.");
         return;
     }
 
@@ -29,8 +33,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, use
     
     try {
       // In this environment, we fulfill the 'Pro' request directly in Firestore 
-      // instead of using a dead Stripe checkout link.
-      await setUserSubscriptionTier(user.uid, 'pro');
+      await setUserSubscriptionTier(effectiveUid, 'pro');
       setSuccess(true);
       onSuccess('pro');
       
@@ -46,10 +49,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, use
     }
   };
 
-  const currentTier = user?.subscriptionTier || 'free';
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fade-in-up my-auto relative">
         
         <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 shrink-0">
@@ -131,7 +132,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, use
                     <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> Code Studio Pro (Git Sync)</li>
                  </ul>
 
-                 {!user ? (
+                 {!effectiveUid ? (
                      <div className="w-full py-3 bg-slate-800 rounded-xl flex items-center justify-center gap-2">
                          <Loader2 size={18} className="animate-spin text-slate-500"/>
                          <span className="text-xs font-bold text-slate-500">Syncing Profile...</span>
