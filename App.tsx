@@ -45,7 +45,7 @@ import { BrandLogo } from './components/BrandLogo';
 import { CoinWallet } from './components/CoinWallet';
 
 import { getCurrentUser, getDriveToken } from './services/authService';
-import { getAuth } from './services/firebaseConfig';
+import { getAuth, db } from './services/firebaseConfig';
 import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from './services/googleDriveService';
 import { getUserChannels, saveUserChannel } from './utils/db';
 import { HANDCRAFTED_CHANNELS } from './utils/initialData';
@@ -61,12 +61,8 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+// Fix: Simplified ErrorBoundary to ensure React context is correctly established for this.props
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Added constructor with super(props) to resolve property 'props' does not exist error.
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-  }
-
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
@@ -99,8 +95,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
     
-    const { children } = this.props;
-    return children;
+    // Fix: Access children directly from this.props to avoid type checking issues with destructuring
+    return this.props.children;
   }
 }
 
@@ -280,8 +276,13 @@ const App: React.FC = () => {
                     }
                 }
             }
-            const profile = await getUserProfile(user.uid);
-            if (profile) setUserProfile(profile);
+            
+            // Set up Real-time listener for user profile (to keep coins in sync)
+            const unsubscribeProfile = db?.collection('users').doc(user.uid).onSnapshot(doc => {
+                if (doc.exists) {
+                    setUserProfile(doc.data() as UserProfile);
+                }
+            });
 
             // Handle QR Claim Route
             const params = new URLSearchParams(window.location.search);
@@ -290,8 +291,6 @@ const App: React.FC = () => {
                 try {
                     const amount = await claimCoinCheck(claimId);
                     alert(`Check Claimed! ${amount} coins added to your wallet.`);
-                    const fresh = await getUserProfile(user.uid);
-                    if (fresh) setUserProfile(fresh);
                 } catch(e: any) {
                     alert("Claim failed: " + e.message);
                 } finally {
@@ -300,6 +299,10 @@ const App: React.FC = () => {
                     window.history.replaceState({}, '', url.toString());
                 }
             }
+
+            return () => {
+                if (unsubscribeProfile) unsubscribeProfile();
+            };
         }
         const localChannels = await getUserChannels();
         setUserChannels(localChannels);

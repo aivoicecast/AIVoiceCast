@@ -3,7 +3,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
   Trash2, Printer, CheckCircle, AlertTriangle, Send, Share2, DollarSign, Calendar, 
-  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette
+  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette, Copy
 } from 'lucide-react';
 import { BankingCheck, UserProfile } from '../types';
 import { GoogleGenAI } from '@google/genai';
@@ -197,10 +197,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               }
           }
 
-          const link = `${window.location.origin}?view=check&id=${finalId}`;
+          // Use ?claim param for Coin Checks so recipient can redeem instantly
+          const link = check.isCoinCheck 
+            ? `${window.location.origin}?claim=${finalId}` 
+            : `${window.location.origin}?view=check&id=${finalId}`;
+            
           setShareLink(link);
           setCheck(prev => ({ ...prev, id: finalId }));
-          alert("Check published and issued! If this was a Coin Check, the amount has been reserved.");
+          alert(check.isCoinCheck ? "Coin Check Issued! Copy the claim link to send to another member." : "Check published and shared!");
       } catch (e: any) {
           alert("Publishing failed: " + e.message);
       } finally {
@@ -380,10 +384,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               {shareLink && (
                   <div className="mb-6 w-full max-w-md bg-slate-900 border border-indigo-500/50 rounded-2xl p-4 animate-fade-in flex items-center justify-between gap-4 shadow-xl">
                       <div className="overflow-hidden">
-                          <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">Claim Link (Send to Recipient)</p>
+                          <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">{check.isCoinCheck ? 'Claim Link (Send to Recipient)' : 'Shareable View Link'}</p>
                           <p className="text-xs text-slate-400 truncate font-mono">{shareLink}</p>
                       </div>
-                      <button onClick={() => { navigator.clipboard.writeText(shareLink); alert("Copied!"); }} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors"><Share2 size={16}/></button>
+                      <button onClick={() => { navigator.clipboard.writeText(shareLink!); alert("Copied!"); }} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 transition-colors">
+                          <Copy size={16}/>
+                      </button>
                   </div>
               )}
 

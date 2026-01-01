@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone } from 'lucide-react';
+import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive } from 'lucide-react';
 import { UserProfile, CoinTransaction } from '../types';
 import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
@@ -27,7 +27,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user }) => {
 
   useEffect(() => {
     if (user) loadData();
-  }, [user]);
+  }, [user?.uid]); // Use uid as key to avoid unnecessary re-runs
 
   const loadData = async () => {
     if (!user) return;
@@ -109,7 +109,14 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user }) => {
       return (coins / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
-  if (!user) return null;
+  if (!user) return (
+      <div className="h-full flex items-center justify-center bg-slate-950">
+          <div className="text-center space-y-4">
+              <Loader2 className="animate-spin text-indigo-500 mx-auto" size={32}/>
+              <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Accessing Neural Ledger...</p>
+          </div>
+      </div>
+  );
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
@@ -136,12 +143,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user }) => {
               <div className="relative z-10">
                   <div className="flex justify-between items-start mb-8">
                       <div>
-                          <p className="text-indigo-100 text-xs font-bold uppercase tracking-[0.2em] mb-1">Available Coins</p>
+                          <p className="text-indigo-100 text-xs font-bold uppercase tracking-[0.2em] mb-1">Available Balance</p>
                           <div className="flex items-center gap-3">
                               <h2 className="text-5xl font-black text-white">{user.coinBalance || 0}</h2>
                               <div className="bg-white/20 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-bold text-white uppercase">VC</div>
                           </div>
-                          <p className="text-indigo-200 text-sm mt-2 opacity-80">≈ {formatCurrency(user.coinBalance || 0)} USD</p>
+                          <p className="text-indigo-200 text-sm mt-2 opacity-80 font-mono tracking-tighter">Liquid Asset Value: {formatCurrency(user.coinBalance || 0)} USD</p>
                       </div>
                       <div className="p-3 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20">
                           <Coins size={32} className="text-amber-300" />
@@ -173,52 +180,62 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user }) => {
               <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-start gap-4">
                   <div className="p-2 bg-indigo-900/30 rounded-lg text-indigo-400"><Info size={20}/></div>
                   <div>
-                      <h4 className="text-sm font-bold text-white mb-1">Free Allowance</h4>
-                      <p className="text-xs text-slate-500 leading-relaxed">Basic members receive 100 free coins ($1.00) every 30 days to support learning and peer interaction.</p>
+                      <h4 className="text-sm font-bold text-white mb-1">Standard Allowance</h4>
+                      <p className="text-xs text-slate-500 leading-relaxed">Basic members receive 100 free coins ($1.00) every 30 days to fuel peer-to-peer knowledge sharing.</p>
                   </div>
               </div>
               <div className="bg-slate-900 border border-indigo-500/30 p-5 rounded-2xl flex items-start gap-4 relative overflow-hidden">
                   {user.subscriptionTier === 'pro' && <div className="absolute top-2 right-2"><Crown size={14} className="text-amber-400 fill-amber-400"/></div>}
                   <div className="p-2 bg-amber-900/30 rounded-lg text-amber-400"><Zap size={20}/></div>
                   <div>
-                      <h4 className="text-sm font-bold text-white mb-1">Pro Member Perk</h4>
-                      <p className="text-xs text-slate-500 leading-relaxed">Pro members receive a massive 2,900 coin allowance ($29.00) monthly. Upgrade to fuel your mentoring journey.</p>
+                      <h4 className="text-sm font-bold text-white mb-1">Pro Member Benefit</h4>
+                      <p className="text-xs text-slate-500 leading-relaxed">Pro members receive 2,900 coins ($29.00) monthly. Upgrade today to unlock high-intensity mentoring.</p>
                   </div>
               </div>
           </div>
 
           {/* Recent Activity */}
           <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2"><Clock size={16}/> Recent Transactions</h3>
-                  <button className="text-xs text-indigo-400 font-bold hover:underline">View All</button>
+              <div className="flex items-center justify-between px-2">
+                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Clock size={16}/> Transaction Ledger</h3>
+                  <button onClick={handleRefresh} className="text-[10px] text-indigo-400 font-bold hover:underline uppercase tracking-widest">Refresh Archive</button>
               </div>
               
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800 shadow-xl">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden divide-y divide-slate-800 shadow-2xl">
                   {loading ? (
-                      <div className="p-12 text-center text-slate-500"><Loader2 className="animate-spin mx-auto mb-2" /> Loading ledger...</div>
+                      <div className="p-20 text-center text-slate-500 flex flex-col items-center gap-3">
+                          <Loader2 className="animate-spin text-indigo-500" />
+                          <p className="text-xs font-bold uppercase tracking-widest opacity-50">Syncing Block History...</p>
+                      </div>
                   ) : transactions.length === 0 ? (
-                      <div className="p-12 text-center text-slate-500 italic">No transactions found.</div>
+                      <div className="p-20 text-center space-y-4">
+                          <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto opacity-20">
+                              {/* Fix: Ensured HardDrive icon is imported from lucide-react above */}
+                              <HardDrive size={32} className="text-slate-400" />
+                          </div>
+                          <p className="text-slate-500 italic text-sm">No activity recorded on this account yet.</p>
+                          <button onClick={handleClaimGrant} className="text-xs font-bold text-indigo-400 hover:text-white transition-colors">Claim Initial Grant</button>
+                      </div>
                   ) : (
                       transactions.map(tx => {
                           const isIncoming = tx.toId === user.uid;
                           const icon = tx.type === 'grant' ? <Sparkles size={16}/> : tx.type === 'check' ? <Smartphone size={16}/> : tx.type === 'mentoring' ? <User size={16}/> : <Send size={16}/>;
                           
                           return (
-                              <div key={tx.id} className="p-4 flex items-center justify-between hover:bg-slate-800/30 transition-colors">
+                              <div key={tx.id} className="p-5 flex items-center justify-between hover:bg-slate-800/30 transition-colors">
                                   <div className="flex items-center gap-4">
-                                      <div className={`p-2 rounded-xl ${isIncoming ? 'bg-emerald-900/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
-                                          {isIncoming ? <ArrowDownLeft size={20}/> : <ArrowUpRight size={20}/>}
+                                      <div className={`p-3 rounded-2xl ${isIncoming ? 'bg-emerald-900/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+                                          {isIncoming ? <ArrowDownLeft size={24}/> : <ArrowUpRight size={24}/>}
                                       </div>
                                       <div>
                                           <p className="text-sm font-bold text-white flex items-center gap-2">
-                                              {tx.type === 'grant' ? 'Monthly Allowance' : isIncoming ? `From ${tx.fromName}` : `To ${tx.toName}`}
-                                              <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-500 uppercase font-bold tracking-tighter flex items-center gap-1">{icon} {tx.type}</span>
+                                              {tx.type === 'grant' ? 'Neural Grant' : isIncoming ? `From ${tx.fromName}` : `To ${tx.toName}`}
+                                              <span className="text-[10px] bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-slate-500 uppercase font-black tracking-tighter flex items-center gap-1">{icon} {tx.type}</span>
                                           </p>
-                                          <p className="text-xs text-slate-500 mt-0.5">{tx.memo || new Date(tx.timestamp).toLocaleString()}</p>
+                                          <p className="text-xs text-slate-500 mt-1 font-medium">{tx.memo || new Date(tx.timestamp).toLocaleString()}</p>
                                       </div>
                                   </div>
-                                  <div className={`text-sm font-black ${isIncoming ? 'text-emerald-400' : 'text-white'}`}>
+                                  <div className={`text-lg font-black ${isIncoming ? 'text-emerald-400' : 'text-slate-200'}`}>
                                       {isIncoming ? '+' : '-'}{tx.amount}
                                   </div>
                               </div>
@@ -235,7 +252,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user }) => {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md overflow-hidden flex flex-col shadow-2xl">
                   <div className="p-5 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                      <h3 className="font-bold text-white flex items-center gap-2"><Send size={18} className="text-indigo-400"/> Send Coins</h3>
+                      <h3 className="font-bold text-white flex items-center gap-2"><Send size={18} className="text-indigo-400"/> Transfer Coins</h3>
                       <button onClick={() => { setShowTransfer(false); setSelectedUser(null); }} className="text-slate-500 hover:text-white"><X/></button>
                   </div>
                   
@@ -250,7 +267,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user }) => {
                                     placeholder="Search member by name..." 
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:border-indigo-500"
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:border-indigo-500"
                                   />
                               </div>
                               <div className="max-h-60 overflow-y-auto space-y-1 pr-1 scrollbar-thin">
@@ -293,7 +310,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user }) => {
                                             className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-4 text-2xl font-black text-white focus:outline-none focus:border-amber-500"
                                           />
                                       </div>
-                                      <p className="text-[10px] text-slate-600 mt-1">Balance: {user.coinBalance} coins</p>
+                                      <p className="text-[10px] text-slate-600 mt-1">Available: {user.coinBalance} coins</p>
                                   </div>
                                   <div>
                                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Memo (Optional)</label>
@@ -312,7 +329,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user }) => {
                                 disabled={isTransferring || !transferAmount}
                                 className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all disabled:opacity-50"
                               >
-                                  {isTransferring ? <Loader2 className="animate-spin mx-auto"/> : 'Confirm Transfer'}
+                                  {isTransferring ? <Loader2 size={18} className="animate-spin mx-auto"/> : 'Confirm Transfer'}
                               </button>
                           </div>
                       )}
