@@ -36,11 +36,13 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
   className, channels = [],
   language, setLanguage
 }) => {
+  // Added useState for pricing and stats state
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [globalStats, setGlobalStats] = useState<GlobalStats>({ totalLogins: 0, uniqueUsers: 0 });
   
   const isSuperAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
   
+  // Added useEffect to fetch global stats when menu opens
   useEffect(() => {
       if (isUserMenuOpen) { getGlobalStats().then(setGlobalStats); }
   }, [isUserMenuOpen]);
@@ -82,7 +84,14 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
          </div>
          <div className="p-2 border-t border-slate-800 bg-slate-950/50 mt-auto"><button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-bold text-red-400 hover:text-white hover:bg-red-900/40 rounded-lg transition-all"><LogOut size={16} /><span>Sign Out</span></button></div>
       </div>
-      {isPricingOpen && userProfile && (<PricingModal isOpen={true} onClose={() => setIsPricingOpen(false)} user={userProfile} onSuccess={handleUpgradeSuccess} />)}
+      {isPricingOpen && (
+        <PricingModal 
+          isOpen={true} 
+          onClose={() => setIsPricingOpen(false)} 
+          user={userProfile} 
+          onSuccess={handleUpgradeSuccess} 
+        />
+      )}
     </>
   );
 };

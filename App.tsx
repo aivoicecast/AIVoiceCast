@@ -61,8 +61,8 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fixed: Explicitly used React.Component and removed redundant constructor to improve type inference for this.props
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+// Fixed: Explicitly used imported Component class to improve type inference for this.props in the render method
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
@@ -94,7 +94,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
-    // Fixed: Destructuring children from this.props to resolve the TS error
+    // Fixed: Correctly destructuring children from this.props
     const { children } = this.props;
     return children;
   }
