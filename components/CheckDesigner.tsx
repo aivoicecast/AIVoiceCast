@@ -406,8 +406,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <span className="text-[8px] font-bold uppercase absolute right-0 bottom-1">Dollars</span>
                   </div>
 
-                  {/* Memo and Signature Row - mt-auto combined with mb-14 creates space for MICR */}
-                  <div className="flex justify-between items-end mt-auto mb-14">
+                  {/* Memo and Signature Row - mt-auto combined with mb-20 creates space for MICR */}
+                  <div className="flex justify-between items-end mt-auto mb-20">
                       <div className="flex items-end gap-2 border-b border-black pb-1 min-w-[180px]">
                           <span className="text-[8px] font-bold uppercase mb-1">For</span>
                           <span className="text-[10px] font-medium px-2">{check.memo}</span>
