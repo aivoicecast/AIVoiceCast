@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
@@ -405,12 +406,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <span className="text-[8px] font-bold uppercase absolute right-0 bottom-1">Dollars</span>
                   </div>
 
-                  {/* Memo, QR, and Signature Row - Fixed overlap with MICR */}
-                  <div className="flex items-end justify-between mt-auto mb-10">
+                  {/* Memo, QR, and Signature Row - Fixed overlap with MICR and moved up */}
+                  <div className="flex items-end justify-between mt-auto mb-14">
                       <div className="flex flex-col gap-1 w-1/3">
                           <div className="flex items-end gap-2 border-b border-black pb-1">
                               <span className="text-[8px] font-bold uppercase mb-1">For</span>
-                              <span className="text-[10px] font-medium px-2 truncate">{check.memo}</span>
+                              <span className="text-xs font-medium px-2 truncate">{check.memo}</span>
                           </div>
                       </div>
                       

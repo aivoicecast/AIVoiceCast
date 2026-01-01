@@ -60,8 +60,8 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fix: Inherit from Component directly to ensure TypeScript recognizes this.props and this.state
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+// Fix: Inherit from React.Component directly to ensure TypeScript recognizes this.props and this.state
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
   
   static getDerivedStateFromError(error: Error) { 
@@ -93,7 +93,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         </div>
       );
     }
-    // Fix: this.props.children is now correctly typed as props is part of Component
+    // Fix: this.props.children is now correctly typed as props is part of React.Component
     return this.props.children;
   }
 }
