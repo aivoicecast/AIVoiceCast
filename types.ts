@@ -166,6 +166,8 @@ export interface GeneratedLecture {
   professorName: string;
   studentName: string;
   sections: LectureSection[];
+  readingMaterial?: string;
+  homework?: string;
 }
 
 export interface CommunityDiscussion {

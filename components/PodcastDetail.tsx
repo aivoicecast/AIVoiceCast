@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment } from '../types';
-import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { synthesizeSpeech } from '../services/tts';
 import { OFFLINE_CHANNEL_ID, OFFLINE_CURRICULUM, OFFLINE_LECTURES } from '../utils/offlineContent';
@@ -11,6 +11,7 @@ import { publishChannelToFirestore } from '../services/firestoreService';
 import { getDriveToken } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive, getDriveFileSharingLink } from '../services/googleDriveService';
 import { getGlobalAudioContext, audioBufferToWavBlob, concatAudioBuffers } from '../utils/audioUtils';
+import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
@@ -46,7 +47,9 @@ const UI_TEXT = {
     next: "Next Lesson",
     noLesson: "No Lesson Selected",
     chooseChapter: "Choose a chapter and lesson from the menu.",
-    synthesizingAudio: "Synthesizing Audio..."
+    synthesizingAudio: "Synthesizing Audio...",
+    reading: "Reading Material",
+    homework: "Homework & Exercises"
   },
   zh: {
     back: "返回",
@@ -68,7 +71,9 @@ const UI_TEXT = {
     next: "下一节",
     noLesson: "未选择课程",
     chooseChapter: "请从菜单中选择章节和课程。",
-    synthesizingAudio: "正在合成音频..."
+    synthesizingAudio: "正在合成音频...",
+    reading: "延伸阅读",
+    homework: "课后作业"
   }
 };
 
@@ -213,8 +218,35 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
             <div className="space-y-6 animate-fade-in">
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4"><div><h2 className="text-xl font-bold text-white">{activeLecture.topic}</h2><p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">{t.lectureTitle}</p></div></div>
                 <div ref={lectureContentRef} className="bg-white rounded-2xl p-8 md:p-12 shadow-2xl text-slate-900 space-y-8">
-                    <div className="border-b border-slate-200 pb-6 mb-8"><h1 className="text-3xl font-black text-slate-900 mb-2">{activeLecture.topic}</h1></div>
-                    <div className="space-y-10">{activeLecture.sections.map((section, idx) => (<div key={idx} className="flex gap-6"><div className="shrink-0 w-12 flex flex-col items-center"><div className={`w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-black border-2 ${section.speaker === 'Teacher' ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>{section.speaker === 'Teacher' ? 'PRO' : 'STU'}</div><div className="w-0.5 flex-1 bg-slate-100 mt-2"></div></div><div className="flex-1 pb-4"><p className="text-[10px] font-black text-slate-400 uppercase mb-2">{section.speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}</p><p className="text-lg leading-relaxed font-serif text-slate-800">{section.text}</p></div></div>))}</div>
+                    <div className="border-b border-slate-200 pb-6 mb-8"><h1 className="text-3xl font-black text-slate-900 mb-2 uppercase tracking-tighter italic">{activeLecture.topic}</h1></div>
+                    <div className="space-y-10">{activeLecture.sections.map((section, idx) => (<div key={idx} className="flex gap-6"><div className="shrink-0 w-12 flex flex-col items-center"><div className={`w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-black border-2 ${section.speaker === 'Teacher' ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>{section.speaker === 'Teacher' ? 'PRO' : 'STU'}</div><div className="w-0.5 flex-1 bg-slate-100 mt-2"></div></div><div className="flex-1 pb-4"><p className="text-[10px] font-black text-slate-400 uppercase mb-2">{section.speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}</p><p className="text-lg leading-relaxed font-serif text-slate-800 whitespace-pre-wrap">{section.text}</p></div></div>))}</div>
+                    
+                    {(activeLecture.readingMaterial || activeLecture.homework) && (
+                        <div className="mt-16 pt-16 border-t-4 border-slate-100 space-y-12">
+                            {activeLecture.readingMaterial && (
+                                <div className="space-y-4 animate-fade-in-up">
+                                    <div className="flex items-center gap-2 text-indigo-600">
+                                        <BookOpen size={24} />
+                                        <h2 className="text-2xl font-black uppercase italic tracking-tighter">{t.reading}</h2>
+                                    </div>
+                                    <div className="p-8 bg-indigo-50/30 rounded-3xl border-2 border-indigo-100">
+                                        <MarkdownView content={activeLecture.readingMaterial} />
+                                    </div>
+                                </div>
+                            )}
+                            {activeLecture.homework && (
+                                <div className="space-y-4 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+                                    <div className="flex items-center gap-2 text-emerald-600">
+                                        <ListTodo size={24} />
+                                        <h2 className="text-2xl font-black uppercase italic tracking-tighter">{t.homework}</h2>
+                                    </div>
+                                    <div className="p-8 bg-emerald-50/30 rounded-3xl border-2 border-emerald-100">
+                                        <MarkdownView content={activeLecture.homework} />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
           ) : (<div className="h-64 flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-800 rounded-2xl bg-slate-900/30"><Info size={32} className="mb-2 opacity-20" /><h3 className="text-lg font-bold text-slate-400">{t.selectTopic}</h3></div>)}
