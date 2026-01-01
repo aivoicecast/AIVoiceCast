@@ -69,7 +69,7 @@ export const OFFLINE_LECTURES: Record<string, GeneratedLecture> = {
     sections: [
       {
         speaker: "Teacher",
-        text: "In v1, AIVoiceCast was just a list of audio tracks. In v3.85, it is an Operating System for knowledge work. We introduced the concept of 'App Suites'."
+        text: "In v1, AIVoiceCast was just a list of audio tracks. In v4.0.0, it is an Operating System for knowledge work. We introduced the concept of 'App Suites'."
       },
       {
         speaker: "Student",

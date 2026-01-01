@@ -1,25 +1,30 @@
 
-# Welcome to AIVoiceCast v3.55: The Complete Knowledge Ecosystem
+# Welcome to AIVoiceCast v4.0.0: The Neural Prism Edition
 
 **By Admin** | *Posted in Platform Updates*
 
-The era of passive listening is over. Traditional podcasts are great for consumption, but AIVoiceCast transforms consumption into creation. With the release of **v3.55**, we have evolved from a generative podcast player into a comprehensive **Knowledge Ecosystem** that spans learning, coding, collaborating, and career growth.
+The era of passive listening is over. Traditional podcasts are great for consumption, but AIVoiceCast transforms consumption into creation. With the release of **v4.0.0**, we have evolved from a generative podcast player into a comprehensive **Knowledge Ecosystem** that spans learning, coding, collaborating, and career growth.
 
-## What's New in v3.55?
+## What's New in v4.0.0?
 
-### 1. 📂 Code Studio with Google Drive & Cloud Integration
+### 1. 🧠 Neural Lab Scratchpad
+Interactive AI notebooks are here. Chained prompts, context-aware execution, and deep visual reasoning are now part of your standard workflow.
+*   **Context Chaining:** AI "remembers" the logic from previous cells.
+*   **Prompt Cells:** Directly execute complex tasks with Gemini-3-Flash.
+
+### 2. 📂 Code Studio with Google Drive & Cloud Integration
 The Code Studio has been completely re-architected to serve as your primary cloud IDE.
 *   **Google Drive Integration:** You can now connect your Google Drive directly. Open, edit, and save code files residing in your Drive without leaving the app.
 *   **Private Cloud Storage:** A robust file system powered by Firebase Storage allows you to create folders, manage complex projects, and store assets persistently.
 *   **GitHub Support:** Seamlessly import repositories to review code while listening to an AI explanation of the codebase.
 
-### 2. 💼 The Career Center
+### 3. 💼 The Career Center
 We believe learning should lead to earning.
 *   **Job Board:** Find opportunities tailored to the skills you are learning on the platform.
 *   **Talent Pool:** Upload your resume and showcase your "Knowledge Profile"—verified proof of the courses and live sessions you've completed.
 *   **Mentor Applications:** Apply to become a paid mentor and share your expertise with the community.
 
-### 3. 💬 Workplace Chat
+### 4. 💬 Workplace Chat
 Communication is key to learning. We've introduced a full-featured real-time chat system.
 *   **Teams & Groups:** Every study group now has a dedicated chat channel.
 *   **Direct Messages:** Reach out to mentors or peers directly.

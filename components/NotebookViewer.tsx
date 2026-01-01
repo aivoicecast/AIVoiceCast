@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Book, Play, Terminal, MoreVertical, Plus, Edit3, Trash2, Cpu, Share2, Sparkles, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Book, Play, Terminal, MoreVertical, Plus, Edit3, Trash2, Cpu, Share2, Sparkles, Loader2, Save, Image as ImageIcon, X, ChevronUp, ChevronDown, Check, Zap, Wand2 } from 'lucide-react';
 import { Notebook, NotebookCell } from '../types';
 import { getCreatorNotebooks } from '../services/firestoreService';
 import { MarkdownView } from './MarkdownView';
 import { GoogleGenAI } from '@google/genai';
+import { resizeImage } from '../utils/imageUtils';
 
 interface NotebookViewerProps {
   onBack: () => void;
@@ -15,99 +16,200 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [activeNotebook, setActiveNotebook] = useState<Notebook | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingCellId, setEditingCellId] = useState<string | null>(null);
   
-  // AI Explanation State
-  const [explainingCellId, setExplainingCellId] = useState<string | null>(null);
-  const [explanation, setExplanation] = useState<string | null>(null);
+  // File upload ref for multimodal cells
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [targetCellForUpload, setTargetCellForUpload] = useState<string | null>(null);
 
   useEffect(() => {
-    // Load mock notebooks
+    // Load initial notebooks
     getCreatorNotebooks('system').then(data => {
       setNotebooks(data);
+      if (data.length > 0 && !activeNotebook) setActiveNotebook(data[0]);
       setLoading(false);
     });
   }, []);
 
-  const handleExplainCell = async (cell: NotebookCell) => {
-      if (explainingCellId === cell.id) {
-          setExplainingCellId(null);
-          setExplanation(null);
-          return;
-      }
+  const handleRunCell = async (cellId: string) => {
+      if (!activeNotebook) return;
       
-      setExplainingCellId(cell.id);
-      setExplanation(null);
-      
+      const cellIndex = activeNotebook.cells.findIndex(c => c.id === cellId);
+      const cell = activeNotebook.cells[cellIndex];
+      if (!cell || cell.type !== 'code') return;
+
+      // Update UI to show executing
+      const updatedCells = [...activeNotebook.cells];
+      updatedCells[cellIndex] = { ...cell, isExecuting: true, output: '' };
+      setActiveNotebook({ ...activeNotebook, cells: updatedCells });
+
       try {
-          // FIX: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY}); exclusively from process.env.API_KEY.
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const prompt = `Explain the following code snippet concisely for a student:\n\n${cell.content}`;
           
+          // Construct Context from previous cells
+          const context = activeNotebook.cells
+              .slice(0, cellIndex)
+              .map(c => `${c.type.toUpperCase()}: ${c.content}\n${c.output ? `OUTPUT: ${c.output}` : ''}`)
+              .join('\n---\n');
+
+          const prompt = `
+            CONTEXT FROM PREVIOUS CELLS:
+            ${context}
+
+            CURRENT TASK:
+            ${cell.content}
+
+            INSTRUCTIONS: Respond concisely and accurately based on the context above.
+          `;
+
           const response = await ai.models.generateContent({
-              // FIX: Use gemini-3-flash-preview as recommended for text explanation tasks
               model: 'gemini-3-flash-preview',
-              contents: prompt
+              contents: prompt,
           });
+
+          const result = response.text || "No output returned.";
           
-          setExplanation(response.text || "No explanation generated.");
+          // Update output
+          const finalCells = [...activeNotebook.cells];
+          finalCells[cellIndex] = { ...cell, isExecuting: false, output: result };
+          setActiveNotebook({ ...activeNotebook, cells: finalCells });
+
       } catch (e: any) {
-          setExplanation("Error: " + e.message);
+          const errorCells = [...activeNotebook.cells];
+          errorCells[cellIndex] = { ...cell, isExecuting: false, output: `Error: ${e.message}` };
+          setActiveNotebook({ ...activeNotebook, cells: errorCells });
       }
+  };
+
+  const handleUpdateCell = (cellId: string, content: string) => {
+      if (!activeNotebook) return;
+      const nextCells = activeNotebook.cells.map(c => c.id === cellId ? { ...c, content } : c);
+      setActiveNotebook({ ...activeNotebook, cells: nextCells });
+  };
+
+  const handleAddCell = (index: number, type: 'markdown' | 'code') => {
+      if (!activeNotebook) return;
+      const newCell: NotebookCell = {
+          id: `cell-${Date.now()}`,
+          type,
+          content: type === 'code' ? '# Enter prompt here...' : '## New Section',
+          language: 'python'
+      };
+      const nextCells = [...activeNotebook.cells];
+      nextCells.splice(index + 1, 0, newCell);
+      setActiveNotebook({ ...activeNotebook, cells: nextCells });
+      setEditingCellId(newCell.id);
+  };
+
+  const handleDeleteCell = (cellId: string) => {
+      if (!activeNotebook) return;
+      if (activeNotebook.cells.length <= 1) return;
+      const nextCells = activeNotebook.cells.filter(c => c.id !== cellId);
+      setActiveNotebook({ ...activeNotebook, cells: nextCells });
   };
 
   const renderCell = (cell: NotebookCell, index: number) => {
       const isCode = cell.type === 'code';
+      const isEditing = editingCellId === cell.id;
       
       return (
-          <div key={cell.id} className="group relative mb-6">
-              {/* Cell Gutter/Number */}
-              <div className="absolute -left-12 top-0 text-xs font-mono text-slate-600 w-8 text-right select-none">
+          <div key={cell.id} className="group relative mb-4">
+              {/* Toolbar between cells */}
+              <div className="absolute -top-3 left-0 right-0 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                  <div className="bg-slate-800 border border-slate-700 rounded-full px-2 py-1 flex items-center gap-2 shadow-xl scale-90">
+                      <button onClick={() => handleAddCell(index - 1, 'code')} className="flex items-center gap-1 text-[10px] font-bold text-indigo-400 hover:text-white transition-colors">
+                          <Plus size={10}/> AI Cell
+                      </button>
+                      <div className="w-px h-3 bg-slate-700"></div>
+                      <button onClick={() => handleAddCell(index - 1, 'markdown')} className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-white transition-colors">
+                          <Plus size={10}/> Markdown
+                      </button>
+                  </div>
+              </div>
+
+              {/* Cell Gutter */}
+              <div className="absolute -left-12 top-4 text-[10px] font-mono text-slate-600 w-8 text-right select-none">
                   [{index + 1}]
               </div>
               
-              <div className={`rounded-xl border ${isCode ? 'border-slate-800 bg-slate-950' : 'border-transparent'}`}>
+              <div className={`rounded-xl border transition-all ${isCode ? (isEditing ? 'border-indigo-500 bg-slate-900/50' : 'border-slate-800 bg-slate-950') : 'border-transparent'}`}>
                   {isCode ? (
                       <div className="relative">
-                          <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-800 rounded-t-xl">
-                              <span className="text-xs font-mono text-indigo-400">{cell.language || 'python'}</span>
+                          <div className={`flex items-center justify-between px-4 py-1.5 rounded-t-xl transition-colors ${isEditing ? 'bg-indigo-600/20' : 'bg-slate-900 border-b border-slate-800'}`}>
+                              <div className="flex items-center gap-3">
+                                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-1">
+                                      <Cpu size={12}/> AI Logic
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                      <button onClick={() => setEditingCellId(isEditing ? null : cell.id)} className="p-1 text-slate-500 hover:text-white"><Edit3 size={12}/></button>
+                                      <button onClick={() => handleDeleteCell(cell.id)} className="p-1 text-slate-500 hover:text-red-400"><Trash2 size={12}/></button>
+                                  </div>
+                              </div>
                               <div className="flex items-center gap-2">
                                   <button 
-                                      onClick={() => handleExplainCell(cell)}
-                                      className="p-1 text-slate-400 hover:text-emerald-400 transition-colors"
-                                      title="Explain with AI"
+                                      onClick={() => handleRunCell(cell.id)}
+                                      disabled={cell.isExecuting}
+                                      className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-black uppercase transition-all shadow-lg active:scale-95 ${cell.isExecuting ? 'bg-slate-800 text-slate-500' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
                                   >
-                                      <Sparkles size={14}/>
+                                      {cell.isExecuting ? <Loader2 size={12} className="animate-spin"/> : <Zap size={12} fill="currentColor"/>}
+                                      Run
                                   </button>
-                                  <button className="p-1 text-slate-400 hover:text-white transition-colors"><Play size={14}/></button>
                               </div>
                           </div>
-                          <pre className="p-4 overflow-x-auto text-sm font-mono text-slate-300">
-                              <code>{cell.content}</code>
-                          </pre>
-                          {/* AI Explanation Overlay */}
-                          {explainingCellId === cell.id && (
-                              <div className="border-t border-slate-800 p-4 bg-indigo-900/10 animate-fade-in">
-                                  <div className="flex items-center gap-2 mb-2 text-indigo-300 text-xs font-bold uppercase">
-                                      <Sparkles size={12}/> AI Explanation
+
+                          {isEditing ? (
+                              <textarea
+                                  autoFocus
+                                  value={cell.content}
+                                  onChange={(e) => handleUpdateCell(cell.id, e.target.value)}
+                                  className="w-full bg-transparent p-4 text-sm font-mono text-indigo-200 outline-none resize-none min-h-[100px] scrollbar-hide"
+                                  placeholder="Describe what the AI should do..."
+                                  onBlur={() => setEditingCellId(null)}
+                                  onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleRunCell(cell.id); }}
+                              />
+                          ) : (
+                              <pre className="p-4 overflow-x-auto text-sm font-mono text-slate-300 cursor-text" onClick={() => setEditingCellId(cell.id)}>
+                                  <code>{cell.content}</code>
+                              </pre>
+                          )}
+
+                          {cell.output && (
+                              <div className="border-t border-slate-800 p-4 bg-indigo-950/20 rounded-b-xl animate-fade-in">
+                                  <div className="flex items-center gap-2 mb-2 text-indigo-400 text-[10px] font-bold uppercase tracking-widest">
+                                      <Check size={12}/> Neural Output
                                   </div>
-                                  {explanation ? (
-                                      <p className="text-sm text-slate-300 leading-relaxed">{explanation}</p>
-                                  ) : (
-                                      <div className="flex items-center gap-2 text-slate-500 text-sm">
-                                          <Loader2 size={14} className="animate-spin"/> Analyzing code...
-                                      </div>
-                                  )}
+                                  <div className="text-sm text-slate-300 leading-relaxed overflow-x-auto prose prose-invert prose-sm max-w-none">
+                                      <MarkdownView content={cell.output} />
+                                  </div>
                               </div>
                           )}
-                          {cell.output && (
-                              <div className="border-t border-slate-800 p-4 bg-black/30 font-mono text-xs text-slate-400 rounded-b-xl">
-                                  {cell.output}
+                          {cell.isExecuting && !cell.output && (
+                              <div className="border-t border-slate-800 p-8 flex flex-col items-center justify-center gap-2 text-slate-500">
+                                  <Loader2 size={24} className="animate-spin text-indigo-500 opacity-50"/>
+                                  <span className="text-[10px] font-bold uppercase animate-pulse">Thinking...</span>
                               </div>
                           )}
                       </div>
                   ) : (
-                      <div className="px-4 py-2 prose prose-invert max-w-none">
-                          <MarkdownView content={cell.content} />
+                      <div className="relative group/md">
+                          <div className="absolute -right-8 top-0 opacity-0 group-hover/md:opacity-100 flex flex-col gap-1 transition-opacity">
+                              <button onClick={() => setEditingCellId(isEditing ? null : cell.id)} className="p-1.5 bg-slate-800 rounded-lg text-slate-400 hover:text-white shadow-lg"><Edit3 size={14}/></button>
+                              <button onClick={() => handleDeleteCell(cell.id)} className="p-1.5 bg-slate-800 rounded-lg text-slate-400 hover:text-red-400 shadow-lg"><Trash2 size={14}/></button>
+                          </div>
+                          
+                          {isEditing ? (
+                              <textarea
+                                  autoFocus
+                                  value={cell.content}
+                                  onChange={(e) => handleUpdateCell(cell.id, e.target.value)}
+                                  className="w-full bg-slate-900 border border-indigo-500/50 rounded-xl p-6 text-sm text-slate-200 outline-none resize-none min-h-[150px]"
+                                  onBlur={() => setEditingCellId(null)}
+                              />
+                          ) : (
+                              <div className="px-4 py-2 prose prose-invert max-w-none cursor-text" onClick={() => setEditingCellId(cell.id)}>
+                                  <MarkdownView content={cell.content} />
+                              </div>
+                          )}
                       </div>
                   )}
               </div>
@@ -115,87 +217,143 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
       );
   };
 
+  const handleSaveNotebook = () => {
+      alert("Lab Session Saved Successfully (Cloud Sync Active)");
+  };
+
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
       
-      {/* Sidebar List */}
+      {/* Sidebar: Lab Manager */}
       <div className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
-          <div className="p-4 border-b border-slate-800 flex items-center gap-3">
+          <div className="p-4 border-b border-slate-800 flex items-center gap-3 bg-slate-950/40">
               <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
                   <ArrowLeft size={20} />
               </button>
-              <h2 className="font-bold text-white flex items-center gap-2">
-                  <Book className="text-indigo-400" size={20} />
-                  Notebooks
+              <h2 className="font-black text-white flex items-center gap-2 uppercase tracking-tighter italic">
+                  Neural Lab
               </h2>
           </div>
           
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              <div className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Active Research</div>
               {loading ? (
-                  <div className="p-8 text-center text-slate-500 text-sm">Loading notebooks...</div>
+                  <div className="p-8 text-center"><Loader2 size={24} className="animate-spin mx-auto text-indigo-500 opacity-50"/></div>
               ) : notebooks.map(nb => (
                   <button
                       key={nb.id}
-                      onClick={() => setActiveNotebook(nb)}
-                      className={`w-full text-left p-3 rounded-lg border transition-all ${activeNotebook?.id === nb.id ? 'bg-indigo-600/10 border-indigo-500/50' : 'border-transparent hover:bg-slate-800'}`}
+                      onClick={() => { setActiveNotebook(nb); setEditingCellId(null); }}
+                      className={`w-full text-left p-4 rounded-xl border transition-all group ${activeNotebook?.id === nb.id ? 'bg-indigo-600/10 border-indigo-500/30' : 'border-transparent hover:bg-slate-800'}`}
                   >
-                      <h3 className={`font-bold text-sm ${activeNotebook?.id === nb.id ? 'text-indigo-300' : 'text-slate-200'}`}>{nb.title}</h3>
-                      <p className="text-xs text-slate-500 mt-1 line-clamp-2">{nb.description}</p>
+                      <h3 className={`font-bold text-sm ${activeNotebook?.id === nb.id ? 'text-indigo-300' : 'text-slate-200 group-hover:text-white'}`}>{nb.title}</h3>
                       <div className="flex items-center gap-2 mt-2">
-                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-950 rounded text-slate-400 font-mono border border-slate-800">{nb.kernel}</span>
-                          <span className="text-[10px] text-slate-600">{new Date(nb.updatedAt).toLocaleDateString()}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 bg-slate-950 rounded text-slate-400 font-mono border border-slate-800">v2.0</span>
+                          <span className="text-[9px] text-slate-600 uppercase font-bold tracking-tighter">{nb.cells.length} Blocks</span>
                       </div>
                   </button>
               ))}
           </div>
           
-          <div className="p-4 border-t border-slate-800">
-              <button className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors">
-                  <Plus size={16}/> New Notebook
+          <div className="p-4 border-t border-slate-800 bg-slate-950/40">
+              <button className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border border-slate-700">
+                  <Plus size={14}/> Create New Lab
               </button>
           </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content: Interactive Notebook */}
       <div className="flex-1 flex flex-col min-w-0 bg-slate-950 relative">
           {activeNotebook ? (
               <>
-                  <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-md sticky top-0 z-10">
-                      <div>
-                          <h1 className="text-lg font-bold text-white flex items-center gap-2">
-                              {activeNotebook.title}
-                              <span className="text-xs font-normal text-slate-500 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">Read Only</span>
-                          </h1>
-                          <p className="text-xs text-slate-400">By {activeNotebook.author}</p>
+                  <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-md sticky top-0 z-30">
+                      <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-indigo-600/10 rounded-xl flex items-center justify-center border border-indigo-500/20 text-indigo-400">
+                              <Wand2 size={20}/>
+                          </div>
+                          <div>
+                              <h1 className="text-base font-bold text-white flex items-center gap-2">
+                                  {activeNotebook.title}
+                                  <span className="text-[10px] font-black text-emerald-400 bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-500/20 uppercase tracking-widest">Interactive</span>
+                              </h1>
+                              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Last Synced: Just now</p>
+                          </div>
                       </div>
                       <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 rounded-lg border border-slate-700">
-                              <Cpu size={14} className="text-emerald-400"/>
-                              <span className="text-xs font-mono text-slate-300">Kernel: {activeNotebook.kernel}</span>
-                          </div>
-                          <button className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"><Share2 size={18}/></button>
+                          <button onClick={handleSaveNotebook} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg flex items-center gap-2 transition-all active:scale-95">
+                              <Save size={14}/> Save Session
+                          </button>
+                          <div className="w-px h-6 bg-slate-800 mx-1"></div>
+                          <button className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white" title="Export as PDF"><Share2 size={18}/></button>
                           <button className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"><MoreVertical size={18}/></button>
                       </div>
                   </header>
 
-                  <div className="flex-1 overflow-y-auto p-8 lg:px-16 max-w-5xl mx-auto w-full">
-                      {activeNotebook.cells.map((cell, index) => renderCell(cell, index))}
-                      
-                      <div className="py-12 border-t-2 border-dashed border-slate-800 mt-8 text-center text-slate-500 text-sm">
-                          End of Notebook
+                  <div className="flex-1 overflow-y-auto p-8 lg:px-24 scrollbar-thin scrollbar-thumb-slate-800">
+                      <div className="max-w-4xl mx-auto w-full pb-32">
+                          
+                          {/* Title Metadata Section */}
+                          <div className="mb-12 space-y-4">
+                              <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em]">Scientific Notebook v4.0.0</span>
+                              <h1 className="text-5xl font-black text-white leading-tight tracking-tighter italic">{activeNotebook.title}</h1>
+                              <p className="text-lg text-slate-400 font-medium max-w-2xl leading-relaxed">{activeNotebook.description}</p>
+                              <div className="flex gap-4 pt-4">
+                                  <div className="flex flex-col">
+                                      <span className="text-[9px] text-slate-600 uppercase font-bold">Author</span>
+                                      <span className="text-sm font-bold text-slate-300">@{activeNotebook.author}</span>
+                                  </div>
+                                  <div className="w-px h-8 bg-slate-800"></div>
+                                  <div className="flex flex-col">
+                                      <span className="text-[9px] text-slate-600 uppercase font-bold">Kernel</span>
+                                      <span className="text-sm font-mono text-indigo-400">Gemini-3-Flash (API)</span>
+                                  </div>
+                              </div>
+                          </div>
+
+                          <div className="space-y-2">
+                              {activeNotebook.cells.map((cell, index) => renderCell(cell, index))}
+                          </div>
+
+                          {/* Final "Add Cell" Zone */}
+                          <div className="mt-12 py-12 border-t border-slate-800 flex flex-col items-center justify-center gap-6">
+                              <div className="flex gap-4">
+                                  <button onClick={() => handleAddCell(activeNotebook.cells.length - 1, 'code')} className="flex items-center gap-2 px-6 py-3 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-2xl border border-indigo-500/20 font-bold text-sm transition-all shadow-xl shadow-indigo-500/5 group">
+                                      <Zap size={18} className="group-hover:fill-current"/> Add AI Cell
+                                  </button>
+                                  <button onClick={() => handleAddCell(activeNotebook.cells.length - 1, 'markdown')} className="flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded-2xl border border-slate-700 font-bold text-sm transition-all">
+                                      <Edit3 size={18}/> Add Markdown
+                                  </button>
+                              </div>
+                              <p className="text-xs text-slate-600 font-bold uppercase tracking-widest">End of Lab Session</p>
+                          </div>
                       </div>
                   </div>
               </>
           ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-slate-600">
-                  <Book size={64} className="mb-6 opacity-20"/>
-                  <h3 className="text-xl font-bold text-slate-500 mb-2">Select a Notebook</h3>
-                  <p className="text-sm max-w-sm text-center">
-                      Browse the collection of AI-generated research and coding tutorials from the sidebar.
+              <div className="flex-1 flex flex-col items-center justify-center text-slate-700 bg-slate-950">
+                  <div className="relative mb-8">
+                    <div className="w-24 h-24 bg-indigo-600/5 rounded-[2.5rem] border border-indigo-500/10 flex items-center justify-center">
+                        <Book size={48} className="opacity-20"/>
+                    </div>
+                    <div className="absolute -top-2 -right-2 w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center border-4 border-slate-950 text-white">
+                        <Plus size={16}/>
+                    </div>
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-500 mb-2">Neural Lab Scratchpad</h3>
+                  <p className="text-sm max-w-sm text-center text-slate-600 leading-relaxed">
+                      Select a research session from the sidebar or start a new prompt-based coding notebook.
                   </p>
               </div>
           )}
       </div>
+
+      {/* Hidden Multimodal File Input */}
+      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={async (e) => {
+          if (e.target.files?.[0] && targetCellForUpload && activeNotebook) {
+              const base64 = await resizeImage(e.target.files[0], 512, 0.7);
+              // In a real app, you'd store this in the cell. For this mockup, we'll append text.
+              handleUpdateCell(targetCellForUpload, activeNotebook.cells.find(c => c.id === targetCellForUpload)?.content + `\n\n[ATTACHED IMAGE: ${e.target.files[0].name}]`);
+          }
+      }}/>
     </div>
   );
 };

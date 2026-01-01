@@ -542,7 +542,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
                       <div className="mb-12 pt-12 border-t border-white/10 w-full flex justify-between items-center px-12">
                           <div className="text-left">
                               <p className="text-[10px] text-slate-500 font-bold uppercase">Version</p>
-                              <p className="text-xs text-white font-mono">v3.85.1-AUTO</p>
+                              <p className="text-xs text-white font-mono">v4.0.0-PRO</p>
                           </div>
                           <div className="text-right">
                               <p className="text-[10px] text-slate-500 font-bold uppercase">Date</p>
