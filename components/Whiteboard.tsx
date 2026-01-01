@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { saveWhiteboardSession, subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements } from '../services/firestoreService';
 import { WhiteboardElement, ToolType, LineStyle, BrushType } from '../types';
@@ -29,7 +29,8 @@ const BRUSH_TYPES: { label: string; value: BrushType; icon: any }[] = [
     { label: 'Pencil', value: 'pencil', icon: Feather },
     { label: 'Marker', value: 'marker', icon: Highlighter },
     { label: 'Airbrush', value: 'airbrush', icon: Wind },
-    { label: 'Calligraphy', value: 'calligraphy-pen', icon: Edit2 }
+    { label: 'Calligraphy', value: 'calligraphy-pen', icon: Edit2 },
+    { label: 'Chinese Ink', value: 'writing-brush', icon: Languages }
 ];
 
 export const Whiteboard: React.FC<WhiteboardProps> = ({ 
@@ -521,7 +522,36 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           else if (lStyle === 'long-dash') ctx.setLineDash([30, 10]);
           else ctx.setLineDash([]);
           
-          if (el.type === 'pen' || el.type === 'eraser') { if (el.points?.length) { ctx.moveTo(el.points[0].x, el.points[0].y); el.points.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke(); } }
+          if (el.type === 'pen' || el.type === 'eraser') { 
+              if (el.points?.length) { 
+                  // Chinese Ink Brush (writing-brush) specific logic
+                  if (el.brushType === 'writing-brush' && el.type !== 'eraser') {
+                      ctx.lineCap = 'round';
+                      ctx.lineJoin = 'round';
+                      for (let i = 1; i < el.points.length; i++) {
+                          const p1 = el.points[i - 1];
+                          const p2 = el.points[i];
+                          // Distance between points acts as speed proxy
+                          const d = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+                          
+                          // Dynamic pressure mapping: Faster (more dist) = Thinner stroke
+                          // Base width is scaled by a factor derived from speed
+                          const pressure = Math.max(0.15, 1.8 - (d / 15));
+                          ctx.lineWidth = (el.strokeWidth * pressure) / scale;
+                          ctx.globalAlpha = Math.max(0.3, pressure);
+                          
+                          ctx.beginPath();
+                          ctx.moveTo(p1.x, p1.y);
+                          ctx.lineTo(p2.x, p2.y);
+                          ctx.stroke();
+                      }
+                  } else {
+                      ctx.moveTo(el.points[0].x, el.points[0].y); 
+                      el.points.forEach(p => ctx.lineTo(p.x, p.y)); 
+                      ctx.stroke(); 
+                  }
+              } 
+          }
           else if (el.type === 'curve') { if (el.points?.length! > 1) { ctx.moveTo(el.points![0].x, el.points![0].y); for (let i = 1; i < el.points!.length - 1; i++) { const xc = (el.points![i].x + el.points![i+1].x) / 2, yc = (el.points![i].y + el.points![i+1].y) / 2; ctx.quadraticCurveTo(el.points![i].x, el.points![i].y, xc, yc); } ctx.lineTo(el.points![el.points!.length-1].x, el.points![el.points!.length-1].y); ctx.stroke(); } }
           else if (el.type === 'rect') { const w = el.width || 0, h = el.height || 0; if (el.borderRadius) { const r = Math.min(el.borderRadius, Math.min(Math.abs(w), Math.abs(h)) / 2); ctx.roundRect(el.x, el.y, w, h, r); ctx.stroke(); } else ctx.strokeRect(el.x, el.y, w, h); }
           else if (el.type === 'circle') { ctx.ellipse(el.x + (el.width||0)/2, el.y + (el.height||0)/2, Math.abs((el.width||0)/2), Math.abs((el.height||0)/2), 0, 0, 2*Math.PI); ctx.stroke(); }
@@ -612,7 +642,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><ArrowRight size={16}/></button>
             </div>
 
-            {/* STYLE CONTROLS RESTORED */}
             <div className="relative">
                 <button 
                     onClick={() => setShowStyleMenu(!showStyleMenu)} 
@@ -705,7 +734,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             {showAIPrompt && (
                 <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 flex items-center gap-2 z-50 animate-fade-in-up">
                     <input autoFocus value={aiPromptText} onChange={e => setAiPromptText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAIGenerate()} placeholder="AI Assistant (e.g. 'Draw a cloud architecture diagram')..." className="flex-1 bg-transparent text-white outline-none text-sm p-2" />
-                    <button onClick={handleAIGenerate} disabled={isAIGenerating} className="p-2 bg-indigo-600 text-white rounded-lg transition-all">{isAIGenerating ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>}</button>
+                    <button onClick={handleAIGenerate} disabled={isAIGenerating} className="p-2 bg-indigo-600 text-white rounded-lg transition-all">{isAIGenerating ? <Loader2 size={16} className="animate-spin" /> : <Send size={16}/>}</button>
                 </div>
             )}
         </div>

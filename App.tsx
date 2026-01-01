@@ -58,15 +58,23 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-/* Updated ErrorBoundary to use Component named import and handle children prop correctly */
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+/* Fix: Explicitly use React.Component to resolve issues where TypeScript failed to recognize inherited 'state' and 'props' properties */
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
-  static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) { console.error("Uncaught runtime error:", error, errorInfo); }
+  
+  static getDerivedStateFromError(error: Error) { 
+    return { hasError: true, error }; 
+  }
+  
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) { 
+    console.error("Uncaught runtime error:", error, errorInfo); 
+  }
+  
   render() {
+    /* Fix: this.state is now correctly typed as ErrorBoundaryState through React.Component generics */
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -77,6 +85,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             <h1 className="text-2xl font-bold text-white mb-2">Application Crash Detected</h1>
             <p className="text-slate-400 mb-6">A runtime error occurred in the UI component tree. This is often caused by missing data or a browser incompatibility.</p>
             <div className="bg-black/50 rounded-xl p-4 mb-8 font-mono text-xs text-red-300 overflow-x-auto border border-slate-800">
+              {/* Fix: safely accessing error from state */}
               {this.state.error?.toString()}
             </div>
             <div className="flex gap-4">
@@ -87,6 +96,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         </div>
       );
     }
+    /* Fix: this.props is now correctly typed as ErrorBoundaryProps */
     return this.props.children;
   }
 }
