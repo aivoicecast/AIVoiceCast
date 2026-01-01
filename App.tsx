@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -61,9 +62,9 @@ interface ErrorBoundaryState {
 
 /**
  * ErrorBoundary component to catch runtime errors in the component tree.
- * Fixed: Explicitly extend React.Component to resolve typing issue where 'props' was not recognized.
  */
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+// Fixed: Changed React.Component to the named Component import to resolve the 'Property props does not exist' error.
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
@@ -74,7 +75,8 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     console.error("Uncaught runtime error:", error, errorInfo); 
   }
   
-  render() {
+  // Fixed: Explicitly defining render() return type and accessing this.props.children correctly.
+  render(): ReactNode {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -95,7 +97,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
-    // Fixed: 'this.props' is now correctly recognized due to explicit inheritance from React.Component
+    
     const { children } = this.props;
     return children;
   }
@@ -345,7 +347,7 @@ const App: React.FC = () => {
               <button onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
                  <LayoutGrid size={22} />
               </button>
-              <div className="flex items-center gap-3 cursor-pointer group" onClick={() => handleSetViewState('directory')}>
+              <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.location.href = window.location.origin}>
                  <BrandLogo size={32} />
                  <h1 className="text-xl font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400 transition-colors">AIVoiceCast</h1>
               </div>
