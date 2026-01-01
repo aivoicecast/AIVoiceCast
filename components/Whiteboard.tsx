@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize } from 'lucide-react';
+import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2 } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { saveWhiteboardSession, subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements } from '../services/firestoreService';
 import { WhiteboardElement, ToolType, LineStyle, BrushType } from '../types';
@@ -9,14 +8,29 @@ import { GoogleGenAI } from '@google/genai';
 interface WhiteboardProps {
   onBack?: () => void;
   sessionId?: string;
-  accessKey?: string; // Secret write token from URL
+  accessKey?: string;
   onSessionStart?: (id: string) => void;
-  // Embedded Props (For Code Studio)
   initialData?: string; 
   onDataChange?: (data: string) => void;
   isReadOnly?: boolean;
   disableAI?: boolean; 
 }
+
+const LINE_STYLES: { label: string; value: LineStyle; dash: number[] }[] = [
+    { label: 'Solid', value: 'solid', dash: [] },
+    { label: 'Dashed', value: 'dashed', dash: [15, 10] },
+    { label: 'Dotted', value: 'dotted', dash: [3, 8] },
+    { label: 'Dash-Dot', value: 'dash-dot', dash: [15, 5, 2, 5] },
+    { label: 'Long Dash', value: 'long-dash', dash: [30, 10] }
+];
+
+const BRUSH_TYPES: { label: string; value: BrushType; icon: any }[] = [
+    { label: 'Standard', value: 'standard', icon: PenTool },
+    { label: 'Pencil', value: 'pencil', icon: Feather },
+    { label: 'Marker', value: 'marker', icon: Highlighter },
+    { label: 'Airbrush', value: 'airbrush', icon: Wind },
+    { label: 'Calligraphy', value: 'calligraphy-pen', icon: Edit2 }
+];
 
 export const Whiteboard: React.FC<WhiteboardProps> = ({ 
   onBack, 
@@ -47,6 +61,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [fontFamily, setFontFamily] = useState('sans-serif');
   const [borderRadius, setBorderRadius] = useState(0); 
   const [showShareDropdown, setShowShareDropdown] = useState(false);
+  const [showStyleMenu, setShowStyleMenu] = useState(false);
   
   // Curve Arrow Settings
   const [startArrow, setStartArrow] = useState(false);
@@ -103,7 +118,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         setIsSharedSession(true);
         currentSessionIdRef.current = sessionId;
         const unsubscribe = subscribeToWhiteboard(sessionId, (remoteElements: any) => {
-            // For shared boards, we solely rely on remote updates for global state
             if (Array.isArray(remoteElements)) {
                 setElements(remoteElements);
             }
@@ -289,7 +303,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       setIsAIGenerating(true);
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const contextElements = elements.length > 20 ? elements.filter(e => e.type === 'text' || e.type === 'rect' || e.type === 'circle').slice(-20) : elements;
           const prompt = `Generate a JSON array of NEW WhiteboardElement objects to satisfy the user request: "${aiPromptText}". Return ONLY valid JSON array.`;
           const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt, config: { responseMimeType: 'application/json' } });
           const newItemsRaw = JSON.parse(response.text || "[]");
@@ -420,7 +433,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           } else { if (!isCtrl) setSelectedIds([]); setSelectionBox({ startX: x, startY: y, currX: x, currY: y }); } return;
       }
       setIsDrawing(true); setSelectedIds([]); const id = crypto.randomUUID();
-      const newEl: WhiteboardElement = { id, type: tool, x, y, color: tool === 'eraser' ? '#0f172a' : color, strokeWidth: tool === 'eraser' ? 20 : lineWidth, lineStyle: tool === 'eraser' ? 'solid' : lineStyle, brushType, points: tool === 'pen' || tool === 'eraser' ? [{ x, y }] : undefined, width: 0, height: 0, endX: x, endY: y, borderRadius: tool === 'rect' ? borderRadius : undefined, rotation: 0 };
+      const newEl: WhiteboardElement = { id, type: tool, x, y, color: tool === 'eraser' ? '#0f172a' : color, strokeWidth: tool === 'eraser' ? 20 : lineWidth, lineStyle: tool === 'eraser' ? 'solid' : lineStyle, brushType: tool === 'eraser' ? 'standard' : brushType, points: tool === 'pen' || tool === 'eraser' ? [{ x, y }] : undefined, width: 0, height: 0, endX: x, endY: y, borderRadius: tool === 'rect' ? borderRadius : undefined, rotation: 0 };
       setCurrentElement(newEl);
   };
 
@@ -484,12 +497,30 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       canvas.width = canvas.parentElement?.clientWidth || 800; canvas.height = canvas.parentElement?.clientHeight || 600;
       ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.save(); ctx.translate(offset.x, offset.y); ctx.scale(scale, scale);
+      
       const renderElement = (el: WhiteboardElement) => {
           if (textInput && el.id === textInput.id) return;
           ctx.save();
           if (el.rotation) { const b = getElementBounds(el), cx = b.x + b.w / 2, cy = b.y + b.h / 2; ctx.translate(cx, cy); ctx.rotate(el.rotation * Math.PI / 180); ctx.translate(-cx, -cy); }
+          
           ctx.beginPath(); ctx.strokeStyle = el.color; ctx.lineWidth = el.strokeWidth / scale; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-          if (el.lineStyle === 'dashed') ctx.setLineDash([15, 10]); else if (el.lineStyle === 'dotted') ctx.setLineDash([3, 8]); else ctx.setLineDash([]);
+          
+          // Apply Brush Style logic
+          if (el.type === 'pen' || el.type === 'curve') {
+              const bType = el.brushType || 'standard';
+              if (bType === 'pencil') { ctx.globalAlpha = 0.6; ctx.shadowBlur = 1 / scale; ctx.shadowColor = el.color; }
+              else if (bType === 'marker') { ctx.globalAlpha = 0.5; ctx.lineCap = 'butt'; ctx.lineWidth *= 1.5; }
+              else if (bType === 'airbrush') { ctx.shadowBlur = 10 / scale; ctx.shadowColor = el.color; }
+              else if (bType === 'calligraphy-pen') { ctx.lineWidth *= 2; }
+          }
+          
+          const lStyle = el.lineStyle || 'solid';
+          if (lStyle === 'dashed') ctx.setLineDash([15, 10]); 
+          else if (lStyle === 'dotted') ctx.setLineDash([3, 8]); 
+          else if (lStyle === 'dash-dot') ctx.setLineDash([15, 5, 2, 5]);
+          else if (lStyle === 'long-dash') ctx.setLineDash([30, 10]);
+          else ctx.setLineDash([]);
+          
           if (el.type === 'pen' || el.type === 'eraser') { if (el.points?.length) { ctx.moveTo(el.points[0].x, el.points[0].y); el.points.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke(); } }
           else if (el.type === 'curve') { if (el.points?.length! > 1) { ctx.moveTo(el.points![0].x, el.points![0].y); for (let i = 1; i < el.points!.length - 1; i++) { const xc = (el.points![i].x + el.points![i+1].x) / 2, yc = (el.points![i].y + el.points![i+1].y) / 2; ctx.quadraticCurveTo(el.points![i].x, el.points![i].y, xc, yc); } ctx.lineTo(el.points![el.points!.length-1].x, el.points![el.points!.length-1].y); ctx.stroke(); } }
           else if (el.type === 'rect') { const w = el.width || 0, h = el.height || 0; if (el.borderRadius) { const r = Math.min(el.borderRadius, Math.min(Math.abs(w), Math.abs(h)) / 2); ctx.roundRect(el.x, el.y, w, h, r); ctx.stroke(); } else ctx.strokeRect(el.x, el.y, w, h); }
@@ -539,7 +570,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         {!onDataChange && (
         <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900 shrink-0 z-10">
             <div className="flex items-center gap-4">
-                {onBack && <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"><ArrowLeft size={20} /></button>}
+                {onBack && <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><ArrowLeft size={20} /></button>}
                 <h1 className="text-xl font-bold text-white flex items-center gap-2"><PenTool className="text-pink-400" /> Whiteboard {isSharedSession && <span className="text-xs bg-indigo-600 px-2 py-0.5 rounded text-white animate-pulse">LIVE</span>}</h1>
             </div>
             <div className="flex items-center gap-2">
@@ -562,26 +593,108 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 <button onClick={() => setScale(s => Math.min(s + 0.1, 3))} className="p-1.5 hover:bg-slate-700 rounded text-slate-400"><ZoomIn size={16}/></button>
                 <button onClick={() => setScale(s => Math.max(s - 0.1, 0.5))} className="p-1.5 hover:bg-slate-700 rounded text-slate-400"><ZoomOut size={16}/></button>
             </div>
+
             <div className="flex bg-slate-800 rounded-lg p-1">
                 <button onClick={() => { setTool('select'); setIsDrawing(false); }} className={`p-1.5 rounded ${tool === 'select' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><MousePointer2 size={16}/></button>
                 <button onClick={() => setTool('pan')} className={`p-1.5 rounded ${tool === 'pan' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Move size={16}/></button>
                 <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><PenTool size={16}/></button>
                 <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Eraser size={16}/></button>
                 <button onClick={() => setTool('text')} className={`p-1.5 rounded ${tool === 'text' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Type size={16}/></button>
+                <button onClick={() => setTool('curve')} className={`p-1.5 rounded ${tool === 'curve' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Spline size={16}/></button>
+            </div>
+
+            <div className="flex bg-slate-800 rounded-lg p-1">
                 <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Square size={16}/></button>
                 <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Circle size={16}/></button>
+                <button onClick={() => setTool('triangle')} className={`p-1.5 rounded ${tool === 'triangle' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Triangle size={16}/></button>
+                <button onClick={() => setTool('star')} className={`p-1.5 rounded ${tool === 'star' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Star size={16}/></button>
                 <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Minus size={16}/></button>
                 <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><ArrowRight size={16}/></button>
             </div>
+
+            {/* STYLE CONTROLS RESTORED */}
+            <div className="relative">
+                <button 
+                    onClick={() => setShowStyleMenu(!showStyleMenu)} 
+                    className={`p-1.5 rounded bg-slate-800 border border-slate-700 flex items-center gap-1 text-slate-400 hover:text-white transition-all ${showStyleMenu ? 'border-indigo-500' : ''}`}
+                >
+                    <Settings2 size={16}/>
+                    <span className="text-[10px] font-bold uppercase">Styles</span>
+                </button>
+                {showStyleMenu && (
+                    <div className="absolute top-full left-0 mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] p-4 space-y-4">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Brush Style</label>
+                            <div className="grid grid-cols-3 gap-1">
+                                {BRUSH_TYPES.map(bt => (
+                                    <button 
+                                        key={bt.value} 
+                                        onClick={() => { setBrushType(bt.value); updateSelectedElements({ brushType: bt.value }); }}
+                                        className={`flex flex-col items-center gap-1 p-2 rounded-lg border text-[9px] font-bold transition-all ${brushType === bt.value ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
+                                    >
+                                        <bt.icon size={14}/>
+                                        <span className="truncate w-full text-center">{bt.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Line Type</label>
+                            <div className="grid grid-cols-2 gap-1">
+                                {LINE_STYLES.map(ls => (
+                                    <button 
+                                        key={ls.value} 
+                                        onClick={() => { setLineStyle(ls.value); updateSelectedElements({ lineStyle: ls.value }); }}
+                                        className={`p-2 rounded-lg border text-[9px] font-bold transition-all text-left ${lineStyle === ls.value ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
+                                    >
+                                        {ls.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Stroke Width</label>
+                                <span className="text-[10px] font-mono text-indigo-400">{lineWidth}px</span>
+                            </div>
+                            <input 
+                                type="range" min="1" max="50" value={lineWidth} 
+                                onChange={e => { const val = parseInt(e.target.value); setLineWidth(val); updateSelectedElements({ strokeWidth: val }); }}
+                                className="w-full accent-indigo-500 h-1 bg-slate-800 rounded-full appearance-none"
+                            />
+                        </div>
+                        {tool === 'rect' && (
+                             <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Corner Radius</label>
+                                    <span className="text-[10px] font-mono text-indigo-400">{borderRadius}px</span>
+                                </div>
+                                <input 
+                                    type="range" min="0" max="100" value={borderRadius} 
+                                    onChange={e => { const val = parseInt(e.target.value); setBorderRadius(val); updateSelectedElements({ borderRadius: val }); }}
+                                    className="w-full accent-indigo-500 h-1 bg-slate-800 rounded-full appearance-none"
+                                />
+                             </div>
+                        )}
+                        <div className="flex gap-2">
+                            <button onClick={() => setStartArrow(!startArrow)} className={`flex-1 py-1.5 rounded-lg border text-[9px] font-bold transition-all ${startArrow ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>Start Arrow</button>
+                            <button onClick={() => setEndArrow(!endArrow)} className={`flex-1 py-1.5 rounded-lg border text-[9px] font-bold transition-all ${endArrow ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>End Arrow</button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
             {!disableAI && (
                 <button onClick={() => setShowAIPrompt(!showAIPrompt)} className={`p-1.5 rounded bg-gradient-to-r from-purple-900/50 to-pink-900/50 border border-purple-500/30 ${showAIPrompt ? 'bg-pink-500 text-white' : 'text-pink-300'}`}><Sparkles size={16} /></button>
             )}
-            <div className="flex gap-1 px-2 bg-slate-800 rounded-lg">
-                {['#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b'].map(c => <button key={c} onClick={() => { setColor(c); updateSelectedElements({ color: c }); }} className="w-4 h-4 rounded-full" style={{ backgroundColor: c }} />)}
+            
+            <div className="flex gap-1 px-2 bg-slate-800 rounded-lg py-1 items-center">
+                {['#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#ec4899', '#a855f7'].map(c => <button key={c} onClick={() => { setColor(c); updateSelectedElements({ color: c }); }} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-white/50' : ''}`} style={{ backgroundColor: c }} />)}
             </div>
+            
             <div className="flex gap-1 ml-auto">
-                <button onClick={() => setElements(prev => prev.slice(0, -1))} className="p-1.5 hover:bg-slate-800 rounded text-slate-400"><Undo size={16} /></button>
-                <button onClick={selectedIds.length > 0 ? handleDeleteSelected : handleClear} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-red-400"><Trash2 size={16} /></button>
+                <button onClick={() => setElements(prev => prev.slice(0, -1))} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 transition-colors"><Undo size={16} /></button>
+                <button onClick={selectedIds.length > 0 ? handleDeleteSelected : handleClear} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
             </div>
         </div>
         <div className={`flex-1 relative overflow-hidden bg-slate-950 touch-none ${isReadOnly ? 'cursor-default' : 'cursor-crosshair'}`}>
@@ -592,7 +705,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             {showAIPrompt && (
                 <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 flex items-center gap-2 z-50 animate-fade-in-up">
                     <input autoFocus value={aiPromptText} onChange={e => setAiPromptText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAIGenerate()} placeholder="AI Assistant (e.g. 'Draw a cloud architecture diagram')..." className="flex-1 bg-transparent text-white outline-none text-sm p-2" />
-                    <button onClick={handleAIGenerate} disabled={isAIGenerating} className="p-2 bg-indigo-600 text-white rounded-lg">{isAIGenerating ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>}</button>
+                    <button onClick={handleAIGenerate} disabled={isAIGenerating} className="p-2 bg-indigo-600 text-white rounded-lg transition-all">{isAIGenerating ? <Loader2 size={16} className="animate-spin"/> : <Send size={16}/>}</button>
                 </div>
             )}
         </div>

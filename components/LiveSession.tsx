@@ -4,7 +4,7 @@ import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, Recordi
 import { GeminiLiveService } from '../services/geminiLive';
 import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageCircle, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
-import { saveUserChannel, cacheLectureScript, getCachedLectureScript } from '../utils/db';
+import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
 import { publishChannelToFirestore, saveLectureToFirestore, saveDiscussion, updateDiscussion, uploadFileToStorage, updateBookingRecording, saveRecordingReference, linkDiscussionToLectureSegment, saveDiscussionDesignDoc, addChannelAttachment } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
@@ -136,73 +136,95 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [hasStarted, setHasStarted] = useState(false); 
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isRetrying, setIsRetrying] = useState(false);
   
-  const [isSavingLesson, setIsSavingLesson] = useState(false);
-  const [isAppending, setIsAppending] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
-  const [isLinking, setIsLinking] = useState(false);
-  const [isSavingGeneric, setIsSavingGeneric] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const recordingStreamRef = useRef<MediaStream | null>(null);
   const mixingAudioContextRef = useRef<AudioContext | null>(null);
-  const recorderMimeTypeRef = useRef<string>('');
-  const videoStreamRef = useRef<MediaStream | null>(null);
-  const sourceStreamsRef = useRef<MediaStream[]>([]);
-  const animationFrameRef = useRef<number | null>(null);
 
-  const retryCountRef = useRef(0);
   const [transcript, setTranscript] = useState<TranscriptItem[]>(initialTranscript || []);
   const [currentLine, setCurrentLine] = useState<TranscriptItem | null>(null);
-  const [activeQuoteIndex, setActiveQuoteIndex] = useState<number | null>(null);
   const transcriptRef = useRef<TranscriptItem[]>(initialTranscript || []);
   
   useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
 
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [showCopyFeedback, setShowCopyFeedback] = useState(false);
   const serviceRef = useRef<GeminiLiveService | null>(null);
-  const waitingAudioCtxRef = useRef<AudioContext | null>(null);
-  const waitingTimerRef = useRef<any>(null);
 
   const currentUser = auth?.currentUser;
-  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
-
-  const getDescriptiveTitle = () => {
-    const podcastTitle = channel.title;
-    if (activeSegment) {
-        const chapter = channel.chapters?.find(c => c.subTopics.some(s => s.id === activeSegment.lectureId));
-        const subTopic = chapter?.subTopics.find(s => s.id === activeSegment.lectureId);
-        return `${podcastTitle}: ${chapter ? `${chapter.title} > ` : ""}${subTopic?.title || activeSegment.lectureId} (Part ${activeSegment.index + 1})`;
-    }
-    return `${podcastTitle}: General Discussion`;
-  };
 
   useEffect(() => {
-    if (!initialTranscript) {
-        const savedHistory = localStorage.getItem(`transcript_${channel.id}`);
-        if (savedHistory) {
-          try { setTranscript(JSON.parse(savedHistory)); } catch (e) {}
-        }
-    }
     if (channel.starterPrompts) setSuggestions(channel.starterPrompts.slice(0, 4));
-    retryCountRef.current = 0;
-  }, [channel.id, channel.starterPrompts, initialTranscript]);
+  }, [channel.id, channel.starterPrompts]);
 
-  useEffect(() => {
-    if (transcript.length > 0) localStorage.setItem(`transcript_${channel.id}`, JSON.stringify(transcript));
-  }, [transcript, channel.id]);
+  const startRecording = useCallback(async () => {
+      if (!recordingEnabled || !serviceRef.current) return;
 
-  const stopWaitingMusic = () => {
-    if (waitingTimerRef.current) { clearTimeout(waitingTimerRef.current); waitingTimerRef.current = null; }
-    if (waitingAudioCtxRef.current) { waitingAudioCtxRef.current.close().catch(() => {}); waitingAudioCtxRef.current = null; }
-  };
+      try {
+          const mixCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          mixingAudioContextRef.current = mixCtx;
+          const dest = mixCtx.createMediaStreamDestination();
 
-  const connect = useCallback(async (isRetryAttempt = false) => {
+          // AI Stream
+          const aiStream = serviceRef.current.getOutputMediaStream();
+          if (aiStream) {
+              const aiSource = mixCtx.createMediaStreamSource(aiStream);
+              aiSource.connect(dest);
+          }
+
+          // User Mic Stream
+          const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const userSource = mixCtx.createMediaStreamSource(userStream);
+          userSource.connect(dest);
+
+          const recorder = new MediaRecorder(dest.stream);
+          audioChunksRef.current = [];
+          recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+          
+          recorder.onstop = async () => {
+              const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+              const fullTranscript = currentLine ? [...transcript, currentLine] : transcript;
+              const transcriptText = fullTranscript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
+              const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
+
+              const sessionData: RecordingSession = {
+                  id: `rec-${Date.now()}`,
+                  userId: currentUser?.uid || 'guest',
+                  channelId: channel.id,
+                  channelTitle: channel.title,
+                  channelImage: channel.imageUrl,
+                  timestamp: Date.now(),
+                  mediaUrl: URL.createObjectURL(blob),
+                  mediaType: 'audio/webm',
+                  transcriptUrl: URL.createObjectURL(transcriptBlob)
+              };
+
+              if (currentUser) {
+                  setIsUploadingRecording(true);
+                  try {
+                      const mediaUrl = await uploadFileToStorage(`recordings/${currentUser.uid}/${sessionData.id}.webm`, blob);
+                      const tUrl = await uploadFileToStorage(`recordings/${currentUser.uid}/${sessionData.id}_transcript.txt`, transcriptBlob);
+                      await saveRecordingReference({ ...sessionData, mediaUrl, transcriptUrl: tUrl });
+                      if (existingDiscussionId) await updateBookingRecording(existingDiscussionId, mediaUrl, tUrl);
+                  } catch(e) { console.error("Cloud upload failed", e); }
+                  finally { setIsUploadingRecording(false); }
+              } else {
+                  // Guest: save to IndexedDB
+                  await saveLocalRecording({ ...sessionData, blob } as any);
+              }
+              
+              userStream.getTracks().forEach(t => t.stop());
+              mixCtx.close();
+          };
+
+          mediaRecorderRef.current = recorder;
+          recorder.start();
+      } catch(e) { console.warn("Recording init failed", e); }
+  }, [recordingEnabled, channel, currentUser, existingDiscussionId, transcript, currentLine]);
+
+  const connect = useCallback(async () => {
     setError(null);
     setIsConnected(false);
     let service = serviceRef.current || new GeminiLiveService();
@@ -222,12 +244,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { 
-              stopWaitingMusic(); setIsRetrying(false); setIsConnected(true); retryCountRef.current = 0;
+              setIsConnected(true);
+              if (recordingEnabled) startRecording();
           },
-          onClose: () => { stopWaitingMusic(); setIsConnected(false); setHasStarted(false); },
-          onError: (err) => {
-              stopWaitingMusic(); setIsRetrying(false); setIsConnected(false); setError(err.message);
-          },
+          onClose: () => { setIsConnected(false); setHasStarted(false); },
+          onError: (err) => { setIsConnected(false); setError(err.message); },
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
               const role = isUser ? 'user' : 'ai';
@@ -265,36 +286,22 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         toolsToUse
       );
     } catch (e) { setError("Failed to initialize session"); }
-  }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, initialTranscript, customTools, onCustomToolCall]);
-
-  useEffect(() => {
-    if (hasStarted && isConnected && initialContext) serviceRef.current?.sendText(`[CONTEXT UPDATE]\n${initialContext}`);
-  }, [initialContext, hasStarted, isConnected]);
+  }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, initialTranscript, customTools, onCustomToolCall, recordingEnabled, startRecording]);
 
   const handleDisconnect = async () => {
-      stopWaitingMusic(); 
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+      }
       serviceRef.current?.disconnect();
       const fullTranscript = currentLine ? [...transcript, currentLine] : transcript;
       if (currentUser && fullTranscript.length > 0) {
           try {
              const targetLectureId = activeSegment?.lectureId || lectureId || channel.id;
-             const discussion: CommunityDiscussion = { id: '', lectureId: targetLectureId, channelId: channel.id, userId: currentUser.uid, userName: currentUser.displayName || 'Anonymous', transcript: fullTranscript, createdAt: Date.now(), title: getDescriptiveTitle() };
+             const discussion: CommunityDiscussion = { id: '', lectureId: targetLectureId, channelId: channel.id, userId: currentUser.uid, userName: currentUser.displayName || 'Anonymous', transcript: fullTranscript, createdAt: Date.now(), title: `${channel.title}: Live Discussion` };
              await saveDiscussion(discussion);
           } catch (e) {}
       }
       onEndSession(); 
-  };
-
-  const getRoleName = (role: string) => {
-      if (role === 'user') return t.you;
-      
-      const r = role || '';
-      // Support for technical gen-lang-client IDs mapping
-      if (r.includes('0648937375') || r === 'Software Interview Voice') return 'Software Interview Voice';
-      if (r.includes('0375218270') || r === 'Linux Kernel Voice') return 'Linux Kernel Voice';
-      if (r.toLowerCase().includes('gem') || r === 'Default Gem') return 'Default Gem';
-      
-      return channel.voiceName;
   };
 
   const renderMessageContent = (text: string) => {
@@ -306,7 +313,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
              <div className="flex items-center justify-between px-4 py-1.5 bg-slate-800/80 border-b border-slate-700">
                <span className="text-xs font-mono text-slate-400 lowercase">Code</span>
                <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(part); }} className="flex items-center space-x-1 text-xs text-slate-500 hover:text-indigo-400">
-                 <Copy size={10} /><span>{t.copied}</span>
+                 <Copy size={10} /><span>Copy</span>
                </button>
              </div>
              <pre className="p-4 text-sm font-mono text-indigo-200 overflow-x-auto whitespace-pre-wrap">{part}</pre>
@@ -327,7 +334,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             </div>
             <div>
                <h2 className="text-sm font-bold text-white leading-tight">{channel.title}</h2>
-               <span className="text-xs text-indigo-400 font-medium">{channel.voiceName}</span>
+               <span className="text-xs text-indigo-400 font-medium">{channel.voiceName} {recordingEnabled && "• Recording"}</span>
             </div>
          </div>
          <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">End Session</button>
@@ -352,6 +359,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
          </div>
       ) : (
          <div className="flex-1 flex flex-col min-h-0 relative">
+            {(isUploadingRecording) && (
+               <div className="absolute top-4 right-4 z-50 bg-slate-900 border border-indigo-500/50 p-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in">
+                  <Loader2 size={16} className="text-indigo-400 animate-spin"/>
+                  <span className="text-xs font-bold text-white">{t.uploading}</span>
+               </div>
+            )}
             {!isConnected && (
                <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-10 backdrop-blur-sm">
                   <div className="flex flex-col items-center space-y-4">
@@ -366,13 +379,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6">
                {transcript.map((item, index) => (
                    <div key={index} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{getRoleName(item.role)}</span>
+                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? t.you : channel.voiceName}</span>
                        <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{renderMessageContent(item.text)}</div>
                    </div>
                ))}
                {currentLine && (
                    <div className={`flex flex-col ${currentLine.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in`}>
-                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{getRoleName(currentLine.role)}</span>
+                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{currentLine.role === 'user' ? t.you : channel.voiceName}</span>
                        <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${currentLine.role === 'user' ? 'bg-indigo-600/80 text-white rounded-tr-sm' : 'bg-slate-800/80 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{renderMessageContent(currentLine.text)}<span className="inline-block w-1.5 h-4 ml-1 align-middle bg-current opacity-50 animate-blink"></span></div>
                    </div>
                )}
