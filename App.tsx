@@ -4,7 +4,7 @@ import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } fro
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2
 } from 'lucide-react';
 import { LiveSession } from './components/LiveSession';
 import { PodcastDetail } from './components/PodcastDetail';
@@ -119,7 +119,8 @@ const UI_TEXT = {
     notebooks: "LLM Notebooks",
     cards: "Card Workshop",
     icons: "Icon Lab",
-    shipping: "Shipping Lab"
+    shipping: "Shipping Lab",
+    fullscreen: "Toggle Fullscreen"
   },
   zh: {
     appTitle: "AI 播客",
@@ -149,7 +150,8 @@ const UI_TEXT = {
     notebooks: "LLM 笔记本",
     cards: "贺卡工坊",
     icons: "图标生成器",
-    shipping: "物流实验室"
+    shipping: "物流实验室",
+    fullscreen: "全屏切换"
   }
 };
 
@@ -172,6 +174,7 @@ const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [globalVoice, setGlobalVoice] = useState('Auto');
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // --- Debug State ---
   const [bootLogs, setBootLogs] = useState<string[]>([]);
@@ -223,6 +226,26 @@ const App: React.FC = () => {
     setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment });
     handleSetViewState('live_session');
   };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   useEffect(() => {
     if (currentUser) {
@@ -380,6 +403,14 @@ const App: React.FC = () => {
                     <div className="flex items-center space-x-4">
                       <button onClick={() => setLanguage(prev => prev === 'en' ? 'zh' : 'en')} className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold transition-all hover:bg-slate-700">{language === 'en' ? '中' : 'EN'}</button>
                       
+                      <button 
+                          onClick={toggleFullscreen} 
+                          className="p-2 rounded-full transition-colors text-slate-400 hover:text-white hover:bg-slate-800 hidden md:block"
+                          title={t.fullscreen}
+                      >
+                          {isFullscreen ? <Minimize2 size={24}/> : <Maximize2 size={24}/>}
+                      </button>
+
                       <button 
                           onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)} 
                           className={`p-2 rounded-full transition-colors hidden md:block ${isAppsMenuOpen ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}

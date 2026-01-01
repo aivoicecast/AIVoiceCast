@@ -87,6 +87,35 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
       setActiveNotebook({ ...activeNotebook, cells: nextCells });
   };
 
+  const handleCreateNotebook = () => {
+      const newNb: Notebook = {
+          id: `nb-${Date.now()}`,
+          title: 'New Research Session',
+          author: currentUser?.displayName || 'Anonymous',
+          description: 'A fresh workspace for neural exploration and prompt engineering.',
+          kernel: 'python',
+          tags: ['Lab', 'Research'],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          cells: [
+              {
+                  id: `cell-${Date.now()}-1`,
+                  type: 'markdown',
+                  content: '# New Lab Session\nUse AI cells below to start generating content or analyzing data.'
+              },
+              {
+                  id: `cell-${Date.now()}-2`,
+                  type: 'code',
+                  content: '# Enter AI instructions here...',
+                  language: 'python'
+              }
+          ]
+      };
+      setNotebooks(prev => [newNb, ...prev]);
+      setActiveNotebook(newNb);
+      setEditingCellId(null);
+  };
+
   const handleAddCell = (index: number, type: 'markdown' | 'code') => {
       if (!activeNotebook) return;
       const newCell: NotebookCell = {
@@ -255,7 +284,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
           </div>
           
           <div className="p-4 border-t border-slate-800 bg-slate-950/40">
-              <button className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border border-slate-700">
+              <button onClick={handleCreateNotebook} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all border border-slate-700">
                   <Plus size={14}/> Create New Lab
               </button>
           </div>
@@ -339,9 +368,16 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
                     </div>
                   </div>
                   <h3 className="text-xl font-bold text-slate-500 mb-2">Neural Lab Scratchpad</h3>
-                  <p className="text-sm max-w-sm text-center text-slate-600 leading-relaxed">
+                  <p className="text-sm max-w-sm text-center text-slate-600 leading-relaxed mb-8">
                       Select a research session from the sidebar or start a new prompt-based coding notebook.
                   </p>
+                  <button 
+                    onClick={handleCreateNotebook}
+                    className="flex items-center gap-2 px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-sm shadow-xl shadow-indigo-500/20 transition-all active:scale-95"
+                  >
+                      <Sparkles size={18}/>
+                      Start New Research Session
+                  </button>
               </div>
           )}
       </div>
