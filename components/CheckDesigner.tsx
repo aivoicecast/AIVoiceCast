@@ -1,7 +1,9 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-// Fix: Added missing ShieldAlert, X, and ChevronRight imports from lucide-react
-import { ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, Trash2, Printer, CheckCircle, AlertTriangle, Send, Share2, DollarSign, Calendar, Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight } from 'lucide-react';
+import { 
+  ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
+  Trash2, Printer, CheckCircle, AlertTriangle, Send, Share2, DollarSign, Calendar, 
+  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight 
+} from 'lucide-react';
 import { BankingCheck, UserProfile } from '../types';
 import { GoogleGenAI } from '@google/genai';
 import html2canvas from 'html2canvas';

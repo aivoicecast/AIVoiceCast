@@ -61,9 +61,10 @@ interface ErrorBoundaryState {
 
 /**
  * ErrorBoundary component to catch runtime errors in the UI tree.
- * Fix: Explicitly using React.Component ensures 'this.props' is correctly typed and available in the UI tree.
+ * Fix: Explicitly extending the imported named 'Component' ensures TypeScript correctly binds 'this.props' 
+ * and identifies 'children' from the generic ErrorBoundaryProps.
  */
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
   
   constructor(props: ErrorBoundaryProps) {
@@ -99,7 +100,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
-    // Fixed: Properly extending React.Component ensures 'props' property is available on 'this'
+    // Correctly accessing 'this.props.children' as inheritance from 'Component' is now properly handled by TypeScript.
     return this.props.children;
   }
 }
@@ -225,7 +226,7 @@ const App: React.FC = () => {
     { id: 'code_studio', label: t.code, icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400' },
     { id: 'notebook_viewer', label: t.notebooks, icon: Book, action: () => handleSetViewState('notebook_viewer'), color: 'text-orange-300' },
     { id: 'whiteboard', label: t.whiteboard, icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400' },
-    { id: 'calendar', label: t.calendar, icon: Calendar, action: () => { handleSetViewState('directory'); setActiveTab('calendar'); }, color: 'text-emerald-400' },
+    { id: 'calendar', label: t.calendar, icon: Calendar, action: () => { handleSetViewState('directory'); setActiveTab('categories'); }, color: 'text-emerald-400' },
     { id: 'careers', label: t.careers, icon: Briefcase, action: () => handleSetViewState('careers'), color: 'text-yellow-400' },
     { id: 'blog', label: t.blog, icon: Rss, action: () => handleSetViewState('blog'), color: 'text-orange-400' },
     { id: 'card_workshop', label: t.cards, icon: Gift, action: () => handleSetViewState('card_workshop'), color: 'text-red-400' },
