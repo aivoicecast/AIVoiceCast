@@ -61,8 +61,8 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fixed: Explicitly used imported Component class to improve type inference for this.props in the render method
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+// Fixed: Using React.Component explicitly to resolve inheritance issues causing 'this.props' to be undefined in TS inference.
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
@@ -94,7 +94,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         </div>
       );
     }
-    // Fixed: Correctly destructuring children from this.props
+    // Fixed: Destructuring children from this.props to resolve TS error.
     const { children } = this.props;
     return children;
   }
@@ -566,6 +566,7 @@ const App: React.FC = () => {
             isOpen={isCreateModalOpen} 
             onClose={() => setIsCreateModalOpen(false)} 
             onCreate={handleCreateChannel} 
+            currentUser={currentUser}
         />
         
         <VoiceCreateModal 

@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { Channel, Group, Chapter } from '../types';
 import { X, Podcast, Sparkles, Lock, Globe, Users, FileText, Loader2, Clipboard, Crown, Calendar, Star } from 'lucide-react';
 import { getUserGroups, getUserProfile } from '../services/firestoreService';
 import { generateChannelFromDocument } from '../services/channelGenerator';
 import { auth } from '../services/firebaseConfig';
+import { getCurrentUser } from '../services/authService';
 import { VOICES } from '../utils/initialData';
 
 interface CreateChannelModalProps {
@@ -12,9 +12,10 @@ interface CreateChannelModalProps {
   onClose: () => void;
   onCreate: (channel: Channel) => void;
   initialDate?: Date | null;
+  currentUser?: any;
 }
 
-export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, onClose, onCreate, initialDate }) => {
+export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, onClose, onCreate, initialDate, currentUser: propUser }) => {
   const [activeTab, setActiveTab] = useState<'manual' | 'import'>('manual');
   
   // Manual Form State
@@ -38,10 +39,11 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
   // Membership State
   const [isPro, setIsPro] = useState(false);
 
-  const currentUser = auth?.currentUser;
+  // Use propUser, then auth.currentUser, then the utility to find the logged in user
+  const effectiveUser = propUser || auth?.currentUser || getCurrentUser();
 
   useEffect(() => {
-    if (isOpen && currentUser) {
+    if (isOpen && effectiveUser) {
       // Reset
       setTitle('');
       setDescription('');
@@ -57,24 +59,24 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
       setReleaseDate(localIso);
       
       // Check Membership
-      getUserProfile(currentUser.uid).then(profile => {
+      getUserProfile(effectiveUser.uid).then(profile => {
           const pro = profile?.subscriptionTier === 'pro';
           setIsPro(pro);
           if (pro) setVisibility('private');
       });
     }
-  }, [isOpen, currentUser, initialDate]);
+  }, [isOpen, effectiveUser, initialDate]);
 
   useEffect(() => {
-    if (isOpen && currentUser && visibility === 'group') {
+    if (isOpen && effectiveUser && visibility === 'group') {
       setLoadingGroups(true);
-      getUserGroups(currentUser.uid).then(groups => {
+      getUserGroups(effectiveUser.uid).then(groups => {
         setUserGroups(groups);
         if (groups.length > 0) setSelectedGroupId(groups[0].id);
         setLoadingGroups(false);
       });
     }
-  }, [isOpen, visibility, currentUser]);
+  }, [isOpen, visibility, effectiveUser]);
 
   if (!isOpen) return null;
 
@@ -92,8 +94,8 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
       id: channelId,
       title,
       description,
-      author: currentUser?.displayName || 'Anonymous User',
-      ownerId: currentUser?.uid,
+      author: effectiveUser?.displayName || 'Anonymous User',
+      ownerId: effectiveUser?.uid,
       visibility: visibility,
       groupId: visibility === 'group' ? selectedGroupId : undefined,
       voiceName: voice,
@@ -114,7 +116,7 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
     if (!scriptText.trim()) return;
     setIsProcessing(true);
     try {
-      const generated = await generateChannelFromDocument(scriptText, currentUser, 'en');
+      const generated = await generateChannelFromDocument(scriptText, effectiveUser, 'en');
       if (generated) {
         setTitle(generated.title);
         setDescription(generated.description);
@@ -136,7 +138,7 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
 
   const isSpecializedVoice = (v: string) => ['Software Interview Voice', 'Linux Kernel Voice', 'Default Gem'].includes(v);
 
-  if (!currentUser) {
+  if (!effectiveUser) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 text-center shadow-2xl">
