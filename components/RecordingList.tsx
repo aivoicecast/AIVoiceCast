@@ -2,12 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel } from '../types';
 import { getUserRecordings, deleteRecordingReference } from '../services/firestoreService';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 
 interface RecordingListProps {
   onBack?: () => void;
-  /* Fix: Updated onStartLiveSession signature to include optional activeSegment parameter for consistency with unified signature */
   onStartLiveSession?: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
 }
 
@@ -33,11 +32,15 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const currentUser = auth?.currentUser;
 
   useEffect(() => {
-    loadData();
+    if (currentUser) {
+        loadData();
+    } else {
+        setLoading(false);
+    }
   }, [currentUser]);
 
   const loadData = async () => {
-    if (!currentUser) return;
+    if (!currentUser?.uid) return;
     setLoading(true);
     try {
       const data = await getUserRecordings(currentUser.uid);
@@ -60,7 +63,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   };
 
   const handleStartRecorder = async () => {
-      if (!meetingTitle.trim() || !onStartLiveSession) return;
+      if (!meetingTitle.trim() || !onStartLiveSession || !currentUser) return;
       
       const systemPrompt = recorderMode === 'silent' 
         ? `You are a professional interpreter. Your task is to transcribe the conversation and provide real-time translation of the user's speech into ${targetLanguage}. Speak only the translations clearly. Do not answer questions or engage in conversation, simply act as a voice translator.`
@@ -70,8 +73,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           id: `meeting-${Date.now()}`,
           title: meetingTitle,
           description: `Meeting Recording: ${meetingTitle}`,
-          author: currentUser?.displayName || 'User',
-          ownerId: currentUser?.uid,
+          author: currentUser.displayName || 'User',
+          ownerId: currentUser.uid,
           visibility: 'private',
           voiceName: 'Zephyr',
           systemInstruction: systemPrompt,
@@ -90,7 +93,9 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   if (!currentUser) {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-slate-500 bg-slate-900/30 rounded-xl border border-dashed border-slate-800">
-        <p>Please sign in to view your recordings.</p>
+        <AlertCircle size={32} className="mb-4 opacity-20"/>
+        <p className="font-bold">Access Restricted</p>
+        <p className="text-sm">Please sign in to view and manage your recordings.</p>
       </div>
     );
   }
@@ -136,7 +141,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
               <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500' : 'border-slate-800'} rounded-xl p-4 transition-all hover:border-indigo-500/30`}>
                 <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                   
-                  {/* Info */}
                   <div className="flex items-center gap-4 flex-1">
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center border ${isVideo ? 'bg-indigo-900/20 border-indigo-500/50 text-indigo-400' : 'bg-pink-900/20 border-pink-500/50 text-pink-400'}`}>
                        {isVideo ? <Video size={20} /> : <Play size={20} />}
@@ -150,7 +154,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                     </div>
                   </div>
 
-                  {/* Actions */}
                   <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                     <button 
                       onClick={() => setActiveMediaId(isPlaying ? null : rec.id)}
@@ -160,54 +163,26 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <span>{isPlaying ? 'Close' : 'Play'}</span>
                     </button>
                     
-                    <a 
-                      href={rec.transcriptUrl} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="p-2 bg-slate-800 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition-colors"
-                      title="View Transcript"
-                    >
+                    <a href={rec.transcriptUrl} target="_blank" rel="noreferrer" className="p-2 bg-slate-800 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition-colors" title="View Transcript">
                       <FileText size={18} />
                     </a>
 
-                    <a 
-                      href={rec.mediaUrl} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      download
-                      className="p-2 bg-slate-800 text-slate-400 hover:text-emerald-400 rounded-lg hover:bg-slate-700 transition-colors"
-                      title="Download Media"
-                    >
+                    <a href={rec.mediaUrl} target="_blank" rel="noreferrer" download className="p-2 bg-slate-800 text-slate-400 hover:text-emerald-400 rounded-lg hover:bg-slate-700 transition-colors" title="Download Media">
                       <HardDriveDownload size={18} />
                     </a>
 
-                    <button 
-                      onClick={() => handleDelete(rec)}
-                      className="p-2 bg-slate-800 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-700 transition-colors"
-                      title="Delete"
-                    >
+                    <button onClick={() => handleDelete(rec)} className="p-2 bg-slate-800 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-700 transition-colors" title="Delete">
                       <Trash2 size={18} />
                     </button>
                   </div>
                 </div>
 
-                {/* Player Area */}
                 {isPlaying && (
                   <div className="mt-4 pt-4 border-t border-slate-800 animate-fade-in">
                     {isVideo ? (
-                      <video 
-                        src={rec.mediaUrl} 
-                        controls 
-                        autoPlay 
-                        className="w-full max-h-96 rounded-lg bg-black"
-                      />
+                      <video src={rec.mediaUrl} controls autoPlay className="w-full max-h-96 rounded-lg bg-black" />
                     ) : (
-                      <audio 
-                        src={rec.mediaUrl} 
-                        controls 
-                        autoPlay 
-                        className="w-full mt-2"
-                      />
+                      <audio src={rec.mediaUrl} controls autoPlay className="w-full mt-2" />
                     )}
                   </div>
                 )}
@@ -217,7 +192,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         </div>
       )}
 
-      {/* --- Recorder Modal --- */}
       {isRecorderModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
               <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl p-6 animate-fade-in-up">
@@ -242,85 +216,45 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                           <div>
                               <label className="text-xs font-bold text-slate-500 uppercase">AI Mode</label>
                               <div className="grid grid-cols-2 gap-3 mt-2">
-                                  <button 
-                                      onClick={() => setRecorderMode('interactive')}
-                                      className={`p-3 rounded-xl border text-left transition-all ${recorderMode === 'interactive' ? 'bg-indigo-900/30 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-800 border-slate-700 opacity-60'}`}
-                                  >
+                                  <button onClick={() => setRecorderMode('interactive')} className={`p-3 rounded-xl border text-left transition-all ${recorderMode === 'interactive' ? 'bg-indigo-900/30 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-800 border-slate-700 opacity-60'}`}>
                                       <div className="flex items-center gap-2 mb-1"><Sparkles size={16} className="text-indigo-400"/><span className="font-bold text-white text-sm">Interactive</span></div>
                                       <p className="text-[10px] text-slate-400">AI participates and answers questions.</p>
                                   </button>
-                                  <button 
-                                      onClick={() => setRecorderMode('silent')}
-                                      className={`p-3 rounded-xl border text-left transition-all ${recorderMode === 'silent' ? 'bg-emerald-900/30 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-800 border-slate-700 opacity-60'}`}
-                                  >
+                                  <button onClick={() => setRecorderMode('silent')} className={`p-3 rounded-xl border text-left transition-all ${recorderMode === 'silent' ? 'bg-emerald-900/30 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-800 border-slate-700 opacity-60'}`}>
                                       <div className="flex items-center gap-2 mb-1"><Mic size={16} className="text-emerald-400"/><span className="font-bold text-white text-sm">Silent Scribe</span></div>
                                       <p className="text-[10px] text-slate-400">AI translates and transcribes.</p>
                                   </button>
                               </div>
                           </div>
 
-                          {/* Language Selection for Silent Scribe / Translator Mode */}
                           {recorderMode === 'silent' && (
                               <div className="animate-fade-in">
-                                  <label className="text-xs font-bold text-emerald-400 uppercase flex items-center gap-2">
-                                      <Languages size={14}/> Translate To
-                                  </label>
-                                  <select 
-                                      value={targetLanguage} 
-                                      onChange={(e) => setTargetLanguage(e.target.value)}
-                                      className="w-full bg-slate-800 border border-emerald-500/50 rounded-lg p-2.5 mt-1 text-sm text-white focus:outline-none"
-                                  >
+                                  <label className="text-xs font-bold text-emerald-400 uppercase flex items-center gap-2"><Languages size={14}/> Translate To</label>
+                                  <select value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)} className="w-full bg-slate-800 border border-emerald-500/50 rounded-lg p-2.5 mt-1 text-sm text-white focus:outline-none">
                                       {TARGET_LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
                                   </select>
                                   <p className="text-[10px] text-slate-500 mt-1">AI will translate spoken words into {targetLanguage} in real-time.</p>
                               </div>
                           )}
 
-                          {/* Screen Record Toggle */}
-                          <div 
-                              onClick={() => setRecordScreen(!recordScreen)}
-                              className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${recordScreen ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-slate-800/30 border-slate-700 hover:bg-slate-800'}`}
-                          >
+                          <div onClick={() => setRecordScreen(!recordScreen)} className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${recordScreen ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-slate-800/30 border-slate-700 hover:bg-slate-800'}`}>
                               <div className="flex items-center gap-3">
-                                  <div className={`p-1.5 rounded-full ${recordScreen ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
-                                      <Monitor size={16} />
-                                  </div>
-                                  <div>
-                                      <p className={`font-bold text-sm ${recordScreen ? 'text-indigo-400' : 'text-slate-400'}`}>Include Screen Share</p>
-                                  </div>
+                                  <div className={`p-1.5 rounded-full ${recordScreen ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-400'}`}><Monitor size={16} /></div>
+                                  <div><p className={`font-bold text-sm ${recordScreen ? 'text-indigo-400' : 'text-slate-400'}`}>Include Screen Share</p></div>
                               </div>
-                              <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${recordScreen ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-500'}`}>
-                                  {recordScreen && <CheckCircle size={12} />}
-                              </div>
+                              <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${recordScreen ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-500'}`}>{recordScreen && <CheckCircle size={12} />}</div>
                           </div>
 
-                          {/* Camera Toggle */}
-                          <div 
-                              onClick={() => setRecordCamera(!recordCamera)}
-                              className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ml-4 ${recordCamera ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-slate-800/30 border-slate-700 hover:bg-slate-800'}`}
-                          >
+                          <div onClick={() => setRecordCamera(!recordCamera)} className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ml-4 ${recordCamera ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-slate-800/30 border-slate-700 hover:bg-slate-800'}`}>
                               <div className="flex items-center gap-3">
-                                  <div className={`p-1.5 rounded-full ${recordCamera ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-400'}`}>
-                                      <Video size={16} />
-                                  </div>
-                                  <div>
-                                      <p className={`font-bold text-sm ${recordCamera ? 'text-indigo-400' : 'text-slate-400'}`}>Include Camera Video</p>
-                                  </div>
+                                  <div className={`p-1.5 rounded-full ${recordCamera ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-400'}`}><Video size={16} /></div>
+                                  <div><p className={`font-bold text-sm ${recordCamera ? 'text-indigo-400' : 'text-slate-400'}`}>Include Camera Video</p></div>
                               </div>
-                              <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${recordCamera ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-500'}`}>
-                                  {recordCamera && <CheckCircle size={12} />}
-                              </div>
+                              <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${recordCamera ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-500'}`}>{recordCamera && <CheckCircle size={12} />}</div>
                           </div>
                       </div>
 
-                      <button 
-                          onClick={handleStartRecorder}
-                          disabled={!meetingTitle}
-                          className="w-full py-3 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2"
-                      >
-                          <Video size={18} fill="currentColor"/>
-                          <span>Start Meeting</span>
-                      </button>
+                      <button onClick={handleStartRecorder} disabled={!meetingTitle} className="w-full py-3 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2"><Video size={18} fill="currentColor"/><span>Start Meeting</span></button>
                   </div>
               </div>
           </div>

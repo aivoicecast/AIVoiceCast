@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-/* Added Check to lucide-react imports to fix "Cannot find name 'Check'" errors */
-import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera } from 'lucide-react';
+import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera, AlertCircle } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { resizeImage } from '../utils/imageUtils';
 
@@ -25,23 +24,8 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedIcon, setGeneratedIcon] = useState<string | null>(null);
   const [baseImage, setBaseImage] = useState<string | null>(null);
-  const [hasApiKey, setHasApiKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const checkApiKey = async () => {
-      const selected = await window.aistudio.hasSelectedApiKey();
-      setHasApiKey(selected);
-    };
-    checkApiKey();
-  }, []);
-
-  const handleSelectKey = async () => {
-    await window.aistudio.openSelectKey();
-    // Assume success as per guidelines to avoid race condition
-    setHasApiKey(true);
-  };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
@@ -88,7 +72,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
         config: {
           imageConfig: {
             aspectRatio: "1:1",
-            imageSize: isEdit ? undefined : "1K" // gemini-3-pro specific
+            imageSize: isEdit ? undefined : "1K" 
           }
         },
       });
@@ -100,24 +84,16 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
             setGeneratedIcon(`data:image/png;base64,${part.inlineData.data}`);
             foundImage = true;
             break;
-          } else if (part.text && isEdit) {
-              // Sometimes models return text explanation first in multi-part responses
-              console.log("AI Text Note:", part.text);
           }
         }
       }
 
       if (!foundImage) {
-        throw new Error("No image was generated in the response. The model might have been blocked or failed to process the request.");
+        throw new Error("No image was generated. Please try a more specific description.");
       }
     } catch (e: any) {
       console.error(e);
-      if (e.message?.includes("Requested entity was not found")) {
-        setHasApiKey(false);
-        setError("API Key session expired or invalid. Please select your key again.");
-      } else {
-        setError(e.message || "Generation failed. Try a different prompt.");
-      }
+      setError(e.message || "Generation failed. Try a different prompt.");
     } finally {
       setIsGenerating(false);
     }
@@ -130,51 +106,6 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     link.download = `app_icon_${Date.now()}.png`;
     link.click();
   };
-
-  if (!hasApiKey) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center bg-slate-950 p-6">
-        <div className="max-w-md w-full text-center space-y-8 animate-fade-in-up">
-            <div className="p-4 bg-indigo-600/10 rounded-3xl inline-block border border-indigo-500/20">
-                <ShieldCheck size={64} className="text-indigo-400 mx-auto" />
-            </div>
-            <div className="space-y-3">
-                <h2 className="text-3xl font-black text-white">Unlock Pro Creative Tools</h2>
-                <p className="text-slate-400">Icon Lab uses high-fidelity image models that require a validated API Key from a paid GCP project.</p>
-            </div>
-            <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl text-left space-y-4">
-                <p className="text-xs text-slate-500 uppercase font-bold tracking-widest">Requirements</p>
-                <ul className="text-sm text-slate-300 space-y-2">
-                    <li className="flex items-center gap-2">
-                        <Check size={16} className="text-emerald-500" /> 
-                        <span>Google AI Studio API Key</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                        <Check size={16} className="text-emerald-500" /> 
-                        <span>GCP Project with Billing Enabled</span>
-                    </li>
-                </ul>
-                <a 
-                    href="https://ai.google.dev/gemini-api/docs/billing" 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="block text-xs text-indigo-400 hover:text-indigo-300 underline font-medium"
-                >
-                    Learn about Gemini API billing
-                </a>
-            </div>
-            <button 
-                onClick={handleSelectKey}
-                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
-            >
-                <Key size={20} />
-                <span>Select API Key to Continue</span>
-            </button>
-            <button onClick={onBack} className="text-slate-500 hover:text-white text-sm font-medium transition-colors">Return to Dashboard</button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
@@ -196,7 +127,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                   </div>
               )}
               <span className="text-[10px] bg-indigo-900/50 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/30 font-bold uppercase tracking-widest">
-                  {baseImage ? 'Gemini 2.5 Flash' : 'Gemini 3 Pro Image'}
+                  Neural v2.0
               </span>
           </div>
       </header>
@@ -240,7 +171,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                   <textarea 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    placeholder={baseImage ? "What changes should I make to this icon? (e.g. 'Make it look more futuristic' or 'Change the red to blue')..." : "Describe your app or icon (e.g. 'a golden compass for a travel app')..."}
+                    placeholder={baseImage ? "What changes should I make to this icon?..." : "Describe your app or icon concept..."}
                     className="w-full h-32 bg-slate-900 border border-slate-700 rounded-2xl p-4 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none leading-relaxed transition-all"
                   />
               </div>
@@ -279,16 +210,6 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                       </div>
                   )}
               </div>
-
-              <div className="bg-indigo-900/10 border border-indigo-500/20 p-4 rounded-2xl space-y-2">
-                  <div className="flex items-center gap-2 text-xs font-bold text-indigo-300">
-                      <Zap size={14} fill="currentColor"/>
-                      Pro Tip
-                  </div>
-                  <p className="text-[10px] text-slate-400 leading-relaxed">
-                      {baseImage ? "The AI will use your image as a reference. Be specific about what to keep and what to change for best results." : "Icons without text perform better. Focus on metaphors and strong visual symbols that represent your app's core value."}
-                  </p>
-              </div>
           </div>
 
           {/* Preview Panel */}
@@ -301,7 +222,6 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
 
               {generatedIcon ? (
                   <div className="flex flex-col items-center animate-fade-in w-full max-w-2xl">
-                      {/* Context View: iOS Style Preview */}
                       <div className="relative mb-12 group">
                           <div className="absolute -inset-10 bg-indigo-500/10 blur-[80px] rounded-full pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"></div>
                           
@@ -310,8 +230,6 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                                   <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center border border-white/5 opacity-40"></div>
                                   <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center border border-white/5 opacity-40"></div>
                                   <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center border border-white/5 opacity-40"></div>
-                                  
-                                  {/* THE GENERATED ICON */}
                                   <div className="flex flex-col items-center gap-2 scale-110">
                                       <img 
                                         src={generatedIcon} 
@@ -320,7 +238,6 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                                       />
                                       <span className="text-[10px] font-bold text-white uppercase tracking-wider">Your App</span>
                                   </div>
-
                                   <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center border border-white/5 opacity-40"></div>
                                   <div className="w-20 h-20 bg-slate-800 rounded-2xl flex items-center justify-center border border-white/5 opacity-40"></div>
                               </div>
@@ -352,7 +269,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                       <div className="space-y-2">
                           <h3 className="text-xl font-bold text-slate-600">Preview Studio</h3>
                           <p className="text-sm text-slate-700">
-                              {baseImage ? "Upload your base icon and request changes. We'll use neural synthesis to reimagine it." : "Enter a concept and select a style to generate your first professional icon."}
+                              {baseImage ? "Request changes to your base icon and we'll reimagine it." : "Enter a concept and select a style to generate your first professional icon."}
                           </p>
                       </div>
                   </div>
@@ -363,7 +280,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                       <div className="bg-slate-900/90 p-8 rounded-3xl border border-slate-800 shadow-2xl flex flex-col items-center gap-4 max-w-xs text-center">
                           <div className="relative">
                             <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
-                            <Sparkles className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400" size={24} />
+                            <Sparkles className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-indigo-400" size={24} />
                           </div>
                           <p className="text-sm font-bold text-white">Neural Synthesis in Progress</p>
                           <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Painting with pixels...</p>
@@ -375,7 +292,3 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     </div>
   );
 };
-
-const AlertCircle = ({ size }: { size: number }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-);
