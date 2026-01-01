@@ -1,4 +1,31 @@
 
+export interface Address {
+  name: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+}
+
+export interface PackageDetails {
+  weight: string;
+  unit: 'lbs' | 'kg';
+  type: 'envelope' | 'box' | 'tube' | 'pallet';
+  dimensions?: string;
+  service: 'standard' | 'express' | 'overnight';
+  carrier: 'USPS' | 'FedEx' | 'UPS' | 'DHL';
+}
+
+export interface ShippingLabel {
+  id: string;
+  sender: Address;
+  recipient: Address;
+  package: PackageDetails;
+  trackingNumber: string;
+  createdAt: number;
+}
+
 export interface Invitation {
   id: string;
   fromUserId: string;
@@ -50,7 +77,6 @@ export interface Comment {
 }
 
 export interface TranscriptItem {
-  /* Changed role to string to support robust mapping of AI voices and technical IDs in LiveSession.tsx */
   role: string;
   text: string;
   timestamp: number;
@@ -151,7 +177,8 @@ export type ViewState =
   | 'card_workshop' 
   | 'card_explorer' 
   | 'card_viewer'
-  | 'icon_generator';
+  | 'icon_generator'
+  | 'shipping_labels';
 
 export interface AudioState {
   isConnected: boolean;

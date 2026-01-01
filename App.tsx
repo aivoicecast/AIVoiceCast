@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck
 } from 'lucide-react';
 import { LiveSession } from './components/LiveSession';
 import { PodcastDetail } from './components/PodcastDetail';
@@ -35,6 +36,7 @@ import { NotebookViewer } from './components/NotebookViewer';
 import { CardWorkshop } from './components/CardWorkshop';
 import { CardExplorer } from './components/CardExplorer';
 import { IconGenerator } from './components/IconGenerator';
+import { ShippingLabelApp } from './components/ShippingLabelApp';
 import { FirestoreInspector } from './components/FirestoreInspector';
 import { BrandLogo } from './components/BrandLogo';
 
@@ -47,10 +49,6 @@ import { OFFLINE_CHANNEL_ID } from './utils/offlineContent';
 import { warmUpAudioContext, stopAllPlatformAudio, isAnyAudioPlaying, getGlobalAudioContext } from './utils/audioUtils';
 
 // --- Error Boundary Component ---
-/**
- * Explicit Props and State interfaces for ErrorBoundary to ensure proper TypeScript 
- * property identification on the class instance.
- */
 interface ErrorBoundaryProps {
   children: ReactNode;
 }
@@ -60,7 +58,6 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fix: Explicitly extending React.Component with Generics for Props and State to resolve 'state' and 'props' access errors.
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -69,7 +66,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
   componentDidCatch(error: Error, errorInfo: ErrorInfo) { console.error("Uncaught runtime error:", error, errorInfo); }
   render() {
-    // Fix: Correctly identifying 'this.state' as a property of React.Component.
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -90,7 +86,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
-    // Fix: Correctly identifying 'this.props' as a property of React.Component.
     return this.props.children;
   }
 }
@@ -123,7 +118,8 @@ const UI_TEXT = {
     careers: "Careers",
     notebooks: "LLM Notebooks",
     cards: "Card Workshop",
-    icons: "Icon Lab"
+    icons: "Icon Lab",
+    shipping: "Shipping Lab"
   },
   zh: {
     appTitle: "AI 播客",
@@ -152,7 +148,8 @@ const UI_TEXT = {
     careers: "职业发展",
     notebooks: "LLM 笔记本",
     cards: "贺卡工坊",
-    icons: "图标生成器"
+    icons: "图标生成器",
+    shipping: "物流实验室"
   }
 };
 
@@ -193,6 +190,7 @@ const App: React.FC = () => {
 
   const allApps = [
     { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); setActiveTab('categories'); }, color: 'text-indigo-400' },
+    { id: 'shipping_labels', label: t.shipping, icon: Truck, action: () => handleSetViewState('shipping_labels'), color: 'text-emerald-400' },
     { id: 'icon_lab', label: t.icons, icon: AppWindow, action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400' },
     { id: 'mission', label: t.mission, icon: Rocket, action: () => handleSetViewState('mission'), color: 'text-orange-500' },
     { id: 'code_studio', label: t.code, icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400' },
@@ -226,7 +224,6 @@ const App: React.FC = () => {
     handleSetViewState('live_session');
   };
 
-  // Sync Logic: Auto-save to Drive
   useEffect(() => {
     if (currentUser) {
         const token = getDriveToken();
@@ -247,7 +244,6 @@ const App: React.FC = () => {
                 setCurrentUser(u);
                 addLog(`Auth synchronized: ${u.displayName}`);
             } else {
-                // Fallback to localStorage if Firebase hasn't resolved yet but we have local session
                 const local = getCurrentUser();
                 if (local) setCurrentUser(local);
                 else setCurrentUser(null);
@@ -392,7 +388,6 @@ const App: React.FC = () => {
                           <LayoutGrid size={24}/>
                       </button>
 
-                      {/* User Auth Info & Menu Trigger */}
                       <div className="flex items-center gap-3 bg-slate-800/40 p-1 pl-1 pr-3 rounded-full border border-slate-700 hover:bg-slate-800/60 transition-colors cursor-pointer" onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}>
                          <img 
                            src={currentUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.displayName || 'U')}&background=6366f1&color=fff`} 
@@ -456,6 +451,7 @@ const App: React.FC = () => {
                   {viewState === 'card_viewer' && <CardWorkshop onBack={() => handleSetViewState('directory')} isViewer={true} />}
                   {viewState === 'user_guide' && <UserManual onBack={() => handleSetViewState('directory')} />}
                   {viewState === 'icon_generator' && <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} />}
+                  {viewState === 'shipping_labels' && <ShippingLabelApp onBack={() => handleSetViewState('directory')} />}
                   {viewState === 'firestore_debug' && <FirestoreInspector onBack={() => handleSetViewState('directory')} />}
               </div>
 
