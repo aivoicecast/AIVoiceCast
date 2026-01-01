@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
+import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
@@ -60,10 +60,13 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fix: Use imported Component instead of React.Component to resolve access errors for props and state in strict TS environments
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Initialize state property directly to ensure it is recognized by TypeScript
-  state: ErrorBoundaryState = { hasError: false, error: null };
+// Fix: Corrected inheritance and initialization to ensure props and state are correctly typed in strict environments
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Explicit constructor for state initialization to ensure correct property binding
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
     return { hasError: true, error }; 
@@ -74,7 +77,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
   
   render(): ReactNode {
-    // Fix: Access state via this.state
+    // Fix: Access state via this.state correctly
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -97,7 +100,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
     
-    // Fix: Access children via this.props
+    // Fix: Correctly access children through props inherited from React.Component
     return this.props.children;
   }
 }

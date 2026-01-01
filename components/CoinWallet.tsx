@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight } from 'lucide-react';
 import { UserProfile, CoinTransaction } from '../types';
@@ -45,6 +46,10 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: initialUse
         if (activeUser?.uid) {
             const data = await getCoinTransactions(activeUser.uid);
             setTransactions(data);
+        } else if (!currentUid && !activeUser) {
+            // Wait for auth to initialize before giving up
+            // This prevents the "Disconnected" screen from flashing on refresh
+            return; 
         }
     } catch (e) {
         console.error("Wallet initialization failed", e);
@@ -53,8 +58,24 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: initialUse
     }
   }, [initialUser, user?.uid]);
 
+  // Handle case where initialUser prop updates after component mount
+  useEffect(() => {
+      if (initialUser) {
+          setUser(initialUser);
+          if (loading) initWallet();
+      }
+  }, [initialUser]);
+
   useEffect(() => {
     initWallet();
+    
+    // Add auth state listener for robustness
+    const unsubscribe = auth?.onAuthStateChanged((u) => {
+        if (u && !user) {
+            initWallet();
+        }
+    });
+    return () => unsubscribe?.();
   }, [initWallet]);
 
   const handleRefresh = async () => {
