@@ -51,46 +51,20 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   
   const [tool, setTool] = useState<ToolType>('pen');
   const [color, setColor] = useState('#ffffff');
-  const [lineWidth, setLineWidth] = useState(6); // Default thicker for brush
+  const [lineWidth, setLineWidth] = useState(6);
   const [lineStyle, setLineStyle] = useState<LineStyle>('solid');
   const [brushType, setBrushType] = useState<BrushType>('writing-brush');
-  const [fontSize, setFontSize] = useState(24);
-  const [fontFamily, setFontFamily] = useState('sans-serif');
   const [borderRadius, setBorderRadius] = useState(0); 
-  const [showShareDropdown, setShowShareDropdown] = useState(false);
+  const [fontSize, setFontSize] = useState(24);
   const [showStyleMenu, setShowStyleMenu] = useState(false);
   
-  const [activeCurvePoints, setActiveCurvePoints] = useState<{x: number, y: number}[]>([]);
-  const [curveMousePos, setCurveMousePos] = useState<{x: number, y: number} | null>(null);
-  const [startArrow, setStartArrow] = useState(false);
-  const [endArrow, setEndArrow] = useState(false);
-  
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [isDraggingSelection, setIsDraggingSelection] = useState(false);
-  const [isResizing, setIsResizing] = useState(false);
-  const [isRotating, setIsRotating] = useState(false);
-  const [resizeHandle, setResizeHandle] = useState<string | null>(null);
-  const [selectionBox, setSelectionBox] = useState<{ startX: number, startY: number, currX: number, currY: number } | null>(null);
-  const [clipboard, setClipboard] = useState<WhiteboardElement[]>([]);
-  
-  const dragStartPos = useRef<{x: number, y: number} | null>(null);
-  const initialSelectionStates = useRef<Map<string, WhiteboardElement>>(new Map());
-
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const lastPanPoint = useRef({ x: 0, y: 0 });
   
   const [isSharedSession, setIsSharedSession] = useState(!!sessionId);
   const [isReadOnly, setIsReadOnly] = useState(propReadOnly);
   const currentSessionIdRef = useRef<string>(sessionId || crypto.randomUUID());
-
-  const [textInput, setTextInput] = useState<{ id: string; x: number; y: number; text: string; width?: number; height?: number; rotation?: number } | null>(null);
   const [writeToken, setWriteToken] = useState<string | undefined>(accessKey);
-
-  const [showAIPrompt, setShowAIPrompt] = useState(false);
-  const [aiPromptText, setAiPromptText] = useState('');
-  const [isAIGenerating, setIsAIGenerating] = useState(false);
 
   useEffect(() => {
     if (sessionId) {
@@ -109,39 +83,15 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       if (points.length < 3) return points;
       const last = points[points.length - 1];
       const prev = points[points.length - 2];
-      
       const dx = last.x - prev.x;
       const dy = last.y - prev.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      
-      if (dist < 2) return points; // Too slow to sharpen
-      
-      // Add 3 fading points in same trajectory to create the sharp tip
+      if (dist < 2) return points; 
       const sharpened = [...points];
       for (let i = 1; i <= 3; i++) {
-          sharpened.push({
-              x: last.x + (dx / dist) * (i * 4),
-              y: last.y + (dy / dist) * (i * 4)
-          });
+          sharpened.push({ x: last.x + (dx / dist) * (i * 4), y: last.y + (dy / dist) * (i * 4) });
       }
       return sharpened;
-  };
-
-  const getElementBounds = (el: WhiteboardElement) => {
-      if (el.type === 'pen' || el.type === 'eraser' || el.type === 'curve') {
-          if (!el.points || el.points.length === 0) return { x: el.x, y: el.y, w: 0, h: 0 };
-          const xs = el.points.map(p => p.x); const ys = el.points.map(p => p.y);
-          const minX = Math.min(...xs); const maxX = Math.max(...xs);
-          const minY = Math.min(...ys); const maxY = Math.max(...ys);
-          return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
-      } else if (el.type === 'line' || el.type === 'arrow') {
-          return { x: Math.min(el.x, el.endX || el.x), y: Math.min(el.y, el.endY || el.y), w: Math.abs((el.endX || el.x) - el.x), h: Math.abs((el.endY || el.y) - el.y) };
-      } else if (el.type === 'text') {
-          const fs = el.fontSize || 24; let w = el.width || (el.text?.length || 0) * fs * 0.6;
-          let h = el.height || (el.text?.split('\n').length || 1) * fs * 1.2;
-          return { x: el.x, y: el.y, w, h };
-      }
-      return { x: el.x, y: el.y, w: el.width || 0, h: el.height || 0 };
   };
 
   const getWorldCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
@@ -159,9 +109,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const newEl: WhiteboardElement = { 
           id, type: tool, x, y, color: tool === 'eraser' ? '#0f172a' : color, 
           strokeWidth: tool === 'eraser' ? 20 : lineWidth, 
+          lineStyle: tool === 'eraser' ? 'solid' : lineStyle,
           brushType: tool === 'eraser' ? 'standard' : brushType, 
           points: tool === 'pen' || tool === 'eraser' ? [{ x, y }] : undefined, 
-          width: 0, height: 0, endX: x, endY: y, rotation: 0 
+          width: 0, height: 0, endX: x, endY: y, borderRadius: tool === 'rect' ? borderRadius : undefined, rotation: 0 
       };
       setCurrentElement(newEl);
   };
@@ -179,7 +130,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const stopDrawing = () => {
       if (isDrawing && currentElement) {
           let finalized = { ...currentElement };
-          // Apply sharpening to Chinese brush strokes on finish
           if (finalized.brushType === 'writing-brush' && finalized.points) {
               finalized.points = sharpenStroke(finalized.points);
           }
@@ -202,37 +152,31 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           ctx.save();
           ctx.beginPath(); ctx.strokeStyle = el.color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
           
+          const lStyle = el.lineStyle || 'solid';
+          if (lStyle === 'dashed') ctx.setLineDash([15, 10]); 
+          else if (lStyle === 'dotted') ctx.setLineDash([3, 8]); 
+          else if (lStyle === 'dash-dot') ctx.setLineDash([15, 5, 2, 5]);
+          else if (lStyle === 'long-dash') ctx.setLineDash([30, 10]);
+          else ctx.setLineDash([]);
+
           if (el.type === 'pen' || el.type === 'eraser') {
               if (el.points?.length) {
                   if (el.brushType === 'writing-brush' && el.type !== 'eraser') {
-                      // Calligraphy Engine
                       for (let i = 1; i < el.points.length; i++) {
-                          const p1 = el.points[i - 1];
-                          const p2 = el.points[i];
+                          const p1 = el.points[i - 1]; const p2 = el.points[i];
                           const d = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-                          
-                          // Sharp End Heuristics:
-                          // As we approach the end of the point array, we start tapering more aggressively
                           const isNearEnd = i > el.points.length - 5;
                           const endTaper = isNearEnd ? (el.points.length - i) / 5 : 1.0;
-                          
-                          // Velocity-based pressure (Fast = Thin)
                           const speedPressure = Math.max(0.1, 2.0 - (d / 8));
                           const finalPressure = speedPressure * endTaper;
-                          
                           ctx.lineWidth = (el.strokeWidth * finalPressure) / scale;
                           ctx.globalAlpha = Math.min(1.0, Math.max(0.3, finalPressure));
-                          
                           ctx.beginPath();
                           if (i > 1) {
-                              const p0 = el.points[i - 2];
-                              const mx1 = (p0.x + p1.x) / 2; const my1 = (p0.y + p1.y) / 2;
+                              const p0 = el.points[i - 2]; const mx1 = (p0.x + p1.x) / 2; const my1 = (p0.y + p1.y) / 2;
                               const mx2 = (p1.x + p2.x) / 2; const my2 = (p1.y + p2.y) / 2;
-                              ctx.moveTo(mx1, my1);
-                              ctx.quadraticCurveTo(p1.x, p1.y, mx2, my2);
-                          } else {
-                              ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
-                          }
+                              ctx.moveTo(mx1, my1); ctx.quadraticCurveTo(p1.x, p1.y, mx2, my2);
+                          } else { ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); }
                           ctx.stroke();
                       }
                   } else {
@@ -242,7 +186,16 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                       ctx.stroke();
                   }
               }
-          } else if (el.type === 'rect') { ctx.lineWidth = el.strokeWidth / scale; ctx.strokeRect(el.x, el.y, el.width || 0, el.height || 0); }
+          } else if (el.type === 'rect') { 
+              ctx.lineWidth = el.strokeWidth / scale; 
+              if (el.borderRadius) {
+                  const r = Math.min(el.borderRadius, Math.min(Math.abs(el.width||0), Math.abs(el.height||0)) / 2);
+                  ctx.roundRect(el.x, el.y, el.width || 0, el.height || 0, r);
+                  ctx.stroke();
+              } else {
+                  ctx.strokeRect(el.x, el.y, el.width || 0, el.height || 0); 
+              }
+          }
           else if (el.type === 'circle') { ctx.lineWidth = el.strokeWidth / scale; ctx.ellipse(el.x + (el.width||0)/2, el.y + (el.height||0)/2, Math.abs((el.width||0)/2), Math.abs((el.height||0)/2), 0, 0, 2*Math.PI); ctx.stroke(); }
           else if (el.type === 'line' || el.type === 'arrow') { ctx.lineWidth = el.strokeWidth / scale; ctx.moveTo(el.x, el.y); ctx.lineTo(el.endX||el.x, el.endY||el.y); ctx.stroke(); }
           ctx.restore();
@@ -263,14 +216,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
             <div className="flex bg-slate-800 rounded-lg p-1">
                 {BRUSH_TYPES.map(bt => (
-                    <button 
-                        key={bt.value} 
-                        onClick={() => setBrushType(bt.value)}
-                        className={`p-1.5 rounded transition-all ${brushType === bt.value ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}
-                        title={bt.label}
-                    >
-                        <bt.icon size={16}/>
-                    </button>
+                    <button key={bt.value} onClick={() => setBrushType(bt.value)} className={`p-1.5 rounded transition-all ${brushType === bt.value ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`} title={bt.label}><bt.icon size={16}/></button>
                 ))}
             </div>
 
@@ -278,6 +224,32 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Square size={16}/></button>
                 <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Circle size={16}/></button>
                 <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Minus size={16}/></button>
+            </div>
+
+            <div className="relative">
+                <button onClick={() => setShowStyleMenu(!showStyleMenu)} className={`p-1.5 rounded bg-slate-800 border border-slate-700 flex items-center gap-1 text-slate-400 hover:text-white transition-all ${showStyleMenu ? 'border-indigo-500' : ''}`}><Settings2 size={16}/></button>
+                {showStyleMenu && (
+                    <div className="absolute top-full left-0 mt-2 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] p-4 space-y-4">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Line Pattern</label>
+                            <div className="grid grid-cols-2 gap-1">
+                                {LINE_STYLES.map(ls => (
+                                    <button key={ls.value} onClick={() => setLineStyle(ls.value)} className={`p-2 rounded-lg border text-[9px] font-bold transition-all ${lineStyle === ls.value ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>{ls.label}</button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Stroke Width</label><span className="text-[10px] font-mono text-indigo-400">{lineWidth}px</span></div>
+                            <input type="range" min="1" max="40" value={lineWidth} onChange={e => setLineWidth(parseInt(e.target.value))} className="w-full accent-indigo-500 h-1 bg-slate-800 rounded-full appearance-none" />
+                        </div>
+                        {tool === 'rect' && (
+                             <div className="space-y-2">
+                                <div className="flex justify-between items-center"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Rounding</label><span className="text-[10px] font-mono text-indigo-400">{borderRadius}px</span></div>
+                                <input type="range" min="0" max="50" value={borderRadius} onChange={e => setBorderRadius(parseInt(e.target.value))} className="w-full accent-indigo-500 h-1 bg-slate-800 rounded-full appearance-none" />
+                             </div>
+                        )}
+                    </div>
+                )}
             </div>
             
             <div className="flex gap-1 px-2 bg-slate-800 rounded-lg py-1 items-center">

@@ -14,11 +14,14 @@ import {
   SubscriptionTier,
   Chapter,
   TranscriptItem,
-  ChannelVisibility
+  ChannelVisibility,
+  GeneratedIcon,
+  BankingCheck,
+  ShippingLabel
 } from '../types';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 
-// Constants
+// Collections
 const USERS_COLLECTION = 'users';
 const CHANNELS_COLLECTION = 'channels';
 const CHANNEL_STATS_COLLECTION = 'channel_stats';
@@ -35,6 +38,9 @@ const CODE_PROJECTS_COLLECTION = 'code_projects';
 const WHITEBOARDS_COLLECTION = 'whiteboards';
 const SAVED_WORDS_COLLECTION = 'saved_words';
 const CARDS_COLLECTION = 'cards';
+const ICONS_COLLECTION = 'icons';
+const CHECKS_COLLECTION = 'checks';
+const SHIPPING_COLLECTION = 'shipping';
 
 export const ADMIN_EMAILS = ['shengliang.song.ai@gmail.com'];
 export const ADMIN_EMAIL = ADMIN_EMAILS[0];
@@ -44,6 +50,47 @@ const sanitizeData = (data: any) => {
     cleaned.adminOwnerEmail = ADMIN_EMAIL;
     return cleaned;
 };
+
+// --- Icons ---
+export async function saveIcon(icon: GeneratedIcon): Promise<string> {
+    if (!db) return icon.id;
+    const ref = db.collection(ICONS_COLLECTION).doc(icon.id);
+    await ref.set(sanitizeData(icon));
+    return icon.id;
+}
+export async function getIcon(id: string): Promise<GeneratedIcon | null> {
+    if (!db) return null;
+    const doc = await db.collection(ICONS_COLLECTION).doc(id).get();
+    return doc.exists ? (doc.data() as GeneratedIcon) : null;
+}
+
+// --- Checks ---
+export async function saveBankingCheck(check: BankingCheck): Promise<string> {
+    if (!db) return check.id || 'local';
+    const id = check.id || crypto.randomUUID();
+    const ref = db.collection(CHECKS_COLLECTION).doc(id);
+    await ref.set(sanitizeData({ ...check, id }));
+    return id;
+}
+export async function getBankingCheck(id: string): Promise<BankingCheck | null> {
+    if (!db) return null;
+    const doc = await db.collection(CHECKS_COLLECTION).doc(id).get();
+    return doc.exists ? (doc.data() as BankingCheck) : null;
+}
+
+// --- Shipping ---
+export async function saveShippingLabel(label: ShippingLabel): Promise<string> {
+    if (!db) return label.id || 'local';
+    const id = label.id || crypto.randomUUID();
+    const ref = db.collection(SHIPPING_COLLECTION).doc(id);
+    await ref.set(sanitizeData({ ...label, id }));
+    return id;
+}
+export async function getShippingLabel(id: string): Promise<ShippingLabel | null> {
+    if (!db) return null;
+    const doc = await db.collection(SHIPPING_COLLECTION).doc(id).get();
+    return doc.exists ? (doc.data() as ShippingLabel) : null;
+}
 
 // --- Initialization Check ---
 

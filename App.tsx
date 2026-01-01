@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -60,15 +61,10 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fix: Inherit from React.Component directly to ensure TypeScript correctly identifies inherited properties like 'this.props' and 'this.state'
+// Fixed: Explicitly used React.Component and removed redundant constructor to improve type inference for this.props
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicit state initialization
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-  }
-  
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
     return { hasError: true, error }; 
   }
@@ -98,8 +94,9 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
-    // Correctly accessing children from inherited props from React.Component
-    return this.props.children;
+    // Fixed: Destructuring children from this.props to resolve the TS error
+    const { children } = this.props;
+    return children;
   }
 }
 
@@ -177,6 +174,13 @@ const App: React.FC = () => {
   const getInitialView = (): ViewState | 'firestore_debug' => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
+    // Check deep link patterns
+    if (view === 'card' && params.get('id')) return 'card_workshop';
+    if (view === 'icon' && params.get('id')) return 'icon_viewer';
+    if (view === 'shipping' && params.get('id')) return 'shipping_viewer';
+    if (view === 'check' && params.get('id')) return 'check_viewer';
+    if (view === 'doc' && params.get('id')) return 'directory'; // Handled by doc list logic
+
     return (view as any) || 'directory';
   };
 
@@ -184,6 +188,10 @@ const App: React.FC = () => {
   const [activeChannelId, setActiveChannelId] = useState<string | null>(() => {
       return new URLSearchParams(window.location.search).get('channelId');
   });
+  const [activeItemId, setActiveItemId] = useState<string | null>(() => {
+      return new URLSearchParams(window.location.search).get('id');
+  });
+  
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -243,6 +251,7 @@ const App: React.FC = () => {
 
     Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
     if (!params.channelId) url.searchParams.delete('channelId');
+    if (!params.id) url.searchParams.delete('id');
 
     window.history.replaceState({}, '', url.toString());
   };
@@ -348,7 +357,12 @@ const App: React.FC = () => {
       );
   }
 
-  if (!currentUser && viewState !== 'mission' && viewState !== 'careers' && viewState !== 'user_guide') {
+  const isDeepLink = !!activeItemId;
+  
+  // Publicly accessible mission/careers even without login
+  const isPublicView = ['mission', 'careers', 'user_guide', 'card_workshop', 'icon_viewer', 'shipping_viewer', 'check_viewer'].includes(viewState);
+
+  if (!currentUser && !isPublicView) {
       return <LoginPage onMissionClick={() => handleSetViewState('mission')} onPrivacyClick={() => setIsPrivacyOpen(true)} />;
   }
 
@@ -390,7 +404,7 @@ const App: React.FC = () => {
               </button>
               <div className="relative">
                  <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">
-                    <img src={currentUser?.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                    <img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=Guest`} alt="Profile" className="w-full h-full object-cover" />
                  </button>
                  <StudioMenu 
                     isUserMenuOpen={isUserMenuOpen} 
@@ -535,7 +549,7 @@ const App: React.FC = () => {
             )}
 
             {viewState === 'card_workshop' && (
-                <CardWorkshop onBack={() => handleSetViewState('directory')} />
+                <CardWorkshop onBack={() => handleSetViewState('directory')} cardId={activeItemId || undefined} isViewer={viewState === 'card_viewer' || !!activeItemId} />
             )}
 
             {viewState === 'mission' && (

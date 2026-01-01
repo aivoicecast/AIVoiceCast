@@ -1,10 +1,14 @@
 
 import React, { useState, useRef, useMemo } from 'react';
-import { ArrowLeft, Truck, Package, Save, Download, Sparkles, Loader2, RefreshCw, User, MapPin, Hash, QrCode, Mail, Trash2, Printer, CheckCircle, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Truck, Package, Save, Download, Sparkles, Loader2, RefreshCw, User, MapPin, Hash, QrCode, Mail, Trash2, Printer, CheckCircle, AlertTriangle, Share2, Link } from 'lucide-react';
 import { Address, PackageDetails, ShippingLabel } from '../types';
 import { GoogleGenAI } from '@google/genai';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { auth } from '../services/firebaseConfig';
+import { saveShippingLabel } from '../services/firestoreService';
+import { getDriveToken, connectGoogleDrive } from '../services/authService';
+import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 
 interface ShippingLabelAppProps {
   onBack: () => void;
@@ -34,6 +38,8 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
   
   const [isParsing, setIsParsing] = useState<'sender' | 'recipient' | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
   
   const labelRef = useRef<HTMLDivElement>(null);
 
@@ -68,12 +74,51 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
       }
   };
 
+  const handlePublishAndShare = async () => {
+      if (!auth.currentUser) return alert("Please sign in to share.");
+      setIsSharing(true);
+      try {
+          const id = crypto.randomUUID();
+          
+          // 1. Save metadata to Firestore for site viewing
+          await saveShippingLabel({
+              id,
+              sender,
+              recipient,
+              package: pkg,
+              trackingNumber: trackingNum,
+              createdAt: Date.now(),
+              ownerId: auth.currentUser.uid
+          });
+
+          // 2. Export and Save PDF to Drive
+          const canvas = await html2canvas(labelRef.current!, { scale: 4, useCORS: true });
+          const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [288, 432] });
+          pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, 288, 432);
+          const pdfBlob = pdf.output('blob');
+
+          const token = getDriveToken() || await connectGoogleDrive();
+          if (token) {
+              const folderId = await ensureCodeStudioFolder(token);
+              await uploadToDrive(token, folderId, `Label_${recipient.name.replace(/\s/g, '_')}_${id.substring(0,4)}.pdf`, pdfBlob);
+          }
+
+          const link = `${window.location.origin}?view=shipping&id=${id}`;
+          setShareLink(link);
+          alert("Label shared and saved to Drive!");
+      } catch (e: any) {
+          alert("Sharing failed: " + e.message);
+      } finally {
+          setIsSharing(false);
+      }
+  };
+
   const handleExportPDF = async () => {
       if (!labelRef.current) return;
       setIsExporting(true);
       try {
           const canvas = await html2canvas(labelRef.current, {
-              scale: 4, // Increased scale for better resolution
+              scale: 4, 
               useCORS: true,
               backgroundColor: '#ffffff',
               logging: false
@@ -82,7 +127,7 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
           const pdf = new jsPDF({
               orientation: 'portrait',
               unit: 'px',
-              format: [288, 432] // 4x6 inches at 72dpi
+              format: [288, 432] 
           });
           pdf.addImage(imgData, 'JPEG', 0, 0, 288, 432);
           pdf.save(`shipping_label_${Date.now()}.pdf`);
@@ -110,10 +155,14 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
               </h1>
           </div>
           <div className="flex items-center gap-3">
+              <button onClick={handlePublishAndShare} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
+                  {isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
+                  <span>{isSharing ? 'Syncing...' : 'Publish & Share'}</span>
+              </button>
               <button 
                 onClick={handleExportPDF}
                 disabled={isExporting}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg disabled:opacity-50 transition-all active:scale-95"
+                className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold border border-slate-700 transition-all active:scale-95"
               >
                   {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />}
                   <span>Export 4x6 Label</span>
@@ -206,7 +255,19 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
           </div>
 
           <div className="flex-1 bg-slate-950 flex flex-col p-8 items-center overflow-y-auto scrollbar-hide">
-              <div className="sticky top-0 mb-6 flex items-center gap-2 text-slate-600 select-none">
+              {shareLink && (
+                  <div className="mb-6 w-full max-w-md bg-slate-900 border border-indigo-500/50 rounded-2xl p-4 animate-fade-in flex items-center justify-between gap-4 shadow-xl">
+                      <div className="overflow-hidden">
+                          <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">Public Share Link</p>
+                          <p className="text-xs text-slate-400 truncate font-mono">{shareLink}</p>
+                      </div>
+                      <button onClick={() => { navigator.clipboard.writeText(shareLink); alert("Copied!"); }} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 transition-colors">
+                          <Share2 size={16}/>
+                      </button>
+                  </div>
+              )}
+
+              <div className="mb-6 flex items-center gap-2 text-slate-600 select-none">
                   <Printer size={14} />
                   <span className="text-[10px] font-bold uppercase tracking-widest">Label Preview Studio (4x6)</span>
               </div>

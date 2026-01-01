@@ -24,6 +24,7 @@ export interface ShippingLabel {
   package: PackageDetails;
   trackingNumber: string;
   createdAt: number;
+  ownerId?: string;
 }
 
 export interface BankingCheck {
@@ -40,6 +41,17 @@ export interface BankingCheck {
   senderName: string;
   senderAddress: string;
   signature: string;
+  ownerId?: string;
+  watermarkUrl?: string;
+}
+
+export interface GeneratedIcon {
+  id: string;
+  prompt: string;
+  style: string;
+  url: string;
+  createdAt: number;
+  ownerId?: string;
 }
 
 export interface Invitation {
@@ -194,8 +206,11 @@ export type ViewState =
   | 'card_explorer' 
   | 'card_viewer'
   | 'icon_generator'
+  | 'icon_viewer'
   | 'shipping_labels'
-  | 'check_designer';
+  | 'shipping_viewer'
+  | 'check_designer'
+  | 'check_viewer';
 
 export interface AudioState {
   isConnected: boolean;

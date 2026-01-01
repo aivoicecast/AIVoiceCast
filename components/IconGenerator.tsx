@@ -1,8 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera, AlertCircle, Share2, Link, Copy } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { resizeImage } from '../utils/imageUtils';
+import { saveIcon, uploadFileToStorage } from '../services/firestoreService';
+import { auth } from '../services/firebaseConfig';
+import { getDriveToken, connectGoogleDrive } from '../services/authService';
+import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 
 interface IconGeneratorProps {
   onBack: () => void;
@@ -25,6 +29,9 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
   const [generatedIcon, setGeneratedIcon] = useState<string | null>(null);
   const [baseImage, setBaseImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [publishProgress, setPublishProgress] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -44,6 +51,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     
     setIsGenerating(true);
     setError(null);
+    setShareLink(null);
     
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -99,12 +107,61 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     }
   };
 
+  const handlePublishAndShare = async () => {
+      if (!generatedIcon) return;
+      if (!auth.currentUser) return alert("Please sign in to share and save to Drive.");
+      
+      setIsSharing(true);
+      setPublishProgress('Publishing to cloud...');
+      try {
+          const id = crypto.randomUUID();
+          
+          // 1. Save to Firestore (Publicly viewable on site)
+          const res = await fetch(generatedIcon);
+          const blob = await res.blob();
+          const cloudUrl = await uploadFileToStorage(`icons/${id}.png`, blob);
+          
+          await saveIcon({
+              id,
+              prompt,
+              style: selectedStyle.name,
+              url: cloudUrl,
+              createdAt: Date.now(),
+              ownerId: auth.currentUser.uid
+          });
+
+          // 2. Save to Google Drive
+          setPublishProgress('Syncing to Google Drive...');
+          const token = getDriveToken() || await connectGoogleDrive();
+          if (token) {
+              const folderId = await ensureCodeStudioFolder(token);
+              await uploadToDrive(token, folderId, `icon_${prompt.substring(0, 10).replace(/\s/g, '_')}_${Date.now()}.png`, blob);
+          }
+
+          const link = `${window.location.origin}?view=icon&id=${id}`;
+          setShareLink(link);
+          alert("Icon published! You can now copy the shareable link.");
+      } catch (e: any) {
+          alert("Publishing failed: " + e.message);
+      } finally {
+          setIsSharing(false);
+          setPublishProgress('');
+      }
+  };
+
   const handleDownload = () => {
     if (!generatedIcon) return;
     const link = document.createElement('a');
     link.href = generatedIcon;
     link.download = `app_icon_${Date.now()}.png`;
     link.click();
+  };
+
+  const copyLink = () => {
+      if (shareLink) {
+          navigator.clipboard.writeText(shareLink);
+          alert("Link copied to clipboard!");
+      }
   };
 
   return (
@@ -126,9 +183,18 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                       <Edit3 size={12}/> Edit Mode
                   </div>
               )}
-              <span className="text-[10px] bg-indigo-900/50 text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/30 font-bold uppercase tracking-widest">
-                  Neural v2.0
-              </span>
+              {generatedIcon && !shareLink && (
+                  <button onClick={handlePublishAndShare} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
+                      {isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
+                      <span>{isSharing ? 'Syncing...' : 'Publish & Share'}</span>
+                  </button>
+              )}
+              {shareLink && (
+                   <button onClick={copyLink} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
+                      <Link size={14}/>
+                      <span>Copy Link</span>
+                  </button>
+              )}
           </div>
       </header>
 
@@ -260,6 +326,18 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                               Try Again
                           </button>
                       </div>
+                      
+                      {shareLink && (
+                          <div className="mt-8 w-full max-w-sm bg-slate-900 border border-emerald-500/30 rounded-xl p-4 animate-fade-in flex items-center justify-between gap-3">
+                              <div className="overflow-hidden">
+                                  <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">Shareable Link</p>
+                                  <p className="text-xs text-slate-400 truncate font-mono">{shareLink}</p>
+                              </div>
+                              <button onClick={copyLink} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300">
+                                  <Copy size={16}/>
+                              </button>
+                          </div>
+                      )}
                   </div>
               ) : (
                   <div className="flex flex-col items-center text-center space-y-6 max-w-sm">
