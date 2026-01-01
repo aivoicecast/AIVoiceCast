@@ -61,9 +61,12 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fix: Simplified ErrorBoundary to ensure React context is correctly established for this.props
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  public state: ErrorBoundaryState = { hasError: false, error: null };
+  // Fix: Explicitly define constructor to ensure props are correctly initialized and accessible in TypeScript
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
     return { hasError: true, error }; 
@@ -95,7 +98,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
     
-    // Fix: Access children directly from this.props to avoid type checking issues with destructuring
     return this.props.children;
   }
 }
@@ -178,7 +180,7 @@ const App: React.FC = () => {
   const getInitialView = (): ViewState | 'firestore_debug' => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (params.get('claim')) return 'coin_wallet'; // Claim check route
+    if (params.get('claim')) return 'coin_wallet'; 
     if (view === 'card' && params.get('id')) return 'card_workshop';
     if (view === 'icon' && params.get('id')) return 'icon_viewer';
     if (view === 'shipping' && params.get('id')) return 'shipping_viewer';
@@ -258,6 +260,18 @@ const App: React.FC = () => {
     handleSetViewState('live_session');
   };
 
+  // Dedicated effect for the real-time profile listener
+  useEffect(() => {
+    if (currentUser?.uid) {
+        const unsubscribeProfile = db?.collection('users').doc(currentUser.uid).onSnapshot(doc => {
+            if (doc.exists) {
+                setUserProfile(doc.data() as UserProfile);
+            }
+        });
+        return () => { if (unsubscribeProfile) unsubscribeProfile(); };
+    }
+  }, [currentUser?.uid]);
+
   useEffect(() => {
     const initializeApp = async () => {
       try {
@@ -276,13 +290,6 @@ const App: React.FC = () => {
                     }
                 }
             }
-            
-            // Set up Real-time listener for user profile (to keep coins in sync)
-            const unsubscribeProfile = db?.collection('users').doc(user.uid).onSnapshot(doc => {
-                if (doc.exists) {
-                    setUserProfile(doc.data() as UserProfile);
-                }
-            });
 
             // Handle QR Claim Route
             const params = new URLSearchParams(window.location.search);
@@ -299,17 +306,23 @@ const App: React.FC = () => {
                     window.history.replaceState({}, '', url.toString());
                 }
             }
-
-            return () => {
-                if (unsubscribeProfile) unsubscribeProfile();
-            };
         }
+        
         const localChannels = await getUserChannels();
         setUserChannels(localChannels);
-        const unsubscribe = subscribeToPublicChannels((channels) => { setPublicChannels(channels); });
+        
+        // Finalize loading state
         setAuthLoading(false);
+        
+        // Subscribe to public registry
+        const unsubscribe = subscribeToPublicChannels((channels) => { 
+          setPublicChannels(channels); 
+        });
         return () => unsubscribe();
-      } catch (err: any) { setAuthLoading(false); }
+      } catch (err: any) { 
+        console.error("Init error:", err);
+        setAuthLoading(false); 
+      }
     };
     initializeApp();
   }, []);
