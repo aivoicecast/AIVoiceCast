@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight } from 'lucide-react';
 import { UserProfile, CoinTransaction } from '../types';
 import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile } from '../services/firestoreService';
-import { auth, db } from '../services/firebaseConfig';
+import { auth, db, getDb } from '../services/firebaseConfig';
 
 interface CoinWalletProps {
   onBack: () => void;
@@ -17,6 +17,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [granting, setGranting] = useState(false);
   
+  // Instance state in case the static export was null at boot
+  const [databaseInstance, setDatabaseInstance] = useState(db);
+  
   // Transfer State
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
@@ -26,27 +29,42 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
   
+  // Fix: Defined filteredUsers based on allUsers and searchQuery to resolve undefined variable error
+  const filteredUsers = useMemo(() => {
+    return allUsers.filter(u => 
+      u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+  }, [allUsers, searchQuery]);
+
   const initAttempted = useRef(false);
 
   // Sync propUser to local state
   useEffect(() => {
     if (propUser) {
         setUser(propUser);
-        // Once we have a propUser, we can definitely stop the initial loading spinner
         setLoading(false);
     }
   }, [propUser]);
 
   // Load transactions and try to fetch profile if missing
   const initWallet = useCallback(async (force = false) => {
+    // If the database instance is missing, try to resolve it now
+    const activeDb = databaseInstance || getDb();
+    if (!activeDb) {
+        setLoading(false);
+        return;
+    }
+    if (!databaseInstance) setDatabaseInstance(activeDb);
+
     if (!force && initAttempted.current && user) return;
     
     setLoading(true);
     try {
         const currentUid = auth?.currentUser?.uid;
         if (!currentUid) {
-            // Wait for auth. If still no UID after a delay, then we can error out
-            await new Promise(r => setTimeout(r, 1000));
+            // Wait for auth to settle
+            await new Promise(r => setTimeout(r, 1500));
             if (!auth?.currentUser?.uid) {
                 setLoading(false);
                 return;
@@ -69,12 +87,11 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
     } finally {
         setLoading(false);
     }
-  }, [user]);
+  }, [user, databaseInstance]);
 
   useEffect(() => {
     initWallet();
     
-    // Listen for auth changes to re-init
     const unsubscribe = auth?.onAuthStateChanged((u) => {
         if (u) initWallet(true);
     });
@@ -152,28 +169,24 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       if (showTransfer) handleSearchUsers();
   }, [showTransfer]);
 
-  const filteredUsers = allUsers.filter(u => 
-      u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
   const formatCurrency = (coins: number) => {
       return (coins / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
-  // Show a "Waiting for Config" if DB is literally missing (dev error)
-  if (!db) return (
-      <div className="h-full flex flex-col items-center justify-center bg-slate-950 p-8 text-center">
+  if (!databaseInstance) return (
+      <div className="h-full flex flex-col items-center justify-center bg-slate-950 p-8 text-center animate-fade-in">
           <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mb-6 border border-red-500/20">
             <X className="text-red-500" size={40} />
           </div>
           <h2 className="text-2xl font-bold text-white mb-2 tracking-tight">Database Offline</h2>
-          <p className="text-slate-400 text-sm max-w-xs mx-auto mb-8 leading-relaxed">The Firebase instance could not be initialized. Please check your API keys and configuration settings.</p>
-          <button onClick={() => window.location.reload()} className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold border border-slate-700">Reload App</button>
+          <p className="text-slate-400 text-sm max-w-xs mx-auto mb-8 leading-relaxed">The Firebase instance could not be initialized. Please check your API keys in <code>private_keys.ts</code> or the developer console.</p>
+          <div className="flex gap-4">
+              <button onClick={onBack} className="px-6 py-3 bg-slate-800 text-white rounded-xl font-bold border border-slate-700">Go Back</button>
+              <button onClick={() => { const d = getDb(); if(d) setDatabaseInstance(d); else window.location.reload(); }} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg">Retry Initialization</button>
+          </div>
       </div>
   );
 
-  // Spinner while we attempt initial connection
   if (loading && !user) return (
       <div className="h-full flex items-center justify-center bg-slate-950">
           <div className="text-center space-y-6">
@@ -189,7 +202,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       </div>
   );
 
-  // Handle case where auth/profile load completely failed or timed out
   if (!user) return (
       <div className="h-full flex flex-col items-center justify-center bg-slate-950 text-center p-8">
           <div className="w-20 h-20 bg-amber-500/10 rounded-3xl flex items-center justify-center mb-6 border border-amber-500/20">

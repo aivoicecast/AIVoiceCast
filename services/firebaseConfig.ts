@@ -1,28 +1,16 @@
 
-import firebase_raw from "firebase/compat/app";
+import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
 import "firebase/compat/firestore";
 import "firebase/compat/storage";
 import { firebaseKeys } from './private_keys';
 
 /**
- * Resolves the true Firebase compat namespace.
- */
-const resolveFirebase = () => {
-    if (typeof window !== 'undefined' && (window as any).firebase) {
-        return (window as any).firebase;
-    }
-    const resolved = (firebase_raw as any).default || firebase_raw;
-    return resolved;
-};
-
-export const firebase: any = resolveFirebase();
-
-/**
  * Initialize the Firebase App instance.
  */
 const initializeApp = () => {
     if (!firebase || typeof firebase.initializeApp !== 'function') {
+        console.error("[Firebase] library not found or initializeApp is not a function.");
         return null;
     }
 
@@ -55,47 +43,47 @@ const initializeApp = () => {
             };
 
             return firebase.initializeApp(configWithDynamicAuthDomain);
+        } else {
+            console.warn("[Firebase] Configuration missing or using placeholder key.");
         }
     } catch (err) {
-        console.warn("[Firebase] Initialization skipped or failed:", err);
+        console.error("[Firebase] Initialization failed:", err);
     }
     return null;
 };
 
 // Internal instance
-let _app: any = null;
-
-const getApp = () => {
-    if (!_app) _app = initializeApp();
-    return _app;
-};
+let _app: any = initializeApp();
 
 /**
  * Service instance resolution with validation.
  */
 export const getAuth = () => {
     try {
-        const app = getApp();
-        return app ? app.auth() : null;
+        if (!_app) _app = initializeApp();
+        return _app ? _app.auth() : null;
     } catch (e) {
+        console.error("[Firebase] getAuth failed", e);
         return null;
     }
 };
 
 export const getDb = () => {
     try {
-        const app = getApp();
-        return app ? app.firestore() : null;
+        if (!_app) _app = initializeApp();
+        return _app ? _app.firestore() : null;
     } catch (e) {
+        console.error("[Firebase] getDb failed", e);
         return null;
     }
 };
 
 export const getStorage = () => {
     try {
-        const app = getApp();
-        return app ? app.storage() : null;
+        if (!_app) _app = initializeApp();
+        return _app ? _app.storage() : null;
     } catch (e) {
+        console.error("[Firebase] getStorage failed", e);
         return null;
     }
 };
@@ -105,7 +93,8 @@ export const getStorage = () => {
  */
 export const isFirebaseConfigured = !!(firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY");
 
-// Export named instances to resolve external import errors across the application.
+// Export named instances. 
+// Note: These are initialized once here. If they are null, consumers will see the "Database Offline" UI.
 export const auth = getAuth();
 export const db = getDb();
 export const storage = getStorage();
@@ -114,16 +103,14 @@ export const storage = getStorage();
  * Returns diagnostic information.
  */
 export const getFirebaseDiagnostics = () => {
-    const app = getApp();
-    const authInstance = getAuth();
     return {
-        isInitialized: !!app,
-        hasAuth: !!authInstance,
-        hasFirestore: !!getDb(),
+        isInitialized: !!_app,
+        hasAuth: !!auth,
+        hasFirestore: !!db,
         projectId: firebaseKeys?.projectId || "Missing",
-        configSource: "private_keys.ts",
-        activeConfig: firebaseKeys ? { ...firebaseKeys, apiKey: firebaseKeys.apiKey ? "PRESENT" : "MISSING" } : null
+        apiKeyPresent: !!firebaseKeys?.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY"
     };
 };
 
+export { firebase };
 export default firebase;
