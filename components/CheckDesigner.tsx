@@ -50,7 +50,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   
   const checkRef = useRef<HTMLDivElement>(null);
-  /* Fix: Changed NodeJS.Timeout to ReturnType<typeof setTimeout> to resolve Cannot find namespace NodeJS error */
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -72,13 +71,18 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (check.amount > 0) {
         debounceTimerRef.current = setTimeout(() => {
             handleGenerateAmountWords(check.amount);
-        }, 1200); // Wait for user to stop typing
+        }, 1200); 
     }
 
     return () => {
         if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
   }, [check.amount]);
+
+  const qrCodeUrl = useMemo(() => {
+      const data = `payee:${check.payee}|amount:${check.amount}|memo:${check.memo}|bank:${check.bankName}`;
+      return `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(data)}`;
+  }, [check.payee, check.amount, check.memo, check.bankName]);
 
   const handleParseCheckDetails = async () => {
       const input = prompt("Paste raw payment instructions (e.g. 'Pay Alice 500 dollars for consulting work next week'):");
@@ -127,11 +131,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash-image',
               contents: { parts: [{ text: artPrompt }] },
-              config: {
-                  imageConfig: {
-                      aspectRatio: "1:1"
-                  }
-              }
           });
 
           for (const part of response.candidates[0].content.parts) {
@@ -183,7 +182,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         const pdf = new jsPDF({
             orientation: 'landscape',
             unit: 'px',
-            format: [600, 270] // Standard check ratio
+            format: [600, 270] 
         });
         pdf.addImage(imgData, 'JPEG', 0, 0, 600, 270);
         return pdf.output('blob');
@@ -371,63 +370,72 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
 
                   {/* Header Row */}
-                  <div className="flex justify-between items-start mb-6">
+                  <div className="flex justify-between items-start mb-4">
                       <div className="space-y-0.5">
                           <p className="text-xs font-black uppercase tracking-tight leading-none">{check.senderName}</p>
                           <p className="text-[8px] text-slate-500 max-w-[150px] leading-tight">{check.senderAddress}</p>
                       </div>
                       <div className="text-right">
                           <p className="text-sm font-black italic text-indigo-900">{check.bankName}</p>
-                          <p className="text-[10px] font-bold mt-2">{check.checkNumber}</p>
+                          <p className="text-[10px] font-bold mt-1">{check.checkNumber}</p>
                       </div>
                   </div>
 
                   {/* Date and Amount Box Row */}
-                  <div className="flex justify-end gap-12 mb-4 items-center">
+                  <div className="flex justify-end gap-12 mb-2 items-center">
                       <div className="flex items-center gap-2 border-b border-black pb-1 min-w-[120px]">
                           <span className="text-[8px] font-bold uppercase">Date</span>
                           <span className="text-xs font-medium">{check.date}</span>
                       </div>
-                      <div className="bg-slate-50 border border-slate-300 px-3 py-2 flex items-center gap-2 min-w-[120px] shadow-inner">
+                      <div className="bg-slate-50 border border-slate-300 px-3 py-1 flex items-center gap-2 min-w-[120px] shadow-inner">
                           <span className="text-sm font-bold">$</span>
                           <span className="text-lg font-black tracking-tight">{check.amount.toFixed(2)}</span>
                       </div>
                   </div>
 
                   {/* Payee Line */}
-                  <div className="flex items-end gap-3 mb-4 border-b border-black pb-1">
+                  <div className="flex items-end gap-3 mb-2 border-b border-black pb-1">
                       <span className="text-[8px] font-bold uppercase whitespace-nowrap mb-1">Pay to the order of</span>
                       <span className="flex-1 text-sm font-black italic px-2">{check.payee}</span>
                   </div>
 
                   {/* Amount Words Line */}
-                  <div className="flex items-end gap-3 mb-6 border-b border-black pb-1 relative">
+                  <div className="flex items-end gap-3 mb-4 border-b border-black pb-1 relative">
                       <span className="flex-1 text-xs font-bold italic px-2">{check.amountWords}</span>
                       <span className="text-[8px] font-bold uppercase absolute right-0 bottom-1">Dollars</span>
                   </div>
 
-                  {/* Memo and Signature Row - mt-auto combined with mb-20 creates space for MICR */}
-                  <div className="flex justify-between items-end mt-auto mb-20">
-                      <div className="flex items-end gap-2 border-b border-black pb-1 min-w-[180px]">
-                          <span className="text-[8px] font-bold uppercase mb-1">For</span>
-                          <span className="text-[10px] font-medium px-2">{check.memo}</span>
+                  {/* Memo, QR, and Signature Row - Fixed overlap with MICR */}
+                  <div className="flex items-end justify-between mt-auto mb-10">
+                      <div className="flex flex-col gap-1 w-1/3">
+                          <div className="flex items-end gap-2 border-b border-black pb-1">
+                              <span className="text-[8px] font-bold uppercase mb-1">For</span>
+                              <span className="text-[10px] font-medium px-2 truncate">{check.memo}</span>
+                          </div>
                       </div>
+                      
+                      {/* Scan to Pay QR Code */}
                       <div className="flex flex-col items-center">
-                          <div className="min-w-[200px] border-b border-black text-center pb-1">
+                          <img src={qrCodeUrl} className="w-12 h-12 border border-slate-100 p-0.5 rounded shadow-sm" alt="QR Code" crossOrigin="anonymous"/>
+                          <span className="text-[6px] font-black uppercase text-slate-400 mt-1">Scan for Digital Pay</span>
+                      </div>
+
+                      <div className="flex flex-col items-center w-1/3">
+                          <div className="min-w-[160px] border-b border-black text-center pb-1">
                               <span className="text-xl font-script italic leading-none">{check.signature || check.senderName}</span>
                           </div>
                           <span className="text-[8px] font-bold uppercase mt-1">Authorized Signature</span>
                       </div>
                   </div>
 
-                  {/* MICR Line - positioned absolute at the bottom */}
-                  <div className="absolute bottom-4 left-0 w-full flex justify-center gap-12 font-mono text-sm tracking-[0.2em] opacity-80 select-none">
+                  {/* MICR Line - Absolute bottom with safe margin */}
+                  <div className="absolute bottom-2 left-0 w-full flex justify-center gap-12 font-mono text-sm tracking-[0.2em] opacity-80 select-none bg-white/50 py-1">
                       <span>⑆ {check.routingNumber} ⑆</span>
                       <span>{check.accountNumber} ⑈</span>
                       <span>{check.checkNumber}</span>
                   </div>
                   
-                  {/* Check Border Line Details */}
+                  {/* Security Borders */}
                   <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500/20 via-transparent to-indigo-500/20"></div>
                   <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500/20 via-transparent to-indigo-500/20"></div>
               </div>
@@ -435,17 +443,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               {/* Tips Section */}
               <div className="mt-12 w-full max-w-2xl grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex items-start gap-4">
-                      <div className="p-2 bg-emerald-900/20 rounded-lg text-emerald-400"><CheckCircle size={20}/></div>
+                      <div className="p-2 bg-emerald-900/20 rounded-lg text-emerald-400"><QrCode size={20}/></div>
                       <div>
-                          <h4 className="text-sm font-bold text-white mb-1">Print Ready</h4>
-                          <p className="text-xs text-slate-500 leading-relaxed">Generated PDF uses vector-scale resolution optimized for standard 8.5x11 paper or check stock.</p>
+                          <h4 className="text-sm font-bold text-white mb-1">Digital Scan Support</h4>
+                          <p className="text-xs text-slate-500 leading-relaxed">Integrated QR code encodes payment details for fast mobile banking imports and ledger synchronization.</p>
                       </div>
                   </div>
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex items-start gap-4">
                       <div className="p-2 bg-amber-900/20 rounded-lg text-amber-400"><ShieldAlert size={20}/></div>
                       <div>
-                          <h4 className="text-sm font-bold text-white mb-1">Custom Security Art</h4>
-                          <p className="text-xs text-slate-500 leading-relaxed">Use AI to generate unique, difficult-to-replicate watermarks based on your payment purpose.</p>
+                          <h4 className="text-sm font-bold text-white mb-1">Secure Architecture</h4>
+                          <p className="text-xs text-slate-500 leading-relaxed">Layout designed to prevent data overlap and ensure machine-readability for automated deposit systems.</p>
                       </div>
                   </div>
               </div>
