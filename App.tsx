@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -61,12 +60,10 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+// Fix: Use imported Component instead of React.Component to resolve access errors for props and state in strict TS environments
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Explicitly define constructor to ensure props are correctly initialized and accessible in TypeScript
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+  // Fix: Initialize state property directly to ensure it is recognized by TypeScript
+  state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
     return { hasError: true, error }; 
@@ -77,6 +74,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
   
   render(): ReactNode {
+    // Fix: Access state via this.state
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -87,6 +85,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             <h1 className="text-2xl font-bold text-white mb-2">Application Crash Detected</h1>
             <p className="text-slate-400 mb-6">A runtime error occurred in the UI component tree. This is often caused by missing data or a browser incompatibility.</p>
             <div className="bg-black/50 rounded-xl p-4 mb-8 font-mono text-xs text-red-300 overflow-x-auto border border-slate-800">
+              {/* Fix: Access error via this.state */}
               {this.state.error?.toString()}
             </div>
             <div className="flex gap-4">
@@ -98,6 +97,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
     
+    // Fix: Access children via this.props
     return this.props.children;
   }
 }

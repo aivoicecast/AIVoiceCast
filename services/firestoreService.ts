@@ -93,11 +93,22 @@ export async function transferCoins(toId: string, toName: string, amount: number
 
 export async function getCoinTransactions(uid: string): Promise<CoinTransaction[]> {
     if (!db) return [];
-    const fromSnap = await db.collection(TRANSACTIONS_COLLECTION).where('fromId', '==', uid).get();
-    const toSnap = await db.collection(TRANSACTIONS_COLLECTION).where('toId', '==', uid).get();
-    
-    const all = [...fromSnap.docs, ...toSnap.docs].map(d => ({ ...d.data(), id: d.id } as CoinTransaction));
-    return all.sort((a, b) => b.timestamp - a.timestamp);
+    try {
+        // Run with a potential timeout to prevent UI hang if index is missing
+        const timeout = new Promise<any>((_, reject) => setTimeout(() => reject(new Error("Ledger fetch timeout")), 5000));
+        
+        const fetchTask = async () => {
+            const fromSnap = await db.collection(TRANSACTIONS_COLLECTION).where('fromId', '==', uid).orderBy('timestamp', 'desc').limit(20).get();
+            const toSnap = await db.collection(TRANSACTIONS_COLLECTION).where('toId', '==', uid).orderBy('timestamp', 'desc').limit(20).get();
+            const all = [...fromSnap.docs, ...toSnap.docs].map(d => ({ ...d.data(), id: d.id } as CoinTransaction));
+            return all.sort((a, b) => b.timestamp - a.timestamp);
+        };
+
+        return await Promise.race([fetchTask(), timeout]);
+    } catch(e) {
+        console.warn("Ledger fetch failed (possible missing index):", e);
+        return [];
+    }
 }
 
 export async function checkAndGrantMonthlyCoins(uid: string): Promise<number> {
