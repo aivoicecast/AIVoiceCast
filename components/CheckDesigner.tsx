@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
   Trash2, Printer, CheckCircle, AlertTriangle, Send, Share2, DollarSign, Calendar, 
-  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight 
+  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon
 } from 'lucide-react';
 import { BankingCheck, UserProfile } from '../types';
 import { GoogleGenAI } from '@google/genai';
@@ -39,14 +39,19 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   });
   
   const [isParsing, setIsParsing] = useState(false);
+  const [isUpdatingWords, setIsUpdatingWords] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [isGeneratingArt, setIsGeneratingArt] = useState(false);
+  const [customArtUrl, setCustomArtUrl] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   
   const checkRef = useRef<HTMLDivElement>(null);
+  /* Fix: Changed NodeJS.Timeout to ReturnType<typeof setTimeout> to resolve Cannot find namespace NodeJS error */
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (showShareModal) {
@@ -57,6 +62,23 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         });
     }
   }, [showShareModal, currentUser]);
+
+  // Automatic Amount Words Generation with Debounce
+  useEffect(() => {
+    if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+    }
+
+    if (check.amount > 0) {
+        debounceTimerRef.current = setTimeout(() => {
+            handleGenerateAmountWords(check.amount);
+        }, 1200); // Wait for user to stop typing
+    }
+
+    return () => {
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [check.amount]);
 
   const handleParseCheckDetails = async () => {
       const input = prompt("Paste raw payment instructions (e.g. 'Pay Alice 500 dollars for consulting work next week'):");
@@ -89,20 +111,62 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       }
   };
 
-  const handleGenerateAmountWords = async () => {
-      setIsParsing(true);
+  const handleGenerateArt = async () => {
+      if (!check.memo) {
+          alert("Please enter a memo (For) first to generate relevant art.");
+          return;
+      }
+      setIsGeneratingArt(true);
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const prompt = `Convert the numeric amount ${check.amount} into formal banking check words (e.g., "Five Hundred and 00/100"). Return ONLY the text.`;
+          const artPrompt = `A professional, high-end artistic watermark/illustration for a banking check. 
+          Topic: "${check.memo}". 
+          Style: Minimalist line art, subtle etching style, monochromatic charcoal or deep indigo. 
+          The design should be centered, sophisticated, and suitable for a secure financial document. No text. 4k resolution.`;
+
+          const response = await ai.models.generateContent({
+              model: 'gemini-2.5-flash-image',
+              contents: { parts: [{ text: artPrompt }] },
+              config: {
+                  imageConfig: {
+                      aspectRatio: "1:1"
+                  }
+              }
+          });
+
+          for (const part of response.candidates[0].content.parts) {
+              if (part.inlineData) {
+                  const base64Data = part.inlineData.data;
+                  setCustomArtUrl(`data:image/png;base64,${base64Data}`);
+                  break;
+              }
+          }
+      } catch (e) {
+          console.error(e);
+          alert("Art generation failed.");
+      } finally {
+          setIsGeneratingArt(false);
+      }
+  };
+
+  const handleGenerateAmountWords = async (val: number) => {
+      setIsUpdatingWords(true);
+      try {
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const prompt = `Convert the numeric amount ${val} into formal banking check words (e.g., "Five Hundred and 00/100"). 
+          Currency is USD. Return ONLY the text, nothing else.`;
           const response = await ai.models.generateContent({
               model: 'gemini-3-flash-preview',
               contents: prompt
           });
-          setCheck(prev => ({ ...prev, amountWords: response.text?.trim() || '' }));
+          const text = response.text?.trim() || '';
+          if (text) {
+            setCheck(prev => ({ ...prev, amountWords: text }));
+          }
       } catch (e) {
-          console.error(e);
+          console.error("Auto-word generation failed", e);
       } finally {
-          setIsParsing(false);
+          setIsUpdatingWords(false);
       }
   };
 
@@ -255,19 +319,29 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                             onChange={e => setCheck({...check, amountWords: e.target.value})} 
                             className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 pr-10 text-sm text-white outline-none focus:border-indigo-500 resize-none h-20"
                         />
-                        <button 
-                            onClick={handleGenerateAmountWords}
-                            className="absolute right-2 bottom-2 p-1.5 bg-slate-900 hover:bg-indigo-600 rounded-md text-indigo-400 hover:text-white transition-all shadow-lg"
-                            title="Auto-generate words from number"
-                        >
-                            <RefreshCw size={14} className={isParsing ? 'animate-spin' : ''}/>
-                        </button>
+                        <div className="absolute right-2 bottom-2 p-1.5 pointer-events-none">
+                            {isUpdatingWords ? (
+                                <Loader2 size={14} className="animate-spin text-indigo-400"/>
+                            ) : (
+                                <CheckCircle size={14} className="text-emerald-500 opacity-50"/>
+                            )}
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <input type="date" value={check.date} onChange={e => setCheck({...check, date: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
                         <input type="text" placeholder="Check #" value={check.checkNumber} onChange={e => setCheck({...check, checkNumber: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500 font-mono"/>
                       </div>
-                      <input type="text" placeholder="Memo" value={check.memo} onChange={e => setCheck({...check, memo: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
+                      <div className="relative">
+                        <input type="text" placeholder="Memo (For)" value={check.memo} onChange={e => setCheck({...check, memo: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 pr-10 text-sm text-white outline-none focus:border-indigo-500"/>
+                        <button 
+                            onClick={handleGenerateArt}
+                            disabled={isGeneratingArt}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-indigo-400 hover:text-white transition-all"
+                            title="Generate custom watermark art based on memo"
+                        >
+                            {isGeneratingArt ? <Loader2 size={14} className="animate-spin"/> : <ImageIcon size={14}/>}
+                        </button>
+                      </div>
                       <input type="text" placeholder="Signature (Type your name)" value={check.signature} onChange={e => setCheck({...check, signature: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500 italic"/>
                   </div>
               </div>
@@ -287,9 +361,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                     backgroundSize: '8px 8px'
                 }}
               >
-                  {/* Watermark effect */}
-                  <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none select-none">
-                      <Landmark size={200} />
+                  {/* Custom Watermark Art */}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-[0.06] pointer-events-none select-none overflow-hidden">
+                      {customArtUrl ? (
+                          <img src={customArtUrl} className="w-[350px] h-[350px] object-contain grayscale scale-125" alt="watermark" />
+                      ) : (
+                          <Landmark size={200} />
+                      )}
                   </div>
 
                   {/* Header Row */}
@@ -328,8 +406,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <span className="text-[8px] font-bold uppercase absolute right-0 bottom-1">Dollars</span>
                   </div>
 
-                  {/* Memo and Signature Row */}
-                  <div className="flex justify-between items-end mt-auto">
+                  {/* Memo and Signature Row - mt-auto combined with mb-14 creates space for MICR */}
+                  <div className="flex justify-between items-end mt-auto mb-14">
                       <div className="flex items-end gap-2 border-b border-black pb-1 min-w-[180px]">
                           <span className="text-[8px] font-bold uppercase mb-1">For</span>
                           <span className="text-[10px] font-medium px-2">{check.memo}</span>
@@ -342,8 +420,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
 
-                  {/* MICR Line */}
-                  <div className="absolute bottom-6 left-0 w-full flex justify-center gap-12 font-mono text-sm tracking-[0.2em] opacity-80">
+                  {/* MICR Line - positioned absolute at the bottom */}
+                  <div className="absolute bottom-4 left-0 w-full flex justify-center gap-12 font-mono text-sm tracking-[0.2em] opacity-80 select-none">
                       <span>⑆ {check.routingNumber} ⑆</span>
                       <span>{check.accountNumber} ⑈</span>
                       <span>{check.checkNumber}</span>
@@ -366,8 +444,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex items-start gap-4">
                       <div className="p-2 bg-amber-900/20 rounded-lg text-amber-400"><ShieldAlert size={20}/></div>
                       <div>
-                          <h4 className="text-sm font-bold text-white mb-1">Security Notice</h4>
-                          <p className="text-xs text-slate-500 leading-relaxed">This tool is for educational/reimbursement purposes. Ensure compliance with your local banking regulations.</p>
+                          <h4 className="text-sm font-bold text-white mb-1">Custom Security Art</h4>
+                          <p className="text-xs text-slate-500 leading-relaxed">Use AI to generate unique, difficult-to-replicate watermarks based on your payment purpose.</p>
                       </div>
                   </div>
               </div>
@@ -380,7 +458,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
                   <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
                       <h3 className="text-lg font-bold text-white flex items-center gap-2"><Send size={18} className="text-indigo-400"/> Send Check to Member</h3>
-                      <button onClick={() => setShowShareModal(false)} className="p-1 hover:bg-slate-800 rounded-full text-slate-500"><X size={20}/></button>
+                      <button onClick={() => setShowShareModal(false)} className="p-1 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
                   </div>
                   <div className="p-6 flex-1 overflow-y-auto space-y-4">
                       <div className="relative">

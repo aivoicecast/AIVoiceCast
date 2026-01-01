@@ -1,11 +1,13 @@
-
 import React, { useState, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
-import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
   Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet
 } from 'lucide-react';
+
+/* Added missing type imports from types.ts to resolve missing name errors */
+import { Channel, UserProfile, ViewState } from './types';
+
 import { LiveSession } from './components/LiveSession';
 import { PodcastDetail } from './components/PodcastDetail';
 import { UserAuth } from './components/UserAuth';
@@ -61,10 +63,9 @@ interface ErrorBoundaryState {
 
 /**
  * ErrorBoundary component to catch runtime errors in the UI tree.
- * Fix: Explicitly extending the imported named 'Component' ensures TypeScript correctly binds 'this.props' 
- * and identifies 'children' from the generic ErrorBoundaryProps.
  */
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+/* Fixed: Changed class extension to React.Component to resolve Property 'props' not exist on ErrorBoundary error */
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
   
   constructor(props: ErrorBoundaryProps) {
@@ -100,7 +101,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         </div>
       );
     }
-    // Correctly accessing 'this.props.children' as inheritance from 'Component' is now properly handled by TypeScript.
     return this.props.children;
   }
 }
