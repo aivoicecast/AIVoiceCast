@@ -2,11 +2,13 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageCircle, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
+import { getDriveToken } from '../services/authService';
+import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
-import { publishChannelToFirestore, saveLectureToFirestore, saveDiscussion, updateDiscussion, uploadFileToStorage, updateBookingRecording, saveRecordingReference, linkDiscussionToLectureSegment, saveDiscussionDesignDoc, addChannelAttachment } from '../services/firestoreService';
-import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
+import { publishChannelToFirestore, saveDiscussion, updateDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment } from '../services/firestoreService';
+import { summarizeDiscussionAsSection } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
 
 interface LiveSessionProps {
@@ -49,8 +51,8 @@ const UI_TEXT = {
     tapToStart: "Tap to Start Session",
     tapDesc: "Click to enable audio and microphone access.",
     recording: "REC",
-    uploading: "Uploading Session...",
-    uploadComplete: "Upload Complete",
+    uploading: "Uploading to Drive...",
+    uploadComplete: "Saved to Drive",
     saveAndLink: "Save & Link to Segment",
     start: "Start Session",
     saveSession: "Save Session"
@@ -78,53 +80,13 @@ const UI_TEXT = {
     tapToStart: "点击开始会话",
     tapDesc: "点击以启用音频和麦克风权限。",
     recording: "录音中",
-    uploading: "正在上传会话...",
-    uploadComplete: "上传完成",
+    uploading: "正在上传到 Drive...",
+    uploadComplete: "已保存到 Drive",
     saveAndLink: "保存并链接到段落",
     start: "开始会话",
     saveSession: "保存会话"
   }
 };
-
-const saveContentTool: FunctionDeclaration = {
-  name: "save_content",
-  description: "Save a generated code file, document, or text snippet to the project storage. Use this when the user asks to generate a file or save code.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      filename: { type: Type.STRING, description: "Name of the file (e.g., script.py, notes.md)" },
-      content: { type: Type.STRING, description: "The text content of the file" },
-      mimeType: { type: Type.STRING, description: "MIME type (e.g., text/x-python, text/markdown)" }
-    },
-    required: ["filename", "content"]
-  }
-};
-
-const SuggestionsBar = React.memo(({ suggestions, welcomeMessage, showWelcome, uiText }: { 
-  suggestions: string[], 
-  welcomeMessage?: string,
-  showWelcome: boolean,
-  uiText: any
-}) => (
-  <div className="w-full px-4 animate-fade-in-up">
-      {showWelcome && welcomeMessage && (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 mb-4 text-center shadow-lg">
-          <p className="text-slate-300 italic text-sm">"{welcomeMessage}"</p>
-        </div>
-      )}
-      <div className="text-center mb-2">
-         <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">{uiText.welcomePrefix}</span>
-      </div>
-      <div className="flex flex-wrap justify-center gap-2">
-        {suggestions.map((prompt, idx) => (
-          <div key={idx} className="px-4 py-2 rounded-full text-xs transition-all flex items-center space-x-2 bg-slate-800/50 border border-slate-700 text-slate-400 cursor-default select-none hover:bg-slate-800">
-            <MessageCircle size={12} className="text-slate-600" />
-            <span>{prompt}</span>
-          </div>
-        ))}
-      </div>
-  </div>
-));
 
 export const LiveSession: React.FC<LiveSessionProps> = ({ 
   channel, initialContext, lectureId, onEndSession, language, 
@@ -136,7 +98,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [hasStarted, setHasStarted] = useState(false); 
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -149,35 +110,19 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   
   useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
 
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const serviceRef = useRef<GeminiLiveService | null>(null);
-
   const currentUser = auth?.currentUser;
 
-  useEffect(() => {
-    if (channel.starterPrompts) setSuggestions(channel.starterPrompts.slice(0, 4));
-  }, [channel.id, channel.starterPrompts]);
-
   const startRecording = useCallback(async () => {
-      if (!recordingEnabled || !serviceRef.current) return;
-
+      if (!recordingEnabled || !serviceRef.current || !currentUser) return;
       try {
           const mixCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
           mixingAudioContextRef.current = mixCtx;
           const dest = mixCtx.createMediaStreamDestination();
-
-          // AI Stream
           const aiStream = serviceRef.current.getOutputMediaStream();
-          if (aiStream) {
-              const aiSource = mixCtx.createMediaStreamSource(aiStream);
-              aiSource.connect(dest);
-          }
-
-          // User Mic Stream
+          if (aiStream) { const aiSource = mixCtx.createMediaStreamSource(aiStream); aiSource.connect(dest); }
           const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const userSource = mixCtx.createMediaStreamSource(userStream);
-          userSource.connect(dest);
+          const userSource = mixCtx.createMediaStreamSource(userStream); userSource.connect(dest);
 
           const recorder = new MediaRecorder(dest.stream);
           audioChunksRef.current = [];
@@ -189,40 +134,37 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               const transcriptText = fullTranscript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
               const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
 
-              const sessionData: RecordingSession = {
-                  id: `rec-${Date.now()}`,
-                  userId: currentUser?.uid || 'guest',
-                  channelId: channel.id,
-                  channelTitle: channel.title,
-                  channelImage: channel.imageUrl,
-                  timestamp: Date.now(),
-                  mediaUrl: URL.createObjectURL(blob),
-                  mediaType: 'audio/webm',
-                  transcriptUrl: URL.createObjectURL(transcriptBlob)
-              };
-
-              if (currentUser) {
-                  setIsUploadingRecording(true);
-                  try {
-                      const mediaUrl = await uploadFileToStorage(`recordings/${currentUser.uid}/${sessionData.id}.webm`, blob);
-                      const tUrl = await uploadFileToStorage(`recordings/${currentUser.uid}/${sessionData.id}_transcript.txt`, transcriptBlob);
-                      await saveRecordingReference({ ...sessionData, mediaUrl, transcriptUrl: tUrl });
-                      if (existingDiscussionId) await updateBookingRecording(existingDiscussionId, mediaUrl, tUrl);
-                  } catch(e) { console.error("Cloud upload failed", e); }
-                  finally { setIsUploadingRecording(false); }
-              } else {
-                  // Guest: save to IndexedDB
-                  await saveLocalRecording({ ...sessionData, blob } as any);
-              }
-              
+              setIsUploadingRecording(true);
+              try {
+                  const token = getDriveToken();
+                  if (token) {
+                      const folderId = await ensureCodeStudioFolder(token);
+                      const recId = `recording-${Date.now()}`;
+                      const driveFileId = await uploadToDrive(token, folderId, `${recId}.webm`, blob);
+                      const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
+                      
+                      const sessionData: RecordingSession = {
+                          id: recId,
+                          userId: currentUser.uid,
+                          channelId: channel.id,
+                          channelTitle: channel.title,
+                          channelImage: channel.imageUrl,
+                          timestamp: Date.now(),
+                          mediaUrl: `drive://${driveFileId}`,
+                          mediaType: 'audio/webm',
+                          transcriptUrl: `drive://${tFileId}`
+                      };
+                      await saveRecordingReference(sessionData);
+                  }
+              } catch(e) { console.error("Drive upload failed", e); }
+              finally { setIsUploadingRecording(false); }
               userStream.getTracks().forEach(t => t.stop());
               mixCtx.close();
           };
-
           mediaRecorderRef.current = recorder;
           recorder.start();
-      } catch(e) { console.warn("Recording init failed", e); }
-  }, [recordingEnabled, channel, currentUser, existingDiscussionId, transcript, currentLine]);
+      } catch(e) { console.warn("Recording failed", e); }
+  }, [recordingEnabled, channel, currentUser, transcript, currentLine]);
 
   const connect = useCallback(async () => {
     setError(null);
@@ -230,169 +172,95 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     let service = serviceRef.current || new GeminiLiveService();
     serviceRef.current = service;
     service.initializeAudio();
-    
     try {
       let effectiveInstruction = channel.systemInstruction;
       const historyToInject = transcriptRef.current.length > 0 ? transcriptRef.current : (initialTranscript || []);
       if (historyToInject.length > 0) {
-          const historyText = historyToInject.map(t => `${t.role === 'user' ? 'User' : 'AI'}: ${t.text}`).join('\n');
-          effectiveInstruction += `\n\n[RESUME CONTEXT]:\n${historyText}`;
+          effectiveInstruction += `\n\n[CONTEXT]:\n${historyToInject.map(t => `${t.role}: ${t.text}`).join('\n')}`;
       }
-      if (initialContext) effectiveInstruction += `\n\n[USER CONTEXT]: "${initialContext}"`;
-      
-      const toolsToUse = [{ functionDeclarations: [saveContentTool, ...(customTools || [])] }];
-
       await service.connect(channel.voiceName, effectiveInstruction, {
-          onOpen: () => { 
-              setIsConnected(true);
-              if (recordingEnabled) startRecording();
-          },
+          onOpen: () => { setIsConnected(true); if (recordingEnabled) startRecording(); },
           onClose: () => { setIsConnected(false); setHasStarted(false); },
           onError: (err) => { setIsConnected(false); setError(err.message); },
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
               const role = isUser ? 'user' : 'ai';
               setCurrentLine(prev => {
-                  if (prev && prev.role !== role) {
-                      setTranscript(history => [...history, prev]);
-                      return { role, text, timestamp: Date.now() };
-                  }
+                  if (prev && prev.role !== role) { setTranscript(history => [...history, prev]); return { role, text, timestamp: Date.now() }; }
                   return { role, text: (prev ? prev.text : '') + text, timestamp: prev ? prev.timestamp : Date.now() };
               });
           },
           onToolCall: async (toolCall: any) => {
               for (const fc of toolCall.functionCalls) {
-                  if (fc.name === 'save_content') {
-                      try {
-                          const { filename, content, mimeType } = fc.args;
-                          const blob = new Blob([content], { type: mimeType || 'text/plain' });
-                          const url = await uploadFileToStorage(`appendix/${channel.id}/${Date.now()}_${filename}`, blob, { contentType: mimeType || 'text/plain' });
-                          await addChannelAttachment(channel.id, { id: `att-${Date.now()}`, type: 'file', url, name: filename, uploadedAt: Date.now() });
-                          serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result: `Saved to Appendix: ${url}` } }] });
-                      } catch (err: any) {
-                          serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { error: err.message } }] });
-                      }
-                  } else if (onCustomToolCall) {
-                      try {
-                          const result = await onCustomToolCall(fc.name, fc.args);
-                          serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result } }] });
-                      } catch(err: any) {
-                          serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { error: err.message } }] });
-                      }
+                  if (onCustomToolCall) {
+                      const result = await onCustomToolCall(fc.name, fc.args);
+                      serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result } }] });
                   }
               }
           }
-        },
-        toolsToUse
-      );
+      });
     } catch (e) { setError("Failed to initialize session"); }
   }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, initialTranscript, customTools, onCustomToolCall, recordingEnabled, startRecording]);
 
   const handleDisconnect = async () => {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          mediaRecorderRef.current.stop();
-      }
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop();
       serviceRef.current?.disconnect();
       const fullTranscript = currentLine ? [...transcript, currentLine] : transcript;
       if (currentUser && fullTranscript.length > 0) {
-          try {
-             const targetLectureId = activeSegment?.lectureId || lectureId || channel.id;
-             const discussion: CommunityDiscussion = { id: '', lectureId: targetLectureId, channelId: channel.id, userId: currentUser.uid, userName: currentUser.displayName || 'Anonymous', transcript: fullTranscript, createdAt: Date.now(), title: `${channel.title}: Live Discussion` };
-             await saveDiscussion(discussion);
-          } catch (e) {}
+          const discussion: CommunityDiscussion = { id: '', lectureId: activeSegment?.lectureId || lectureId || channel.id, channelId: channel.id, userId: currentUser.uid, userName: currentUser.displayName || 'Anonymous', transcript: fullTranscript, createdAt: Date.now(), title: `${channel.title}: Live Session` };
+          await saveDiscussion(discussion);
       }
       onEndSession(); 
-  };
-
-  const renderMessageContent = (text: string) => {
-    const parts = text.split(/```/);
-    return parts.map((part, index) => {
-      if (index % 2 === 1) {
-        return (
-          <div key={index} className="my-3 rounded-lg overflow-hidden border border-slate-700 bg-slate-950 shadow-lg">
-             <div className="flex items-center justify-between px-4 py-1.5 bg-slate-800/80 border-b border-slate-700">
-               <span className="text-xs font-mono text-slate-400 lowercase">Code</span>
-               <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(part); }} className="flex items-center space-x-1 text-xs text-slate-500 hover:text-indigo-400">
-                 <Copy size={10} /><span>Copy</span>
-               </button>
-             </div>
-             <pre className="p-4 text-sm font-mono text-indigo-200 overflow-x-auto whitespace-pre-wrap">{part}</pre>
-          </div>
-        );
-      } else {
-        return part.split(/\n\s*\n/).map((paragraph, pIndex) => paragraph.trim() ? <p key={`${index}-${pIndex}`} className="mb-3 last:mb-0 leading-relaxed">{paragraph}</p> : null);
-      }
-    });
   };
 
   return (
     <div className="w-full h-full flex flex-col bg-slate-950">
       <div className="p-4 flex items-center justify-between bg-slate-900 border-b border-slate-800 shrink-0">
          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-800 border border-slate-700">
-               <img src={channel.imageUrl} alt={channel.title} className="w-full h-full object-cover" />
-            </div>
+            <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" />
             <div>
                <h2 className="text-sm font-bold text-white leading-tight">{channel.title}</h2>
-               <span className="text-xs text-indigo-400 font-medium">{channel.voiceName} {recordingEnabled && "• Recording"}</span>
+               <span className="text-xs text-indigo-400 font-medium">Live Studio</span>
             </div>
          </div>
          <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">End Session</button>
       </div>
 
       {!hasStarted ? (
-         <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-6 text-center">
+         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6">
              <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center animate-pulse"><Mic size={40} className="text-indigo-500" /></div>
-             <div>
-                <h3 className="text-xl font-bold text-white">{t.tapToStart}</h3>
-                <p className="text-slate-400 text-sm mt-2">{t.tapDesc}</p>
-             </div>
+             <div><h3 className="text-xl font-bold text-white">Tap to Join the Session</h3><p className="text-slate-400 text-sm mt-2">Requires microphone access for real-time dialogue.</p></div>
              <button onClick={() => { setHasStarted(true); connect(); }} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-full shadow-lg shadow-indigo-500/30 transition-transform hover:scale-105">{t.start}</button>
          </div>
       ) : error ? (
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
              <AlertCircle size={40} className="text-red-400" />
              <p className="text-red-300 text-sm">{error}</p>
-             <button onClick={() => connect()} className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm rounded-lg">
-                <RefreshCw size={14} /><span>{t.retry}</span>
-             </button>
+             <button onClick={() => connect()} className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm rounded-lg"><RefreshCw size={14} /><span>{t.retry}</span></button>
          </div>
       ) : (
          <div className="flex-1 flex flex-col min-h-0 relative">
-            {(isUploadingRecording) && (
+            {isUploadingRecording && (
                <div className="absolute top-4 right-4 z-50 bg-slate-900 border border-indigo-500/50 p-3 rounded-xl shadow-2xl flex items-center gap-3 animate-fade-in">
-                  <Loader2 size={16} className="text-indigo-400 animate-spin"/>
-                  <span className="text-xs font-bold text-white">{t.uploading}</span>
+                  <Loader2 size={16} className="text-indigo-400 animate-spin"/><span className="text-xs font-bold text-white">{t.uploading}</span>
                </div>
             )}
-            {!isConnected && (
-               <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-10 backdrop-blur-sm">
-                  <div className="flex flex-col items-center space-y-4">
-                     <Loader2 size={32} className="text-indigo-500 animate-spin" />
-                     <p className="text-sm font-medium text-indigo-300">{t.connecting}</p>
-                  </div>
-               </div>
-            )}
-            <div className="shrink-0 py-3 bg-slate-950">
-               <SuggestionsBar suggestions={suggestions} welcomeMessage={channel.welcomeMessage} showWelcome={transcript.length === 0 && !currentLine} uiText={t} />
-            </div>
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6">
+            {!isConnected && <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-10 backdrop-blur-sm"><div className="flex flex-col items-center space-y-4"><Loader2 size={32} className="text-indigo-500 animate-spin" /><p className="text-sm font-medium text-indigo-300">{t.connecting}</p></div></div>}
+            <div className="flex-1 overflow-y-auto p-4 space-y-6">
                {transcript.map((item, index) => (
                    <div key={index} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? t.you : channel.voiceName}</span>
-                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{renderMessageContent(item.text)}</div>
+                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : channel.voiceName}</span>
+                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{item.text}</div>
                    </div>
                ))}
                {currentLine && (
                    <div className={`flex flex-col ${currentLine.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in`}>
-                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{currentLine.role === 'user' ? t.you : channel.voiceName}</span>
-                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${currentLine.role === 'user' ? 'bg-indigo-600/80 text-white rounded-tr-sm' : 'bg-slate-800/80 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{renderMessageContent(currentLine.text)}<span className="inline-block w-1.5 h-4 ml-1 align-middle bg-current opacity-50 animate-blink"></span></div>
+                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{currentLine.role === 'user' ? 'You' : channel.voiceName}</span>
+                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${currentLine.role === 'user' ? 'bg-indigo-600/80 text-white rounded-tr-sm' : 'bg-slate-800/80 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{currentLine.text}<span className="inline-block w-1.5 h-4 ml-1 align-middle bg-current opacity-50 animate-blink"></span></div>
                    </div>
                )}
             </div>
-            <div className="p-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between shrink-0">
-                <div className="flex items-center space-x-2 text-slate-500 text-xs"><ScrollText size={14} /><span className="uppercase tracking-wider font-bold">{t.transcript}</span></div>
-            </div>
+            <div className="p-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between shrink-0"><div className="flex items-center space-x-2 text-slate-500 text-xs"><ScrollText size={14} /><span className="uppercase tracking-wider font-bold">{t.transcript}</span></div></div>
          </div>
       )}
     </div>
