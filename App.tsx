@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } 
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewState } from './types';
@@ -42,6 +42,7 @@ import { ShippingLabelApp } from './components/ShippingLabelApp';
 import { CheckDesigner } from './components/CheckDesigner';
 import { FirestoreInspector } from './components/FirestoreInspector';
 import { BrandLogo } from './components/BrandLogo';
+import { CoinWallet } from './components/CoinWallet';
 
 import { getCurrentUser, getDriveToken } from './services/authService';
 import { getAuth } from './services/firebaseConfig';
@@ -49,7 +50,7 @@ import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } fr
 import { getUserChannels, saveUserChannel } from './utils/db';
 import { HANDCRAFTED_CHANNELS } from './utils/initialData';
 import { stopAllPlatformAudio } from './utils/audioUtils';
-import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile } from './services/firestoreService';
+import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, claimCoinCheck } from './services/firestoreService';
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -60,11 +61,12 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-/**
- * ErrorBoundary component to catch runtime errors in the component tree.
- */
-// Fixed: Changed React.Component to the named Component import to resolve the 'Property props does not exist' error.
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Added constructor with super(props) to resolve property 'props' does not exist error.
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+  }
+
   public state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
@@ -75,7 +77,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     console.error("Uncaught runtime error:", error, errorInfo); 
   }
   
-  // Fixed: Explicitly defining render() return type and accessing this.props.children correctly.
   render(): ReactNode {
     if (this.state.hasError) {
       return (
@@ -135,7 +136,8 @@ const UI_TEXT = {
     icons: "Icon Lab",
     shipping: "Shipping Lab",
     checks: "Check Designer",
-    fullscreen: "Toggle Fullscreen"
+    fullscreen: "Toggle Fullscreen",
+    wallet: "Coin Wallet"
   },
   zh: {
     appTitle: "AI 播客",
@@ -168,7 +170,8 @@ const UI_TEXT = {
     icons: "图标生成器",
     shipping: "物流实验室",
     checks: "支票设计器",
-    fullscreen: "全屏切换"
+    fullscreen: "全屏切换",
+    wallet: "虚拟钱包"
   }
 };
 
@@ -179,6 +182,7 @@ const App: React.FC = () => {
   const getInitialView = (): ViewState | 'firestore_debug' => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
+    if (params.get('claim')) return 'coin_wallet'; // Claim check route
     if (view === 'card' && params.get('id')) return 'card_workshop';
     if (view === 'icon' && params.get('id')) return 'icon_viewer';
     if (view === 'shipping' && params.get('id')) return 'shipping_viewer';
@@ -225,7 +229,8 @@ const App: React.FC = () => {
 
   const allApps = [
     { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); setActiveTab('categories'); }, color: 'text-indigo-400' },
-    { id: 'check_designer', label: t.checks, icon: Wallet, action: () => handleSetViewState('check_designer'), color: 'text-amber-400' },
+    { id: 'wallet', label: t.wallet, icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400' },
+    { id: 'check_designer', label: t.checks, icon: Wallet, action: () => handleSetViewState('check_designer'), color: 'text-orange-400' },
     { id: 'shipping_labels', label: t.shipping, icon: Truck, action: () => handleSetViewState('shipping_labels'), color: 'text-emerald-400' },
     { id: 'icon_lab', label: t.icons, icon: AppWindow, action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400' },
     { id: 'mission', label: t.mission, icon: Rocket, action: () => handleSetViewState('mission'), color: 'text-orange-500' },
@@ -277,6 +282,24 @@ const App: React.FC = () => {
             }
             const profile = await getUserProfile(user.uid);
             if (profile) setUserProfile(profile);
+
+            // Handle QR Claim Route
+            const params = new URLSearchParams(window.location.search);
+            const claimId = params.get('claim');
+            if (claimId) {
+                try {
+                    const amount = await claimCoinCheck(claimId);
+                    alert(`Check Claimed! ${amount} coins added to your wallet.`);
+                    const fresh = await getUserProfile(user.uid);
+                    if (fresh) setUserProfile(fresh);
+                } catch(e: any) {
+                    alert("Claim failed: " + e.message);
+                } finally {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete('claim');
+                    window.history.replaceState({}, '', url.toString());
+                }
+            }
         }
         const localChannels = await getUserChannels();
         setUserChannels(localChannels);
@@ -361,16 +384,21 @@ const App: React.FC = () => {
            </div>
 
            <div className="flex items-center gap-2 sm:gap-4">
+              {userProfile && (
+                  <button 
+                    onClick={() => handleSetViewState('coin_wallet')}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex"
+                  >
+                      <Coins size={16}/>
+                      <span className="font-black text-xs">{userProfile.coinBalance || 0}</span>
+                  </button>
+              )}
               <Notifications />
               <div className="flex gap-2">
                 <button onClick={() => setIsVoiceCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 group overflow-hidden relative">
                     <Sparkles size={16} className="relative z-10"/>
                     <span className="relative z-10">{t.magic}</span>
                     <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
-                </button>
-                <button onClick={() => setIsCreateModalOpen(true)} className="hidden sm:flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 border border-slate-700">
-                    <Plus size={16} />
-                    <span>{t.create}</span>
                 </button>
               </div>
               <div className="relative">
@@ -414,11 +442,12 @@ const App: React.FC = () => {
             {viewState === 'card_workshop' && ( <CardWorkshop onBack={() => handleSetViewState('directory')} cardId={activeItemId || undefined} isViewer={viewState === 'card_viewer' || !!activeItemId} /> )}
             {viewState === 'mission' && ( <MissionManifesto onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('directory')} /> )}
+            {viewState === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('directory')} user={userProfile} /> )}
         </main>
 
         <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateChannel} currentUser={currentUser} />
         <VoiceCreateModal isOpen={isVoiceCreateOpen} onClose={() => setIsVoiceCreateOpen(false)} onCreate={handleCreateChannel} />
-        {currentUser && ( <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} user={userProfile || { uid: currentUser.uid, email: currentUser.email, displayName: currentUser.displayName, photoURL: currentUser.photoURL, groups: [] }} onUpdateProfile={setUserProfile} /> )}
+        {currentUser && ( <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} user={userProfile || { uid: currentUser.uid, email: currentUser.email, displayName: currentUser.displayName, photoURL: currentUser.photoURL, groups: [], coinBalance: 0 }} onUpdateProfile={setUserProfile} /> )}
         {channelToComment && ( <CommentsModal isOpen={true} onClose={() => setChannelToComment(null)} channel={channelToComment} onAddComment={handleAddComment} onDeleteComment={(cid) => deleteCommentFromChannel(channelToComment.id, cid)} onEditComment={(cid, txt, att) => updateCommentInChannel(channelToComment.id, { id: cid, user: currentUser.displayName || 'Anonymous', text: txt, timestamp: Date.now(), attachments: att })} currentUser={currentUser} /> )}
         {channelToEdit && ( <ChannelSettingsModal isOpen={true} onClose={() => setChannelToEdit(null)} channel={channelToEdit} onUpdate={handleUpdateChannel} /> )}
         {isPrivacyOpen && ( <div className="fixed inset-0 z-[100] animate-fade-in"> <PrivacyPolicy onBack={() => setIsPrivacyOpen(false)} /> </div> )}

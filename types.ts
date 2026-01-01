@@ -43,6 +43,23 @@ export interface BankingCheck {
   signature: string;
   ownerId?: string;
   watermarkUrl?: string;
+  // Coin related fields
+  coinAmount?: number;
+  isCoinCheck?: boolean;
+  isClaimed?: boolean;
+  claimToken?: string;
+}
+
+export interface CoinTransaction {
+  id: string;
+  fromId: string;
+  fromName: string;
+  toId: string;
+  toName: string;
+  amount: number;
+  type: 'transfer' | 'grant' | 'check' | 'mentoring';
+  memo?: string;
+  timestamp: number;
 }
 
 export interface GeneratedIcon {
@@ -83,6 +100,7 @@ export interface Booking {
   createdAt: number;
   recordingUrl?: string;
   transcriptUrl?: string;
+  coinPrice?: number;
 }
 
 export type AttachmentType = 'image' | 'audio' | 'video' | 'file';
@@ -153,6 +171,7 @@ export interface Channel {
   createdAt?: number;
   bookUrl?: string;
   bookGeneratedAt?: number;
+  mentorCoinRate?: number;
 }
 
 export interface LectureSection {
@@ -212,7 +231,8 @@ export type ViewState =
   | 'shipping_labels'
   | 'shipping_viewer'
   | 'check_designer'
-  | 'check_viewer';
+  | 'check_viewer'
+  | 'coin_wallet';
 
 export interface AudioState {
   isConnected: boolean;
@@ -248,6 +268,9 @@ export interface UserProfile {
   likedChannelIds?: string[];
   preferredAiProvider?: 'gemini' | 'openai';
   preferredMobileQuickApp?: string;
+  // Coin related fields
+  coinBalance: number;
+  lastCoinGrantAt?: number;
 }
 
 export interface RecordingSession {
@@ -448,11 +471,6 @@ export interface CloudItem {
   size?: number;
   timeCreated?: string;
   contentType?: string;
-}
-
-export interface GlobalStats {
-  totalLogins: number;
-  uniqueUsers: number;
 }
 
 export interface GlobalStats {

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Channel, Booking, UserProfile } from '../types';
-import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Loader2, Play, Users, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Loader2, Play, Users, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight, Coins, Check as CheckIcon } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { createBooking, getUserBookings, cancelBooking, updateBookingInvite, deleteBookingRecording, getAllUsers, getUserProfileByEmail } from '../services/firestoreService';
 
@@ -103,6 +103,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
     const isP2P = !!bookingMember;
     const targetEmail = isP2P ? bookingMember!.email : inviteEmail;
     if (isP2P && !targetEmail) return alert("Selected member has no email address.");
+    
     setIsBooking(true);
     try {
         const newBooking: Booking = {
@@ -111,22 +112,21 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
             mentorName: isP2P ? `Meeting with ${bookingMember!.displayName}` : selectedMentor!.title,
             mentorImage: isP2P ? (bookingMember!.photoURL || 'https://ui-avatars.com/api/?name=' + bookingMember!.displayName) : selectedMentor!.imageUrl,
             date: selectedDate, time: selectedTime, topic: topic, invitedEmail: targetEmail,
-            status: isP2P ? 'pending' : 'scheduled', type: isP2P ? 'p2p' : 'ai', createdAt: Date.now()
+            status: isP2P ? 'pending' : 'scheduled', type: isP2P ? 'p2p' : 'ai', createdAt: Date.now(),
+            coinPrice: isP2P ? 50 : 0 // Peer sessions cost 50 coins by default
         };
         await createBooking(newBooking);
-        alert(isP2P ? "Meeting request sent!" : "Session Booked!");
+        alert(isP2P ? "Meeting request sent! 50 coins will be transferred upon session start." : "Session Booked!");
         setActiveTab('my_bookings');
         setSelectedMentor(null); setBookingMember(null); setTopic(''); setInviteEmail(''); setSelectedDate(''); setSelectedTime('');
     } catch(e) { alert("Failed to book session."); } finally { setIsBooking(false); }
   };
 
-  /* Fix: Added missing handleOpenBooking to manage member selection for p2p meetings */
   const handleOpenBooking = (member: UserProfile) => {
       setBookingMember(member);
       setSelectedMentor(null);
   };
 
-  /* Fix: Added missing handleOpenStartModal to configure session recording and multimodal inputs */
   const handleOpenStartModal = (booking: Booking) => {
       setSessionStartBooking(booking);
       setRecordMeeting(false);
@@ -134,7 +134,6 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
       setRecordCamera(false);
   };
 
-  /* Fix: Added missing handleCancel to remove scheduled or pending sessions from the dashboard */
   const handleCancel = async (bookingId: string) => {
       if (!confirm("Are you sure you want to cancel this session?")) return;
       try {
@@ -174,6 +173,17 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                 </div>
             </div>
             <div className="p-8 space-y-8">
+                {bookingMember && (
+                    <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <Coins className="text-amber-400" size={24}/>
+                            <div>
+                                <p className="text-sm font-bold text-white">Session Fee: 50 Coins</p>
+                                <p className="text-xs text-amber-200/60">Coins are transferred to mentor upon session completion.</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 <div><h3 className="text-sm font-bold text-slate-400 uppercase mb-3 flex items-center space-x-2"><Calendar size={16} /> <span>Select Date</span></h3><div className="flex gap-2 overflow-x-auto pb-2">{[1,2,3,4,5,6,7].map(i => { const d = new Date(); d.setDate(d.getDate() + i); const ds = d.toISOString().split('T')[0]; return <button key={ds} onClick={() => setSelectedDate(ds)} className={`flex-shrink-0 w-24 p-3 rounded-xl border flex flex-col items-center transition-all ${selectedDate === ds ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}><span className="text-[10px] font-bold uppercase">{d.toLocaleDateString('en-US', { weekday: 'short' })}</span><span className="text-lg font-bold">{d.getDate()}</span></button>; })}</div></div>
                 <div><h3 className="text-sm font-bold text-slate-400 uppercase mb-3 flex items-center space-x-2"><Clock size={16} /> <span>Select Time</span></h3><div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-8 gap-2">{TIME_SLOTS.map(time => <button key={time} onClick={() => setSelectedTime(time)} className={`py-2 rounded-lg text-sm font-medium border transition-all ${selectedTime === time ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'}`}>{time}</button>)}</div></div>
                 <div><h3 className="text-sm font-bold text-slate-400 uppercase mb-3 flex items-center space-x-2"><Sparkles size={16} /> <span>Topic</span></h3><textarea value={topic} onChange={e => setTopic(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl p-4 text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none" rows={4} placeholder="What would you like to discuss?"/></div>
@@ -198,7 +208,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
             <div className="space-y-6">
                 <div className="bg-gradient-to-r from-indigo-900/40 to-purple-900/40 border border-indigo-500/30 rounded-xl p-6 flex items-start gap-4">
                     <div className="p-3 bg-indigo-500/20 rounded-full text-indigo-300"><Heart size={24} /></div>
-                    <div><h3 className="text-lg font-bold text-white mb-1">Our Mentorship Mission</h3><p className="text-sm text-indigo-200 max-w-2xl">We encourage every member to teach and help each other grow. Find peers, book learning sessions, and build a stronger community.</p></div>
+                    <div><h3 className="text-lg font-bold text-white mb-1">Our Mentorship Mission</h3><p className="text-sm text-indigo-200 max-w-2xl">We encourage every member to teach and help each other grow. Find peers, book learning sessions, and earn VoiceCoins by providing expert advice.</p></div>
                 </div>
                 <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-slate-900/50 p-4 rounded-xl border border-slate-800">
                     <div className="relative w-full md:w-96"><Search className={`absolute left-3 top-1/2 -translate-y-1/2 ${isSearchingServer ? 'text-indigo-400 animate-pulse' : 'text-slate-500'}`} size={16}/><input type="text" placeholder="Find member by name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-white focus:ring-2 focus:ring-indigo-500 outline-none"/></div>
@@ -212,7 +222,10 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                                 <div><h3 className="font-bold text-white group-hover:text-indigo-400 transition-colors">{m.displayName}</h3><p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Community Member</p></div>
                             </div>
                             <div className="flex flex-wrap gap-2 mb-6 h-12 overflow-hidden">{(m.interests || []).map(i => <span key={i} className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">#{i}</span>)}</div>
-                            <button onClick={() => handleOpenBooking(m)} className="w-full py-2.5 bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg text-xs font-bold transition-all border border-slate-700">Book Peer Session</button>
+                            <button onClick={() => handleOpenBooking(m)} className="w-full py-2.5 bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg text-xs font-bold transition-all border border-slate-700 flex items-center justify-center gap-2">
+                                <Coins size={14}/>
+                                Book Peer Session
+                            </button>
                         </div>
                     ))}
                 </div>
@@ -237,7 +250,17 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                         {myBookings.map(b => (
                             <div key={b.id} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl flex flex-col md:flex-row items-start md:items-center gap-6 relative group hover:border-indigo-500/30 transition-all">
                                 <div className="bg-slate-800 p-4 rounded-xl text-center min-w-[100px] border border-slate-700"><span className="block text-2xl font-bold text-white">{b.time}</span><span className="text-[10px] text-slate-400 uppercase font-black">{new Date(b.date).toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'})}</span></div>
-                                <div className="flex-1"><div className="flex items-center gap-2 mb-1"><h4 className="text-lg font-bold text-white">{b.mentorName}</h4><span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${b.status === 'scheduled' ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-900/50' : b.status === 'pending' ? 'bg-amber-900/30 text-amber-400 border border-amber-900/50' : 'bg-slate-800 text-slate-400'}`}>{b.status}</span></div><p className="text-sm text-slate-400 mb-2 italic">"{b.topic}"</p><div className="flex items-center gap-3">{(b.recordingUrl || b.status === 'completed') ? <span className="text-xs text-emerald-500 flex items-center gap-1 font-bold"><CheckCircle size={14}/> Completed</span> : <div className="flex gap-2"><button onClick={() => handleOpenStartModal(b)} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg flex items-center gap-1 transition-all"><Play size={12} fill="currentColor"/> Start Session</button><button onClick={() => handleCancel(b.id)} className="px-4 py-1.5 bg-slate-800 hover:bg-red-900/30 text-slate-400 hover:text-red-400 text-xs font-bold rounded-lg border border-slate-700 transition-colors">Cancel</button></div>}</div></div>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <h4 className="text-lg font-bold text-white">{b.mentorName}</h4>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${b.status === 'scheduled' ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-900/50' : b.status === 'pending' ? 'bg-amber-900/30 text-amber-400 border border-amber-900/50' : 'bg-slate-800 text-slate-400'}`}>{b.status}</span>
+                                        {b.coinPrice && <div className="flex items-center gap-1 text-[10px] font-black text-amber-400 border border-amber-400/20 px-1.5 py-0.5 rounded bg-amber-400/10"><Coins size={10}/> {b.coinPrice}</div>}
+                                    </div>
+                                    <p className="text-sm text-slate-400 mb-2 italic">"{b.topic}"</p>
+                                    <div className="flex items-center gap-3">
+                                        {(b.recordingUrl || b.status === 'completed') ? <span className="text-xs text-emerald-500 flex items-center gap-1 font-bold"><CheckCircle size={14}/> Completed</span> : <div className="flex gap-2"><button onClick={() => handleOpenStartModal(b)} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg flex items-center gap-1 transition-all"><Play size={12} fill="currentColor"/> Start Session</button><button onClick={() => handleCancel(b.id)} className="px-4 py-1.5 bg-slate-800 hover:bg-red-900/30 text-slate-400 hover:text-red-400 text-xs font-bold rounded-lg border border-slate-700 transition-colors">Cancel</button></div>}
+                                    </div>
+                                </div>
                                 <img src={b.mentorImage} className="w-16 h-16 rounded-full border-2 border-slate-700 hidden md:block" />
                             </div>
                         ))}
@@ -258,6 +281,15 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                             <img src={sessionStartBooking.mentorImage} className="w-12 h-12 rounded-full" />
                             <div><p className="text-sm font-bold text-white">{sessionStartBooking.mentorName}</p><p className="text-xs text-slate-500 truncate w-40">{sessionStartBooking.topic}</p></div>
                         </div>
+                        {sessionStartBooking.coinPrice && (
+                            <div className="bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Coins className="text-amber-400" size={16}/>
+                                    <span className="text-sm font-bold text-white">Confirm Transfer: {sessionStartBooking.coinPrice} Coins</span>
+                                </div>
+                                <CheckIcon className="text-amber-400" size={16}/>
+                            </div>
+                        )}
                         <div className="space-y-3">
                             <label className="flex items-center justify-between p-4 bg-slate-950 border border-slate-800 rounded-2xl cursor-pointer hover:border-indigo-500 transition-all"><div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${recordMeeting ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-500'}`}><Mic size={18}/></div><div className="text-left"><p className="text-sm font-bold text-white">Record Audio</p><p className="text-[10px] text-slate-500">Save transcript & audio to history.</p></div></div><input type="checkbox" checked={recordMeeting} onChange={e => setRecordMeeting(e.target.checked)} className="hidden" /></label>
                             <label className="flex items-center justify-between p-4 bg-slate-950 border border-slate-800 rounded-2xl cursor-pointer hover:border-indigo-500 transition-all"><div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${recordScreen ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-500'}`}><Monitor size={18}/></div><div className="text-left"><p className="text-sm font-bold text-white">Screen Share</p><p className="text-[10px] text-slate-500">AI can see your screen content.</p></div></div><input type="checkbox" checked={recordScreen} onChange={e => setRecordScreen(e.target.checked)} className="hidden" /></label>

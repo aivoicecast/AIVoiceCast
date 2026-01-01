@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { X, Check, Zap, Loader2, Sparkles, Crown, CreditCard, AlertCircle, ShieldCheck } from 'lucide-react';
+import { X, Check, Zap, Loader2, Sparkles, Crown, CreditCard, AlertCircle, ShieldCheck, Coins } from 'lucide-react';
 import { UserProfile, SubscriptionTier } from '../types';
 import { setUserSubscriptionTier } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
@@ -98,7 +99,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, use
                     <li className="flex items-center gap-3 text-sm text-slate-300"><Check size={18} className="text-emerald-500"/> Unlimited Listening</li>
                     <li className="flex items-center gap-3 text-sm text-slate-300"><Check size={18} className="text-emerald-500"/> 5 AI Generation Credits</li>
                     <li className="flex items-center gap-3 text-sm text-slate-300"><Check size={18} className="text-emerald-500"/> Public Groups Only</li>
-                    <li className="flex items-center gap-3 text-sm text-slate-500"><X size={18} /> No Private Channels</li>
+                    <li className="flex items-center gap-3 text-sm text-slate-300"><Coins size={18} className="text-amber-500"/> <strong>100 Coins</strong> / mo</li>
                  </ul>
 
                  <button 
@@ -127,8 +128,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, use
                  
                  <ul className="space-y-4 mb-8 flex-1">
                     <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> <strong>Unlimited</strong> AI Generation</li>
-                    <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> <strong>Private</strong> Channels & Groups</li>
-                    <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> Neural Voices (Gemini)</li>
+                    <li className="flex items-center gap-3 text-sm text-white"><Coins size={18} className="text-amber-500"/> <strong>2,900 Coins</strong> / mo ($29 value)</li>
+                    <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> Private Channels & Groups</li>
                     <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> Code Studio Pro (Git Sync)</li>
                  </ul>
 

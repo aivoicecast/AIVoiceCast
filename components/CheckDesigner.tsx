@@ -3,13 +3,13 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
   Trash2, Printer, CheckCircle, AlertTriangle, Send, Share2, DollarSign, Calendar, 
-  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link
+  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette
 } from 'lucide-react';
 import { BankingCheck, UserProfile } from '../types';
 import { GoogleGenAI } from '@google/genai';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { getAllUsers, sendMessage, uploadFileToStorage, saveBankingCheck } from '../services/firestoreService';
+import { getAllUsers, sendMessage, uploadFileToStorage, saveBankingCheck, claimCoinCheck } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
@@ -32,7 +32,9 @@ const DEFAULT_CHECK: BankingCheck = {
   bankName: 'Neural Prism Bank',
   senderName: 'Account Holder',
   senderAddress: '123 AI Boulevard, Silicon Valley, CA',
-  signature: ''
+  signature: '',
+  isCoinCheck: false,
+  coinAmount: 0
 };
 
 export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUser }) => {
@@ -47,45 +49,36 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [isSharing, setIsSharing] = useState(false);
   const [isGeneratingArt, setIsGeneratingArt] = useState(false);
   const [customArtUrl, setCustomArtUrl] = useState<string | null>(null);
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   
   const checkRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (showShareModal) {
-        setIsLoadingUsers(true);
-        getAllUsers().then(users => {
-            setAllUsers(users.filter(u => u.uid !== currentUser?.uid));
-            setIsLoadingUsers(false);
-        });
-    }
-  }, [showShareModal, currentUser]);
-
-  useEffect(() => {
     if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
     }
 
-    if (check.amount > 0) {
+    const amountToSpell = check.isCoinCheck ? (check.coinAmount || 0) : check.amount;
+    if (amountToSpell > 0) {
         debounceTimerRef.current = setTimeout(() => {
-            handleGenerateAmountWords(check.amount);
+            handleGenerateAmountWords(amountToSpell, check.isCoinCheck);
         }, 1200); 
     }
 
     return () => {
         if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-  }, [check.amount]);
+  }, [check.amount, check.coinAmount, check.isCoinCheck]);
 
   const qrCodeUrl = useMemo(() => {
+      // For Coin Checks, the QR code encodes the check ID for claiming
+      if (check.isCoinCheck && check.id) {
+          return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(window.location.origin + '?claim=' + check.id)}`;
+      }
       const data = `payee:${check.payee}|amount:${check.amount}|memo:${check.memo}|bank:${check.bankName}`;
-      return `https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(data)}`;
-  }, [check.payee, check.amount, check.memo, check.bankName]);
+      return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(data)}`;
+  }, [check.payee, check.amount, check.memo, check.bankName, check.isCoinCheck, check.id]);
 
   const handleParseCheckDetails = async () => {
       const input = prompt("Paste raw payment instructions (e.g. 'Pay Alice 500 dollars for consulting work next week'):");
@@ -114,7 +107,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       } catch (e) {
           alert("Neural parse failed. Please enter details manually.");
       } finally {
-          setIsParsing(false);
+          setIsParsing(null);
       }
   };
 
@@ -151,12 +144,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       }
   };
 
-  const handleGenerateAmountWords = async (val: number) => {
+  const handleGenerateAmountWords = async (val: number, isCoins = false) => {
       setIsUpdatingWords(true);
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const prompt = `Convert the numeric amount ${val} into formal banking check words (e.g., "Five Hundred and 00/100"). 
-          Currency is USD. Return ONLY the text, nothing else.`;
+          The unit is ${isCoins ? 'Coins' : 'Dollars'}. Return ONLY the text, nothing else.`;
           const response = await ai.models.generateContent({
               model: 'gemini-3-flash-preview',
               contents: prompt
@@ -176,7 +169,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       if (!auth.currentUser) return alert("Please sign in to publish.");
       setIsSharing(true);
       try {
-          const id = crypto.randomUUID();
+          const id = check.id || crypto.randomUUID();
           
           // 1. Sync watermark if exists
           let finalWatermarkUrl = customArtUrl || '';
@@ -187,7 +180,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           }
 
           // 2. Save metadata to Firestore
-          await saveBankingCheck({
+          const finalId = await saveBankingCheck({
               ...check,
               id,
               ownerId: auth.currentUser.uid,
@@ -204,9 +197,10 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               }
           }
 
-          const link = `${window.location.origin}?view=check&id=${id}`;
+          const link = `${window.location.origin}?view=check&id=${finalId}`;
           setShareLink(link);
-          alert("Check published and synced to Google Drive!");
+          setCheck(prev => ({ ...prev, id: finalId }));
+          alert("Check published and issued! If this was a Coin Check, the amount has been reserved.");
       } catch (e: any) {
           alert("Publishing failed: " + e.message);
       } finally {
@@ -252,38 +246,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       setIsExporting(false);
   };
 
-  const handleShareWithMember = async (member: UserProfile) => {
-      setIsSharing(true);
-      try {
-          const blob = await generatePDFBlob();
-          if (!blob) throw new Error("Could not generate PDF");
-          
-          const path = `shared_checks/${currentUser.uid}/${Date.now()}_check.pdf`;
-          const url = await uploadFileToStorage(path, blob);
-          
-          const channelId = [currentUser.uid, member.uid].sort().join('_');
-          const messageText = `Hi ${member.displayName}, I've generated a check for you: ${check.amountWords}. Check #: ${check.checkNumber}. View here: ${url}`;
-          
-          await sendMessage(channelId, messageText, `chat_channels/${channelId}/messages`, undefined, [{
-              type: 'file',
-              url: url,
-              name: `Check_${check.checkNumber}.pdf`
-          }]);
-          
-          alert(`Check shared with ${member.displayName}!`);
-          setShowShareModal(false);
-      } catch (e: any) {
-          alert("Sharing failed: " + e.message);
-      } finally {
-          setIsSharing(false);
-      }
-  };
-
-  const filteredUsers = allUsers.filter(u => 
-      u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
@@ -299,7 +261,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           <div className="flex items-center gap-3">
               <button onClick={handlePublishAndShareLink} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
                   {isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
-                  <span>{isSharing ? 'Syncing...' : 'Publish & Share'}</span>
+                  <span>{isSharing ? 'Processing...' : (check.isCoinCheck ? 'Issue Coin Check' : 'Publish & Share')}</span>
               </button>
               <button 
                 onClick={handleDownloadPDF}
@@ -315,6 +277,26 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       <div className="flex-1 flex overflow-hidden flex-col lg:flex-row">
           <div className="w-full lg:w-[450px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-8 scrollbar-thin">
               
+              <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                      <Palette className="text-indigo-400"/> Transaction Type
+                  </h3>
+                  <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+                      <button 
+                        onClick={() => setCheck({...check, isCoinCheck: false})}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${!check.isCoinCheck ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                      >
+                          <Landmark size={14}/> Standard
+                      </button>
+                      <button 
+                        onClick={() => setCheck({...check, isCoinCheck: true})}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${check.isCoinCheck ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                      >
+                          <Coins size={14}/> Voice Coin
+                      </button>
+                  </div>
+              </div>
+
               <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
@@ -349,8 +331,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <div className="flex gap-2">
                         <input type="text" placeholder="Pay to the order of..." value={check.payee} onChange={e => setCheck({...check, payee: e.target.value})} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
                         <div className="relative w-32">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</span>
-                            <input type="number" placeholder="0.00" value={check.amount} onChange={e => setCheck({...check, amount: parseFloat(e.target.value) || 0})} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-6 pr-2.5 py-2.5 text-sm text-white outline-none focus:border-indigo-500 text-right"/>
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">
+                                {check.isCoinCheck ? <Coins size={14} className="text-amber-500"/> : '$'}
+                            </span>
+                            {check.isCoinCheck ? (
+                                <input type="number" placeholder="0" value={check.coinAmount} onChange={e => setCheck({...check, coinAmount: parseInt(e.target.value) || 0})} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-8 pr-2.5 py-2.5 text-sm text-white outline-none focus:border-amber-500 text-right"/>
+                            ) : (
+                                <input type="number" placeholder="0.00" value={check.amount} onChange={e => setCheck({...check, amount: parseFloat(e.target.value) || 0})} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-6 pr-2.5 py-2.5 text-sm text-white outline-none focus:border-indigo-500 text-right"/>
+                            )}
                         </div>
                       </div>
                       <div className="relative group">
@@ -392,23 +380,21 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               {shareLink && (
                   <div className="mb-6 w-full max-w-md bg-slate-900 border border-indigo-500/50 rounded-2xl p-4 animate-fade-in flex items-center justify-between gap-4 shadow-xl">
                       <div className="overflow-hidden">
-                          <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">Shareable Web Link</p>
+                          <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">Claim Link (Send to Recipient)</p>
                           <p className="text-xs text-slate-400 truncate font-mono">{shareLink}</p>
                       </div>
-                      <button onClick={() => { navigator.clipboard.writeText(shareLink); alert("Copied!"); }} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 transition-colors">
-                          <Link size={16}/>
-                      </button>
+                      <button onClick={() => { navigator.clipboard.writeText(shareLink); alert("Copied!"); }} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors"><Share2 size={16}/></button>
                   </div>
               )}
 
               <div className="sticky top-0 mb-8 flex items-center gap-2 text-slate-600 select-none">
                   <Printer size={14} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">High-Security Document Preview</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest">{check.isCoinCheck ? 'Digital Coin Disbursement' : 'High-Security Document Preview'}</span>
               </div>
 
               <div 
                 ref={checkRef}
-                className="w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border border-slate-300 relative shrink-0 overflow-hidden font-sans p-6 rounded-sm"
+                className={`w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border ${check.isCoinCheck ? 'border-amber-400 ring-2 ring-amber-400/20' : 'border-slate-300'} relative shrink-0 overflow-hidden font-sans p-6 rounded-sm`}
                 style={{
                     backgroundImage: `radial-gradient(circle at 2px 2px, rgba(0,0,0,0.02) 1px, transparent 0)`,
                     backgroundSize: '8px 8px'
@@ -417,6 +403,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   <div className="absolute inset-0 flex items-center justify-center opacity-[0.06] pointer-events-none select-none overflow-hidden">
                       {customArtUrl ? (
                           <img src={customArtUrl} className="w-[350px] h-[350px] object-contain grayscale scale-125" alt="watermark" />
+                      ) : check.isCoinCheck ? (
+                          <Coins size={200} className="text-amber-500" />
                       ) : (
                           <Landmark size={200} />
                       )}
@@ -428,7 +416,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <p className="text-[8px] text-slate-500 max-w-[150px] leading-tight">{check.senderAddress}</p>
                       </div>
                       <div className="text-right">
-                          <p className="text-sm font-black italic text-indigo-900">{check.bankName}</p>
+                          <p className={`text-sm font-black italic ${check.isCoinCheck ? 'text-amber-600' : 'text-indigo-900'}`}>{check.isCoinCheck ? 'VoiceCoin Protocol' : check.bankName}</p>
                           <p className="text-[10px] font-bold mt-1">{check.checkNumber}</p>
                       </div>
                   </div>
@@ -438,9 +426,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <span className="text-[8px] font-bold uppercase">Date</span>
                           <span className="text-xs font-medium">{check.date}</span>
                       </div>
-                      <div className="bg-slate-50 border border-slate-300 px-3 py-1 flex items-center gap-2 min-w-[120px] shadow-inner">
-                          <span className="text-sm font-bold">$</span>
-                          <span className="text-lg font-black tracking-tight">{check.amount.toFixed(2)}</span>
+                      <div className={`bg-slate-50 border px-3 py-1 flex items-center gap-2 min-w-[120px] shadow-inner ${check.isCoinCheck ? 'border-amber-300' : 'border-slate-300'}`}>
+                          <span className="text-sm font-bold">{check.isCoinCheck ? 'VC' : '$'}</span>
+                          <span className="text-lg font-black tracking-tight">{check.isCoinCheck ? check.coinAmount : check.amount.toFixed(2)}</span>
                       </div>
                   </div>
 
@@ -451,7 +439,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
                   <div className="flex items-end gap-3 mb-4 border-b border-black pb-1 relative">
                       <span className="flex-1 text-xs font-bold italic px-2">{check.amountWords}</span>
-                      <span className="text-[8px] font-bold uppercase absolute right-0 bottom-1">Dollars</span>
+                      <span className="text-[8px] font-bold uppercase absolute right-0 bottom-1">{check.isCoinCheck ? 'Coins' : 'Dollars'}</span>
                   </div>
 
                   <div className="flex items-end justify-between mt-auto mb-14">
@@ -463,8 +451,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                       
                       <div className="flex flex-col items-center">
-                          <img src={qrCodeUrl} className="w-12 h-12 border border-slate-100 p-0.5 rounded shadow-sm" alt="QR Code" crossOrigin="anonymous"/>
-                          <span className="text-[6px] font-black uppercase text-slate-400 mt-1">Scan for Digital Pay</span>
+                          <img src={qrCodeUrl} className={`w-12 h-12 border p-0.5 rounded shadow-sm ${check.isCoinCheck ? 'border-amber-400 bg-amber-50' : 'border-slate-100 bg-white'}`} alt="QR Code" crossOrigin="anonymous"/>
+                          <span className="text-[6px] font-black uppercase text-slate-400 mt-1">{check.isCoinCheck ? 'Scan to Claim Coins' : 'Scan for Digital Pay'}</span>
                       </div>
 
                       <div className="flex flex-col items-center w-1/3">
@@ -481,23 +469,23 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <span>{check.checkNumber}</span>
                   </div>
                   
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500/20 via-transparent to-indigo-500/20"></div>
-                  <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500/20 via-transparent to-indigo-500/20"></div>
+                  <div className={`absolute top-0 left-0 w-full h-1 ${check.isCoinCheck ? 'bg-gradient-to-r from-amber-500/30 via-transparent to-amber-500/30' : 'bg-gradient-to-r from-indigo-500/20 via-transparent to-indigo-500/20'}`}></div>
+                  <div className={`absolute bottom-0 left-0 w-full h-1 ${check.isCoinCheck ? 'bg-gradient-to-r from-amber-500/30 via-transparent to-amber-500/30' : 'bg-gradient-to-r from-indigo-500/20 via-transparent to-indigo-500/20'}`}></div>
               </div>
 
               <div className="mt-12 w-full max-w-2xl grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex items-start gap-4">
                       <div className="p-2 bg-emerald-900/20 rounded-lg text-emerald-400"><QrCode size={20}/></div>
                       <div>
-                          <h4 className="text-sm font-bold text-white mb-1">Digital Scan Support</h4>
-                          <p className="text-xs text-slate-500 leading-relaxed">Integrated QR code encodes payment details for fast mobile banking imports and ledger synchronization.</p>
+                          <h4 className="text-sm font-bold text-white mb-1">{check.isCoinCheck ? 'One-Time Claim' : 'Digital Scan Support'}</h4>
+                          <p className="text-xs text-slate-500 leading-relaxed">{check.isCoinCheck ? 'Scanning the QR code on a Coin Check instantly transfers the coins to the recipient\'s wallet and invalidates the check.' : 'Integrated QR code encodes payment details for fast mobile banking imports and ledger synchronization.'}</p>
                       </div>
                   </div>
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex items-start gap-4">
                       <div className="p-2 bg-amber-900/20 rounded-lg text-amber-400"><ShieldAlert size={20}/></div>
                       <div>
-                          <h4 className="text-sm font-bold text-white mb-1">Secure Architecture</h4>
-                          <p className="text-xs text-slate-500 leading-relaxed">Layout designed to prevent data overlap and ensure machine-readability for automated deposit systems.</p>
+                          <h4 className="text-sm font-bold text-white mb-1">Coin Protocol</h4>
+                          <p className="text-xs text-slate-500 leading-relaxed">VoiceCoins are the native currency of AIVoiceCast, equal to 1 cent USD. Use them for tipping, mentoring, and issuing digital vouchers.</p>
                       </div>
                   </div>
               </div>

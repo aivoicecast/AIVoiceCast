@@ -17,7 +17,8 @@ import {
   ChannelVisibility,
   GeneratedIcon,
   BankingCheck,
-  ShippingLabel
+  ShippingLabel,
+  CoinTransaction
 } from '../types';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 
@@ -41,6 +42,7 @@ const CARDS_COLLECTION = 'cards';
 const ICONS_COLLECTION = 'icons';
 const CHECKS_COLLECTION = 'checks';
 const SHIPPING_COLLECTION = 'shipping';
+const TRANSACTIONS_COLLECTION = 'coin_transactions';
 
 export const ADMIN_EMAILS = ['shengliang.song.ai@gmail.com'];
 export const ADMIN_EMAIL = ADMIN_EMAILS[0];
@@ -50,6 +52,126 @@ const sanitizeData = (data: any) => {
     cleaned.adminOwnerEmail = ADMIN_EMAIL;
     return cleaned;
 };
+
+// --- Coins & Wallet ---
+
+export async function transferCoins(toId: string, toName: string, amount: number, memo?: string): Promise<void> {
+    if (!db || !auth.currentUser) throw new Error("Database unavailable");
+    const fromId = auth.currentUser.uid;
+    const fromName = auth.currentUser.displayName || 'Sender';
+    
+    const fromRef = db.collection(USERS_COLLECTION).doc(fromId);
+    const toRef = db.collection(USERS_COLLECTION).doc(toId);
+    const txRef = db.collection(TRANSACTIONS_COLLECTION).doc();
+
+    await db.runTransaction(async (t) => {
+        const fromSnap = await t.get(fromRef);
+        if (!fromSnap.exists) throw new Error("Sender not found");
+        const fromData = fromSnap.data() as UserProfile;
+        if ((fromData.coinBalance || 0) < amount) throw new Error("Insufficient coin balance");
+
+        const toSnap = await t.get(toRef);
+        if (!toSnap.exists) throw new Error("Recipient not found");
+
+        const tx: CoinTransaction = {
+            id: txRef.id,
+            fromId,
+            fromName,
+            toId,
+            toName,
+            amount,
+            type: 'transfer',
+            memo,
+            timestamp: Date.now()
+        };
+
+        t.update(fromRef, { coinBalance: firebase.firestore.FieldValue.increment(-amount) });
+        t.update(toRef, { coinBalance: firebase.firestore.FieldValue.increment(amount) });
+        t.set(txRef, sanitizeData(tx));
+    });
+}
+
+export async function getCoinTransactions(uid: string): Promise<CoinTransaction[]> {
+    if (!db) return [];
+    const fromSnap = await db.collection(TRANSACTIONS_COLLECTION).where('fromId', '==', uid).get();
+    const toSnap = await db.collection(TRANSACTIONS_COLLECTION).where('toId', '==', uid).get();
+    
+    const all = [...fromSnap.docs, ...toSnap.docs].map(d => ({ ...d.data(), id: d.id } as CoinTransaction));
+    return all.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export async function checkAndGrantMonthlyCoins(uid: string): Promise<number> {
+    if (!db) return 0;
+    const ref = db.collection(USERS_COLLECTION).doc(uid);
+    let granted = 0;
+
+    await db.runTransaction(async (t) => {
+        const snap = await t.get(ref);
+        if (!snap.exists) return;
+        const data = snap.data() as UserProfile;
+        const now = Date.now();
+        const lastGrant = data.lastCoinGrantAt || 0;
+        
+        // Grant if last grant was > 30 days ago
+        if (now - lastGrant > 86400000 * 30) {
+            granted = data.subscriptionTier === 'pro' ? 2900 : 100;
+            const txRef = db.collection(TRANSACTIONS_COLLECTION).doc();
+            const tx: CoinTransaction = {
+                id: txRef.id,
+                fromId: 'system',
+                fromName: 'AIVoiceCast',
+                toId: uid,
+                toName: data.displayName,
+                amount: granted,
+                type: 'grant',
+                timestamp: now
+            };
+            t.update(ref, { 
+                coinBalance: firebase.firestore.FieldValue.increment(granted),
+                lastCoinGrantAt: now
+            });
+            t.set(txRef, sanitizeData(tx));
+        }
+    });
+    return granted;
+}
+
+export async function claimCoinCheck(checkId: string): Promise<number> {
+    if (!db || !auth.currentUser) throw new Error("Database unavailable");
+    const uid = auth.currentUser.uid;
+    const checkRef = db.collection(CHECKS_COLLECTION).doc(checkId);
+    let amount = 0;
+
+    await db.runTransaction(async (t) => {
+        const snap = await t.get(checkRef);
+        if (!snap.exists) throw new Error("Check not found");
+        const checkData = snap.data() as BankingCheck;
+        if (!checkData.isCoinCheck) throw new Error("This is a standard check, not claimable via coins.");
+        if (checkData.isClaimed) throw new Error("Check already claimed");
+        if (checkData.ownerId === uid) throw new Error("You cannot claim your own check");
+
+        amount = checkData.coinAmount || 0;
+        const userRef = db.collection(USERS_COLLECTION).doc(uid);
+        const txRef = db.collection(TRANSACTIONS_COLLECTION).doc();
+
+        const tx: CoinTransaction = {
+            id: txRef.id,
+            fromId: checkData.ownerId || 'unknown',
+            fromName: checkData.senderName,
+            toId: uid,
+            toName: auth.currentUser?.displayName || 'Recipient',
+            amount,
+            type: 'check',
+            memo: `Claimed Check #${checkData.checkNumber}: ${checkData.memo}`,
+            timestamp: Date.now()
+        };
+
+        t.update(checkRef, { isClaimed: true });
+        t.update(userRef, { coinBalance: firebase.firestore.FieldValue.increment(amount) });
+        t.set(txRef, sanitizeData(tx));
+    });
+    return amount;
+}
 
 // --- Icons ---
 export async function saveIcon(icon: GeneratedIcon): Promise<string> {
@@ -69,7 +191,20 @@ export async function saveBankingCheck(check: BankingCheck): Promise<string> {
     if (!db) return check.id || 'local';
     const id = check.id || crypto.randomUUID();
     const ref = db.collection(CHECKS_COLLECTION).doc(id);
-    await ref.set(sanitizeData({ ...check, id }));
+    
+    // Deduct coins if it's a coin check
+    if (check.isCoinCheck && check.coinAmount && auth.currentUser) {
+        const userRef = db.collection(USERS_COLLECTION).doc(auth.currentUser.uid);
+        await db.runTransaction(async (t) => {
+            const userSnap = await t.get(userRef);
+            const userData = userSnap.data() as UserProfile;
+            if ((userData.coinBalance || 0) < check.coinAmount!) throw new Error("Insufficient balance to issue coin check.");
+            t.update(userRef, { coinBalance: firebase.firestore.FieldValue.increment(-check.coinAmount!) });
+            t.set(ref, sanitizeData({ ...check, id }));
+        });
+    } else {
+        await ref.set(sanitizeData({ ...check, id }));
+    }
     return id;
 }
 export async function getBankingCheck(id: string): Promise<BankingCheck | null> {
@@ -149,6 +284,8 @@ export async function syncUserProfile(user: any): Promise<void> {
           subscriptionTier: 'free',
           apiUsageCount: 0,
           groups: [],
+          coinBalance: 100, // Initial grant
+          lastCoinGrantAt: Date.now(),
           adminOwnerEmail: ADMIN_EMAIL 
         });
         
