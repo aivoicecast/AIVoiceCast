@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, Component, ErrorInfo, ReactNode } from 'react';
 import { Channel, ViewState, UserProfile, TranscriptItem, SubscriptionTier } from './types';
 import { 
@@ -58,11 +57,10 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fixed ErrorBoundary inheritance to resolve "Property 'state' does not exist on type 'ErrorBoundary'" 
-// and "Property 'props' does not exist on type 'ErrorBoundary'" by explicitly using React.Component.
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Using property initializer for state to ensure it is correctly typed and accessible in strict TS environments.
-  public override state: ErrorBoundaryState = { hasError: false, error: null };
+// Fix: Correct inheritance by using named Component import and ensuring it is seen as a base class
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Removed 'override' as inheritance detection was failing and properties don't strictly require it in this context
+  public state: ErrorBoundaryState = { hasError: false, error: null };
   
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -97,6 +95,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
         </div>
       );
     }
+    // Fix: Proper base class usage ensures 'props' property is available
     return this.props.children;
   }
 }
@@ -169,8 +168,18 @@ const UI_TEXT = {
 const App: React.FC = () => {
   const [language, setLanguage] = useState<'en' | 'zh'>('en');
   const t = UI_TEXT[language];
-  const [viewState, setViewState] = useState<ViewState | 'firestore_debug'>('directory');
-  const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
+  
+  // URL Persistence Logic
+  const getInitialView = (): ViewState | 'firestore_debug' => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    return (view as any) || 'directory';
+  };
+
+  const [viewState, setViewState] = useState<ViewState | 'firestore_debug'>(getInitialView());
+  const [activeChannelId, setActiveChannelId] = useState<string | null>(() => {
+      return new URLSearchParams(window.location.search).get('channelId');
+  });
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -217,11 +226,26 @@ const App: React.FC = () => {
     { id: 'docs', label: t.docs, icon: FileText, action: () => { handleSetViewState('directory'); setActiveTab('docs'); }, color: 'text-gray-400' },
   ];
 
-  const handleSetViewState = (newState: any) => {
+  const handleSetViewState = (newState: any, params: Record<string, string> = {}) => {
     stopAllPlatformAudio(`NavigationTransition:${viewState}->${newState}`);
     setViewState(newState);
     setIsAppsMenuOpen(false);
     setIsUserMenuOpen(false);
+
+    // Update URL query params
+    const url = new URL(window.location.href);
+    if (newState === 'directory') {
+        url.searchParams.delete('view');
+    } else {
+        url.searchParams.set('view', newState);
+    }
+
+    // Handle extra params (like channelId or cardId)
+    Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
+    // Clean up old params if not explicitly passed
+    if (!params.channelId) url.searchParams.delete('channelId');
+
+    window.history.replaceState({}, '', url.toString());
   };
 
   const handleStartLiveSession = (
@@ -426,7 +450,7 @@ const App: React.FC = () => {
                     {activeTab === 'categories' && (
                         <PodcastFeed 
                             channels={channels.filter(c => !searchQuery || c.title.toLowerCase().includes(searchQuery.toLowerCase()))} 
-                            onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} 
+                            onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} 
                             onStartLiveSession={handleStartLiveSession} 
                             userProfile={userProfile} 
                             globalVoice={globalVoice} 
@@ -435,7 +459,7 @@ const App: React.FC = () => {
                     )}
                     {activeTab !== 'categories' && (
                           <div className="h-full overflow-y-auto p-4 max-w-7xl mx-auto w-full">
-                            {activeTab === 'calendar' && <CalendarView channels={channels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail'); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={()=>{}} setIsSettingsModalOpen={()=>{}} globalVoice={globalVoice} t={t} onCommentClick={()=>{}} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={()=>{}} />}
+                            {activeTab === 'calendar' && <CalendarView channels={channels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={()=>{}} setIsSettingsModalOpen={()=>{}} globalVoice={globalVoice} t={t} onCommentClick={()=>{}} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={()=>{}} />}
                             {activeTab === 'recordings' && <RecordingList onStartLiveSession={handleStartLiveSession} />}
                             {activeTab === 'docs' && <DocumentList />}
                           </div>

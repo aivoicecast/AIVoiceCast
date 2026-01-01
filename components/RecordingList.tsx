@@ -85,8 +85,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           id: `meeting-${Date.now()}`,
           title: meetingTitle,
           description: `Meeting Recording: ${meetingTitle}`,
-          author: currentUser?.displayName || 'Guest User',
-          ownerId: currentUser?.uid || 'guest',
+          author: currentUser?.displayName || 'User',
+          ownerId: currentUser?.uid || 'user',
           visibility: 'private',
           voiceName: 'Zephyr',
           systemInstruction: systemPrompt,
@@ -110,11 +110,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             <span className="w-2 h-6 bg-red-500 rounded-full"></span>
             <span>Studio Recordings</span>
             </h2>
-            {!currentUser && (
-                <p className="text-[10px] text-amber-400 font-bold uppercase mt-1 flex items-center gap-1">
-                    <ShieldOff size={10}/> Guest Mode: Saved locally
-                </p>
-            )}
         </div>
         
         <div className="flex items-center gap-3">
@@ -128,16 +123,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             </button>
         </div>
       </div>
-
-      {!currentUser && recordings.length > 0 && (
-          <div className="bg-indigo-900/20 border border-indigo-500/30 p-4 rounded-xl flex items-start gap-3 text-indigo-300">
-              <AlertCircle size={18} className="shrink-0 mt-0.5" />
-              <div className="text-xs space-y-1">
-                  <p className="font-bold">Device-Only Storage</p>
-                  <p>You are not signed in. These recordings are stored in your browser's memory and won't sync to other devices. Sign in to back them up to the cloud.</p>
-              </div>
-          </div>
-      )}
 
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center text-indigo-400 gap-4">
@@ -171,7 +156,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold text-white text-base line-clamp-1">{rec.channelTitle}</h3>
-                        {isLocal && <span className="text-[9px] bg-slate-800 text-slate-500 border border-slate-700 px-1.5 py-0.5 rounded font-bold uppercase">Local</span>}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
                         <span className="flex items-center gap-1"><Calendar size={10} /> {date.toLocaleDateString()}</span>
