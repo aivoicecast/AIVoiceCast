@@ -34,7 +34,6 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
   
   const [isParsing, setIsParsing] = useState<'sender' | 'recipient' | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [addressInput, setAddressInput] = useState('');
   
   const labelRef = useRef<HTMLDivElement>(null);
 
@@ -44,7 +43,6 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
 
       setIsParsing(type);
       try {
-          // Initialize Gemini exclusively using process.env.API_KEY as per guidelines
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const prompt = `Parse the following messy address into a JSON object with fields: name, street, city, state, zip, country.
           If a field is missing, leave it as an empty string. 
@@ -75,9 +73,10 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
       setIsExporting(true);
       try {
           const canvas = await html2canvas(labelRef.current, {
-              scale: 3,
+              scale: 4, // Increased scale for better resolution
               useCORS: true,
-              backgroundColor: '#ffffff'
+              backgroundColor: '#ffffff',
+              logging: false
           });
           const imgData = canvas.toDataURL('image/jpeg', 1.0);
           const pdf = new jsPDF({
@@ -94,14 +93,12 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
       }
   };
 
-  // Fixed: useMemo was not imported
   const trackingNum = useMemo(() => {
       return `TRACK-${Math.random().toString(36).substring(2, 10).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
   }, [sender, recipient, pkg]);
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
-      {/* Header */}
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
               <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
@@ -125,11 +122,7 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
       </header>
 
       <div className="flex-1 flex overflow-hidden flex-col lg:flex-row">
-          
-          {/* Controls Panel */}
           <div className="w-full lg:w-[450px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-8 scrollbar-thin">
-              
-              {/* SENDER SECTION */}
               <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
@@ -144,7 +137,6 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
                         Neural Parse
                     </button>
                   </div>
-                  
                   <div className="grid grid-cols-1 gap-3">
                       <input type="text" placeholder="Sender Name" value={sender.name} onChange={e => setSender({...sender, name: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
                       <input type="text" placeholder="Street Address" value={sender.street} onChange={e => setSender({...sender, street: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
@@ -158,7 +150,6 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
                   </div>
               </div>
 
-              {/* RECIPIENT SECTION */}
               <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
@@ -173,7 +164,6 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
                         Neural Parse
                     </button>
                   </div>
-                  
                   <div className="grid grid-cols-1 gap-3">
                       <input type="text" placeholder="Recipient Name" value={recipient.name} onChange={e => setRecipient({...recipient, name: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-emerald-500"/>
                       <input type="text" placeholder="Street Address" value={recipient.street} onChange={e => setRecipient({...recipient, street: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-emerald-500"/>
@@ -187,7 +177,6 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
                   </div>
               </div>
 
-              {/* PACKAGE SECTION */}
               <div className="space-y-4">
                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
                       <Package size={14} className="text-amber-400"/> Package Details
@@ -213,37 +202,9 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
                           </select>
                       </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                          <label className="text-[10px] text-slate-500 font-bold">Service Type</label>
-                          <select value={pkg.service} onChange={e => setPkg({...pkg, service: e.target.value as any})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none w-full">
-                              <option value="standard">Standard Ground</option>
-                              <option value="express">Express 2-Day</option>
-                              <option value="overnight">Overnight Priority</option>
-                          </select>
-                      </div>
-                      <div className="space-y-1">
-                          <label className="text-[10px] text-slate-500 font-bold">Package Type</label>
-                          <select value={pkg.type} onChange={e => setPkg({...pkg, type: e.target.value as any})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none w-full">
-                              <option value="box">Box</option>
-                              <option value="envelope">Large Envelope</option>
-                              <option value="tube">Tube</option>
-                          </select>
-                      </div>
-                  </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-800">
-                  <div className="bg-amber-900/10 border border-amber-500/20 p-4 rounded-xl flex gap-3">
-                      <AlertTriangle className="text-amber-500 shrink-0" size={18}/>
-                      <p className="text-[10px] text-amber-200/70 leading-relaxed">
-                          This tool generates <strong>visual mockup labels</strong> for prototyping and logistical planning. It does not purchase postage. Always verify address compliance before commercial shipping.
-                      </p>
-                  </div>
               </div>
           </div>
 
-          {/* Preview Panel */}
           <div className="flex-1 bg-slate-950 flex flex-col p-8 items-center overflow-y-auto scrollbar-hide">
               <div className="sticky top-0 mb-6 flex items-center gap-2 text-slate-600 select-none">
                   <Printer size={14} />
@@ -254,7 +215,6 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
                 ref={labelRef}
                 className="w-[288px] h-[432px] bg-white text-black shadow-2xl flex flex-col border border-slate-300 relative shrink-0"
               >
-                  {/* Carrier Header */}
                   <div className="p-4 border-b-2 border-black flex justify-between items-start">
                       <div className="flex flex-col">
                           <span className="text-2xl font-black italic tracking-tighter leading-none">{pkg.carrier}</span>
@@ -265,43 +225,38 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
                       </div>
                   </div>
 
-                  {/* Return Address */}
                   <div className="p-2 border-b border-black">
-                      <p className="text-[7px] font-bold uppercase leading-tight">From:</p>
+                      <p className="text-[7px] font-bold uppercase mb-1">From:</p>
                       <div className="pl-1">
-                          <p className="text-[8px] font-bold truncate">{sender.name || 'SENDER NAME'}</p>
-                          <p className="text-[8px] leading-tight">{sender.street || '123 Return St'}</p>
-                          <p className="text-[8px] uppercase">{sender.city || 'Origin City'}, {sender.state || 'ST'} {sender.zip || '00000'}</p>
+                          <p className="text-[8px] font-bold truncate leading-normal py-0.5">{sender.name || 'SENDER NAME'}</p>
+                          <p className="text-[8px] leading-normal">{sender.street || '123 Return St'}</p>
+                          <p className="text-[8px] leading-normal uppercase">{sender.city || 'Origin City'}, {sender.state || 'ST'} {sender.zip || '00000'}</p>
                       </div>
                   </div>
 
-                  {/* Recipient Address (Big) */}
                   <div className="flex-1 p-4 flex flex-col justify-center">
                       <p className="text-[9px] font-bold uppercase mb-1">To:</p>
                       <div className="pl-4 space-y-0.5">
-                          <p className="text-base font-black uppercase tracking-tight leading-none mb-1">{recipient.name || 'RECIPIENT NAME'}</p>
-                          <p className="text-sm font-bold uppercase leading-tight">{recipient.street || '456 Destination Ave'}</p>
-                          <p className="text-base font-black uppercase tracking-tighter">
+                          <p className="text-base font-black uppercase tracking-tight leading-normal mb-1">{recipient.name || 'RECIPIENT NAME'}</p>
+                          <p className="text-sm font-bold uppercase leading-normal">{recipient.street || '456 Destination Ave'}</p>
+                          <p className="text-base font-black uppercase tracking-tighter leading-normal">
                               {recipient.city || 'City'}, {recipient.state || 'ST'} {recipient.zip || '00000'}
                           </p>
                       </div>
                   </div>
 
-                  {/* Tracking Section */}
                   <div className="p-2 border-t-2 border-black space-y-2">
                       <div className="flex justify-between items-center px-2">
                           <div className="flex flex-col">
                               <span className="text-[7px] font-bold uppercase">Tracking #:</span>
-                              {/* Fixed: trackingNumber was undefined, should use trackingNum */}
-                              <span className="text-[9px] font-mono font-bold">{trackingNum}</span>
+                              <span className="text-[9px] font-mono font-bold leading-normal">{trackingNum}</span>
                           </div>
                           <div className="text-right flex flex-col">
                               <span className="text-[7px] font-bold uppercase">Weight:</span>
-                              <span className="text-[9px] font-bold">{pkg.weight} {pkg.unit}</span>
+                              <span className="text-[9px] font-bold leading-normal">{pkg.weight} {pkg.unit}</span>
                           </div>
                       </div>
 
-                      {/* Mock Barcode */}
                       <div className="h-16 flex items-end gap-[1px] overflow-hidden px-4">
                           {Array.from({ length: 120 }).map((_, i) => (
                               <div key={i} className="bg-black" style={{ width: Math.random() > 0.3 ? (Math.random() > 0.8 ? '3px' : '1.5px') : '0.5px', height: `${80 + Math.random() * 20}%` }}></div>
@@ -309,7 +264,6 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
                       </div>
                   </div>
 
-                  {/* QR & Footer */}
                   <div className="p-3 border-t border-black bg-slate-50 flex justify-between items-center">
                       <div className="flex flex-col gap-1">
                           <div className="text-[6px] font-bold uppercase tracking-widest text-slate-500">Processed by AIVoiceCast</div>
@@ -320,13 +274,11 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
                       </div>
                   </div>
 
-                  {/* Corner Accent */}
                   <div className="absolute top-0 right-0 w-8 h-8 overflow-hidden">
                       <div className="absolute top-0 right-0 w-16 h-1 bg-black rotate-45 translate-x-4"></div>
                   </div>
               </div>
 
-              {/* Status Board */}
               <div className="mt-8 w-full max-w-sm space-y-4">
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
                       <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Neural Diagnostics</h4>
@@ -344,15 +296,6 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
                               <span className="text-slate-300">ZPL / PDF 4x6</span>
                           </div>
                       </div>
-                  </div>
-                  
-                  <div className="flex gap-2">
-                      <button className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-slate-700">
-                          <RefreshCw size={14}/> Regenerate ID
-                      </button>
-                      <button className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-slate-700">
-                          <Save size={14}/> Save Template
-                      </button>
                   </div>
               </div>
           </div>

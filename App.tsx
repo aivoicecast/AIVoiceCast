@@ -57,9 +57,11 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fix: Correct inheritance by using named Component import and ensuring it is seen as a base class
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Removed 'override' as inheritance detection was failing and properties don't strictly require it in this context
+/**
+ * ErrorBoundary component to catch runtime errors in the UI tree.
+ * Fix: Explicitly using React.Component ensures 'this.props' is correctly typed and available in the subclass.
+ */
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false, error: null };
   
   constructor(props: ErrorBoundaryProps) {
@@ -95,7 +97,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         </div>
       );
     }
-    // Fix: Proper base class usage ensures 'props' property is available
+    // Fix: Proper base class usage ensures 'props' property is available on 'this'
     return this.props.children;
   }
 }
