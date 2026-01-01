@@ -35,10 +35,7 @@ const initializeApp = () => {
             // Dynamically determine authDomain
             const currentHostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
             
-            // Fallback default
-            let dynamicAuthDomain = "fir-cfb5e.firebaseapp.com";
-
-            // List of explicitly authorized domains for this project
+            // Standard known domains for the project
             const authorizedDomains = [
                 "localhost",
                 "fir-cfb5e.firebaseapp.com",
@@ -47,6 +44,7 @@ const initializeApp = () => {
                 "dev.aivoicecast.com"
             ];
 
+            let dynamicAuthDomain = "fir-cfb5e.firebaseapp.com";
             if (authorizedDomains.includes(currentHostname)) {
                 dynamicAuthDomain = currentHostname;
             }

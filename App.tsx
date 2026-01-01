@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -238,7 +239,8 @@ const App: React.FC = () => {
     { id: 'code_studio', label: t.code, icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400' },
     { id: 'notebook_viewer', label: t.notebooks, icon: Book, action: () => handleSetViewState('notebook_viewer'), color: 'text-orange-300' },
     { id: 'whiteboard', label: t.whiteboard, icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400' },
-    { id: 'calendar', label: t.calendar, icon: Calendar, action: () => { handleSetViewState('directory'); setActiveTab('categories'); }, color: 'text-emerald-400' },
+    // Fix: Updated action to correctly set viewState to 'calendar'
+    { id: 'calendar', label: t.calendar, icon: Calendar, action: () => { handleSetViewState('calendar'); }, color: 'text-emerald-400' },
     { id: 'careers', label: t.careers, icon: Briefcase, action: () => handleSetViewState('careers'), color: 'text-yellow-400' },
     { id: 'blog', label: t.blog, icon: Rss, action: () => handleSetViewState('blog'), color: 'text-orange-400' },
     { id: 'card_workshop', label: t.cards, icon: Gift, action: () => handleSetViewState('card_workshop'), color: 'text-red-400' },
@@ -373,7 +375,7 @@ const App: React.FC = () => {
       );
   }
 
-  const isPublicView = ['mission', 'careers', 'user_guide', 'card_workshop', 'icon_viewer', 'shipping_viewer', 'check_viewer'].includes(viewState);
+  const isPublicView = ['mission', 'careers', 'user_guide', 'card_workshop', 'icon_viewer', 'shipping_viewer', 'check_viewer'].includes(viewState as string);
 
   if (!currentUser && !isPublicView) {
       return <LoginPage onMissionClick={() => handleSetViewState('mission')} onPrivacyClick={() => setIsPrivacyOpen(true)} />;
@@ -453,12 +455,15 @@ const App: React.FC = () => {
             {viewState === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
             {viewState === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
+            {/* Fix: Added calendar to ViewState union to resolve type mismatch */}
             {viewState === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice={globalVoice} t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={(date) => {}} /> )}
-            {viewState === 'check_designer' && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
-            {viewState === 'shipping_labels' && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}
-            {viewState === 'icon_generator' && ( <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
+            {/* Fix: Broadened check_designer condition to include check_viewer for consistent rendering logic */}
+            {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
+            {(viewState === 'shipping_labels' || viewState === 'shipping_viewer') && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}
+            {(viewState === 'icon_generator' || viewState === 'icon_viewer') && ( <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
             {viewState === 'notebook_viewer' && ( <NotebookViewer onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
-            {viewState === 'card_workshop' && ( <CardWorkshop onBack={() => handleSetViewState('directory')} cardId={activeItemId || undefined} isViewer={viewState === 'card_viewer' || !!activeItemId} /> )}
+            {/* Fix: Updated CardWorkshop block to combine 'card_workshop' and 'card_viewer' states, resolving comparison overlap type errors */}
+            {(viewState === 'card_workshop' || viewState === 'card_viewer') && ( <CardWorkshop onBack={() => handleSetViewState('directory')} cardId={activeItemId || undefined} isViewer={viewState === 'card_viewer' || !!activeItemId} /> )}
             {viewState === 'mission' && ( <MissionManifesto onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('directory')} user={userProfile} /> )}

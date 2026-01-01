@@ -1,4 +1,5 @@
 
+
 export interface Address {
   name: string;
   street: string;
@@ -232,7 +233,8 @@ export type ViewState =
   | 'shipping_viewer'
   | 'check_designer'
   | 'check_viewer'
-  | 'coin_wallet';
+  | 'coin_wallet'
+  | 'calendar';
 
 export interface AudioState {
   isConnected: boolean;

@@ -1,17 +1,17 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight } from 'lucide-react';
 import { UserProfile, CoinTransaction } from '../types';
 import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile } from '../services/firestoreService';
-import { auth } from '../services/firebaseConfig';
+import { auth, db } from '../services/firebaseConfig';
 
 interface CoinWalletProps {
   onBack: () => void;
   user: UserProfile | null;
 }
 
-export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: initialUser }) => {
-  const [user, setUser] = useState<UserProfile | null>(initialUser);
+export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }) => {
+  const [user, setUser] = useState<UserProfile | null>(propUser);
   const [transactions, setTransactions] = useState<CoinTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -25,55 +25,58 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: initialUse
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
+  
+  const initAttempted = useRef(false);
 
-  // Load user profile and fetch transactions
-  const initWallet = useCallback(async () => {
+  // Sync propUser to local state
+  useEffect(() => {
+    if (propUser) {
+        setUser(propUser);
+        // Once we have a propUser, we can definitely stop the initial loading spinner
+        setLoading(false);
+    }
+  }, [propUser]);
+
+  // Load transactions and try to fetch profile if missing
+  const initWallet = useCallback(async (force = false) => {
+    if (!force && initAttempted.current && user) return;
+    
     setLoading(true);
     try {
-        let activeUser = user || initialUser;
         const currentUid = auth?.currentUser?.uid;
-        
-        // 1. If we don't have a user object yet but we have a UID, fetch it
-        if (!activeUser && currentUid) {
-            const profile = await getUserProfile(currentUid);
-            if (profile) {
-                setUser(profile);
-                activeUser = profile;
+        if (!currentUid) {
+            // Wait for auth. If still no UID after a delay, then we can error out
+            await new Promise(r => setTimeout(r, 1000));
+            if (!auth?.currentUser?.uid) {
+                setLoading(false);
+                return;
             }
         }
 
-        // 2. Fetch transactions if we have a user
-        if (activeUser?.uid) {
-            const data = await getCoinTransactions(activeUser.uid);
-            setTransactions(data);
-        } else if (!currentUid && !activeUser) {
-            // Wait for auth to initialize before giving up
-            // This prevents the "Disconnected" screen from flashing on refresh
-            return; 
-        }
+        const uid = auth?.currentUser?.uid!;
+        
+        // Fetch both profile and ledger
+        const [profile, txs] = await Promise.all([
+            getUserProfile(uid),
+            getCoinTransactions(uid)
+        ]);
+
+        if (profile) setUser(profile);
+        setTransactions(txs || []);
+        initAttempted.current = true;
     } catch (e) {
         console.error("Wallet initialization failed", e);
     } finally {
         setLoading(false);
     }
-  }, [initialUser, user?.uid]);
-
-  // Handle case where initialUser prop updates after component mount
-  useEffect(() => {
-      if (initialUser) {
-          setUser(initialUser);
-          if (loading) initWallet();
-      }
-  }, [initialUser]);
+  }, [user]);
 
   useEffect(() => {
     initWallet();
     
-    // Add auth state listener for robustness
+    // Listen for auth changes to re-init
     const unsubscribe = auth?.onAuthStateChanged((u) => {
-        if (u && !user) {
-            initWallet();
-        }
+        if (u) initWallet(true);
     });
     return () => unsubscribe?.();
   }, [initWallet]);
@@ -87,7 +90,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: initialUse
                   getCoinTransactions(currentUid),
                   getUserProfile(currentUid)
               ]);
-              setTransactions(data);
+              setTransactions(data || []);
               if (freshProfile) setUser(freshProfile);
           }
       } catch(e) {
@@ -158,6 +161,18 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: initialUse
       return (coins / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
+  // Show a "Waiting for Config" if DB is literally missing (dev error)
+  if (!db) return (
+      <div className="h-full flex flex-col items-center justify-center bg-slate-950 p-8 text-center">
+          <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mb-6 border border-red-500/20">
+            <X className="text-red-500" size={40} />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-2 tracking-tight">Database Offline</h2>
+          <p className="text-slate-400 text-sm max-w-xs mx-auto mb-8 leading-relaxed">The Firebase instance could not be initialized. Please check your API keys and configuration settings.</p>
+          <button onClick={() => window.location.reload()} className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold border border-slate-700">Reload App</button>
+      </div>
+  );
+
   // Spinner while we attempt initial connection
   if (loading && !user) return (
       <div className="h-full flex items-center justify-center bg-slate-950">
@@ -166,22 +181,25 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: initialUse
                 <Loader2 className="animate-spin text-indigo-500 mx-auto" size={48}/>
                 <Coins className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-amber-500/50" size={20}/>
               </div>
-              <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] animate-pulse">Accessing Neural Ledger...</p>
+              <div className="space-y-1">
+                <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] animate-pulse">Syncing Ledger...</p>
+                <p className="text-slate-600 text-[9px] font-medium">Verifying block integrity</p>
+              </div>
           </div>
       </div>
   );
 
-  // Handle case where auth/profile load completely failed
+  // Handle case where auth/profile load completely failed or timed out
   if (!user) return (
       <div className="h-full flex flex-col items-center justify-center bg-slate-950 text-center p-8">
           <div className="w-20 h-20 bg-amber-500/10 rounded-3xl flex items-center justify-center mb-6 border border-amber-500/20">
             <AlertTriangle className="text-amber-500" size={40} />
           </div>
           <h2 className="text-2xl font-bold text-white mb-2 tracking-tight">Wallet Disconnected</h2>
-          <p className="text-slate-400 text-sm max-w-xs mx-auto mb-8 leading-relaxed">We couldn't synchronize your local profile with the neural network. Please check your connection or sign in again.</p>
+          <p className="text-slate-400 text-sm max-w-xs mx-auto mb-8 leading-relaxed">We couldn't synchronize your local profile with the cloud ledger. This usually means a connection timeout or an incomplete login session.</p>
           <div className="flex gap-4">
             <button onClick={onBack} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition-all border border-slate-700">Go Back</button>
-            <button onClick={initWallet} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20">Retry Sync</button>
+            <button onClick={() => initWallet(true)} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20">Retry Connection</button>
           </div>
       </div>
   );
@@ -273,7 +291,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: initialUse
                   {isRefreshing && transactions.length === 0 ? (
                       <div className="p-20 text-center text-slate-500 flex flex-col items-center gap-4">
                           <Loader2 className="animate-spin text-indigo-500" size={32} />
-                          <p className="text-xs font-bold uppercase tracking-[0.2em] opacity-50">Syncing Block History...</p>
+                          <p className="text-xs font-bold uppercase tracking-[0.2em] opacity-50">Syncing History...</p>
                       </div>
                   ) : transactions.length === 0 ? (
                       <div className="p-20 text-center space-y-5">
@@ -316,7 +334,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: initialUse
 
       {/* Transfer Modal */}
       {showTransfer && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-md overflow-hidden flex flex-col shadow-2xl">
                   <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center gap-2"><Send size={18} className="text-indigo-400 rotate-[-20deg]"/> Send Coins</h3>
