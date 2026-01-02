@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
@@ -63,10 +63,14 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+// FIX: Explicitly import Component and declare state to resolve 'Property state does not exist' errors
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Explicitly define state on the class to ensure TypeScript correctly identifies it
+  state: ErrorBoundaryState = { hasError: false, error: null };
+
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false, error: null };
+    // State initialization is handled above for better type compatibility in strict environments
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
@@ -78,6 +82,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
   
   render(): ReactNode {
+    // FIX: Accessing state which is now explicitly defined on the class
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -99,6 +104,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
     
+    // FIX: Accessing props inherited from React.Component
     return this.props.children;
   }
 }
