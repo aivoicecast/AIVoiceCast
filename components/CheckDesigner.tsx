@@ -89,7 +89,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   useEffect(() => {
     const handleAutoZoom = () => {
         if (window.innerWidth < 640) {
-            const ratio = (window.innerWidth - 16) / 600;
+            // Give extra margin for mobile
+            const ratio = (window.innerWidth - 32) / 600;
             setZoom(ratio);
         } else {
             setZoom(1.0);
@@ -334,7 +335,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             </div>
           )}
 
-          <div className={`flex-1 bg-slate-950 flex flex-col p-4 sm:p-12 items-center overflow-y-auto scrollbar-hide relative ${isReadOnly ? 'justify-center h-full' : ''}`}>
+          <div className={`flex-1 bg-slate-950 flex flex-col p-4 sm:p-12 items-center overflow-y-auto scrollbar-hide relative min-h-0 ${isReadOnly ? 'justify-center h-full' : ''}`}>
               {isReadOnly && (
                   <div className="absolute top-6 left-6 z-20 flex items-center gap-4">
                       <button onClick={onBack} className="p-3 bg-slate-900 border border-slate-800 rounded-full text-white shadow-2xl"><ArrowLeft size={24}/></button>
@@ -345,94 +346,101 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
               )}
 
-              <div 
-                ref={checkRef}
-                style={{ transform: `scale(${zoom})`, transformOrigin: isReadOnly ? 'center' : 'top center' }}
-                className={`w-[600px] h-[270px] bg-white text-black shadow-[0_0_80px_rgba(0,0,0,0.5)] flex flex-col border ${check.isCoinCheck ? 'border-amber-400 ring-4 ring-amber-400/20' : 'border-slate-300'} relative shrink-0 p-8 rounded-sm overflow-hidden`}
-              >
-                  {/* SCANNABLE QR CODE - TOP CENTERED HIGH CONTRAST */}
-                  <div className="absolute top-1 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
-                      <img src={qrCodeUrl} className="w-20 h-20 border-2 border-white p-0.5 rounded shadow-2xl bg-white" />
-                  </div>
-
-                  {/* WATERMARK - INCREASED OPACITY FOR READABILITY */}
-                  <div className="absolute inset-0 opacity-[0.1] flex items-center justify-center pointer-events-none z-0">
-                      {customArtUrl ? <img src={customArtUrl} className="w-[400px] h-[400px] object-contain grayscale" /> : <Landmark size={200}/>}
-                  </div>
-
-                  {/* Header row - Pushed up */}
-                  <div className="flex justify-between items-start mb-1 relative z-10">
-                      <div className="flex flex-col">
-                          <div className="font-black uppercase text-[9px] leading-tight">{check.senderName}</div>
-                          <div className="text-[7px] text-slate-600 max-w-[150px] leading-tight whitespace-pre-wrap">{check.senderAddress}</div>
+              {/* Wrapper to maintain scaled height on mobile */}
+              <div style={{ height: `${270 * zoom}px`, width: `${600 * zoom}px` }} className="flex-shrink-0 transition-all duration-300">
+                  <div 
+                    ref={checkRef}
+                    style={{ 
+                        transform: `scale(${zoom})`, 
+                        transformOrigin: 'top left',
+                        willChange: 'transform'
+                    }}
+                    className={`w-[600px] h-[270px] bg-white text-black shadow-[0_0_80px_rgba(0,0,0,0.5)] flex flex-col border ${check.isCoinCheck ? 'border-amber-400 ring-4 ring-amber-400/20' : 'border-slate-300'} relative shrink-0 p-8 rounded-sm overflow-hidden`}
+                  >
+                      {/* SCANNABLE QR CODE - TOP CENTERED HIGH CONTRAST */}
+                      <div className="absolute top-1 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+                          <img src={qrCodeUrl} className="w-20 h-20 border-2 border-white p-0.5 rounded shadow-2xl bg-white" />
                       </div>
-                      <div className="text-right">
-                          <p className="text-sm font-black italic text-indigo-900 leading-none">{check.isCoinCheck ? 'VOICECOIN PROTOCOL' : check.bankName}</p>
-                          <p className="text-[9px] font-bold mt-0.5">CHECK NO. {check.checkNumber}</p>
-                      </div>
-                  </div>
 
-                  {/* Date and Amount box - Pushed up */}
-                  <div className="flex justify-end gap-6 items-center mb-4 relative z-10">
-                      <div className="flex flex-col items-end">
-                        <span className="text-[7px] font-bold text-slate-400 uppercase">Date</span>
-                        <span className="text-xs font-bold border-b border-black min-w-[80px] text-center">{check.date}</span>
+                      {/* WATERMARK - INCREASED OPACITY AND BLEND MODE FOR MOBILE VISIBILITY */}
+                      <div className="absolute inset-0 opacity-[0.15] flex items-center justify-center pointer-events-none z-0 mix-blend-multiply">
+                          {customArtUrl ? <img src={customArtUrl} className="w-[400px] h-[400px] object-contain grayscale" /> : <Landmark size={200} className="text-slate-400"/>}
                       </div>
-                      <div className="bg-slate-50 border border-slate-300 px-4 py-2 font-black text-xl shadow-inner min-w-[120px] text-right">
-                        {check.isCoinCheck ? `VC ${check.coinAmount || 0}` : `$ ${(check.amount || 0).toFixed(2)}`}
-                      </div>
-                  </div>
 
-                  {/* Payee line - Pushed up further */}
-                  <div className="flex items-center gap-4 relative z-10 mb-1">
-                      <div className="flex-1 flex flex-col">
-                          <span className="text-[7px] font-bold text-slate-400 uppercase">Pay to the Order of</span>
-                          <div className="border-b border-black text-base font-black italic pt-0.5 h-7">{check.payee}</div>
-                      </div>
-                  </div>
-
-                  {/* Amount Words line - Pushed up further */}
-                  <div className="flex flex-col relative z-10 mb-2">
-                      <div className="border-b border-black text-[11px] font-bold pt-0.5 h-5 flex items-center">
-                        {check.amountWords}
-                        <span className="ml-auto text-[7px] text-slate-400 uppercase font-black">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
-                      </div>
-                  </div>
-
-                  {/* Memo line - REPOSITIONED HIGHER ABOVE MICR */}
-                  <div className="absolute bottom-16 left-8 z-10">
-                      <div className="w-[220px] flex flex-col">
-                          <span className="text-[7px] font-bold text-slate-400 uppercase">Memo</span>
-                          <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5 leading-tight">{check.memo}</div>
-                      </div>
-                  </div>
-
-                  {/* Signature line - MOVED TO BOTTOM RIGHT CORNER (Above MICR) */}
-                  <div className="absolute bottom-10 right-8 z-10">
-                      <div className="w-[180px] flex flex-col items-center">
-                          <div className="border-b border-black w-full text-center pb-0.5 h-10 flex items-end justify-center">
-                              {check.signatureUrl ? (
-                                  <img src={check.signatureUrl} className="h-10 max-w-full object-contain" />
-                              ) : (
-                                  <span className="text-xl font-script text-slate-400">{check.signature || check.senderName}</span>
-                              )}
+                      {/* Header row - Pushed up */}
+                      <div className="flex justify-between items-start mb-1 relative z-10">
+                          <div className="flex flex-col">
+                              <div className="font-black uppercase text-[9px] leading-tight">{check.senderName}</div>
+                              <div className="text-[7px] text-slate-600 max-w-[150px] leading-tight whitespace-pre-wrap">{check.senderAddress}</div>
                           </div>
-                          <span className="text-[7px] font-bold text-slate-400 uppercase mt-0.5">Authorized Signature</span>
+                          <div className="text-right">
+                              <p className="text-sm font-black italic text-indigo-900 leading-none">{check.isCoinCheck ? 'VOICECOIN PROTOCOL' : check.bankName}</p>
+                              <p className="text-[9px] font-bold mt-0.5">CHECK NO. {check.checkNumber}</p>
+                          </div>
                       </div>
-                  </div>
 
-                  {/* MICR Line - FIXED TO BOTTOM LEFT CORNER */}
-                  <div className="absolute bottom-4 left-8 pointer-events-none z-20">
-                      <div className="font-mono text-sm tracking-[0.25em] text-slate-900 flex items-center gap-6">
-                          <span>⑆ {check.routingNumber} ⑆</span>
-                          <span>{check.accountNumber} ⑈</span>
-                          <span>{check.checkNumber}</span>
+                      {/* Date and Amount box - Pushed up */}
+                      <div className="flex justify-end gap-6 items-center mb-4 relative z-10">
+                          <div className="flex flex-col items-end">
+                            <span className="text-[7px] font-bold text-slate-400 uppercase">Date</span>
+                            <span className="text-xs font-bold border-b border-black min-w-[80px] text-center">{check.date}</span>
+                          </div>
+                          <div className="bg-slate-50 border border-slate-300 px-4 py-2 font-black text-xl shadow-inner min-w-[120px] text-right">
+                            {check.isCoinCheck ? `VC ${check.coinAmount || 0}` : `$ ${(check.amount || 0).toFixed(2)}`}
+                          </div>
+                      </div>
+
+                      {/* Payee line - Pushed up further */}
+                      <div className="flex items-center gap-4 relative z-10 mb-1">
+                          <div className="flex-1 flex flex-col">
+                              <span className="text-[7px] font-bold text-slate-400 uppercase">Pay to the Order of</span>
+                              <div className="border-b border-black text-base font-black italic pt-0.5 h-7">{check.payee}</div>
+                          </div>
+                      </div>
+
+                      {/* Amount Words line - Pushed up further */}
+                      <div className="flex flex-col relative z-10 mb-2">
+                          <div className="border-b border-black text-[11px] font-bold pt-0.5 h-5 flex items-center">
+                            {check.amountWords}
+                            <span className="ml-auto text-[7px] text-slate-400 uppercase font-black">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
+                          </div>
+                      </div>
+
+                      {/* Memo line - REPOSITIONED HIGHER ABOVE MICR */}
+                      <div className="absolute bottom-16 left-8 z-10">
+                          <div className="w-[220px] flex flex-col">
+                              <span className="text-[7px] font-bold text-slate-400 uppercase">Memo</span>
+                              <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5 leading-tight">{check.memo}</div>
+                          </div>
+                      </div>
+
+                      {/* Signature line - MOVED TO BOTTOM RIGHT CORNER (Above MICR) */}
+                      <div className="absolute bottom-10 right-8 z-10">
+                          <div className="w-[180px] flex flex-col items-center">
+                              <div className="border-b border-black w-full text-center pb-0.5 h-10 flex items-end justify-center">
+                                  {check.signatureUrl ? (
+                                      <img src={check.signatureUrl} className="h-10 max-w-full object-contain" />
+                                  ) : (
+                                      <span className="text-xl font-script text-slate-400">{check.signature || check.senderName}</span>
+                                  )}
+                              </div>
+                              <span className="text-[7px] font-bold text-slate-400 uppercase mt-0.5">Authorized Signature</span>
+                          </div>
+                      </div>
+
+                      {/* MICR Line - FIXED TO BOTTOM LEFT CORNER */}
+                      <div className="absolute bottom-4 left-8 pointer-events-none z-20">
+                          <div className="font-mono text-sm tracking-[0.25em] text-slate-900 flex items-center gap-6">
+                              <span>⑆ {check.routingNumber} ⑆</span>
+                              <span>{check.accountNumber} ⑈</span>
+                              <span>{check.checkNumber}</span>
+                          </div>
                       </div>
                   </div>
               </div>
 
               {!isReadOnly && (
-                  <div className="mt-8 flex gap-4">
+                  <div className="mt-12 flex gap-4 shrink-0">
                       <button onClick={() => setZoom(prev => Math.max(0.1, prev - 0.1))} className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white"><ZoomOut size={16}/></button>
                       <button onClick={() => setZoom(1)} className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-slate-400">{Math.round(zoom * 100)}%</button>
                       <button onClick={() => setZoom(prev => Math.min(2, prev + 0.1))} className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white"><ZoomIn size={16}/></button>
