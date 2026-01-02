@@ -86,11 +86,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       }
   }, [checkIdFromUrl]);
 
-  // Mobile full-screen scaling logic
   useEffect(() => {
     const handleAutoZoom = () => {
         if (window.innerWidth < 640) {
-            // Fill width minus padding
             const ratio = (window.innerWidth - 16) / 600;
             setZoom(ratio);
         } else {
@@ -118,7 +116,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
   const qrCodeUrl = useMemo(() => {
       const baseUri = shareLink || `${window.location.origin}?view=check_viewer&id=${check.id || 'preview'}`;
-      // Return high contrast black/white QR
       return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&color=0-0-0&bgcolor=255-255-255&data=${encodeURIComponent(baseUri)}`;
   }, [shareLink, check.id]);
 
@@ -145,7 +142,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash-image',
-              contents: { parts: [{ text: `A clean watermark line art for a check: ${check.memo}. Very thin lines, minimalist.` }] },
+              contents: { parts: [{ text: `A professional fine-line watermark etching for a check: ${check.memo}. Minimalist, elegant.` }] },
           });
           for (const part of response.candidates[0].content.parts) {
               if (part.inlineData) {
@@ -326,7 +323,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                         </div>
                         <div>
                             <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Memo / Purpose</label>
-                            <input type="text" placeholder="For: Domain Services..." value={check.memo} onChange={e => setCheck({...check, memo: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none"/>
+                            <input type="text" placeholder="For: Web Development Services..." value={check.memo} onChange={e => setCheck({...check, memo: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
                         </div>
                         <div className="flex gap-2">
                             <button onClick={() => setShowSignPad(true)} className="flex-1 py-3 bg-slate-800 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors"><PenTool size={16}/> Sign</button>
@@ -353,17 +350,16 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 style={{ transform: `scale(${zoom})`, transformOrigin: isReadOnly ? 'center' : 'top center' }}
                 className={`w-[600px] h-[270px] bg-white text-black shadow-[0_0_80px_rgba(0,0,0,0.5)] flex flex-col border ${check.isCoinCheck ? 'border-amber-400 ring-4 ring-amber-400/20' : 'border-slate-300'} relative shrink-0 p-8 rounded-sm overflow-hidden`}
               >
-                  {/* SCANABLE QR CODE - MOVED TO TOP CENTER & FULL CONTRAST */}
+                  {/* SCANNABLE QR CODE - TOP CENTERED HIGH CONTRAST */}
                   <div className="absolute top-1 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
                       <img src={qrCodeUrl} className="w-20 h-20 border-2 border-white p-0.5 rounded shadow-2xl bg-white" />
                   </div>
 
-                  {/* Watermark (Etching) */}
-                  <div className="absolute inset-0 opacity-[0.03] flex items-center justify-center pointer-events-none z-0">
+                  <div className="absolute inset-0 opacity-[0.04] flex items-center justify-center pointer-events-none z-0">
                       {customArtUrl ? <img src={customArtUrl} className="w-[400px] h-[400px] object-contain grayscale" /> : <Landmark size={200}/>}
                   </div>
 
-                  {/* Header row - Shifted up slightly */}
+                  {/* Header row - Pushed up */}
                   <div className="flex justify-between items-start mb-2 relative z-10">
                       <div className="flex flex-col">
                           <div className="font-black uppercase text-[9px] leading-tight">{check.senderName}</div>
@@ -375,7 +371,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
 
-                  {/* Top line - Date and Amount */}
+                  {/* Date and Amount box - Pushed up */}
                   <div className="flex justify-end gap-6 items-center mb-6 relative z-10">
                       <div className="flex flex-col items-end">
                         <span className="text-[7px] font-bold text-slate-400 uppercase">Date</span>
@@ -386,7 +382,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
 
-                  {/* Payee line - Shifted Up */}
+                  {/* Payee line - Pushed up */}
                   <div className="flex items-center gap-4 relative z-10 mb-4">
                       <div className="flex-1 flex flex-col">
                           <span className="text-[7px] font-bold text-slate-400 uppercase">Pay to the Order of</span>
@@ -394,7 +390,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
 
-                  {/* Amount Words line - Shifted Up */}
+                  {/* Amount Words line - Pushed up */}
                   <div className="flex flex-col relative z-10 mb-6">
                       <div className="border-b border-black text-[11px] font-bold pt-1 h-6 flex items-center">
                         {check.amountWords}
@@ -402,8 +398,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
 
-                  {/* Bottom section - Memo and Signature shifted up, MICR line is strictly at the bottom */}
-                  <div className="flex items-end justify-between mb-2 relative z-10">
+                  {/* Memo and Signature - Pushed up */}
+                  <div className="flex items-end justify-between mb-4 relative z-10">
                       <div className="w-[35%] flex flex-col">
                           <span className="text-[7px] font-bold text-slate-400 uppercase">Memo</span>
                           <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5">{check.memo}</div>
@@ -421,8 +417,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
 
-                  {/* MICR Line - FIXED TO BOTTOM */}
-                  <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center pointer-events-none">
+                  {/* MICR Line - FIXED TO BOTTOM LEFT */}
+                  <div className="absolute bottom-4 left-6 pointer-events-none">
                       <div className="font-mono text-sm tracking-[0.25em] text-slate-900 flex items-center gap-6">
                           <span>⑆ {check.routingNumber} ⑆</span>
                           <span>{check.accountNumber} ⑈</span>
