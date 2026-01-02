@@ -56,6 +56,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [showSignPad, setShowSignPad] = useState(false);
   const [zoom, setZoom] = useState(1.0);
+  const [justCopied, setJustCopied] = useState(false);
   
   const checkRef = useRef<HTMLDivElement>(null);
   const signInputRef = useRef<HTMLInputElement>(null);
@@ -144,6 +145,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   };
 
   const handlePublishAndShareLink = async () => {
+      if (shareLink) {
+          navigator.clipboard.writeText(shareLink);
+          setJustCopied(true);
+          setTimeout(() => setJustCopied(false), 2000);
+          return;
+      }
+
       if (!auth.currentUser) return alert("Please sign in to publish.");
       setIsSharing(true);
       try {
@@ -193,7 +201,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             
           setShareLink(link);
           setCheck(prev => ({ ...prev, id: finalId }));
-          alert(check.isCoinCheck ? "Coin Check Issued!" : "Check published!");
+          // Removed alert in favor of direct button update
       } catch (e: any) {
           console.error("Publishing error:", e);
           alert("Publishing failed: " + (e.message || "Network Error"));
@@ -238,9 +246,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               <h1 className="text-lg font-bold text-white flex items-center gap-2"><Wallet className="text-amber-400" /> Neural Check Designer</h1>
           </div>
           <div className="flex items-center gap-3">
-              <button onClick={handlePublishAndShareLink} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
-                  {isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
-                  <span>{isSharing ? 'Processing...' : (check.isCoinCheck ? 'Issue Coin Check' : 'Publish & Share URI')}</span>
+              <button onClick={handlePublishAndShareLink} disabled={isSharing} className={`flex items-center gap-2 px-4 py-2 ${shareLink ? (justCopied ? 'bg-emerald-600' : 'bg-indigo-600') : 'bg-indigo-600'} hover:opacity-90 text-white rounded-lg text-xs font-bold shadow-lg transition-all`}>
+                  {isSharing ? <Loader2 size={14} className="animate-spin"/> : (justCopied ? <CheckIcon size={14}/> : <Share2 size={14}/>)}
+                  <span>{isSharing ? 'Processing...' : (shareLink ? (justCopied ? 'Copied URI' : 'Copy Share URI') : (check.isCoinCheck ? 'Issue Coin Check' : 'Publish & Share URI'))}</span>
               </button>
               <button onClick={handleDownloadPDF} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold border border-slate-700">
                   {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />}
@@ -334,8 +342,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
                 className={`w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border ${check.isCoinCheck ? 'border-amber-400 ring-4 ring-amber-400/20' : 'border-slate-300'} relative shrink-0 p-8 rounded-sm overflow-hidden`}
               >
-                  {/* Watermark */}
-                  <div className="absolute inset-0 opacity-[0.07] flex items-center justify-center pointer-events-none">
+                  {/* Large Centered QR Code - 2x Size (128px) and Centered */}
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-0 opacity-[0.12] pointer-events-none transition-opacity hover:opacity-20">
+                      <img src={qrCodeUrl} className="w-32 h-32 border p-2 rounded bg-white shadow-xl" />
+                  </div>
+
+                  {/* Watermark (Etching) */}
+                  <div className="absolute inset-0 opacity-[0.05] flex items-center justify-center pointer-events-none">
                       {customArtUrl ? <img src={customArtUrl} className="w-[300px] h-[300px] object-contain grayscale" /> : <Landmark size={200}/>}
                   </div>
 
@@ -362,16 +375,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
 
-                  {/* Payee and QR Code */}
+                  {/* Payee */}
                   <div className="flex items-center gap-4 relative z-10 mb-2">
                       <div className="flex-1 flex flex-col">
                           <span className="text-[8px] font-bold text-slate-400 uppercase">Pay to the Order of</span>
                           <div className="border-b border-black text-sm font-black italic pt-1 h-7">{check.payee}</div>
                       </div>
-                      <div className="shrink-0 group">
-                        <img src={qrCodeUrl} className="w-16 h-16 border p-1 rounded bg-white shadow-sm transition-transform hover:scale-110" />
-                        <div className="absolute bg-black text-white text-[8px] px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity -top-2">Scan to Verify</div>
-                      </div>
+                      {/* Small QR remains as an interactable verification shortcut if needed, but the main one is now centered. 
+                          Actually, removing it to avoid clutter as per user request to move it to center. */}
                   </div>
 
                   {/* Amount Words */}
@@ -390,7 +401,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           {check.recipientAddress && <div className="text-[7px] text-slate-400 mt-0.5 truncate italic">For: {check.recipientAddress}</div>}
                       </div>
 
-                      {/* MICR Line - Added back at bottom */}
+                      {/* MICR Line */}
                       <div className="font-mono text-xs tracking-widest text-slate-800 flex items-center gap-3">
                           <span>⑆ {check.routingNumber} ⑆</span>
                           <span>{check.accountNumber} ⑈</span>
@@ -421,24 +432,24 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
       {showSignPad && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl">
-              <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-2xl overflow-hidden flex flex-col shadow-2xl">
-                  <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
-                      <div className="flex items-center gap-3"><PenTool className="text-indigo-400" /><h3 className="font-bold text-white">Digital Signature</h3></div>
-                      <button onClick={() => setShowSignPad(false)} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-500"><X size={20}/></button>
+              <div className="bg-white border border-slate-200 rounded-[2rem] w-full max-w-2xl overflow-hidden flex flex-col shadow-2xl">
+                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                      <div className="flex items-center gap-3"><PenTool className="text-indigo-600" /><h3 className="font-bold text-slate-900">Digital Signature</h3></div>
+                      <button onClick={() => setShowSignPad(false)} className="p-1.5 hover:bg-slate-200 rounded-full text-slate-400"><X size={20}/></button>
                   </div>
-                  <div className="bg-white m-6 rounded-xl overflow-hidden border border-slate-700 h-64 relative">
-                      <Whiteboard disableAI={true} onDataChange={() => {}} initialColor="#000000" backgroundColor="transparent" />
+                  <div className="bg-white m-6 rounded-xl overflow-hidden border border-slate-200 h-64 relative">
+                      <Whiteboard disableAI={true} onDataChange={() => {}} initialColor="#000000" backgroundColor="#ffffff" />
                       <div className="absolute bottom-4 right-4 z-50 flex gap-2">
-                          <button onClick={() => setShowSignPad(false)} className="bg-slate-200 text-slate-800 px-6 py-2 rounded-lg font-bold">Cancel</button>
+                          <button onClick={() => setShowSignPad(false)} className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-6 py-2 rounded-lg font-bold transition-colors">Cancel</button>
                           <button onClick={() => { 
                               const canvas = document.querySelector('canvas'); 
                               if (canvas) setCheck(prev => ({...prev, signatureUrl: canvas.toDataURL()})); 
                               setShowSignPad(false); 
-                          }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2"><CheckIcon size={18}/> Save Signature</button>
+                          }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 transition-all"><CheckIcon size={18}/> Save Signature</button>
                       </div>
                   </div>
                   <div className="px-6 pb-6 text-center">
-                      <p className="text-xs text-slate-500">Sign your name in the box above using your mouse or touch screen.</p>
+                      <p className="text-xs text-slate-400">Sign your name in the box above using your mouse or touch screen.</p>
                   </div>
               </div>
           </div>

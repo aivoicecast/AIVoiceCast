@@ -81,6 +81,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
 
+  const isDarkBackground = backgroundColor !== 'transparent' && backgroundColor !== '#ffffff';
+
   useEffect(() => {
     if (propSessionId) {
         setIsSharedSession(true);
@@ -228,40 +230,40 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   }, [elements, currentElement, scale, offset, backgroundColor]);
 
   return (
-    <div className="flex flex-col h-full bg-slate-950 text-slate-100 overflow-hidden relative">
-        <div className={`bg-slate-900 border-b border-slate-800 p-2 flex flex-wrap justify-between gap-2 shrink-0 z-10 items-center px-4`}>
+    <div className={`flex flex-col h-full ${isDarkBackground ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden relative`}>
+        <div className={`${isDarkBackground ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'} border-b p-2 flex flex-wrap justify-between gap-2 shrink-0 z-10 items-center px-4`}>
             <div className="flex items-center gap-2">
-                {onBack && <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 mr-2"><ArrowLeft size={20}/></button>}
-                <div className="flex bg-slate-800 rounded-lg p-1 mr-2">
-                    <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><PenTool size={16}/></button>
-                    <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Eraser size={16}/></button>
+                {onBack && <button onClick={onBack} className={`p-2 rounded-lg ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-2`}><ArrowLeft size={20}/></button>}
+                <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1 mr-2`}>
+                    <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><PenTool size={16}/></button>
+                    <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><Eraser size={16}/></button>
                 </div>
-                <div className="flex bg-slate-800 rounded-lg p-1">
-                    <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Square size={16}/></button>
-                    <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Circle size={16}/></button>
-                    <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Minus size={16}/></button>
-                    <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><ArrowRight size={16}/></button>
+                <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1`}>
+                    <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><Square size={16}/></button>
+                    <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><Circle size={16}/></button>
+                    <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><Minus size={16}/></button>
+                    <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><ArrowRight size={16}/></button>
                 </div>
-                <div className="flex gap-1 px-2 bg-slate-800 rounded-lg py-1 items-center ml-2">
-                    {['#ffffff', '#000000', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-white/50' : ''}`} style={{ backgroundColor: c }} />)}
+                <div className={`flex gap-1 px-2 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg py-1 items-center ml-2`}>
+                    {['#000000', '#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-indigo-500' : ''}`} style={{ backgroundColor: c }} />)}
                 </div>
             </div>
 
             <div className="flex items-center gap-2">
-                <button onClick={handleSaveToDrive} disabled={isSavingToDrive} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg border border-slate-700">
+                <button onClick={handleSaveToDrive} disabled={isSavingToDrive} className={`flex items-center gap-2 px-3 py-1.5 ${isDarkBackground ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'} text-xs font-bold rounded-lg border shadow-sm`}>
                     {isSavingToDrive ? <Loader2 size={14} className="animate-spin"/> : <HardDrive size={14}/>}
                     <span>Sync Drive</span>
                 </button>
-                <button onClick={handleShare} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg">
+                <button onClick={handleShare} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-500/20">
                     <Share2 size={14}/>
                     <span>Share URI</span>
                 </button>
-                <div className="w-px h-6 bg-slate-800 mx-1"></div>
-                <button onClick={() => setElements(prev => prev.slice(0, -1))} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 transition-colors"><Undo size={16} /></button>
-                <button onClick={() => setElements([])} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
+                <div className={`w-px h-6 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} mx-1`}></div>
+                <button onClick={() => setElements(prev => prev.slice(0, -1))} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`}><Undo size={16} /></button>
+                <button onClick={() => setElements([])} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`}><Trash2 size={16} /></button>
             </div>
         </div>
-        <div className={`flex-1 relative overflow-hidden bg-slate-950 touch-none`}>
+        <div className={`flex-1 relative overflow-hidden ${isDarkBackground ? 'bg-slate-950' : 'bg-white'} touch-none`}>
             <canvas 
                 ref={canvasRef} 
                 onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
