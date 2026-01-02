@@ -383,7 +383,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
 
                   {/* Payee line - Pushed up */}
-                  <div className="flex items-center gap-4 relative z-10 mb-4">
+                  <div className="flex items-center gap-4 relative z-10 mb-2">
                       <div className="flex-1 flex flex-col">
                           <span className="text-[7px] font-bold text-slate-400 uppercase">Pay to the Order of</span>
                           <div className="border-b border-black text-base font-black italic pt-1 h-8">{check.payee}</div>
@@ -391,7 +391,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
 
                   {/* Amount Words line - Pushed up */}
-                  <div className="flex flex-col relative z-10 mb-6">
+                  <div className="flex flex-col relative z-10 mb-4">
                       <div className="border-b border-black text-[11px] font-bold pt-1 h-6 flex items-center">
                         {check.amountWords}
                         <span className="ml-auto text-[7px] text-slate-400 uppercase font-black">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
@@ -399,7 +399,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
 
                   {/* Memo line - REPOSITIONED HIGHER ABOVE MICR */}
-                  <div className="absolute bottom-14 left-8 z-10">
+                  <div className="absolute bottom-16 left-8 z-10">
                       <div className="w-[220px] flex flex-col">
                           <span className="text-[7px] font-bold text-slate-400 uppercase">Memo</span>
                           <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5 leading-tight">{check.memo}</div>
@@ -407,7 +407,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
 
                   {/* Signature line - REPOSITIONED HIGHER ABOVE MICR */}
-                  <div className="absolute bottom-14 right-8 z-10">
+                  <div className="absolute bottom-16 right-8 z-10">
                       <div className="w-[180px] flex flex-col items-center">
                           <div className="border-b border-black w-full text-center pb-0.5 h-10 flex items-end justify-center">
                               {check.signatureUrl ? (
