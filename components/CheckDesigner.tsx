@@ -138,13 +138,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   };
 
   const handleGenerateArt = async () => {
-      if (!check.memo) return alert("Enter a memo first.");
+      if (!check.memo) return alert("Enter a memo first to define the watermark style.");
       setIsGeneratingArt(true);
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash-image',
-              contents: { parts: [{ text: `A professional high-contrast watermark etching for a bank check: ${check.memo}. Wide aspect ratio, minimalist, grayscale.` }] },
+              contents: { parts: [{ text: `A professional high-contrast watermark etching for a bank check background. Subject: ${check.memo}. Wide aspect ratio, minimalist, grayscale, line art style.` }] },
               config: { imageConfig: { aspectRatio: "16:9" } }
           });
           for (const part of response.candidates[0].content.parts) {
@@ -274,6 +274,34 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           {!isReadOnly && (
             <div className="w-full lg:w-[400px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-6 scrollbar-thin">
                 <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Palette className="text-indigo-400"/> Transaction Type</h3>
+                    </div>
+                    <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+                        <button onClick={() => setCheck({...check, isCoinCheck: false})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${!check.isCoinCheck ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><Landmark size={14}/> Standard</button>
+                        <button onClick={() => setCheck({...check, isCoinCheck: true})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${check.isCoinCheck ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><Coins size={14}/> Voice Coin</button>
+                    </div>
+                </div>
+
+                <div className="space-y-4 bg-slate-800/20 p-4 rounded-xl border border-slate-800">
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Landmark size={14}/> Bank & Account</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="col-span-2">
+                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Bank Name</label>
+                            <input type="text" value={check.bankName} onChange={e => setCheck({...check, bankName: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white"/>
+                        </div>
+                        <div>
+                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Routing #</label>
+                            <input type="text" value={check.routingNumber} onChange={e => setCheck({...check, routingNumber: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono"/>
+                        </div>
+                        <div>
+                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Account #</label>
+                            <input type="text" value={check.accountNumber} onChange={e => setCheck({...check, accountNumber: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono"/>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-4">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><User size={14} className="text-indigo-400"/> Payee Info</h3>
                     <input type="text" placeholder="Payee Name" value={check.payee} onChange={e => setCheck({...check, payee: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500/50"/>
                     <div className="relative">
@@ -311,7 +339,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 className="transition-transform duration-300"
               >
                   <div ref={checkRef} className="w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border border-slate-300 rounded-lg relative overflow-hidden p-8">
-                      {/* WATERMARK LAYER */}
+                      {/* WATERMARK LAYER - Absolute Background */}
                       {check.watermarkUrl && (
                           <div className="absolute inset-0 opacity-[0.15] pointer-events-none z-0">
                               <img 
@@ -324,11 +352,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                       )}
 
-                      {/* QR CODE - TOP CENTER */}
+                      {/* QR CODE - ABSOLUTELY POSITIONED TOP CENTER (Does not shift flow) */}
                       <div className="absolute top-1 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
                           <img src={qrCodeUrl} className="w-16 h-16 border border-white p-0.5 rounded shadow-lg bg-white" />
                       </div>
                       
+                      {/* CONTENT FLOW STARTS HERE */}
                       <div className="flex justify-between items-start relative z-10">
                           <div className="space-y-1">
                               <h2 className="text-sm font-bold uppercase tracking-wider">{check.senderName}</h2>
@@ -348,7 +377,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
                       <div className="mt-4 flex items-center gap-4 relative z-10">
                           <span className="text-xs font-bold whitespace-nowrap">PAY TO THE ORDER OF</span>
-                          <div className="flex-1 border-b border-black text-lg font-serif italic px-2">{check.payee}</div>
+                          <div className="flex-1 border-b border-black text-lg font-serif italic px-2">{check.payee || '____________________'}</div>
                           <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50">
                               <span className="text-sm font-bold">$</span>
                               <span className="flex-1 text-right font-mono text-lg font-bold">
@@ -358,7 +387,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
 
                       <div className="mt-4 flex items-center gap-4 relative z-10">
-                          <div className="flex-1 border-b border-black text-sm font-serif italic px-2">{check.amountWords}</div>
+                          <div className="flex-1 border-b border-black text-sm font-serif italic px-2">{check.amountWords || '____________________________________________________________________'}</div>
                           <span className="text-xs font-bold">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                       </div>
 
@@ -370,8 +399,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <div className="flex-1 flex flex-col gap-2">
                               <div className="flex items-center gap-2">
                                   <span className="text-[10px] font-bold">FOR</span>
-                                  <div className="w-48 border-b border-black text-sm font-serif italic px-1 truncate">{check.memo}</div>
+                                  <div className="w-48 border-b border-black text-sm font-serif italic px-1 truncate">{check.memo || '____________________'}</div>
                               </div>
+                              {/* MICR LINE - POSITIONED RELATIVE TO BOTTOM OF CONTAINER */}
                               <div className="mt-2 font-mono text-xl tracking-widest text-slate-800">
                                   ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
                               </div>
@@ -396,6 +426,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
               </div>
+
+              {!isReadOnly && (
+                  <div className="mt-12 flex gap-4 shrink-0">
+                      <button onClick={() => setZoom(prev => Math.max(0.5, prev - 0.1))} className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white"><ZoomOut size={16}/></button>
+                      <button onClick={() => setZoom(1)} className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-slate-400">{Math.round(zoom * 100)}%</button>
+                      <button onClick={() => setZoom(prev => Math.min(2, prev + 0.1))} className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white"><ZoomIn size={16}/></button>
+                  </div>
+              )}
           </div>
       </div>
 
