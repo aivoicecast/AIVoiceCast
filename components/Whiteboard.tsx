@@ -19,6 +19,8 @@ interface WhiteboardProps {
   onDataChange?: (data: string) => void;
   isReadOnly?: boolean;
   disableAI?: boolean; 
+  initialColor?: string;
+  backgroundColor?: string;
 }
 
 const LINE_STYLES: { label: string; value: LineStyle; dash: number[] }[] = [
@@ -46,7 +48,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   initialData, 
   onDataChange,
   isReadOnly: propReadOnly = false,
-  disableAI = false
+  disableAI = false,
+  initialColor = '#ffffff',
+  backgroundColor = '#0f172a'
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [elements, setElements] = useState<WhiteboardElement[]>([]);
@@ -54,7 +58,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [currentElement, setCurrentElement] = useState<WhiteboardElement | null>(null);
   
   const [tool, setTool] = useState<ToolType>('pen');
-  const [color, setColor] = useState('#ffffff');
+  const [color, setColor] = useState(initialColor);
   const [lineWidth, setLineWidth] = useState(6);
   const [lineStyle, setLineStyle] = useState<LineStyle>('solid');
   const [brushType, setBrushType] = useState<BrushType>('writing-brush');
@@ -107,7 +111,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       setIsDrawing(true);
       const id = crypto.randomUUID();
       const newEl: WhiteboardElement = { 
-          id, type: tool, x, y, color: tool === 'eraser' ? '#0f172a' : color, 
+          id, type: tool, x, y, color: tool === 'eraser' ? (backgroundColor === 'transparent' ? '#ffffff' : backgroundColor) : color, 
           strokeWidth: tool === 'eraser' ? 20 : lineWidth, 
           lineStyle: tool === 'eraser' ? 'solid' : lineStyle,
           brushType: tool === 'eraser' ? 'standard' : brushType, 
@@ -181,7 +185,13 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   useEffect(() => {
       const canvas = canvasRef.current; if (!canvas) return; const ctx = canvas.getContext('2d'); if (!ctx) return;
       canvas.width = canvas.parentElement?.clientWidth || 800; canvas.height = canvas.parentElement?.clientHeight || 600;
-      ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height); 
+      
+      if (backgroundColor !== 'transparent') {
+          ctx.fillStyle = backgroundColor; 
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
       ctx.save(); ctx.translate(offset.x, offset.y); ctx.scale(scale, scale);
       
       const drawArrowHead = (x1: number, y1: number, x2: number, y2: number, size: number, color: string) => {
@@ -215,7 +225,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       elements.forEach(renderElement);
       if (currentElement) renderElement(currentElement);
       ctx.restore();
-  }, [elements, currentElement, scale, offset]);
+  }, [elements, currentElement, scale, offset, backgroundColor]);
 
   return (
     <div className="flex flex-col h-full bg-slate-950 text-slate-100 overflow-hidden relative">
@@ -233,7 +243,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                     <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><ArrowRight size={16}/></button>
                 </div>
                 <div className="flex gap-1 px-2 bg-slate-800 rounded-lg py-1 items-center ml-2">
-                    {['#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-white/50' : ''}`} style={{ backgroundColor: c }} />)}
+                    {['#ffffff', '#000000', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-white/50' : ''}`} style={{ backgroundColor: c }} />)}
                 </div>
             </div>
 

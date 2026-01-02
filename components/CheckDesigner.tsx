@@ -6,7 +6,7 @@ import {
   Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette, Copy, ZoomIn, ZoomOut, Maximize2, PenTool, Upload, Camera, MapPin
 } from 'lucide-react';
 import { BankingCheck, UserProfile } from '../types';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI } from "@google/genai";
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { getAllUsers, sendMessage, uploadFileToStorage, saveBankingCheck, claimCoinCheck } from '../services/firestoreService';
@@ -34,7 +34,7 @@ const DEFAULT_CHECK: BankingCheck = {
   accountNumber: '987654321',
   bankName: 'Neural Prism Bank',
   senderName: 'Account Holder',
-  senderAddress: '',
+  senderAddress: '123 Neural Way, Silicon Valley, CA',
   recipientAddress: '',
   signature: '',
   isCoinCheck: false,
@@ -54,8 +54,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [isGeneratingArt, setIsGeneratingArt] = useState(false);
   const [customArtUrl, setCustomArtUrl] = useState<string | null>(null);
   const [shareLink, setShareLink] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(1);
   const [showSignPad, setShowSignPad] = useState(false);
+  const [zoom, setZoom] = useState(1.0);
   
   const checkRef = useRef<HTMLDivElement>(null);
   const signInputRef = useRef<HTMLInputElement>(null);
@@ -92,7 +92,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-3-flash-preview',
-              contents: `Parse into JSON for a banking check: "${input}"`,
+              contents: `Parse into JSON for a banking check. Include fields: payee, amount, memo, routingNumber, accountNumber, senderName, senderAddress, recipientAddress. Input: "${input}"`,
               config: { responseMimeType: 'application/json' }
           });
           const parsed = JSON.parse(response.text || '{}');
@@ -151,16 +151,20 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           
           let finalWatermarkUrl = customArtUrl || '';
           if (customArtUrl?.startsWith('data:')) {
-             const res = await fetch(customArtUrl);
-             const blob = await res.blob();
-             finalWatermarkUrl = await uploadFileToStorage(`checks/${id}/watermark.png`, blob);
+             try {
+                const res = await fetch(customArtUrl);
+                const blob = await res.blob();
+                finalWatermarkUrl = await uploadFileToStorage(`checks/${id}/watermark.png`, blob);
+             } catch(e) { console.warn("Failed to sync watermark to cloud storage", e); }
           }
 
           let finalSignatureUrl = check.signatureUrl || '';
           if (check.signatureUrl?.startsWith('data:')) {
-              const res = await fetch(check.signatureUrl);
-              const blob = await res.blob();
-              finalSignatureUrl = await uploadFileToStorage(`checks/${id}/signature.png`, blob);
+              try {
+                const res = await fetch(check.signatureUrl);
+                const blob = await res.blob();
+                finalSignatureUrl = await uploadFileToStorage(`checks/${id}/signature.png`, blob);
+              } catch(e) { console.warn("Failed to sync signature to cloud storage", e); }
           }
 
           const finalId = await saveBankingCheck({
@@ -171,14 +175,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               signatureUrl: finalSignatureUrl
           });
 
-          const blob = await generatePDFBlob();
-          if (blob) {
-              const token = getDriveToken() || await connectGoogleDrive();
-              if (token) {
-                  const folderId = await ensureCodeStudioFolder(token);
-                  await uploadToDrive(token, folderId, `Check_${check.checkNumber}.pdf`, blob);
+          // Attempt PDF generation and G-Drive sync
+          try {
+              const blob = await generatePDFBlob();
+              if (blob) {
+                  const token = getDriveToken() || await connectGoogleDrive();
+                  if (token) {
+                      const folderId = await ensureCodeStudioFolder(token);
+                      await uploadToDrive(token, folderId, `Check_${check.checkNumber}.pdf`, blob);
+                  }
               }
-          }
+          } catch(e) { console.warn("G-Drive sync failed during publish", e); }
 
           const link = check.isCoinCheck 
             ? `${window.location.origin}?claim=${finalId}` 
@@ -188,7 +195,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           setCheck(prev => ({ ...prev, id: finalId }));
           alert(check.isCoinCheck ? "Coin Check Issued!" : "Check published!");
       } catch (e: any) {
-          alert("Publishing failed: " + e.message);
+          console.error("Publishing error:", e);
+          alert("Publishing failed: " + (e.message || "Network Error"));
       } finally {
           setIsSharing(false);
       }
@@ -204,11 +212,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
   const handleDownloadPDF = async () => {
       setIsExporting(true);
-      const blob = await generatePDFBlob();
-      if (blob) {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a'); a.href = url; a.download = `check_${check.checkNumber}.pdf`; a.click();
-      }
+      try {
+        const blob = await generatePDFBlob();
+        if (blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = `check_${check.checkNumber}.pdf`; a.click();
+            URL.revokeObjectURL(url);
+        }
+      } catch(e) { alert("Download failed"); }
       setIsExporting(false);
   };
 
@@ -239,29 +250,79 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       </header>
 
       <div className="flex-1 flex overflow-hidden flex-col lg:flex-row">
-          <div className="w-full lg:w-[450px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-8 scrollbar-thin">
+          <div className="w-full lg:w-[450px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-6 scrollbar-thin">
               <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Palette className="text-indigo-400"/> Transaction Type</h3>
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Palette className="text-indigo-400"/> Transaction Type</h3>
+                    <button onClick={handleParseCheckDetails} disabled={isParsing} className="text-[10px] font-bold text-indigo-400 flex items-center gap-1">
+                        {isParsing ? <Loader2 size={10} className="animate-spin"/> : <Sparkles size={10}/>} Neural Parse
+                    </button>
+                  </div>
                   <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
                       <button onClick={() => setCheck({...check, isCoinCheck: false})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${!check.isCoinCheck ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><Landmark size={14}/> Standard</button>
                       <button onClick={() => setCheck({...check, isCoinCheck: true})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${check.isCoinCheck ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><Coins size={14}/> Voice Coin</button>
                   </div>
               </div>
 
+              <div className="space-y-4 bg-slate-800/20 p-4 rounded-xl border border-slate-800">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Landmark size={14}/> Bank & Account</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                      <div className="col-span-2">
+                        <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Bank Name</label>
+                        <input type="text" value={check.bankName} onChange={e => setCheck({...check, bankName: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white"/>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Routing #</label>
+                        <input type="text" value={check.routingNumber} onChange={e => setCheck({...check, routingNumber: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono"/>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Account #</label>
+                        <input type="text" value={check.accountNumber} onChange={e => setCheck({...check, accountNumber: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono"/>
+                      </div>
+                  </div>
+              </div>
+
               <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Payment Amount</h3>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Sender Info</h3>
+                  <div className="space-y-3">
+                      <input type="text" placeholder="Sender Name" value={check.senderName} onChange={e => setCheck({...check, senderName: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none"/>
+                      <textarea placeholder="Sender Address" value={check.senderAddress} onChange={e => setCheck({...check, senderAddress: e.target.value})} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none resize-none"/>
+                  </div>
+              </div>
+
+              <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><DollarSign size={14}/> Payment Details</h3>
                   <div className="grid grid-cols-1 gap-3">
                       <div className="flex gap-2">
-                        <input type="text" placeholder="Payee..." value={check.payee} onChange={e => setCheck({...check, payee: e.target.value})} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
-                        <div className="relative w-32">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">{check.isCoinCheck ? <Coins size={14}/> : '$'}</span>
-                            <input type="number" value={check.isCoinCheck ? check.coinAmount : check.amount} onChange={e => setCheck(check.isCoinCheck ? {...check, coinAmount: parseInt(e.target.value)} : {...check, amount: parseFloat(e.target.value)})} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-8 pr-2.5 py-2.5 text-sm text-white text-right"/>
+                        <div className="flex-1">
+                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Payee Name</label>
+                            <input type="text" placeholder="Bearer..." value={check.payee} onChange={e => setCheck({...check, payee: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
+                        </div>
+                        <div className="w-32">
+                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Amount</label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">{check.isCoinCheck ? <Coins size={14}/> : '$'}</span>
+                                <input type="number" value={check.isCoinCheck ? check.coinAmount : check.amount} onChange={e => setCheck(check.isCoinCheck ? {...check, coinAmount: parseInt(e.target.value)} : {...check, amount: parseFloat(e.target.value)})} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-8 pr-2.5 py-2.5 text-sm text-white text-right"/>
+                            </div>
                         </div>
                       </div>
-                      <input type="text" placeholder="Memo..." value={check.memo} onChange={e => setCheck({...check, memo: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white"/>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Recipient Address (Optional)</label>
+                        <input type="text" placeholder="123 Ocean Blvd..." value={check.recipientAddress} onChange={e => setCheck({...check, recipientAddress: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white"/>
+                      </div>
                       <div className="flex gap-2">
-                          <button onClick={() => setShowSignPad(true)} className="flex-1 py-3 bg-slate-800 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2"><PenTool size={16}/> Sign</button>
-                          <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="flex-1 py-3 bg-slate-800 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2">{isGeneratingArt ? <Loader2 size={16} className="animate-spin"/> : <ImageIcon size={16}/>} Neural Art</button>
+                        <div className="flex-1">
+                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Memo</label>
+                            <input type="text" placeholder="For..." value={check.memo} onChange={e => setCheck({...check, memo: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white"/>
+                        </div>
+                        <div className="w-24">
+                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Check #</label>
+                            <input type="text" value={check.checkNumber} onChange={e => setCheck({...check, checkNumber: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white font-mono"/>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                          <button onClick={() => setShowSignPad(true)} className="flex-1 py-3 bg-slate-800 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors"><PenTool size={16}/> Sign</button>
+                          <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="flex-1 py-3 bg-slate-800 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors">{isGeneratingArt ? <Loader2 size={16} className="animate-spin"/> : <ImageIcon size={16}/>} Neural Art</button>
                       </div>
                   </div>
               </div>
@@ -270,26 +331,90 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           <div className="flex-1 bg-slate-950 flex flex-col p-12 items-center overflow-y-auto scrollbar-hide relative">
               <div 
                 ref={checkRef}
-                className={`w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border ${check.isCoinCheck ? 'border-amber-400' : 'border-slate-300'} relative shrink-0 p-8 rounded-sm`}
+                style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
+                className={`w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border ${check.isCoinCheck ? 'border-amber-400 ring-4 ring-amber-400/20' : 'border-slate-300'} relative shrink-0 p-8 rounded-sm overflow-hidden`}
               >
-                  <div className="absolute inset-0 opacity-[0.06] flex items-center justify-center pointer-events-none">
+                  {/* Watermark */}
+                  <div className="absolute inset-0 opacity-[0.07] flex items-center justify-center pointer-events-none">
                       {customArtUrl ? <img src={customArtUrl} className="w-[300px] h-[300px] object-contain grayscale" /> : <Landmark size={200}/>}
                   </div>
-                  <div className="flex justify-between items-start mb-6">
-                      <div className="font-black uppercase text-xs">{check.senderName}</div>
-                      <div className="text-right"><p className="text-sm font-black italic text-indigo-900">{check.isCoinCheck ? 'VoiceCoin Protocol' : check.bankName}</p><p className="text-[10px] font-bold">{check.checkNumber}</p></div>
+
+                  {/* Top Section */}
+                  <div className="flex justify-between items-start mb-4 relative z-10">
+                      <div className="flex flex-col">
+                          <div className="font-black uppercase text-[10px] leading-tight">{check.senderName}</div>
+                          <div className="text-[8px] text-slate-600 max-w-[150px] leading-tight whitespace-pre-wrap">{check.senderAddress}</div>
+                      </div>
+                      <div className="text-right">
+                          <p className="text-sm font-black italic text-indigo-900 leading-none">{check.isCoinCheck ? 'VOICECOIN PROTOCOL' : check.bankName}</p>
+                          <p className="text-[10px] font-bold mt-1">CHECK NO. {check.checkNumber}</p>
+                      </div>
                   </div>
-                  <div className="flex justify-end gap-8 items-center mb-4">
-                      <span className="text-xs font-medium border-b border-black pb-1">{check.date}</span>
-                      <div className="bg-slate-50 border border-slate-300 px-4 py-2 font-black text-xl">{check.isCoinCheck ? `VC ${check.coinAmount}` : `$ ${check.amount.toFixed(2)}`}</div>
+
+                  {/* Date and Amount Box */}
+                  <div className="flex justify-end gap-6 items-center mb-4 relative z-10">
+                      <div className="flex flex-col items-end">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase">Date</span>
+                        <span className="text-xs font-bold border-b border-black min-w-[80px] text-center">{check.date}</span>
+                      </div>
+                      <div className="bg-slate-50 border border-slate-300 px-4 py-2 font-black text-xl shadow-inner">
+                        {check.isCoinCheck ? `VC ${check.coinAmount}` : `$ ${check.amount.toFixed(2)}`}
+                      </div>
                   </div>
-                  <div className="flex-1 border-b border-black text-sm font-black italic pt-2">{check.payee}</div>
-                  <div className="flex-1 border-b border-black text-xs font-bold pt-4">{check.amountWords}</div>
-                  <div className="flex items-end justify-between mt-4">
-                      <div className="w-[30%] border-b border-black text-xs pb-1">For: {check.memo}</div>
-                      <img src={qrCodeUrl} className="w-20 h-20 border p-1 rounded bg-white" />
-                      <div className="w-[30%] border-b border-black text-xl font-script text-center pb-1">{check.signatureUrl ? <img src={check.signatureUrl} className="h-8 mx-auto" /> : (check.signature || check.senderName)}</div>
+
+                  {/* Payee and QR Code */}
+                  <div className="flex items-center gap-4 relative z-10 mb-2">
+                      <div className="flex-1 flex flex-col">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase">Pay to the Order of</span>
+                          <div className="border-b border-black text-sm font-black italic pt-1 h-7">{check.payee}</div>
+                      </div>
+                      <div className="shrink-0 group">
+                        <img src={qrCodeUrl} className="w-16 h-16 border p-1 rounded bg-white shadow-sm transition-transform hover:scale-110" />
+                        <div className="absolute bg-black text-white text-[8px] px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity -top-2">Scan to Verify</div>
+                      </div>
                   </div>
+
+                  {/* Amount Words */}
+                  <div className="flex flex-col relative z-10 mb-4">
+                      <div className="border-b border-black text-[10px] font-bold pt-2 h-6 flex items-center">
+                        {check.amountWords}
+                        <span className="ml-auto text-[8px] text-slate-400 uppercase font-black">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
+                      </div>
+                  </div>
+
+                  {/* Bottom Row */}
+                  <div className="flex items-end justify-between mt-auto relative z-10">
+                      <div className="w-[35%] flex flex-col">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase">Memo</span>
+                          <div className="border-b border-black text-[10px] pb-1 font-medium truncate">{check.memo}</div>
+                          {check.recipientAddress && <div className="text-[7px] text-slate-400 mt-0.5 truncate italic">For: {check.recipientAddress}</div>}
+                      </div>
+
+                      {/* MICR Line - Added back at bottom */}
+                      <div className="font-mono text-xs tracking-widest text-slate-800 flex items-center gap-3">
+                          <span>⑆ {check.routingNumber} ⑆</span>
+                          <span>{check.accountNumber} ⑈</span>
+                          <span>{check.checkNumber}</span>
+                      </div>
+
+                      <div className="w-[30%] flex flex-col items-center">
+                          <div className="border-b border-black w-full text-center pb-1 h-8 flex items-end justify-center">
+                              {check.signatureUrl ? (
+                                  <img src={check.signatureUrl} className="h-8 max-w-full object-contain" />
+                              ) : (
+                                  <span className="text-xl font-script text-slate-400">{check.signature || check.senderName}</span>
+                              )}
+                          </div>
+                          <span className="text-[8px] font-bold text-slate-400 uppercase mt-1">Authorized Signature</span>
+                      </div>
+                  </div>
+              </div>
+
+              {/* View options */}
+              <div className="mt-8 flex gap-4">
+                  <button onClick={() => setZoom(prev => Math.max(0.5, prev - 0.1))} className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white"><ZoomOut size={16}/></button>
+                  <button onClick={() => setZoom(1)} className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-slate-400">{Math.round(zoom * 100)}%</button>
+                  <button onClick={() => setZoom(prev => Math.min(2, prev + 0.1))} className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white"><ZoomIn size={16}/></button>
               </div>
           </div>
       </div>
@@ -302,10 +427,18 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <button onClick={() => setShowSignPad(false)} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-500"><X size={20}/></button>
                   </div>
                   <div className="bg-white m-6 rounded-xl overflow-hidden border border-slate-700 h-64 relative">
-                      <Whiteboard disableAI={true} onDataChange={() => {}} />
-                      <div className="absolute bottom-4 right-4 z-50">
-                          <button onClick={() => { const canvas = document.querySelector('canvas'); if (canvas) setCheck({...check, signatureUrl: canvas.toDataURL()}); setShowSignPad(false); }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2"><CheckIcon size={18}/> Save Signature</button>
+                      <Whiteboard disableAI={true} onDataChange={() => {}} initialColor="#000000" backgroundColor="transparent" />
+                      <div className="absolute bottom-4 right-4 z-50 flex gap-2">
+                          <button onClick={() => setShowSignPad(false)} className="bg-slate-200 text-slate-800 px-6 py-2 rounded-lg font-bold">Cancel</button>
+                          <button onClick={() => { 
+                              const canvas = document.querySelector('canvas'); 
+                              if (canvas) setCheck(prev => ({...prev, signatureUrl: canvas.toDataURL()})); 
+                              setShowSignPad(false); 
+                          }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2"><CheckIcon size={18}/> Save Signature</button>
                       </div>
+                  </div>
+                  <div className="px-6 pb-6 text-center">
+                      <p className="text-xs text-slate-500">Sign your name in the box above using your mouse or touch screen.</p>
                   </div>
               </div>
           </div>
