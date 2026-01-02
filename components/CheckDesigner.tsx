@@ -71,11 +71,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   useEffect(() => {
       if (checkIdFromUrl) {
           setIsLoadingCheck(true);
-          // Simplified implementation for getting check by ID from store
           const fetchCheck = async () => {
               try {
-                  // This assumes a getCheckById exists in firestoreService (added to mock list)
-                  // For now, we simulate finding it in checks collection
                   const data = await getCheckById(checkIdFromUrl);
                   if (data) {
                       setCheck(data);
@@ -89,11 +86,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       }
   }, [checkIdFromUrl]);
 
-  // Responsive zoom for mobile
+  // Mobile full-screen scaling logic
   useEffect(() => {
     const handleAutoZoom = () => {
         if (window.innerWidth < 640) {
-            const ratio = (window.innerWidth - 32) / 600;
+            // Fill width minus padding
+            const ratio = (window.innerWidth - 16) / 600;
             setZoom(ratio);
         } else {
             setZoom(1.0);
@@ -108,7 +106,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (isReadOnly) return;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
-    const amountToSpell = check.isCoinCheck ? (check.coinAmount || 0) : check.amount;
+    const amountToSpell = check.isCoinCheck ? (check.coinAmount || 0) : (check.amount || 0);
     if (amountToSpell > 0) {
         debounceTimerRef.current = setTimeout(() => {
             handleGenerateAmountWords(amountToSpell, check.isCoinCheck);
@@ -120,7 +118,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
   const qrCodeUrl = useMemo(() => {
       const baseUri = shareLink || `${window.location.origin}?view=check_viewer&id=${check.id || 'preview'}`;
-      return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(baseUri)}`;
+      // Return high contrast black/white QR
+      return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&color=0-0-0&bgcolor=255-255-255&data=${encodeURIComponent(baseUri)}`;
   }, [shareLink, check.id]);
 
   const handleParseCheckDetails = async () => {
@@ -146,7 +145,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash-image',
-              contents: { parts: [{ text: `A professional etching style watermark for a check: ${check.memo}` }] },
+              contents: { parts: [{ text: `A clean watermark line art for a check: ${check.memo}. Very thin lines, minimalist.` }] },
           });
           for (const part of response.candidates[0].content.parts) {
               if (part.inlineData) {
@@ -321,9 +320,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                 <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Amount</label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">{check.isCoinCheck ? <Coins size={14}/> : '$'}</span>
-                                    <input type="number" value={check.isCoinCheck ? check.coinAmount : check.amount} onChange={e => setCheck(check.isCoinCheck ? {...check, coinAmount: parseInt(e.target.value)} : {...check, amount: parseFloat(e.target.value)})} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-8 pr-2.5 py-2.5 text-sm text-white text-right"/>
+                                    <input type="number" value={check.isCoinCheck ? check.coinAmount : check.amount} onChange={e => setCheck(check.isCoinCheck ? {...check, coinAmount: parseInt(e.target.value) || 0} : {...check, amount: parseFloat(e.target.value) || 0})} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-8 pr-2.5 py-2.5 text-sm text-white text-right"/>
                                 </div>
                             </div>
+                        </div>
+                        <div>
+                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Memo / Purpose</label>
+                            <input type="text" placeholder="For: Domain Services..." value={check.memo} onChange={e => setCheck({...check, memo: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none"/>
                         </div>
                         <div className="flex gap-2">
                             <button onClick={() => setShowSignPad(true)} className="flex-1 py-3 bg-slate-800 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors"><PenTool size={16}/> Sign</button>
@@ -350,71 +353,80 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 style={{ transform: `scale(${zoom})`, transformOrigin: isReadOnly ? 'center' : 'top center' }}
                 className={`w-[600px] h-[270px] bg-white text-black shadow-[0_0_80px_rgba(0,0,0,0.5)] flex flex-col border ${check.isCoinCheck ? 'border-amber-400 ring-4 ring-amber-400/20' : 'border-slate-300'} relative shrink-0 p-8 rounded-sm overflow-hidden`}
               >
-                  {/* High Contrast Top-Centered QR Code - Solid for easy phone scanning */}
-                  <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-                      <img src={qrCodeUrl} className="w-24 h-24 border-2 border-slate-100 p-1 rounded bg-white shadow-2xl" />
+                  {/* SCANABLE QR CODE - MOVED TO TOP CENTER & FULL CONTRAST */}
+                  <div className="absolute top-1 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+                      <img src={qrCodeUrl} className="w-20 h-20 border-2 border-white p-0.5 rounded shadow-2xl bg-white" />
                   </div>
 
-                  <div className="absolute inset-0 opacity-[0.05] flex items-center justify-center pointer-events-none">
-                      {customArtUrl ? <img src={customArtUrl} className="w-[300px] h-[300px] object-contain grayscale" /> : <Landmark size={200}/>}
+                  {/* Watermark (Etching) */}
+                  <div className="absolute inset-0 opacity-[0.03] flex items-center justify-center pointer-events-none z-0">
+                      {customArtUrl ? <img src={customArtUrl} className="w-[400px] h-[400px] object-contain grayscale" /> : <Landmark size={200}/>}
                   </div>
 
-                  <div className="flex justify-between items-start mb-4 relative z-10">
+                  {/* Header row - Shifted up slightly */}
+                  <div className="flex justify-between items-start mb-2 relative z-10">
                       <div className="flex flex-col">
-                          <div className="font-black uppercase text-[10px] leading-tight">{check.senderName}</div>
-                          <div className="text-[8px] text-slate-600 max-w-[150px] leading-tight whitespace-pre-wrap">{check.senderAddress}</div>
+                          <div className="font-black uppercase text-[9px] leading-tight">{check.senderName}</div>
+                          <div className="text-[7px] text-slate-600 max-w-[150px] leading-tight whitespace-pre-wrap">{check.senderAddress}</div>
                       </div>
                       <div className="text-right">
                           <p className="text-sm font-black italic text-indigo-900 leading-none">{check.isCoinCheck ? 'VOICECOIN PROTOCOL' : check.bankName}</p>
-                          <p className="text-[10px] font-bold mt-1">CHECK NO. {check.checkNumber}</p>
+                          <p className="text-[9px] font-bold mt-0.5">CHECK NO. {check.checkNumber}</p>
                       </div>
                   </div>
 
-                  <div className="flex justify-end gap-6 items-center mb-4 relative z-10">
+                  {/* Top line - Date and Amount */}
+                  <div className="flex justify-end gap-6 items-center mb-6 relative z-10">
                       <div className="flex flex-col items-end">
-                        <span className="text-[8px] font-bold text-slate-400 uppercase">Date</span>
+                        <span className="text-[7px] font-bold text-slate-400 uppercase">Date</span>
                         <span className="text-xs font-bold border-b border-black min-w-[80px] text-center">{check.date}</span>
                       </div>
-                      <div className="bg-slate-50 border border-slate-300 px-4 py-2 font-black text-xl shadow-inner">
-                        {check.isCoinCheck ? `VC ${check.coinAmount}` : `$ ${check.amount.toFixed(2)}`}
+                      <div className="bg-slate-50 border border-slate-300 px-4 py-2 font-black text-xl shadow-inner min-w-[120px] text-right">
+                        {check.isCoinCheck ? `VC ${check.coinAmount || 0}` : `$ ${(check.amount || 0).toFixed(2)}`}
                       </div>
                   </div>
 
-                  <div className="flex items-center gap-4 relative z-10 mb-2">
+                  {/* Payee line - Shifted Up */}
+                  <div className="flex items-center gap-4 relative z-10 mb-4">
                       <div className="flex-1 flex flex-col">
-                          <span className="text-[8px] font-bold text-slate-400 uppercase">Pay to the Order of</span>
-                          <div className="border-b border-black text-sm font-black italic pt-1 h-7">{check.payee}</div>
+                          <span className="text-[7px] font-bold text-slate-400 uppercase">Pay to the Order of</span>
+                          <div className="border-b border-black text-base font-black italic pt-1 h-8">{check.payee}</div>
                       </div>
                   </div>
 
-                  <div className="flex flex-col relative z-10 mb-4">
-                      <div className="border-b border-black text-[10px] font-bold pt-2 h-6 flex items-center">
+                  {/* Amount Words line - Shifted Up */}
+                  <div className="flex flex-col relative z-10 mb-6">
+                      <div className="border-b border-black text-[11px] font-bold pt-1 h-6 flex items-center">
                         {check.amountWords}
-                        <span className="ml-auto text-[8px] text-slate-400 uppercase font-black">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
+                        <span className="ml-auto text-[7px] text-slate-400 uppercase font-black">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                       </div>
                   </div>
 
-                  <div className="flex items-end justify-between mt-auto relative z-10">
+                  {/* Bottom section - Memo and Signature shifted up, MICR line is strictly at the bottom */}
+                  <div className="flex items-end justify-between mb-2 relative z-10">
                       <div className="w-[35%] flex flex-col">
-                          <span className="text-[8px] font-bold text-slate-400 uppercase">Memo</span>
-                          <div className="border-b border-black text-[10px] pb-1 font-medium truncate">{check.memo}</div>
-                      </div>
-
-                      <div className="font-mono text-xs tracking-widest text-slate-800 flex items-center gap-3">
-                          <span>⑆ {check.routingNumber} ⑆</span>
-                          <span>{check.accountNumber} ⑈</span>
-                          <span>{check.checkNumber}</span>
+                          <span className="text-[7px] font-bold text-slate-400 uppercase">Memo</span>
+                          <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5">{check.memo}</div>
                       </div>
 
                       <div className="w-[30%] flex flex-col items-center">
-                          <div className="border-b border-black w-full text-center pb-1 h-8 flex items-end justify-center">
+                          <div className="border-b border-black w-full text-center pb-0.5 h-10 flex items-end justify-center">
                               {check.signatureUrl ? (
-                                  <img src={check.signatureUrl} className="h-8 max-w-full object-contain" />
+                                  <img src={check.signatureUrl} className="h-10 max-w-full object-contain" />
                               ) : (
                                   <span className="text-xl font-script text-slate-400">{check.signature || check.senderName}</span>
                               )}
                           </div>
-                          <span className="text-[8px] font-bold text-slate-400 uppercase mt-1">Authorized Signature</span>
+                          <span className="text-[7px] font-bold text-slate-400 uppercase mt-0.5">Authorized Signature</span>
+                      </div>
+                  </div>
+
+                  {/* MICR Line - FIXED TO BOTTOM */}
+                  <div className="absolute bottom-4 left-0 right-0 flex justify-center items-center pointer-events-none">
+                      <div className="font-mono text-sm tracking-[0.25em] text-slate-900 flex items-center gap-6">
+                          <span>⑆ {check.routingNumber} ⑆</span>
+                          <span>{check.accountNumber} ⑈</span>
+                          <span>{check.checkNumber}</span>
                       </div>
                   </div>
               </div>
@@ -458,7 +470,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           <ShareModal 
             isOpen={true} onClose={() => setShowShareModal(false)} link={shareLink} title="Banking Check"
             onShare={async (uids, isPublic, permission) => {
-                // Update Firestore permissions logic here if needed
                 alert("Permission settings updated!");
             }}
             defaultPermission="read"
