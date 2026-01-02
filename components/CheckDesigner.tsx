@@ -360,7 +360,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
 
                   {/* Header row - Pushed up */}
-                  <div className="flex justify-between items-start mb-2 relative z-10">
+                  <div className="flex justify-between items-start mb-1 relative z-10">
                       <div className="flex flex-col">
                           <div className="font-black uppercase text-[9px] leading-tight">{check.senderName}</div>
                           <div className="text-[7px] text-slate-600 max-w-[150px] leading-tight whitespace-pre-wrap">{check.senderAddress}</div>
@@ -372,7 +372,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
 
                   {/* Date and Amount box - Pushed up */}
-                  <div className="flex justify-end gap-6 items-center mb-6 relative z-10">
+                  <div className="flex justify-end gap-6 items-center mb-4 relative z-10">
                       <div className="flex flex-col items-end">
                         <span className="text-[7px] font-bold text-slate-400 uppercase">Date</span>
                         <span className="text-xs font-bold border-b border-black min-w-[80px] text-center">{check.date}</span>
@@ -382,17 +382,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
 
-                  {/* Payee line - Pushed up */}
-                  <div className="flex items-center gap-4 relative z-10 mb-2">
+                  {/* Payee line - Pushed up further */}
+                  <div className="flex items-center gap-4 relative z-10 mb-1">
                       <div className="flex-1 flex flex-col">
                           <span className="text-[7px] font-bold text-slate-400 uppercase">Pay to the Order of</span>
-                          <div className="border-b border-black text-base font-black italic pt-1 h-8">{check.payee}</div>
+                          <div className="border-b border-black text-base font-black italic pt-0.5 h-7">{check.payee}</div>
                       </div>
                   </div>
 
-                  {/* Amount Words line - Pushed up */}
-                  <div className="flex flex-col relative z-10 mb-4">
-                      <div className="border-b border-black text-[11px] font-bold pt-1 h-6 flex items-center">
+                  {/* Amount Words line - Pushed up further */}
+                  <div className="flex flex-col relative z-10 mb-2">
+                      <div className="border-b border-black text-[11px] font-bold pt-0.5 h-5 flex items-center">
                         {check.amountWords}
                         <span className="ml-auto text-[7px] text-slate-400 uppercase font-black">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                       </div>
@@ -406,8 +406,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
 
-                  {/* Signature line - REPOSITIONED HIGHER ABOVE MICR */}
-                  <div className="absolute bottom-16 right-8 z-10">
+                  {/* Signature line - MOVED TO BOTTOM RIGHT CORNER (Above MICR) */}
+                  <div className="absolute bottom-10 right-8 z-10">
                       <div className="w-[180px] flex flex-col items-center">
                           <div className="border-b border-black w-full text-center pb-0.5 h-10 flex items-end justify-center">
                               {check.signatureUrl ? (
