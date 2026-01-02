@@ -4,6 +4,7 @@ import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowU
 import { UserProfile, CoinTransaction } from '../types';
 import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile } from '../services/firestoreService';
 import { auth, db, getDb } from '../services/firebaseConfig';
+import { onAuthStateChanged } from 'firebase/auth';
 
 interface CoinWalletProps {
   onBack: () => void;
@@ -17,10 +18,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [granting, setGranting] = useState(false);
   
-  // Instance state in case the static export was null at boot
   const [databaseInstance, setDatabaseInstance] = useState(db);
   
-  // Transfer State
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferMemo, setTransferMemo] = useState('');
@@ -29,7 +28,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
   
-  // Fix: Defined filteredUsers based on allUsers and searchQuery to resolve undefined variable error
   const filteredUsers = useMemo(() => {
     return allUsers.filter(u => 
       u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -39,7 +37,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
   const initAttempted = useRef(false);
 
-  // Sync propUser to local state
   useEffect(() => {
     if (propUser) {
         setUser(propUser);
@@ -47,9 +44,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
     }
   }, [propUser]);
 
-  // Load transactions and try to fetch profile if missing
   const initWallet = useCallback(async (force = false) => {
-    // If the database instance is missing, try to resolve it now
     const activeDb = databaseInstance || getDb();
     if (!activeDb) {
         setLoading(false);
@@ -63,7 +58,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
     try {
         const currentUid = auth?.currentUser?.uid;
         if (!currentUid) {
-            // Wait for auth to settle
             await new Promise(r => setTimeout(r, 1500));
             if (!auth?.currentUser?.uid) {
                 setLoading(false);
@@ -73,7 +67,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
         const uid = auth?.currentUser?.uid!;
         
-        // Fetch both profile and ledger
         const [profile, txs] = await Promise.all([
             getUserProfile(uid),
             getCoinTransactions(uid)
@@ -92,10 +85,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   useEffect(() => {
     initWallet();
     
-    const unsubscribe = auth?.onAuthStateChanged((u) => {
-        if (u) initWallet(true);
-    });
-    return () => unsubscribe?.();
+    if (auth) {
+        const unsubscribe = onAuthStateChanged(auth, (u) => {
+            if (u) initWallet(true);
+        });
+        return () => unsubscribe();
+    }
   }, [initWallet]);
 
   const handleRefresh = async () => {
@@ -234,8 +229,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       </header>
 
       <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 max-w-4xl mx-auto w-full scrollbar-thin scrollbar-thumb-slate-800">
-          
-          {/* Balance Card */}
           <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-32 bg-white/10 blur-[80px] rounded-full group-hover:bg-white/20 transition-all"></div>
               <div className="relative z-10">
@@ -273,7 +266,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               </div>
           </div>
 
-          {/* Monthly Allowance Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-start gap-4">
                   <div className="p-2.5 bg-indigo-900/30 rounded-xl text-indigo-400"><Info size={20}/></div>
@@ -292,7 +284,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               </div>
           </div>
 
-          {/* Recent Activity */}
           <div className="space-y-4">
               <div className="flex items-center justify-between px-2">
                   <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Clock size={16}/> Transaction Ledger</h3>
@@ -341,10 +332,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                   )}
               </div>
           </div>
-
       </div>
 
-      {/* Transfer Modal */}
       {showTransfer && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-md overflow-hidden flex flex-col shadow-2xl">
@@ -364,7 +353,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                     placeholder="Find member..." 
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-10 pr-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-2xl pl-10 pr-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                                   />
                               </div>
                               <div className="max-h-64 overflow-y-auto space-y-1 pr-1 scrollbar-thin scrollbar-thumb-slate-800">

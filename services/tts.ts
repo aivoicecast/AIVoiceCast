@@ -4,6 +4,7 @@ import { base64ToBytes, decodeRawPcm, getGlobalAudioContext, hashString } from '
 import { getCachedAudioBuffer, cacheAudioBuffer } from '../utils/db';
 import { OPENAI_API_KEY } from './private_keys';
 import { auth, storage } from './firebaseConfig';
+import { ref, getDownloadURL } from 'firebase/storage';
 
 export type TtsErrorType = 'none' | 'quota' | 'network' | 'unknown' | 'auth';
 
@@ -18,9 +19,6 @@ const OPENAI_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
 const memoryCache = new Map<string, AudioBuffer>();
 const pendingRequests = new Map<string, Promise<TtsResult>>();
 
-/**
- * Maps specific gen-lang-client IDs and Names to valid high-quality provider voices.
- */
 function getValidVoiceName(voiceName: string, provider: 'gemini' | 'openai'): string {
     const isInterview = voiceName.includes('0648937375') || voiceName === 'Software Interview Voice';
     const isLinux = voiceName.includes('0375218270') || voiceName === 'Linux Kernel Voice';
@@ -78,13 +76,13 @@ async function synthesizeGemini(text: string, voice: string): Promise<ArrayBuffe
 }
 
 async function checkCloudCache(cacheKey: string): Promise<ArrayBuffer | null> {
-    if (!auth.currentUser) return null;
+    if (!auth?.currentUser || !storage) return null;
     
     try {
         const hash = await hashString(cacheKey);
         const uid = auth.currentUser.uid;
         const cloudPath = `backups/${uid}/audio/${hash}`;
-        const url = await storage.ref(cloudPath).getDownloadURL();
+        const url = await getDownloadURL(ref(storage, cloudPath));
         const response = await fetch(url);
         if (response.ok) return await response.arrayBuffer();
     } catch (e) {}

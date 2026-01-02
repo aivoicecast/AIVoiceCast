@@ -45,8 +45,8 @@ import { BrandLogo } from './components/BrandLogo';
 import { CoinWallet } from './components/CoinWallet';
 
 import { getCurrentUser, getDriveToken } from './services/authService';
-/* Fix: Corrected import to use exported auth instead of getAuth */
 import { auth, db } from './services/firebaseConfig';
+import { onSnapshot, doc } from 'firebase/firestore';
 import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from './services/googleDriveService';
 import { getUserChannels, saveUserChannel } from './utils/db';
 import { HANDCRAFTED_CHANNELS } from './utils/initialData';
@@ -62,9 +62,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// Fix: Corrected inheritance and initialization to ensure props and state are correctly typed in strict environments
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix: Explicit constructor for state initialization to ensure correct property binding
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -79,7 +77,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
   
   render(): ReactNode {
-    // Fix: Access state via this.state correctly
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -90,7 +87,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
             <h1 className="text-2xl font-bold text-white mb-2">Application Crash Detected</h1>
             <p className="text-slate-400 mb-6">A runtime error occurred in the UI component tree. This is often caused by missing data or a browser incompatibility.</p>
             <div className="bg-black/50 rounded-xl p-4 mb-8 font-mono text-xs text-red-300 overflow-x-auto border border-slate-800">
-              {/* Fix: Access error via this.state */}
               {this.state.error?.toString()}
             </div>
             <div className="flex gap-4">
@@ -102,7 +98,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
     
-    // Fix: Correctly access children through props inherited from React.Component
     return this.props.children;
   }
 }
@@ -240,7 +235,6 @@ const App: React.FC = () => {
     { id: 'code_studio', label: t.code, icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400' },
     { id: 'notebook_viewer', label: t.notebooks, icon: Book, action: () => handleSetViewState('notebook_viewer'), color: 'text-orange-300' },
     { id: 'whiteboard', label: t.whiteboard, icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400' },
-    // Fix: Updated action to correctly set viewState to 'calendar'
     { id: 'calendar', label: t.calendar, icon: Calendar, action: () => { handleSetViewState('calendar'); }, color: 'text-emerald-400' },
     { id: 'careers', label: t.careers, icon: Briefcase, action: () => handleSetViewState('careers'), color: 'text-yellow-400' },
     { id: 'blog', label: t.blog, icon: Rss, action: () => handleSetViewState('blog'), color: 'text-orange-400' },
@@ -266,17 +260,16 @@ const App: React.FC = () => {
     handleSetViewState('live_session');
   };
 
-  // Dedicated effect for the real-time profile listener
   useEffect(() => {
-    if (currentUser?.uid) {
-        const unsubscribeProfile = db?.collection('users').doc(currentUser.uid).onSnapshot(doc => {
-            if (doc.exists) {
-                setUserProfile(doc.data() as UserProfile);
+    if (currentUser?.uid && db) {
+        const unsubscribeProfile = onSnapshot(doc(db, 'users', currentUser.uid), snapshot => {
+            if (snapshot.exists()) {
+                setUserProfile(snapshot.data() as UserProfile);
             }
         });
-        return () => { if (unsubscribeProfile) unsubscribeProfile(); };
+        return () => unsubscribeProfile();
     }
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, db]);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -297,7 +290,6 @@ const App: React.FC = () => {
                 }
             }
 
-            // Handle QR Claim Route
             const params = new URLSearchParams(window.location.search);
             const claimId = params.get('claim');
             if (claimId) {
@@ -316,11 +308,8 @@ const App: React.FC = () => {
         
         const localChannels = await getUserChannels();
         setUserChannels(localChannels);
-        
-        // Finalize loading state
         setAuthLoading(false);
         
-        // Subscribe to public registry
         const unsubscribe = subscribeToPublicChannels((channels) => { 
           setPublicChannels(channels); 
         });
@@ -456,7 +445,6 @@ const App: React.FC = () => {
             {viewState === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
             {viewState === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
-            {/* Fix: Resolved type error for calendar viewState */}
             {viewState === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice={globalVoice} t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={(date) => {}} /> )}
             {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
             {(viewState === 'shipping_labels' || viewState === 'shipping_viewer') && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}
