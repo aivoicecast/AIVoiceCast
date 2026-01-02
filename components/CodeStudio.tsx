@@ -2,11 +2,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link } from 'lucide-react';
-// Removed moveCloudFile from the import list below as it is not exported by firestoreService
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink } from '../services/googleDriveService';
 import { connectGoogleDrive, getDriveToken } from '../services/authService';
-import { fetchRepoInfo, fetchRepoContents, fetchFileContent } from '../services/githubService';
+import { fetchRepoInfo, fetchRepoContents, fetchFileContent, updateRepoFile } from '../services/githubService';
 import { MarkdownView } from './MarkdownView';
 import { Whiteboard } from './Whiteboard';
 import { ShareModal } from './ShareModal';
@@ -293,9 +292,28 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
              await refreshExplorer();
         } else if (activeTab === 'cloud' && currentUser) {
              await saveProjectToCloud(`projects/${currentUser.uid}`, fileToSave.name, fileToSave.content);
+        } else if (activeTab === 'github' && githubToken && project.github) {
+            // Commit directly back to GitHub repo
+            const { owner, repo, branch } = project.github;
+            const res = await updateRepoFile(
+                githubToken,
+                owner,
+                repo,
+                fileToSave.path || fileToSave.name,
+                fileToSave.content,
+                fileToSave.sha,
+                `Update ${fileToSave.name} via AIVoiceCast Code Studio`,
+                branch
+            );
+            // Update local SHA to match new GitHub state
+            fileToSave.sha = res.sha;
+            fileToSave.isModified = false;
         }
         setSaveStatus('saved');
-    } catch(e: any) { setSaveStatus('modified'); }
+    } catch(e: any) { 
+        console.error("Save failed", e);
+        setSaveStatus('modified'); 
+    }
   };
 
   const handleShareProject = async () => {
@@ -347,11 +365,16 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               const res = await fetch(node.data.url);
               const text = await res.text();
               fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
+          } else if (activeTab === 'github' && project.github) {
+              const { owner, repo, branch } = project.github;
+              const text = await fetchFileContent(githubToken, owner, repo, node.id, branch);
+              fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false, sha: node.data?.sha };
           }
           if (fileData) updateSlotFile(fileData, focusedSlot);
       } else {
           if (activeTab === 'drive') handleDriveToggle(node);
           else if (activeTab === 'cloud') handleCloudToggle(node);
+          else if (activeTab === 'github') handleGithubToggle(node);
       }
   };
 
@@ -430,6 +453,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       }
   };
 
+  const handleGithubToggle = async (node: TreeNode) => {
+      // Implement lazy subtree loading if needed
+  };
+
   const handleConnectDrive = async () => {
       const token = await connectGoogleDrive();
       setDriveToken(token);
@@ -450,10 +477,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const contextFiles = activeSlots.filter(f => f !== null).map(f => `File: ${f?.name}\nContent:\n${f?.content}`).join('\n---\n');
-          const prompt = `Help in Code Studio. Active: ${activeFile?.name || "None"}. Workspace:\n${contextFiles}\nRequest: ${input}`;
+          const promptText = `Help in Code Studio. Active: ${activeFile?.name || "None"}. Workspace:\n${contextFiles}\nRequest: ${input}`;
           const resp = await ai.models.generateContent({ 
               model: 'gemini-3-flash-preview', 
-              contents: prompt,
+              contents: promptText,
               config: { tools: [{ functionDeclarations: [updateFileTool] }] }
           });
           if (resp.functionCalls) {
