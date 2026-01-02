@@ -1,11 +1,10 @@
-
-# Welcome to AIVoiceCast v4.0.0: The Neural Prism Edition
+# Welcome to AIVoiceCast v4.1.0: The Neural Prism Edition
 
 **By Admin** | *Posted in Platform Updates*
 
-The era of passive listening is over. Traditional podcasts are great for consumption, but AIVoiceCast transforms consumption into creation. With the release of **v4.0.0**, we have evolved from a generative podcast player into a comprehensive **Knowledge Ecosystem** that spans learning, coding, collaborating, and career growth.
+The era of passive listening is over. Traditional podcasts are great for consumption, but AIVoiceCast transforms consumption into creation. With the release of **v4.1.0**, we have evolved from a generative podcast player into a comprehensive **Knowledge Ecosystem** that spans learning, coding, collaborating, and career growth.
 
-## What's New in v4.0.0?
+## What's New in v4.1.0?
 
 ### 1. 🧠 Neural Lab Scratchpad
 Interactive AI notebooks are here. Chained prompts, context-aware execution, and deep visual reasoning are now part of your standard workflow.
@@ -22,7 +21,7 @@ The Code Studio has been completely re-architected to serve as your primary clou
 We believe learning should lead to earning.
 *   **Job Board:** Find opportunities tailored to the skills you are learning on the platform.
 *   **Talent Pool:** Upload your resume and showcase your "Knowledge Profile"—verified proof of the courses and live sessions you've completed.
-*   **Mentor Applications:** Apply to become a paid mentor and share your expertise with the community.
+*   **Mentor Applications:** Apply to become a verified Mentor or Domain Expert on the platform.
 
 ### 4. 💬 Workplace Chat
 Communication is key to learning. We've introduced a full-featured real-time chat system.

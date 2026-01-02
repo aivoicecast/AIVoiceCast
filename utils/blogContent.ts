@@ -1,4 +1,3 @@
-
 import { BlogPost } from '../types';
 
 export const INSTANT_AUTHOR_BLOG_POST: BlogPost = {
@@ -54,7 +53,7 @@ export const ARCHITECTURE_BLOG_POST: BlogPost = {
   content: `
 # 🛠️ Under the Hood: The Architecture of AIVoiceCast
 
-This post details our v3.85 stack.
+This post details our v4.1.0 stack.
 
 ## Internal Implementation
 ### Frontend: React 19

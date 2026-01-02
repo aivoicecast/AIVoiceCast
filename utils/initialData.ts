@@ -1,8 +1,16 @@
-
 import { Channel, ChannelVisibility } from '../types';
 import { OFFLINE_CHANNEL_ID } from './offlineContent';
 
-export const VOICES = ['Software Interview Voice', 'Linux Kernel Voice', 'Default Gem', 'Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
+export const VOICES = [
+  'Software Interview Voice gen-lang-client-0648937375', 
+  'Linux Kernel Voice gen-lang-client-0375218270', 
+  'Default Gem', 
+  'Puck', 
+  'Charon', 
+  'Kore', 
+  'Fenrir', 
+  'Zephyr'
+];
 
 // Use a fixed past date (Jan 15, 2024) to ensure initial data doesn't clutter the "Today" view in Calendar
 const INITIAL_DATE = 1705276800000; 
@@ -99,11 +107,11 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   },
   {
     id: '1',
-    title: 'Software Interview Voice',
+    title: 'Software Interview Preparation',
     description: 'Practice your coding interview skills with a strict but fair senior engineer bot.',
     author: 'Gemini Professional',
-    voiceName: 'Software Interview Voice',
-    systemInstruction: 'You are a world-class senior software engineer conducting a technical interview. Your tone is professional, rigorous, and analytical. You ask challenging algorithm and system design questions. You critique the user\'s reasoning, time/space complexity analysis, and edge-case handling. If the user provides a gen-lang-client ID, ignore the technical identifier and focus on the human developer persona.',
+    voiceName: 'Software Interview Voice gen-lang-client-0648937375',
+    systemInstruction: 'You are a world-class senior software engineer conducting a technical interview. Your tone is professional, rigorous, and analytical. You ask challenging algorithm and system design questions. You critique the user\'s reasoning, time/space complexity analysis, and edge-case handling.',
     likes: 342,
     dislikes: 12,
     comments: [],
@@ -120,11 +128,11 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   },
   {
     id: '2',
-    title: 'Linux Kernel Voice',
+    title: 'Linux Kernel Deep Dive',
     description: 'Deep dive into the Linux Kernel internals. Discussion about schedulers, memory management, and drivers.',
     author: 'Gemini Kernel',
-    voiceName: 'Linux Kernel Voice',
-    systemInstruction: 'You are a legendary Linux Kernel Maintainer. You speak with extreme technical precision about C programming, hardware-software interfaces, and memory safety. You are opinionated, deeply knowledgeable about Git, and have zero tolerance for sloppy abstractions. If technical client IDs appear, maintain focus on the kernel-level discussion.',
+    voiceName: 'Linux Kernel Voice gen-lang-client-0375218270',
+    systemInstruction: 'You are a legendary Linux Kernel Maintainer. You speak with extreme technical precision about C programming, hardware-software interfaces, and memory safety. You are opinionated, deeply knowledgeable about Git, and have zero tolerance for sloppy abstractions.',
     likes: 891,
     dislikes: 5,
     comments: [],
@@ -142,7 +150,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   },
   {
     id: 'default-gem',
-    title: 'Default Gem',
+    title: 'Default Gem Assistant',
     description: 'The standard AIVoiceCast general assistant. Helpful, creative, and always ready to chat.',
     author: 'Gemini Standard',
     voiceName: 'Default Gem',
@@ -187,7 +195,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     title: 'SmartNIC Driver Interview',
     description: 'Technical deep dive into Network Driver development. Covers flow control (netif queues), socket buffer copying, and RoCE primitives.',
     author: 'Kernel Lead',
-    voiceName: 'Software Interview Voice',
+    voiceName: 'Software Interview Voice gen-lang-client-0648937375',
     systemInstruction: 'You are a Senior Network Driver Engineer conducting a hard technical interview. You focus on the data path. Ask the user to explain: 1. Flow control using `netif_stop_queue` and `netif_wake_queue`. 2. The cost of `sendto()` and where the user-to-kernel copy happens. 3. How RoCE works at a low level, specifically Work Queue Elements (WQE) and Completion Queue Elements (CQE). Be rigorous.',
     likes: 412,
     dislikes: 3,
@@ -229,7 +237,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     title: 'Broadcom SmartNIC & AI Networking',
     description: 'Deep dive into the industry\'s first 800G AI Ethernet NIC, Stingray SmartNICs, and why networking is the bottleneck for large-scale AI.',
     author: 'Network Hardware Expert',
-    voiceName: 'Software Interview Voice',
+    voiceName: 'Software Interview Voice gen-lang-client-0648937375',
     systemInstruction: 'You are a Network Hardware Architect specializing in high-performance AI infrastructure. You explain Broadcom\'s networking solutions, including the 800G AI Ethernet NIC (Thor Ultra) and Stingray SmartNICs. You discuss the importance of high bandwidth, RoCEv2, congestion control, and low latency for scaling AI clusters (100K+ XPUs).',
     likes: 156,
     dislikes: 2,
@@ -313,7 +321,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     title: 'LLM and Machine Learning',
     description: 'A comprehensive guide for LLMs. From Transformer architecture to fine-tuning strategies and RAG pipelines.',
     author: 'Gemini Research',
-    voiceName: 'Software Interview Voice',
+    voiceName: 'Software Interview Voice gen-lang-client-0648937375',
     systemInstruction: 'You are a machine learning researcher. Explain complex ML concepts like attention mechanisms, backpropagation, and quantization in a clear, academic yet accessible way. You love discussing the future of AGI.',
     likes: 856,
     dislikes: 8,
@@ -418,7 +426,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     title: 'Solved & Unsolved',
     description: 'Deep dives into famous criminal cases, forensic breakthroughs, and the psychology of crime. A serious look at true crime history.',
     author: 'Investigator',
-    voiceName: 'Linux Kernel Voice',
+    voiceName: 'Linux Kernel Voice gen-lang-client-0375218270',
     systemInstruction: 'You are a veteran detective and crime historian. You discuss true crime cases with respect for the victims and a focus on the facts, forensic science, and legal procedures. You have a serious, noir tone.',
     likes: 890,
     dislikes: 12,

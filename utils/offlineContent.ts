@@ -1,4 +1,3 @@
-
 import { Chapter, GeneratedLecture } from '../types';
 
 export const OFFLINE_CHANNEL_ID = 'aivoicecast-platform-official-v2';
@@ -69,7 +68,7 @@ export const OFFLINE_LECTURES: Record<string, GeneratedLecture> = {
     sections: [
       {
         speaker: "Teacher",
-        text: "In v1, AIVoiceCast was just a list of audio tracks. In v4.0.0, it is an Operating System for knowledge work. We introduced the concept of 'App Suites'."
+        text: "In v1, AIVoiceCast was just a list of audio tracks. In v4.1.0, it is an Operating System for knowledge work. We introduced the concept of 'App Suites'."
       },
       {
         speaker: "Student",
