@@ -2,7 +2,7 @@
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
-  Timestamp, writeBatch, documentId, or
+  Timestamp, writeBatch, documentId
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, listAll, getMetadata, deleteObject } from 'firebase/storage';
 import { db, auth, storage } from './firebaseConfig';
@@ -328,11 +328,21 @@ export async function respondToInvitation(invitation: Invitation, accept: boolea
 }
 
 // --- Bookings ---
+/**
+ * Manual merge of two queries to simulate 'or' behavior.
+ */
 export async function getUserBookings(uid: string, email: string): Promise<Booking[]> {
     if (!db) return [];
-    const q = query(collection(db, BOOKINGS_COLLECTION), or(where('userId', '==', uid), where('invitedEmail', '==', email)));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as Booking);
+    try {
+        const q1 = query(collection(db, BOOKINGS_COLLECTION), where('userId', '==', uid));
+        const q2 = query(collection(db, BOOKINGS_COLLECTION), where('invitedEmail', '==', email));
+        const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+        const combined = [...snap1.docs, ...snap2.docs];
+        const unique = Array.from(new Map(combined.map(d => [d.id, d.data() as Booking])).values());
+        return unique;
+    } catch (e) {
+        return [];
+    }
 }
 
 export async function getPendingBookings(email: string): Promise<Booking[]> {

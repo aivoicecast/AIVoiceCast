@@ -63,16 +63,12 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-// FIX: Explicitly import Component and declare state to resolve 'Property state does not exist' errors
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly define state on the class to ensure TypeScript correctly identifies it
   state: ErrorBoundaryState = { hasError: false, error: null };
-  // FIX: Explicitly declare props to satisfy strict compiler checks on inherited properties from Component
   declare props: ErrorBoundaryProps;
 
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    // State initialization is handled above for better type compatibility in strict environments
   }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
@@ -84,7 +80,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
   
   render(): React.ReactNode {
-    // FIX: Accessing state which is now explicitly defined on the class
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
@@ -105,8 +100,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
         </div>
       );
     }
-    
-    // FIX: Accessing props which is now explicitly declared on the class to avoid 'Property props does not exist' error
     return this.props.children;
   }
 }
@@ -221,7 +214,6 @@ const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
-  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [globalVoice, setGlobalVoice] = useState('Auto');
   const [channelToComment, setChannelToComment] = useState<Channel | null>(null);
   const [channelToEdit, setChannelToEdit] = useState<Channel | null>(null);
@@ -274,9 +266,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (currentUser?.uid && db) {
         const unsubscribeProfile = onSnapshot(doc(db, 'users', currentUser.uid), snapshot => {
-            if (snapshot.exists()) {
-                setUserProfile(snapshot.data() as UserProfile);
-            }
+            if (snapshot.exists()) setUserProfile(snapshot.data() as UserProfile);
         });
         return () => unsubscribeProfile();
     }
@@ -290,16 +280,13 @@ const App: React.FC = () => {
         if (user) {
             setCurrentUser(user);
             await syncUserProfile(user);
-            
             const token = getDriveToken();
             if (token) {
                 const fid = await ensureCodeStudioFolder(token);
                 const data = await loadAppStateFromDrive(token, fid);
-                if (data) {
-                    if (data.userChannels) {
-                        setUserChannels(data.userChannels);
-                        data.userChannels.forEach((ch: any) => saveUserChannel(ch));
-                    }
+                if (data && data.userChannels) {
+                    setUserChannels(data.userChannels);
+                    data.userChannels.forEach((ch: any) => saveUserChannel(ch));
                 }
             }
 
@@ -308,10 +295,9 @@ const App: React.FC = () => {
             if (claimId) {
                 try {
                     const amount = await claimCoinCheck(claimId);
-                    alert(`Check Claimed! ${amount} coins added to your wallet.`);
-                } catch(e: any) {
-                    alert("Claim failed: " + e.message);
-                } finally {
+                    alert(`Check Claimed! ${amount} coins added.`);
+                } catch(e: any) { alert("Claim failed: " + e.message); }
+                finally {
                     const url = new URL(window.location.href);
                     url.searchParams.delete('claim');
                     window.history.replaceState({}, '', url.toString());
@@ -327,19 +313,13 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Fix: Correctly await the async subscribeToPublicChannels and handle cleanup to avoid Promise call errors
   useEffect(() => {
     let unsub: (() => void) | undefined;
     const initializeChannels = async () => {
         const localChannels = await getUserChannels();
         setUserChannels(localChannels);
-        
-        const maybeUnsub = await subscribeToPublicChannels((channels) => { 
-          setPublicChannels(channels); 
-        });
-        if (typeof maybeUnsub === 'function') {
-            unsub = maybeUnsub;
-        }
+        const maybeUnsub = await subscribeToPublicChannels((channels) => { setPublicChannels(channels); });
+        if (typeof maybeUnsub === 'function') unsub = maybeUnsub;
     };
     initializeChannels();
     return () => { if (unsub) unsub(); };
@@ -419,32 +399,19 @@ const App: React.FC = () => {
 
            <div className="flex items-center gap-2 sm:gap-4">
               {userProfile && (
-                  <button 
-                    onClick={() => handleSetViewState('coin_wallet')}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex"
-                  >
-                      <Coins size={16}/>
-                      <span className="font-black text-xs">{userProfile.coinBalance || 0}</span>
+                  <button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex">
+                      <Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span>
                   </button>
               )}
               <Notifications />
-              <div className="flex gap-2">
-                <button onClick={() => setIsVoiceCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 group overflow-hidden relative">
-                    <Sparkles size={16} className="relative z-10"/>
-                    <span className="relative z-10">{t.magic}</span>
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
-                </button>
-              </div>
+              <button onClick={() => setIsVoiceCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 group overflow-hidden relative">
+                  <Sparkles size={16} className="relative z-10"/><span className="relative z-10">{t.magic}</span>
+              </button>
               <div className="relative">
                  <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">
                     <img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=Guest`} alt="Profile" className="w-full h-full object-cover" />
                  </button>
-                 <StudioMenu 
-                    isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile}
-                    globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen}
-                    setIsSyncModalOpen={setIsSyncModalOpen} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => setIsUserGuideOpen(true)} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => setIsPrivacyOpen(true)}
-                    t={t} channels={allChannels} language={language} setLanguage={setLanguage}
-                 />
+                 <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} setIsSyncModalOpen={() => {}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => setIsUserGuideOpen(true)} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => setIsPrivacyOpen(true)} t={t} channels={allChannels} language={language} setLanguage={setLanguage} />
               </div>
            </div>
         </header>
@@ -469,7 +436,7 @@ const App: React.FC = () => {
             {viewState === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
             {viewState === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
             {viewState === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice={globalVoice} t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={(date) => {}} /> )}
-            {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
+            {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} /> )}
             {(viewState === 'shipping_labels' || viewState === 'shipping_viewer') && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}
             {(viewState === 'icon_generator' || viewState === 'icon_viewer') && ( <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} iconId={activeItemId || undefined} /> )}
             {viewState === 'notebook_viewer' && ( <NotebookViewer onBack={() => handleSetViewState('directory')} currentUser={currentUser} notebookId={activeItemId || undefined} /> )}

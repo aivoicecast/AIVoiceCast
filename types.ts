@@ -40,12 +40,11 @@ export interface BankingCheck {
   bankName: string;
   senderName: string;
   senderAddress: string;
-  recipientAddress?: string; // Added field
+  recipientAddress?: string;
   signature: string;
-  signatureUrl?: string; // Added field for drawn/uploaded signature
+  signatureUrl?: string;
   ownerId?: string;
   watermarkUrl?: string;
-  // Coin related fields
   coinAmount?: number;
   isCoinCheck?: boolean;
   isClaimed?: boolean;
@@ -271,9 +270,12 @@ export interface UserProfile {
   likedChannelIds?: string[];
   preferredAiProvider?: 'gemini' | 'openai';
   preferredMobileQuickApp?: string;
-  // Coin related fields
   coinBalance: number;
   lastCoinGrantAt?: number;
+  // Banking Profile
+  senderAddress?: string;
+  savedSignatureUrl?: string;
+  checkTemplate?: Partial<BankingCheck>;
 }
 
 export interface RecordingSession {
@@ -492,7 +494,6 @@ export interface Notebook {
   title: string;
   author: string;
   description: string;
-  // Added optional ownerId to support ownership tracking in backend
   ownerId?: string;
   kernel: 'python' | 'javascript';
   cells: NotebookCell[];
