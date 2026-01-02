@@ -341,7 +341,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   <div ref={checkRef} className="w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border border-slate-300 rounded-lg relative overflow-hidden p-8">
                       {/* WATERMARK LAYER - Absolute Background */}
                       {check.watermarkUrl && (
-                          <div className="absolute inset-0 opacity-[0.15] pointer-events-none z-0">
+                          <div className="absolute inset-0 opacity-[0.12] pointer-events-none z-0">
                               <img 
                                 src={check.watermarkUrl} 
                                 className="w-full h-full object-cover grayscale" 
@@ -395,19 +395,20 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <p className="text-xs font-bold">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</p>
                       </div>
 
-                      <div className="mt-6 flex items-end justify-between relative z-10">
+                      {/* BOTTOM ROW: MEMO, MICR LINE, AND SIGNATURE */}
+                      <div className="mt-auto flex items-end justify-between relative z-10">
                           <div className="flex-1 flex flex-col gap-2">
                               <div className="flex items-center gap-2">
                                   <span className="text-[10px] font-bold">FOR</span>
                                   <div className="w-48 border-b border-black text-sm font-serif italic px-1 truncate">{check.memo || '____________________'}</div>
                               </div>
-                              {/* MICR LINE - POSITIONED RELATIVE TO BOTTOM OF CONTAINER */}
-                              <div className="mt-2 font-mono text-xl tracking-widest text-slate-800">
+                              {/* MICR LINE - POSITIONED AT THE BOTTOM LEFT CORNER OF THIS BLOCK */}
+                              <div className="mt-4 font-mono text-xl tracking-widest text-slate-800 whitespace-nowrap bg-white/50 inline-block px-1">
                                   ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
                               </div>
                           </div>
                           
-                          <div className="w-48 relative">
+                          <div className="w-48 relative ml-4">
                               <div className="border-b border-black h-12 flex items-end justify-center pb-1 overflow-hidden">
                                   {check.signatureUrl ? (
                                       <img 
