@@ -119,6 +119,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&color=0-0-0&bgcolor=255-255-255&data=${encodeURIComponent(baseUri)}`;
   }, [shareLink, check.id]);
 
+  const isLocalUrl = (url?: string) => url?.startsWith('data:') || url?.startsWith('blob:');
+
   const handleParseCheckDetails = async () => {
       const input = prompt("Paste raw payment instructions:");
       if (!input) return;
@@ -132,7 +134,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           });
           const parsed = JSON.parse(response.text || '{}');
           setCheck(prev => ({ ...prev, ...parsed }));
-      } catch (e) { alert("Neural parse failed."); } finally { setIsParsing(null); }
+      } catch (e) { alert("Neural parse failed."); } finally { setIsParsing(false); }
   };
 
   const handleGenerateArt = async () => {
@@ -201,7 +203,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               amount: (check.amount === undefined || check.amount === null) ? 0 : check.amount
           };
           
-          await saveBankingCheck(checkToSave);
+          await saveBankingCheck(checkToSave as any);
           const link = `${window.location.origin}?view=check_viewer&id=${id}`;
           setShareLink(link);
           setShowShareModal(true);
@@ -216,10 +218,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (!checkRef.current) return;
     setIsExporting(true);
     try {
-        const canvas = await html2canvas(checkRef.current, { scale: 3, useCORS: true });
+        const canvas = await html2canvas(checkRef.current, { 
+            scale: 4, 
+            useCORS: true, 
+            backgroundColor: '#ffffff'
+        });
         const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('l', 'px', [600, 300]);
-        pdf.addImage(imgData, 'PNG', 0, 0, 600, 300);
+        const pdf = new jsPDF('l', 'px', [600, 270]);
+        pdf.addImage(imgData, 'PNG', 0, 0, 600, 270);
         pdf.save(`check_${check.checkNumber}.pdf`);
     } catch (e) {
         alert("PDF export failed.");
@@ -237,7 +243,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       );
   }
 
-  // FIX: Component must return a React node instead of void. This was caused by truncation in the original file.
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
@@ -254,7 +259,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </button>
                   <button onClick={handlePublishAndShareLink} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
                       {isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
-                      <span>Publish & Share</span>
+                      <span>{shareLink ? 'Share URI' : 'Publish & Share'}</span>
                   </button>
                 </>
               )}
@@ -273,7 +278,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                     <input type="text" placeholder="Payee Name" value={check.payee} onChange={e => setCheck({...check, payee: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500/50"/>
                     <div className="relative">
                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16}/>
-                        <input type="number" placeholder="0.00" value={check.amount} onChange={e => setCheck({...check, amount: parseFloat(e.target.value) || 0})} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500/50"/>
+                        <input type="number" placeholder="0.00" value={check.isCoinCheck ? (check.coinAmount || '') : (check.amount || '')} onChange={e => setCheck(check.isCoinCheck ? {...check, coinAmount: parseFloat(e.target.value) || 0} : {...check, amount: parseFloat(e.target.value) || 0})} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500/50"/>
                     </div>
                 </div>
 
@@ -286,78 +291,102 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                     </div>
                 </div>
 
-                <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl font-bold text-sm border border-slate-700 flex items-center justify-center gap-2">
-                    {isGeneratingArt ? <Loader2 size={16} className="animate-spin"/> : <Palette size={16}/>}
-                    Generate Watermark
-                </button>
-                
-                <button onClick={() => setShowSignPad(true)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm border border-slate-700 flex items-center justify-center gap-2">
-                    <PenTool size={16}/>
-                    Sign Check
-                </button>
+                <div className="space-y-3">
+                    <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl font-bold text-sm border border-slate-700 flex items-center justify-center gap-2 transition-all">
+                        {isGeneratingArt ? <Loader2 size={16} className="animate-spin"/> : <Palette size={16}/>}
+                        Generate AI Watermark
+                    </button>
+                    
+                    <button onClick={() => setShowSignPad(true)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm border border-slate-700 flex items-center justify-center gap-2 transition-all">
+                        <PenTool size={16}/>
+                        Drawn Signature
+                    </button>
+                </div>
             </div>
           )}
 
-          <div className="flex-1 bg-slate-950 flex flex-col p-8 items-center justify-center overflow-auto">
+          <div className="flex-1 bg-slate-950 flex flex-col p-8 items-center justify-center overflow-auto relative">
               <div 
                 style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }}
                 className="transition-transform duration-300"
               >
-                  <div ref={checkRef} className="w-[600px] h-[280px] bg-white text-black shadow-2xl flex flex-col border border-slate-300 rounded-lg relative overflow-hidden p-8">
+                  <div ref={checkRef} className="w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border border-slate-300 rounded-lg relative overflow-hidden p-8">
+                      {/* WATERMARK LAYER */}
                       {check.watermarkUrl && (
-                          <img src={check.watermarkUrl} className="absolute inset-0 w-full h-full object-cover opacity-10 pointer-events-none" alt="" />
+                          <div className="absolute inset-0 opacity-[0.15] pointer-events-none z-0">
+                              <img 
+                                src={check.watermarkUrl} 
+                                className="w-full h-full object-cover grayscale" 
+                                crossOrigin={isLocalUrl(check.watermarkUrl) ? undefined : "anonymous"}
+                                referrerPolicy="no-referrer"
+                                alt="" 
+                              />
+                          </div>
                       )}
+
+                      {/* QR CODE - TOP CENTER */}
+                      <div className="absolute top-1 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+                          <img src={qrCodeUrl} className="w-16 h-16 border border-white p-0.5 rounded shadow-lg bg-white" />
+                      </div>
                       
-                      <div className="flex justify-between items-start">
+                      <div className="flex justify-between items-start relative z-10">
                           <div className="space-y-1">
                               <h2 className="text-sm font-bold uppercase tracking-wider">{check.senderName}</h2>
-                              <p className="text-[10px] text-slate-500 leading-none">{check.senderAddress}</p>
+                              <p className="text-[9px] text-slate-500 leading-tight max-w-[180px] truncate">{check.senderAddress}</p>
                           </div>
                           <div className="text-right">
                               <p className="text-lg font-mono font-bold">{check.checkNumber}</p>
                           </div>
                       </div>
 
-                      <div className="flex justify-end mt-2">
+                      <div className="flex justify-end mt-2 relative z-10">
                           <div className="border-b border-black w-32 flex justify-between items-end pb-1">
-                              <span className="text-[10px] font-bold">DATE</span>
+                              <span className="text-[9px] font-bold">DATE</span>
                               <span className="text-sm font-mono">{check.date}</span>
                           </div>
                       </div>
 
-                      <div className="mt-4 flex items-center gap-4">
+                      <div className="mt-4 flex items-center gap-4 relative z-10">
                           <span className="text-xs font-bold whitespace-nowrap">PAY TO THE ORDER OF</span>
                           <div className="flex-1 border-b border-black text-lg font-serif italic px-2">{check.payee}</div>
-                          <div className="w-32 border-2 border-black p-1 flex items-center">
+                          <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50">
                               <span className="text-sm font-bold">$</span>
-                              <span className="flex-1 text-right font-mono text-lg font-bold">{check.amount.toFixed(2)}</span>
+                              <span className="flex-1 text-right font-mono text-lg font-bold">
+                                {check.isCoinCheck ? (check.coinAmount || 0).toFixed(2) : (check.amount || 0).toFixed(2)}
+                              </span>
                           </div>
                       </div>
 
-                      <div className="mt-4 flex items-center gap-4">
+                      <div className="mt-4 flex items-center gap-4 relative z-10">
                           <div className="flex-1 border-b border-black text-sm font-serif italic px-2">{check.amountWords}</div>
-                          <span className="text-xs font-bold">DOLLARS</span>
+                          <span className="text-xs font-bold">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                       </div>
 
-                      <div className="mt-4">
-                          <p className="text-xs font-bold">{check.bankName}</p>
+                      <div className="mt-4 relative z-10">
+                          <p className="text-xs font-bold">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</p>
                       </div>
 
-                      <div className="mt-6 flex items-end justify-between">
+                      <div className="mt-6 flex items-end justify-between relative z-10">
                           <div className="flex-1 flex flex-col gap-2">
                               <div className="flex items-center gap-2">
                                   <span className="text-[10px] font-bold">FOR</span>
-                                  <div className="w-48 border-b border-black text-sm font-serif italic px-1">{check.memo}</div>
+                                  <div className="w-48 border-b border-black text-sm font-serif italic px-1 truncate">{check.memo}</div>
                               </div>
-                              <div className="mt-2 font-mono text-xl tracking-widest">
+                              <div className="mt-2 font-mono text-xl tracking-widest text-slate-800">
                                   ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
                               </div>
                           </div>
                           
                           <div className="w-48 relative">
-                              <div className="border-b border-black h-12 flex items-end justify-center pb-1">
+                              <div className="border-b border-black h-12 flex items-end justify-center pb-1 overflow-hidden">
                                   {check.signatureUrl ? (
-                                      <img src={check.signatureUrl} className="max-h-12 w-auto object-contain" alt="Signature" />
+                                      <img 
+                                        src={check.signatureUrl} 
+                                        className="max-h-12 w-auto object-contain" 
+                                        crossOrigin={isLocalUrl(check.signatureUrl) ? undefined : "anonymous"}
+                                        referrerPolicy="no-referrer"
+                                        alt="Signature" 
+                                      />
                                   ) : (
                                       <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>
                                   )}
@@ -382,7 +411,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                         disableAI 
                         backgroundColor="transparent" 
                         initialColor="#000000"
-                        onDataChange={(data) => {}}
+                        onDataChange={() => {}}
                         onSessionStart={() => {}}
                       />
                   </div>
