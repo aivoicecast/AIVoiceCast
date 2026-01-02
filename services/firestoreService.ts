@@ -1110,7 +1110,8 @@ export async function getUserCards(uid: string): Promise<AgentMemory[]> {
     if (!db) return [];
     const q = query(collection(db, CARDS_COLLECTION), where('ownerId', '==', uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => data() as AgentMemory);
+    // Fix: Fixed call to data() which was undefined; changed to d.data().
+    return snap.docs.map(d => d.data() as AgentMemory);
 }
 
 // --- Admin Debug ---
