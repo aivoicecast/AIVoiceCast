@@ -342,9 +342,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
                 className={`w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border ${check.isCoinCheck ? 'border-amber-400 ring-4 ring-amber-400/20' : 'border-slate-300'} relative shrink-0 p-8 rounded-sm overflow-hidden`}
               >
-                  {/* Large Centered QR Code - 2x Size (128px) and Centered */}
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-0 opacity-[0.12] pointer-events-none transition-opacity hover:opacity-20">
-                      <img src={qrCodeUrl} className="w-32 h-32 border p-2 rounded bg-white shadow-xl" />
+                  {/* High Contrast Top-Centered QR Code - Solid for easy phone scanning */}
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+                      <img src={qrCodeUrl} className="w-24 h-24 border-2 border-slate-100 p-1 rounded bg-white shadow-2xl" />
                   </div>
 
                   {/* Watermark (Etching) */}
@@ -381,8 +381,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <span className="text-[8px] font-bold text-slate-400 uppercase">Pay to the Order of</span>
                           <div className="border-b border-black text-sm font-black italic pt-1 h-7">{check.payee}</div>
                       </div>
-                      {/* Small QR remains as an interactable verification shortcut if needed, but the main one is now centered. 
-                          Actually, removing it to avoid clutter as per user request to move it to center. */}
                   </div>
 
                   {/* Amount Words */}
