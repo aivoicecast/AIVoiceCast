@@ -398,14 +398,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
 
-                  {/* Memo and Signature - Pushed up */}
-                  <div className="flex items-end justify-between mb-4 relative z-10">
-                      <div className="w-[35%] flex flex-col">
+                  {/* Memo line - REPOSITIONED HIGHER ABOVE MICR */}
+                  <div className="absolute bottom-14 left-8 z-10">
+                      <div className="w-[220px] flex flex-col">
                           <span className="text-[7px] font-bold text-slate-400 uppercase">Memo</span>
-                          <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5">{check.memo}</div>
+                          <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5 leading-tight">{check.memo}</div>
                       </div>
+                  </div>
 
-                      <div className="w-[30%] flex flex-col items-center">
+                  {/* Signature line - REPOSITIONED HIGHER ABOVE MICR */}
+                  <div className="absolute bottom-14 right-8 z-10">
+                      <div className="w-[180px] flex flex-col items-center">
                           <div className="border-b border-black w-full text-center pb-0.5 h-10 flex items-end justify-center">
                               {check.signatureUrl ? (
                                   <img src={check.signatureUrl} className="h-10 max-w-full object-contain" />
@@ -417,8 +420,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
                   </div>
 
-                  {/* MICR Line - FIXED TO BOTTOM LEFT */}
-                  <div className="absolute bottom-4 left-6 pointer-events-none">
+                  {/* MICR Line - FIXED TO BOTTOM LEFT CORNER */}
+                  <div className="absolute bottom-4 left-8 pointer-events-none z-20">
                       <div className="font-mono text-sm tracking-[0.25em] text-slate-900 flex items-center gap-6">
                           <span>⑆ {check.routingNumber} ⑆</span>
                           <span>{check.accountNumber} ⑈</span>
