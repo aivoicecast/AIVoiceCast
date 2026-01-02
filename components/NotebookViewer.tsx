@@ -1,34 +1,55 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Book, Play, Terminal, MoreVertical, Plus, Edit3, Trash2, Cpu, Share2, Sparkles, Loader2, Save, Image as ImageIcon, X, ChevronUp, ChevronDown, Check, Zap, Wand2 } from 'lucide-react';
+import { ArrowLeft, Book, Play, Terminal, MoreVertical, Plus, Edit3, Trash2, Cpu, Share2, Sparkles, Loader2, Save, Image as ImageIcon, X, ChevronUp, ChevronDown, Check, Zap, Wand2, Link } from 'lucide-react';
 import { Notebook, NotebookCell } from '../types';
-import { getCreatorNotebooks } from '../services/firestoreService';
+import { getCreatorNotebooks, saveNotebook, getNotebook } from '../services/firestoreService';
 import { MarkdownView } from './MarkdownView';
 import { GoogleGenAI } from '@google/genai';
 import { resizeImage } from '../utils/imageUtils';
+import { generateSecureId } from '../utils/idUtils';
+import { ShareModal } from './ShareModal';
 
 interface NotebookViewerProps {
   onBack: () => void;
   currentUser: any;
+  notebookId?: string;
 }
 
-export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentUser }) => {
+export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentUser, notebookId }) => {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [activeNotebook, setActiveNotebook] = useState<Notebook | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingCellId, setEditingCellId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   
+  // Share State
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+
   // File upload ref for multimodal cells
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [targetCellForUpload, setTargetCellForUpload] = useState<string | null>(null);
 
   useEffect(() => {
-    // Load initial notebooks
-    getCreatorNotebooks('system').then(data => {
-      setNotebooks(data);
-      if (data.length > 0 && !activeNotebook) setActiveNotebook(data[0]);
-      setLoading(false);
-    });
-  }, []);
+    const init = async () => {
+        setLoading(true);
+        if (notebookId) {
+            const nb = await getNotebook(notebookId);
+            if (nb) {
+                setActiveNotebook(nb);
+                setShareUrl(`${window.location.origin}?view=notebook_viewer&id=${nb.id}`);
+            }
+        }
+        
+        if (currentUser) {
+            const data = await getCreatorNotebooks(currentUser.uid);
+            setNotebooks(data);
+            if (!activeNotebook && data.length > 0 && !notebookId) setActiveNotebook(data[0]);
+        }
+        setLoading(false);
+    };
+    init();
+  }, [notebookId, currentUser]);
 
   const handleRunCell = async (cellId: string) => {
       if (!activeNotebook) return;
@@ -88,7 +109,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
 
   const handleCreateNotebook = () => {
       const newNb: Notebook = {
-          id: `nb-${Date.now()}`,
+          id: generateSecureId(),
           title: 'New Research Session',
           author: currentUser?.displayName || 'Anonymous',
           description: 'A fresh workspace for neural exploration and prompt engineering.',
@@ -245,8 +266,23 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
       );
   };
 
-  const handleSaveNotebook = () => {
-      alert("Lab Session Saved Successfully (Cloud Sync Active)");
+  const handleSaveAndShare = async () => {
+      if (!activeNotebook || !currentUser) return alert("Please sign in to save and share.");
+      setIsSaving(true);
+      try {
+          const finalId = await saveNotebook({ 
+              ...activeNotebook, 
+              ownerId: currentUser.uid,
+              updatedAt: Date.now() 
+          });
+          const url = `${window.location.origin}?view=notebook_viewer&id=${finalId}`;
+          setShareUrl(url);
+          setShowShareModal(true);
+      } catch (e) {
+          alert("Failed to save notebook.");
+      } finally {
+          setIsSaving(false);
+      }
   };
 
   return (
@@ -270,7 +306,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
               ) : notebooks.map(nb => (
                   <button
                       key={nb.id}
-                      onClick={() => { setActiveNotebook(nb); setEditingCellId(null); }}
+                      onClick={() => { setActiveNotebook(nb); setEditingCellId(null); setShareUrl(''); }}
                       className={`w-full text-left p-4 rounded-xl border transition-all group ${activeNotebook?.id === nb.id ? 'bg-indigo-600/10 border-indigo-500/30' : 'border-transparent hover:bg-slate-800'}`}
                   >
                       <h3 className={`font-bold text-sm ${activeNotebook?.id === nb.id ? 'text-indigo-300' : 'text-slate-200 group-hover:text-white'}`}>{nb.title}</h3>
@@ -307,11 +343,11 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
                           </div>
                       </div>
                       <div className="flex items-center gap-2">
-                          <button onClick={handleSaveNotebook} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg flex items-center gap-2 transition-all active:scale-95">
-                              <Save size={14}/> Save Session
+                          <button onClick={handleSaveAndShare} disabled={isSaving} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg flex items-center gap-2 transition-all active:scale-95">
+                              {isSaving ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
+                              Save & Share URI
                           </button>
                           <div className="w-px h-6 bg-slate-800 mx-1"></div>
-                          <button className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white" title="Export as PDF"><Share2 size={18}/></button>
                           <button className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"><MoreVertical size={18}/></button>
                       </div>
                   </header>
@@ -381,11 +417,18 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
           )}
       </div>
 
+      {showShareModal && shareUrl && (
+          <ShareModal 
+            isOpen={true} onClose={() => setShowShareModal(false)}
+            link={shareUrl} title={activeNotebook?.title || 'Research Notebook'}
+            onShare={async () => {}} currentUserUid={currentUser?.uid}
+          />
+      )}
+
       {/* Hidden Multimodal File Input */}
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={async (e) => {
           if (e.target.files?.[0] && targetCellForUpload && activeNotebook) {
               const base64 = await resizeImage(e.target.files[0], 512, 0.7);
-              // In a real app, you'd store this in the cell. For this mockup, we'll append text.
               handleUpdateCell(targetCellForUpload, activeNotebook.cells.find(c => c.id === targetCellForUpload)?.content + `\n\n[ATTACHED IMAGE: ${e.target.files[0].name}]`);
           }
       }}/>

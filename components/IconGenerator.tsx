@@ -3,14 +3,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera, AlertCircle, Share2, Link, Copy } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { resizeImage } from '../utils/imageUtils';
-import { saveIcon, uploadFileToStorage } from '../services/firestoreService';
+import { saveIcon, uploadFileToStorage, getIcon } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
+import { generateSecureId } from '../utils/idUtils';
+import { ShareModal } from './ShareModal';
 
 interface IconGeneratorProps {
   onBack: () => void;
   currentUser: any;
+  iconId?: string;
 }
 
 const STYLE_PRESETS = [
@@ -22,7 +25,7 @@ const STYLE_PRESETS = [
   { name: 'Ink Wash', prompt: 'Traditional Chinese ink wash painting style, minimalist, elegant brush strokes, negative space, artistic' }
 ];
 
-export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUser }) => {
+export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUser, iconId }) => {
   const [prompt, setPrompt] = useState('');
   const [selectedStyle, setSelectedStyle] = useState(STYLE_PRESETS[0]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -31,8 +34,23 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
   const [error, setError] = useState<string | null>(null);
   const [isSharing, setIsSharing] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [publishProgress, setPublishProgress] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+      if (iconId) {
+          setIsGenerating(true);
+          getIcon(iconId).then(data => {
+              if (data) {
+                  setGeneratedIcon(data.url);
+                  setPrompt(data.prompt);
+                  setSelectedStyle(STYLE_PRESETS.find(s => s.name === data.style) || STYLE_PRESETS[0]);
+                  setShareLink(`${window.location.origin}?view=icon&id=${data.id}`);
+              }
+          }).finally(() => setIsGenerating(false));
+      }
+  }, [iconId]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
@@ -114,12 +132,14 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
       setIsSharing(true);
       setPublishProgress('Publishing to cloud...');
       try {
-          const id = crypto.randomUUID();
+          const id = generateSecureId();
           
-          // 1. Save to Firestore (Publicly viewable on site)
-          const res = await fetch(generatedIcon);
-          const blob = await res.blob();
-          const cloudUrl = await uploadFileToStorage(`icons/${id}.png`, blob);
+          let cloudUrl = generatedIcon;
+          if (generatedIcon.startsWith('data:')) {
+            const res = await fetch(generatedIcon);
+            const blob = await res.blob();
+            cloudUrl = await uploadFileToStorage(`icons/${id}.png`, blob);
+          }
           
           await saveIcon({
               id,
@@ -130,17 +150,9 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
               ownerId: auth.currentUser.uid
           });
 
-          // 2. Save to Google Drive
-          setPublishProgress('Syncing to Google Drive...');
-          const token = getDriveToken() || await connectGoogleDrive();
-          if (token) {
-              const folderId = await ensureCodeStudioFolder(token);
-              await uploadToDrive(token, folderId, `icon_${prompt.substring(0, 10).replace(/\s/g, '_')}_${Date.now()}.png`, blob);
-          }
-
           const link = `${window.location.origin}?view=icon&id=${id}`;
           setShareLink(link);
-          alert("Icon published! You can now copy the shareable link.");
+          setShowShareModal(true);
       } catch (e: any) {
           alert("Publishing failed: " + e.message);
       } finally {
@@ -155,13 +167,6 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     link.href = generatedIcon;
     link.download = `app_icon_${Date.now()}.png`;
     link.click();
-  };
-
-  const copyLink = () => {
-      if (shareLink) {
-          navigator.clipboard.writeText(shareLink);
-          alert("Link copied to clipboard!");
-      }
   };
 
   return (
@@ -183,16 +188,10 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                       <Edit3 size={12}/> Edit Mode
                   </div>
               )}
-              {generatedIcon && !shareLink && (
-                  <button onClick={handlePublishAndShare} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
+              {generatedIcon && (
+                  <button onClick={() => shareLink ? setShowShareModal(true) : handlePublishAndShare()} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
                       {isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
-                      <span>{isSharing ? 'Syncing...' : 'Publish & Share'}</span>
-                  </button>
-              )}
-              {shareLink && (
-                   <button onClick={copyLink} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
-                      <Link size={14}/>
-                      <span>Copy Link</span>
+                      <span>{isSharing ? 'Syncing...' : 'Share URI'}</span>
                   </button>
               )}
           </div>
@@ -301,6 +300,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                                         src={generatedIcon} 
                                         className="w-24 h-24 rounded-[1.5rem] shadow-2xl border border-white/10" 
                                         alt="App Icon Preview" 
+                                        crossOrigin="anonymous"
                                       />
                                       <span className="text-[10px] font-bold text-white uppercase tracking-wider">Your App</span>
                                   </div>
@@ -326,18 +326,6 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
                               Try Again
                           </button>
                       </div>
-                      
-                      {shareLink && (
-                          <div className="mt-8 w-full max-w-sm bg-slate-900 border border-emerald-500/30 rounded-xl p-4 animate-fade-in flex items-center justify-between gap-3">
-                              <div className="overflow-hidden">
-                                  <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">Shareable Link</p>
-                                  <p className="text-xs text-slate-400 truncate font-mono">{shareLink}</p>
-                              </div>
-                              <button onClick={copyLink} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300">
-                                  <Copy size={16}/>
-                              </button>
-                          </div>
-                      )}
                   </div>
               ) : (
                   <div className="flex flex-col items-center text-center space-y-6 max-w-sm">
@@ -367,6 +355,14 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
               )}
           </div>
       </div>
+
+      {showShareModal && shareLink && (
+          <ShareModal 
+            isOpen={true} onClose={() => setShowShareModal(false)} 
+            link={shareLink} title={`Icon: ${prompt.substring(0, 15)}...`}
+            onShare={async () => {}} currentUserUid={currentUser?.uid}
+          />
+      )}
     </div>
   );
 };

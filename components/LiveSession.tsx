@@ -7,7 +7,8 @@ import { auth } from '../services/firebaseConfig';
 import { getDriveToken } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
-import { publishChannelToFirestore, saveDiscussion, updateDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment } from '../services/firestoreService';
+// Fix: remove updateDiscussion from imports as it is not exported from firestoreService and is unused here
+import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment } from '../services/firestoreService';
 import { summarizeDiscussionAsSection } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
 

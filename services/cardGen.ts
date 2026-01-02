@@ -5,7 +5,7 @@ import { base64ToBytes, pcmToWavBlobUrl } from '../utils/audioUtils';
 
 export async function generateCardMessage(memory: AgentMemory, tone: string = 'warm'): Promise<string> {
     try {
-        // FIX: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY}); exclusively from process.env.API_KEY.
+        // Initialization follows @google/genai guidelines using process.env.API_KEY.
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
         let prompt = '';
@@ -72,7 +72,7 @@ export async function generateCardMessage(memory: AgentMemory, tone: string = 'w
 
 export async function generateSongLyrics(memory: AgentMemory): Promise<string> {
     try {
-        // FIX: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY}); exclusively from process.env.API_KEY.
+        // Initialization follows @google/genai guidelines using process.env.API_KEY.
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
         const defaultMsg = 'Wishing you a season filled with warmth, comfort, and good cheer.';
@@ -113,13 +113,13 @@ export async function generateSongLyrics(memory: AgentMemory): Promise<string> {
 
 export async function generateCardAudio(text: string, voiceName: string = 'Kore'): Promise<string> {
     try {
-        // FIX: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY}); exclusively from process.env.API_KEY.
+        // Initialization follows @google/genai guidelines using process.env.API_KEY.
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-preview-tts',
             contents: [{ parts: [{ text }] }],
             config: {
-                // FIX: responseModalities must be an array with a single Modality.AUDIO element.
+                // Speech generation config follows single-modality rule.
                 responseModalities: [Modality.AUDIO],
                 speechConfig: {
                     voiceConfig: {
@@ -150,7 +150,7 @@ export async function generateCardImage(
     aspectRatio: '1:1' | '3:4' | '4:3' | '9:16' | '16:9' = '1:1'
 ): Promise<string> {
     try {
-        // FIX: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY}); exclusively from process.env.API_KEY.
+        // Initialization follows @google/genai guidelines using process.env.API_KEY.
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
         const customContext = memory.customThemePrompt ? `Main Subject/Theme: ${memory.customThemePrompt}.` : '';
@@ -193,7 +193,7 @@ export async function generateCardImage(
         }
 
         const response = await ai.models.generateContent({
-            // FIX: Use gemini-2.5-flash-image by default to avoid mandatory user-selected API key logic requirement in CardWorkshop.
+            // Defaulting to gemini-2.5-flash-image for general tasks.
             model: 'gemini-2.5-flash-image',
             contents: { parts },
             config: {

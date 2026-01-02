@@ -1,13 +1,15 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
-import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link } from 'lucide-react';
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, moveCloudFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink } from '../services/googleDriveService';
 import { connectGoogleDrive, getDriveToken } from '../services/authService';
 import { fetchRepoInfo, fetchRepoContents, fetchFileContent } from '../services/githubService';
 import { MarkdownView } from './MarkdownView';
 import { Whiteboard } from './Whiteboard';
+import { ShareModal } from './ShareModal';
+import { generateSecureId } from '../utils/idUtils';
 import { GoogleGenAI, FunctionDeclaration, Type } from '@google/genai';
 
 interface TreeNode {
@@ -237,6 +239,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const [isChatThinking, setIsChatThinking] = useState(false);
   const [isFormattingSlots, setIsFormattingSlots] = useState<Record<number, boolean>>({});
   
+  // Share state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+
   const [cloudItems, setCloudItems] = useState<CloudItem[]>([]); 
   const [driveItems, setDriveItems] = useState<(DriveFile & { parentId?: string, isLoaded?: boolean })[]>([]); 
   const [driveRootId, setDriveRootId] = useState<string | null>(null);
@@ -289,6 +295,20 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
         }
         setSaveStatus('saved');
     } catch(e: any) { setSaveStatus('modified'); }
+  };
+
+  const handleShareProject = async () => {
+      if (!currentUser) return alert("Sign in to share project URIs.");
+      let pid = project.id;
+      if (pid === 'init') {
+          pid = generateSecureId();
+          const newProject = { ...project, id: pid, ownerId: currentUser.uid };
+          await saveCodeProject(newProject);
+          setProject(newProject);
+      }
+      const url = `${window.location.origin}?view=code_studio&id=${pid}`;
+      setShareUrl(url);
+      setShowShareModal(true);
   };
 
   const handleFormatCode = async (slotIdx: number) => {
@@ -529,6 +549,12 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                 <button onClick={() => handleSetLayout('split-h')} className={`p-1.5 rounded ${layoutMode === 'split-h' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Rows size={16}/></button>
                 <button onClick={() => handleSetLayout('quad')} className={`p-1.5 rounded ${layoutMode === 'quad' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Grid2X2 size={16}/></button>
             </div>
+            
+            <button onClick={handleShareProject} className="flex items-center space-x-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all active:scale-95">
+                <Share2 size={14}/>
+                <span>Share URI</span>
+            </button>
+
             <button onClick={() => handleSmartSave()} className="flex items-center space-x-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold"><Save size={14}/><span>Save</span></button>
             <button onClick={() => setIsRightOpen(!isRightOpen)} className={`p-2 rounded-lg ${isRightOpen ? 'bg-slate-800 text-white' : 'text-slate-500'}`}><PanelRightOpen size={20}/></button>
          </div>
@@ -561,6 +587,23 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               <AIChatPanel isOpen={true} onClose={() => setIsRightOpen(false)} messages={chatMessages} onSendMessage={handleSendMessage} isThinking={isChatThinking} />
           </div>
       </div>
+
+      {showShareModal && (
+          <ShareModal 
+              isOpen={true} 
+              onClose={() => setShowShareModal(false)} 
+              link={shareUrl} 
+              title={project.name}
+              onShare={async (uids, isPublic) => {
+                  if (project.id !== 'init') {
+                      await updateProjectAccess(project.id, isPublic ? 'public' : 'restricted', uids);
+                  }
+              }}
+              currentAccess={project.accessLevel}
+              currentAllowedUsers={project.allowedUserIds}
+              currentUserUid={currentUser?.uid}
+          />
+      )}
     </div>
   );
 };

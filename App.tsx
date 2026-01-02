@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -82,7 +83,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     console.error("Uncaught runtime error:", error, errorInfo); 
   }
   
-  render(): ReactNode {
+  render(): React.ReactNode {
     // FIX: Accessing state which is now explicitly defined on the class
     if (this.state.hasError) {
       return (
@@ -190,9 +191,11 @@ const App: React.FC = () => {
     const view = params.get('view');
     if (params.get('claim')) return 'coin_wallet'; 
     if (view === 'card' && params.get('id')) return 'card_workshop';
-    if (view === 'icon' && params.get('id')) return 'icon_viewer';
+    if (view === 'icon' && params.get('id')) return 'icon_generator';
     if (view === 'shipping' && params.get('id')) return 'shipping_viewer';
     if (view === 'check' && params.get('id')) return 'check_viewer';
+    if (view === 'notebook_viewer' && params.get('id')) return 'notebook_viewer';
+    if (view === 'careers' && params.get('id')) return 'careers';
     return (view as any) || 'directory';
   };
 
@@ -324,17 +327,22 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Fix: Correctly await the async subscribeToPublicChannels and handle cleanup to avoid Promise call errors
   useEffect(() => {
+    let unsub: (() => void) | undefined;
     const initializeChannels = async () => {
         const localChannels = await getUserChannels();
         setUserChannels(localChannels);
         
-        const unsubscribe = subscribeToPublicChannels((channels) => { 
+        const maybeUnsub = await subscribeToPublicChannels((channels) => { 
           setPublicChannels(channels); 
         });
-        return () => unsubscribe();
+        if (typeof maybeUnsub === 'function') {
+            unsub = maybeUnsub;
+        }
     };
     initializeChannels();
+    return () => { if (unsub) unsub(); };
   }, []);
 
   const allChannels = useMemo(() => {
@@ -459,12 +467,12 @@ const App: React.FC = () => {
             {viewState === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
-            {viewState === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
+            {viewState === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
             {viewState === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice={globalVoice} t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={(date) => {}} /> )}
             {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
             {(viewState === 'shipping_labels' || viewState === 'shipping_viewer') && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}
-            {(viewState === 'icon_generator' || viewState === 'icon_viewer') && ( <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
-            {viewState === 'notebook_viewer' && ( <NotebookViewer onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
+            {(viewState === 'icon_generator' || viewState === 'icon_viewer') && ( <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} iconId={activeItemId || undefined} /> )}
+            {viewState === 'notebook_viewer' && ( <NotebookViewer onBack={() => handleSetViewState('directory')} currentUser={currentUser} notebookId={activeItemId || undefined} /> )}
             {(viewState === 'card_workshop' || viewState === 'card_viewer') && ( <CardWorkshop onBack={() => handleSetViewState('directory')} cardId={activeItemId || undefined} isViewer={viewState === 'card_viewer' || !!activeItemId} /> )}
             {viewState === 'mission' && ( <MissionManifesto onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('directory')} /> )}

@@ -1,16 +1,18 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Briefcase, Upload, Loader2, CheckCircle, Heart, Users, FileText, X, Rocket, Shield, Search, Plus, MapPin, Building, Globe, ExternalLink, RefreshCw, User, Star, ChevronRight, Mail } from 'lucide-react';
+import { ArrowLeft, Briefcase, Upload, Loader2, CheckCircle, Heart, Users, FileText, X, Rocket, Shield, Search, Plus, MapPin, Building, Globe, ExternalLink, RefreshCw, User, Star, ChevronRight, Mail, Share2, Link } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
-import { submitCareerApplication, uploadResumeToStorage, createJobPosting, getJobPostings, getAllCareerApplications } from '../services/firestoreService';
+import { submitCareerApplication, uploadResumeToStorage, createJobPosting, getJobPostings, getAllCareerApplications, getJobPosting } from '../services/firestoreService';
 import { CareerApplication, JobPosting } from '../types';
+import { ShareModal } from './ShareModal';
 
 interface CareerCenterProps {
   onBack: () => void;
   currentUser: any;
+  jobId?: string;
 }
 
-export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser }) => {
+export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser, jobId }) => {
   const [activeTab, setActiveTab] = useState<'jobs' | 'talent' | 'mentor' | 'expert' | 'static_job'>('jobs');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -21,6 +23,11 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser 
   const [applications, setApplications] = useState<CareerApplication[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Share State
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [shareTitle, setShareTitle] = useState('');
+
   // Forms
   const [showPostJob, setShowPostJob] = useState(false);
   const [newJob, setNewJob] = useState<Partial<JobPosting>>({ type: 'full-time' });
@@ -30,6 +37,19 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser 
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+      if (jobId) {
+          setIsLoading(true);
+          getJobPosting(jobId).then(data => {
+              if (data) {
+                  setJobs([data]);
+                  setActiveTab('jobs');
+                  setSearchQuery(data.title);
+              }
+          }).finally(() => setIsLoading(false));
+      }
+  }, [jobId]);
 
   useEffect(() => {
       if (activeTab === 'jobs') loadJobs();
@@ -50,6 +70,13 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser 
           const data = await getAllCareerApplications();
           setApplications(data);
       } catch (e) { console.error(e); } finally { setIsLoading(false); }
+  };
+
+  const handleShareJob = (job: JobPosting) => {
+      const url = `${window.location.origin}?view=careers&id=${job.id}`;
+      setShareUrl(url);
+      setShareTitle(job.title);
+      setShowShareModal(true);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,10 +135,11 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser 
               postedBy: currentUser.uid,
               postedAt: Date.now()
           };
-          await createJobPosting(job);
+          const id = await createJobPosting(job);
           setShowPostJob(false);
           setNewJob({ type: 'full-time' });
           loadJobs();
+          alert(`Job Posted! You can share it using the Share URI button on the job card.`);
       } catch (e: any) {
           alert("Failed to post job: " + e.message);
       } finally {
@@ -127,7 +155,7 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       {/* Header */}
-      <div className="p-4 border-b border-slate-900 flex items-center justify-between sticky top-0 bg-slate-950/90 backdrop-blur-md z-20">
+      <div className="p-4 border-b border-slate-800 flex items-center justify-between sticky top-0 bg-slate-950/90 backdrop-blur-md z-20">
         <div className="flex items-center gap-4">
             <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
             <ArrowLeft size={20} />
@@ -156,30 +184,6 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser 
                       <button onClick={() => setShowPostJob(true)} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-lg transition-transform hover:scale-105">
                           <Plus size={18} /> Post a Job
                       </button>
-                  </div>
-
-                  {/* Featured Static Link */}
-                  <div 
-                    onClick={() => setActiveTab('static_job')}
-                    className="bg-slate-900 border border-indigo-500/50 p-5 rounded-xl hover:bg-slate-800/50 transition-all cursor-pointer group relative overflow-hidden"
-                  >
-                      <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                      <div className="flex justify-between items-start relative z-10">
-                          <div>
-                              <h3 className="text-xl font-bold text-white group-hover:text-indigo-400 transition-colors flex items-center gap-2">
-                                  <Star size={18} className="text-amber-400 fill-amber-400"/> Community Mentor & Domain Expert
-                              </h3>
-                              <div className="flex items-center gap-3 text-sm text-slate-400 mt-1">
-                                  <span className="flex items-center gap-1"><Building size={14}/> AIVoiceCast</span>
-                                  <span className="flex items-center gap-1"><MapPin size={14}/> Remote (Global)</span>
-                                  <span className="bg-indigo-900/50 text-indigo-300 px-2 py-0.5 rounded text-xs font-bold uppercase border border-indigo-500/30">Featured</span>
-                              </div>
-                          </div>
-                          <div className="px-4 py-2 bg-slate-800 group-hover:bg-indigo-600 text-slate-300 group-hover:text-white rounded-lg text-sm font-bold transition-colors">
-                              View Details
-                          </div>
-                      </div>
-                      <p className="mt-3 text-sm text-slate-300">We are looking for passionate Domain Experts to join our "Talent Pool" as Mentors. Leverage our AI tools to share your wisdom.</p>
                   </div>
 
                   {showPostJob && (
@@ -225,7 +229,15 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser 
                                               <span className="bg-slate-800 px-2 py-0.5 rounded text-xs font-bold uppercase">{job.type}</span>
                                           </div>
                                       </div>
-                                      <a href={`mailto:${job.contactEmail}`} className="px-4 py-2 bg-slate-800 hover:bg-white hover:text-slate-900 text-slate-300 rounded-lg text-sm font-bold transition-colors">Apply</a>
+                                      <div className="flex gap-2">
+                                          <button 
+                                            onClick={() => handleShareJob(job)}
+                                            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 rounded-lg transition-colors border border-slate-700"
+                                          >
+                                              <Share2 size={16}/>
+                                          </button>
+                                          <a href={`mailto:${job.contactEmail}`} className="px-4 py-2 bg-slate-800 hover:bg-white hover:text-slate-900 text-slate-300 rounded-lg text-sm font-bold transition-colors">Apply</a>
+                                      </div>
                                   </div>
                                   <p className="mt-4 text-sm text-slate-300 line-clamp-3">{job.description}</p>
                                   <div className="mt-4 text-xs text-slate-500">Posted {new Date(job.postedAt).toLocaleDateString()}</div>
@@ -370,11 +382,13 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser 
                                                   <p className="text-xs text-emerald-400 font-bold uppercase tracking-wider mt-1">{app.role}</p>
                                               </div>
                                           </div>
-                                          {app.resumeUrl && (
-                                              <a href={app.resumeUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-400 rounded-lg transition-colors" title="View Resume">
-                                                  <FileText size={18}/>
-                                              </a>
-                                          )}
+                                          <div className="flex gap-1">
+                                              {app.resumeUrl && (
+                                                  <a href={app.resumeUrl} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-400 rounded-lg transition-colors" title="View Resume">
+                                                      <FileText size={18}/>
+                                                  </a>
+                                              )}
+                                          </div>
                                       </div>
                                       <p className="text-sm text-slate-400 mt-3 line-clamp-3">{app.bio}</p>
                                       <div className="flex flex-wrap gap-2 mt-4">
@@ -454,6 +468,14 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser 
               </div>
           )}
       </div>
+
+      {showShareModal && shareUrl && (
+          <ShareModal 
+            isOpen={true} onClose={() => setShowShareModal(false)}
+            link={shareUrl} title={`Job: ${shareTitle}`}
+            onShare={async () => {}} currentUserUid={currentUser?.uid}
+          />
+      )}
     </div>
   );
 };

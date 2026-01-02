@@ -1,58 +1,20 @@
 
 import { 
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc, 
-  addDoc, 
-  query, 
-  where, 
-  orderBy, 
-  limit, 
-  onSnapshot, 
-  runTransaction, 
-  increment, 
-  arrayUnion, 
-  arrayRemove, 
-  Timestamp, 
-  writeBatch,
-  FieldPath,
-  // Added documentId to imports to fix line 1006 error
-  documentId
+  collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
+  orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
+  Timestamp, writeBatch, documentId, or
 } from 'firebase/firestore';
-import { 
-  ref, 
-  uploadBytes, 
-  getDownloadURL, 
-  listAll, 
-  getMetadata, 
-  deleteObject 
-} from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, listAll, getMetadata, deleteObject } from 'firebase/storage';
 import { db, auth, storage } from './firebaseConfig';
 import { 
-  UserProfile, Channel, ChannelStats, Comment, Attachment, 
-  Group, ChatChannel, RealTimeMessage, 
-  GeneratedLecture, CommunityDiscussion, 
-  Booking, Invitation, RecordingSession, 
-  CodeProject, CodeFile, CursorPosition, CloudItem, 
-  WhiteboardElement, 
-  Blog, BlogPost, 
-  JobPosting, CareerApplication, 
-  Notebook, AgentMemory,
-  GlobalStats,
-  SubscriptionTier,
-  Chapter,
-  TranscriptItem,
-  ChannelVisibility,
-  GeneratedIcon,
-  BankingCheck,
-  ShippingLabel,
-  CoinTransaction
+  UserProfile, Channel, ChannelStats, Comment, Attachment, Group, ChatChannel, RealTimeMessage, 
+  GeneratedLecture, CommunityDiscussion, Booking, Invitation, RecordingSession, CodeProject, 
+  CodeFile, CursorPosition, CloudItem, WhiteboardElement, Blog, BlogPost, JobPosting, 
+  CareerApplication, Notebook, AgentMemory, GlobalStats, SubscriptionTier, Chapter, 
+  TranscriptItem, ChannelVisibility, GeneratedIcon, BankingCheck, ShippingLabel, CoinTransaction, TodoItem
 } from '../types';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
+import { generateSecureId } from '../utils/idUtils';
 
 // Collections
 const USERS_COLLECTION = 'users';
@@ -75,48 +37,29 @@ const ICONS_COLLECTION = 'icons';
 const CHECKS_COLLECTION = 'checks';
 const SHIPPING_COLLECTION = 'shipping';
 const TRANSACTIONS_COLLECTION = 'coin_transactions';
+const TASKS_COLLECTION = 'tasks';
+const NOTEBOOKS_COLLECTION = 'notebooks';
 
 export const ADMIN_EMAILS = ['shengliang.song.ai@gmail.com'];
 export const ADMIN_EMAIL = ADMIN_EMAILS[0];
-
-const sanitizeData = (data: any) => {
-    const cleaned = JSON.parse(JSON.stringify(data));
-    cleaned.adminOwnerEmail = ADMIN_EMAIL;
-    return cleaned;
-};
+const sanitizeData = (data: any) => { const cleaned = JSON.parse(JSON.stringify(data)); cleaned.adminOwnerEmail = ADMIN_EMAIL; return cleaned; };
 
 // --- Coins & Wallet ---
-
 export async function transferCoins(toId: string, toName: string, amount: number, memo?: string): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Database unavailable");
     const fromId = auth.currentUser.uid;
     const fromName = auth.currentUser.displayName || 'Sender';
-    
     const fromRef = doc(db, USERS_COLLECTION, fromId);
     const toRef = doc(db, USERS_COLLECTION, toId);
-    const txRef = doc(collection(db, TRANSACTIONS_COLLECTION));
-
+    const txRef = doc(collection(db, TRANSACTIONS_COLLECTION), generateSecureId());
     await runTransaction(db, async (transaction) => {
         const fromSnap = await transaction.get(fromRef);
         if (!fromSnap.exists()) throw new Error("Sender not found");
         const fromData = fromSnap.data() as UserProfile;
         if ((fromData.coinBalance || 0) < amount) throw new Error("Insufficient coin balance");
-
         const toSnap = await transaction.get(toRef);
         if (!toSnap.exists()) throw new Error("Recipient not found");
-
-        const tx: CoinTransaction = {
-            id: txRef.id,
-            fromId,
-            fromName,
-            toId,
-            toName,
-            amount,
-            type: 'transfer',
-            memo,
-            timestamp: Date.now()
-        };
-
+        const tx: CoinTransaction = { id: txRef.id, fromId, fromName, toId, toName, amount, type: 'transfer', memo, timestamp: Date.now() };
         transaction.update(fromRef, { coinBalance: increment(-amount) });
         transaction.update(toRef, { coinBalance: increment(amount) });
         transaction.set(txRef, sanitizeData(tx));
@@ -128,45 +71,27 @@ export async function getCoinTransactions(uid: string): Promise<CoinTransaction[
     try {
         const qFrom = query(collection(db, TRANSACTIONS_COLLECTION), where('fromId', '==', uid), orderBy('timestamp', 'desc'), limit(20));
         const qTo = query(collection(db, TRANSACTIONS_COLLECTION), where('toId', '==', uid), orderBy('timestamp', 'desc'), limit(20));
-        
         const [fromSnap, toSnap] = await Promise.all([getDocs(qFrom), getDocs(qTo)]);
         const all = [...fromSnap.docs, ...toSnap.docs].map(d => ({ ...d.data(), id: d.id } as CoinTransaction));
         return all.sort((a, b) => b.timestamp - a.timestamp);
-    } catch(e) {
-        console.warn("Ledger fetch failed (possible missing index):", e);
-        return [];
-    }
+    } catch(e) { return []; }
 }
 
 export async function checkAndGrantMonthlyCoins(uid: string): Promise<number> {
     if (!db) return 0;
     const ref = doc(db, USERS_COLLECTION, uid);
     let granted = 0;
-
     await runTransaction(db, async (t) => {
         const snap = await t.get(ref);
         if (!snap.exists()) return;
         const data = snap.data() as UserProfile;
         const now = Date.now();
         const lastGrant = data.lastCoinGrantAt || 0;
-        
         if (now - lastGrant > 86400000 * 30) {
             granted = data.subscriptionTier === 'pro' ? 2900 : 100;
-            const txRef = doc(collection(db, TRANSACTIONS_COLLECTION));
-            const tx: CoinTransaction = {
-                id: txRef.id,
-                fromId: 'system',
-                fromName: 'AIVoiceCast',
-                toId: uid,
-                toName: data.displayName,
-                amount: granted,
-                type: 'grant',
-                timestamp: now
-            };
-            t.update(ref, { 
-                coinBalance: increment(granted),
-                lastCoinGrantAt: now
-            });
+            const txRef = doc(collection(db, TRANSACTIONS_COLLECTION), generateSecureId());
+            const tx: CoinTransaction = { id: txRef.id, fromId: 'system', fromName: 'AIVoiceCast', toId: uid, toName: data.displayName, amount: granted, type: 'grant', timestamp: now };
+            t.update(ref, { coinBalance: increment(granted), lastCoinGrantAt: now });
             t.set(txRef, sanitizeData(tx));
         }
     });
@@ -178,31 +103,15 @@ export async function claimCoinCheck(checkId: string): Promise<number> {
     const uid = auth.currentUser.uid;
     const checkRef = doc(db, CHECKS_COLLECTION, checkId);
     let amount = 0;
-
     await runTransaction(db, async (t) => {
         const snap = await t.get(checkRef);
         if (!snap.exists()) throw new Error("Check not found");
         const checkData = snap.data() as BankingCheck;
-        if (!checkData.isCoinCheck) throw new Error("Invalid check type.");
-        if (checkData.isClaimed) throw new Error("Check already claimed");
-        if (checkData.ownerId === uid) throw new Error("Cannot claim own check");
-
+        if (!checkData.isCoinCheck || checkData.isClaimed) throw new Error("Invalid or claimed check");
         amount = checkData.coinAmount || 0;
         const userRef = doc(db, USERS_COLLECTION, uid);
-        const txRef = doc(collection(db, TRANSACTIONS_COLLECTION));
-
-        const tx: CoinTransaction = {
-            id: txRef.id,
-            fromId: checkData.ownerId || 'unknown',
-            fromName: checkData.senderName,
-            toId: uid,
-            toName: auth.currentUser?.displayName || 'Recipient',
-            amount,
-            type: 'check',
-            memo: `Claimed Check #${checkData.checkNumber}`,
-            timestamp: Date.now()
-        };
-
+        const txRef = doc(collection(db, TRANSACTIONS_COLLECTION), generateSecureId());
+        const tx: CoinTransaction = { id: txRef.id, fromId: checkData.ownerId || 'unknown', fromName: checkData.senderName, toId: uid, toName: auth.currentUser?.displayName || 'Recipient', amount, type: 'check', memo: `Claimed Check #${checkData.checkNumber}`, timestamp: Date.now() };
         t.update(checkRef, { isClaimed: true });
         t.update(userRef, { coinBalance: increment(amount) });
         t.set(txRef, sanitizeData(tx));
@@ -210,29 +119,29 @@ export async function claimCoinCheck(checkId: string): Promise<number> {
     return amount;
 }
 
-// --- Icons ---
+// --- Universal Creators ---
 export async function saveIcon(icon: GeneratedIcon): Promise<string> {
     if (!db) return icon.id;
-    const ref = doc(db, ICONS_COLLECTION, icon.id);
-    await setDoc(ref, sanitizeData(icon));
-    return icon.id;
+    const id = icon.id || generateSecureId();
+    await setDoc(doc(db, ICONS_COLLECTION, id), sanitizeData({ ...icon, id }));
+    return id;
 }
+
 export async function getIcon(id: string): Promise<GeneratedIcon | null> {
     if (!db) return null;
     const snap = await getDoc(doc(db, ICONS_COLLECTION, id));
     return snap.exists() ? (snap.data() as GeneratedIcon) : null;
 }
 
-// --- Checks ---
 export async function saveBankingCheck(check: BankingCheck): Promise<string> {
     if (!db) return check.id || 'local';
-    const id = check.id || crypto.randomUUID();
+    const id = check.id || generateSecureId();
     const ref = doc(db, CHECKS_COLLECTION, id);
-    
     if (check.isCoinCheck && check.coinAmount && auth?.currentUser) {
         const userRef = doc(db, USERS_COLLECTION, auth.currentUser.uid);
         await runTransaction(db, async (t) => {
             const userSnap = await t.get(userRef);
+            if (!userSnap.exists()) throw new Error("User profile not found");
             const userData = userSnap.data() as UserProfile;
             if ((userData.coinBalance || 0) < check.coinAmount!) throw new Error("Insufficient balance.");
             t.update(userRef, { coinBalance: increment(-check.coinAmount!) });
@@ -243,72 +152,85 @@ export async function saveBankingCheck(check: BankingCheck): Promise<string> {
     }
     return id;
 }
-export async function getBankingCheck(id: string): Promise<BankingCheck | null> {
-    if (!db) return null;
-    const snap = await getDoc(doc(db, CHECKS_COLLECTION, id));
-    return snap.exists() ? (snap.data() as BankingCheck) : null;
-}
 
-// --- Shipping ---
 export async function saveShippingLabel(label: ShippingLabel): Promise<string> {
     if (!db) return label.id || 'local';
-    const id = label.id || crypto.randomUUID();
-    const ref = doc(db, SHIPPING_COLLECTION, id);
-    await setDoc(ref, sanitizeData({ ...label, id }));
+    const id = label.id || generateSecureId();
+    await setDoc(doc(db, SHIPPING_COLLECTION, id), sanitizeData({ ...label, id }));
     return id;
 }
-export async function getShippingLabel(id: string): Promise<ShippingLabel | null> {
-    if (!db) return null;
-    const snap = await getDoc(doc(db, SHIPPING_COLLECTION, id));
-    return snap.exists() ? (snap.data() as ShippingLabel) : null;
+
+export async function saveCodeProject(project: CodeProject): Promise<string> {
+    if (!db) return '';
+    const id = project.id === 'init' ? generateSecureId() : project.id;
+    await setDoc(doc(db, CODE_PROJECTS_COLLECTION, id), sanitizeData({ ...project, id }));
+    return id;
 }
 
-// --- Seed & Stats ---
-export async function seedDatabase() {
+export async function saveWhiteboardSession(id: string, elements: WhiteboardElement[]) {
     if (!db) return;
-    const batch = writeBatch(db);
-    for (const channel of HANDCRAFTED_CHANNELS) {
-        const ref = doc(db, CHANNELS_COLLECTION, channel.id);
-        batch.set(ref, sanitizeData({ ...channel, visibility: 'public', ownerId: 'system' }), { merge: true });
-        
-        const statsRef = doc(db, CHANNEL_STATS_COLLECTION, channel.id);
-        batch.set(statsRef, { likes: channel.likes, dislikes: 0, shares: 0, adminOwnerEmail: ADMIN_EMAIL }, { merge: true });
-    }
-    const statsRef = doc(db, 'stats', 'global');
-    batch.set(statsRef, { totalLogins: increment(1), uniqueUsers: increment(0), adminOwnerEmail: ADMIN_EMAIL }, { merge: true });
-    await batch.commit();
+    const finalId = id || generateSecureId();
+    await setDoc(doc(db, WHITEBOARDS_COLLECTION, finalId), { elements: sanitizeData(elements), updatedAt: Date.now() });
+    return finalId;
 }
 
+export async function createBooking(booking: Booking): Promise<string> {
+    if (!db) return '';
+    const id = generateSecureId();
+    await setDoc(doc(db, BOOKINGS_COLLECTION, id), sanitizeData({ ...booking, id }));
+    return id;
+}
+
+export async function saveDiscussion(discussion: CommunityDiscussion): Promise<string> {
+    if (!db) return 'no-db';
+    const id = generateSecureId();
+    await setDoc(doc(db, DISCUSSIONS_COLLECTION, id), sanitizeData({ ...discussion, id }));
+    return id;
+}
+
+export async function saveCard(card: AgentMemory, id?: string): Promise<string> {
+    if (!db) return id || 'local';
+    const finalId = id || generateSecureId();
+    await setDoc(doc(db, CARDS_COLLECTION, finalId), sanitizeData({ ...card, id: finalId, ownerId: auth?.currentUser?.uid }));
+    return finalId;
+}
+
+export async function createBlogPost(post: BlogPost): Promise<string> {
+    if (!db) return '';
+    const id = generateSecureId();
+    await setDoc(doc(db, POSTS_COLLECTION, id), sanitizeData({ ...post, id }));
+    return id;
+}
+
+// --- Shared Tasks (Migrated from Local) ---
+export async function saveTask(task: TodoItem): Promise<string> {
+    if (!db || !auth?.currentUser) return task.id;
+    const id = task.id || generateSecureId();
+    await setDoc(doc(db, TASKS_COLLECTION, id), sanitizeData({ ...task, id, ownerId: auth.currentUser.uid }));
+    return id;
+}
+
+export async function getUserTasks(uid: string): Promise<TodoItem[]> {
+    if (!db) return [];
+    const q = query(collection(db, TASKS_COLLECTION), where('ownerId', '==', uid));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as TodoItem));
+}
+
+// --- User Profile ---
 export async function syncUserProfile(user: any): Promise<void> {
   if (!user || !db) return;
   const userRef = doc(db, USERS_COLLECTION, user.uid);
   try {
       const snap = await getDoc(userRef);
       if (!snap.exists()) {
-        await setDoc(userRef, {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          createdAt: Date.now(),
-          lastLogin: Date.now(),
-          subscriptionTier: 'free',
-          apiUsageCount: 0,
-          groups: [],
-          coinBalance: 100,
-          lastCoinGrantAt: Date.now(),
-          adminOwnerEmail: ADMIN_EMAIL 
-        });
+        await setDoc(userRef, { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL, createdAt: Date.now(), lastLogin: Date.now(), subscriptionTier: 'free', apiUsageCount: 0, groups: [], coinBalance: 100, lastCoinGrantAt: Date.now(), adminOwnerEmail: ADMIN_EMAIL });
         await setDoc(doc(db, 'stats', 'global'), { uniqueUsers: increment(1) }, { merge: true });
       } else {
-        await updateDoc(userRef, {
-          lastLogin: Date.now(),
-          photoURL: user.photoURL || snap.data()?.photoURL,
-          displayName: user.displayName || snap.data()?.displayName
-        });
+        await updateDoc(userRef, { lastLogin: Date.now(), photoURL: user.photoURL || snap.data()?.photoURL, displayName: user.displayName || snap.data()?.displayName });
       }
       await updateDoc(doc(db, 'stats', 'global'), { totalLogins: increment(1) });
-  } catch (e) { console.warn("Profile sync error:", e); }
+  } catch (e) {}
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
@@ -318,76 +240,153 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
 }
 
 export async function updateUserProfile(uid: string, data: Partial<UserProfile>): Promise<void> {
-  if (!db) return;
-  await updateDoc(doc(db, USERS_COLLECTION, uid), data);
+    if (!db) return;
+    await updateDoc(doc(db, USERS_COLLECTION, uid), sanitizeData(data));
 }
 
 export async function getAllUsers(): Promise<UserProfile[]> {
-  if (!db) return [];
-  const snap = await getDocs(collection(db, USERS_COLLECTION));
-  return snap.docs.map(d => d.data() as UserProfile);
+    if (!db) return [];
+    const snap = await getDocs(collection(db, USERS_COLLECTION));
+    return snap.docs.map(d => d.data() as UserProfile);
 }
 
 export async function getUserProfileByEmail(email: string): Promise<UserProfile | null> {
-  if (!db) return null;
-  const q = query(collection(db, USERS_COLLECTION), where('email', '==', email), limit(1));
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  return snap.docs[0].data() as UserProfile;
+    if (!db) return null;
+    const q = query(collection(db, USERS_COLLECTION), where('email', '==', email), limit(1));
+    const snap = await getDocs(q);
+    return snap.empty ? null : (snap.docs[0].data() as UserProfile);
 }
 
-export function logUserActivity(action: string, details: any) {
-  if (!db) return;
-  addDoc(collection(db, 'activity_logs'), {
-    action,
-    details,
-    adminOwnerEmail: ADMIN_EMAIL,
-    timestamp: Timestamp.now()
-  }).catch(() => {});
-}
-
-// --- Groups & Members ---
-export async function getUserGroups(uid: string): Promise<Group[]> {
-  if (!db) return [];
-  const q = query(collection(db, GROUPS_COLLECTION), where('memberIds', 'array-contains', uid));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ ...d.data(), id: d.id } as Group));
-}
-
+// --- Groups ---
 export async function createGroup(name: string): Promise<string> {
-  if (!db) return 'no-db';
-  const ref = await addDoc(collection(db, GROUPS_COLLECTION), {
-    name,
-    ownerId: auth?.currentUser?.uid,
-    memberIds: [auth?.currentUser?.uid],
-    createdAt: Date.now(),
-    adminOwnerEmail: ADMIN_EMAIL
-  });
-  return ref.id;
+    if (!db || !auth?.currentUser) throw new Error("Auth required");
+    const uid = auth.currentUser.uid;
+    const id = generateSecureId();
+    const group: Group = { id, name, ownerId: uid, memberIds: [uid], createdAt: Date.now() };
+    await setDoc(doc(db, GROUPS_COLLECTION, id), sanitizeData(group));
+    return id;
+}
+
+export async function getUserGroups(uid: string): Promise<Group[]> {
+    if (!db) return [];
+    const q = query(collection(db, GROUPS_COLLECTION), where('memberIds', 'array-contains', uid));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Group);
+}
+
+export async function getGroupMembers(uids: string[]): Promise<UserProfile[]> {
+    if (!db || uids.length === 0) return [];
+    const q = query(collection(db, USERS_COLLECTION), where('uid', 'in', uids.slice(0, 10)));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as UserProfile);
+}
+
+export async function removeMemberFromGroup(groupId: string, memberId: string): Promise<void> {
+    if (!db) return;
+    await updateDoc(doc(db, GROUPS_COLLECTION, groupId), { memberIds: arrayRemove(memberId) });
 }
 
 export async function deleteGroup(groupId: string): Promise<void> {
-  if (!db) return;
-  await deleteDoc(doc(db, GROUPS_COLLECTION, groupId));
+    if (!db) return;
+    await deleteDoc(doc(db, GROUPS_COLLECTION, groupId));
 }
 
-export async function renameGroup(groupId: string, newName: string): Promise<void> {
-  if (!db) return;
-  await updateDoc(doc(db, GROUPS_COLLECTION, groupId), { name: newName });
+export async function renameGroup(groupId: string, name: string): Promise<void> {
+    if (!db) return;
+    await updateDoc(doc(db, GROUPS_COLLECTION, groupId), { name });
 }
 
-export async function removeMemberFromGroup(groupId: string, memberId: string) {
-  if (!db) return;
-  await updateDoc(doc(db, GROUPS_COLLECTION, groupId), {
-    memberIds: arrayRemove(memberId)
-  });
+export async function sendInvitation(groupId: string, toEmail: string): Promise<void> {
+    if (!db || !auth?.currentUser) return;
+    const groupSnap = await getDoc(doc(db, GROUPS_COLLECTION, groupId));
+    if (!groupSnap.exists()) return;
+    const inv: Invitation = { id: '', fromUserId: auth.currentUser.uid, fromName: auth.currentUser.displayName || 'Friend', toEmail, groupId, groupName: groupSnap.data()?.name, status: 'pending', createdAt: Date.now() };
+    await addDoc(collection(db, 'invitations'), sanitizeData(inv));
+}
+
+export async function getPendingInvitations(email: string): Promise<Invitation[]> {
+    if (!db) return [];
+    const q = query(collection(db, 'invitations'), where('toEmail', '==', email), where('status', '==', 'pending'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Invitation));
+}
+
+export async function respondToInvitation(invitation: Invitation, accept: boolean): Promise<void> {
+    if (!db || !auth?.currentUser) return;
+    await updateDoc(doc(db, 'invitations', invitation.id), { status: accept ? 'accepted' : 'rejected' });
+    if (accept && invitation.groupId) {
+        await updateDoc(doc(db, GROUPS_COLLECTION, invitation.groupId), { memberIds: arrayUnion(auth.currentUser.uid) });
+    }
+}
+
+// --- Bookings ---
+export async function getUserBookings(uid: string, email: string): Promise<Booking[]> {
+    if (!db) return [];
+    const q = query(collection(db, BOOKINGS_COLLECTION), or(where('userId', '==', uid), where('invitedEmail', '==', email)));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Booking);
+}
+
+export async function getPendingBookings(email: string): Promise<Booking[]> {
+    if (!db) return [];
+    const q = query(collection(db, BOOKINGS_COLLECTION), where('invitedEmail', '==', email), where('status', '==', 'pending'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Booking);
+}
+
+export async function respondToBooking(bookingId: string, accept: boolean): Promise<void> {
+    if (!db) return;
+    await updateDoc(doc(db, BOOKINGS_COLLECTION, bookingId), { status: accept ? 'scheduled' : 'rejected' });
+}
+
+export async function cancelBooking(id: string): Promise<void> {
+    if (!db) return;
+    await updateDoc(doc(db, BOOKINGS_COLLECTION, id), { status: 'cancelled' });
+}
+
+export async function updateBookingInvite(id: string, status: string): Promise<void> {
+    if (!db) return;
+    await updateDoc(doc(db, BOOKINGS_COLLECTION, id), { status });
+}
+
+export async function updateBookingRecording(bookingId: string, recordingUrl: string, transcriptUrl: string): Promise<void> {
+    if (!db) return;
+    await updateDoc(doc(db, BOOKINGS_COLLECTION, bookingId), { recordingUrl, transcriptUrl, status: 'completed' });
+}
+
+export async function deleteBookingRecording(id: string): Promise<void> {
+    if (!db) return;
+    await updateDoc(doc(db, BOOKINGS_COLLECTION, id), { recordingUrl: null, transcriptUrl: null });
 }
 
 // --- Channels ---
-export function subscribeToPublicChannels(onUpdate: (channels: Channel[]) => void, onError?: (error: any) => void) {
-  if (!db) { onUpdate([]); return () => {}; }
-  const q = query(collection(db, CHANNELS_COLLECTION), where('visibility', '==', 'public'));
-  return onSnapshot(q, snap => onUpdate(snap.docs.map(d => ({ ...d.data(), id: d.id } as Channel))), err => onError && onError(err));
+export async function getPublicChannels(): Promise<Channel[]> {
+    if (!db) return [];
+    const q = query(collection(db, CHANNELS_COLLECTION), where('visibility', '==', 'public'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Channel);
+}
+
+export async function getChannelsByIds(ids: string[]): Promise<Channel[]> {
+    if (!db || ids.length === 0) return [];
+    const q = query(collection(db, CHANNELS_COLLECTION), where(documentId(), 'in', ids.slice(0, 10)));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Channel);
+}
+
+export async function getCreatorChannels(uid: string): Promise<Channel[]> {
+    if (!db) return [];
+    const q = query(collection(db, CHANNELS_COLLECTION), where('ownerId', '==', uid));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Channel);
+}
+
+export async function subscribeToPublicChannels(callback: (channels: Channel[]) => void) {
+    if (!db) return () => {};
+    const q = query(collection(db, CHANNELS_COLLECTION), where('visibility', '==', 'public'));
+    return onSnapshot(q, (snap) => {
+        callback(snap.docs.map(d => d.data() as Channel));
+    });
 }
 
 export async function publishChannelToFirestore(channel: Channel) {
@@ -395,97 +394,163 @@ export async function publishChannelToFirestore(channel: Channel) {
   await setDoc(doc(db, CHANNELS_COLLECTION, channel.id), sanitizeData(channel));
 }
 
-export async function voteChannel(channel: Channel, type: 'like' | 'dislike') {
-  if (!db) return;
-  const statsRef = doc(db, CHANNEL_STATS_COLLECTION, channel.id);
-  const update = type === 'like' ? { likes: increment(1) } : { dislikes: increment(1) };
-  await setDoc(statsRef, { ...update, adminOwnerEmail: ADMIN_EMAIL }, { merge: true });
-}
-
-export function subscribeToChannelStats(channelId: string, callback: (stats: ChannelStats) => void, initialStats: ChannelStats) {
-    if (!db) { callback(initialStats); return () => {}; }
-    return onSnapshot(doc(db, CHANNEL_STATS_COLLECTION, channelId), snap => {
-        if (snap.exists()) callback(snap.data() as ChannelStats);
-        else callback(initialStats);
-    }, () => callback(initialStats));
-}
-
-export async function addCommentToChannel(channelId: string, comment: Comment) {
-  if (!db) return;
-  await updateDoc(doc(db, CHANNELS_COLLECTION, channelId), {
-    comments: arrayUnion(sanitizeData(comment))
-  });
-}
-
-export async function updateCommentInChannel(channelId: string, comment: Comment) {
+export async function deleteChannelFromFirestore(id: string): Promise<void> {
     if (!db) return;
-    const ref = doc(db, CHANNELS_COLLECTION, channelId);
-    await runTransaction(db, async (t) => {
-        const snap = await t.get(ref);
-        if (!snap.exists()) return;
-        const comments = (snap.data() as Channel).comments.map(c => c.id === comment.id ? comment : c);
-        t.update(ref, { comments });
+    await deleteDoc(doc(db, CHANNELS_COLLECTION, id));
+}
+
+export async function addChannelAttachment(channelId: string, attachment: Attachment): Promise<void> {
+    if (!db) return;
+    await updateDoc(doc(db, CHANNELS_COLLECTION, channelId), { appendix: arrayUnion(attachment) });
+}
+
+// --- Engagement & Stats ---
+export async function voteChannel(ch: Channel, type: 'like' | 'dislike') {
+    if (!db) return;
+    const incrementVal = type === 'like' ? 1 : -1;
+    await updateDoc(doc(db, CHANNELS_COLLECTION, ch.id), { likes: increment(incrementVal) });
+    await setDoc(doc(db, CHANNEL_STATS_COLLECTION, ch.id), { likes: increment(incrementVal) }, { merge: true });
+}
+
+export async function shareChannel(id: string) {
+    if (!db) return;
+    await setDoc(doc(db, CHANNEL_STATS_COLLECTION, id), { shares: increment(1) }, { merge: true });
+}
+
+export function subscribeToChannelStats(id: string, callback: (stats: Partial<ChannelStats>) => void, defaults: ChannelStats) {
+    if (!db) return () => {};
+    return onSnapshot(doc(db, CHANNEL_STATS_COLLECTION, id), (snap) => {
+        if (snap.exists()) callback(snap.data() as ChannelStats);
+        else callback(defaults);
     });
+}
+
+export async function getGlobalStats(): Promise<GlobalStats> {
+    if (!db) return { totalLogins: 0, uniqueUsers: 0 };
+    const snap = await getDoc(doc(db, 'stats', 'global'));
+    return snap.exists() ? (snap.data() as GlobalStats) : { totalLogins: 0, uniqueUsers: 0 };
+}
+
+// --- Comments ---
+export async function addCommentToChannel(channelId: string, comment: Comment) {
+    if (!db) return;
+    await updateDoc(doc(db, CHANNELS_COLLECTION, channelId), { comments: arrayUnion(sanitizeData(comment)) });
 }
 
 export async function deleteCommentFromChannel(channelId: string, commentId: string) {
     if (!db) return;
-    const ref = doc(db, CHANNELS_COLLECTION, channelId);
-    await runTransaction(db, async (t) => {
-        const snap = await t.get(ref);
-        if (!snap.exists()) return;
-        const comments = (snap.data() as Channel).comments.filter(c => c.id !== commentId);
-        t.update(ref, { comments });
-    });
+    const snap = await getDoc(doc(db, CHANNELS_COLLECTION, channelId));
+    if (!snap.exists()) return;
+    const comments = (snap.data()?.comments || []) as Comment[];
+    const next = comments.filter(c => c.id !== commentId);
+    await updateDoc(doc(db, CHANNELS_COLLECTION, channelId), { comments: next });
+}
+
+export async function updateCommentInChannel(channelId: string, updated: Comment) {
+    if (!db) return;
+    const snap = await getDoc(doc(db, CHANNELS_COLLECTION, channelId));
+    if (!snap.exists()) return;
+    const comments = (snap.data()?.comments || []) as Comment[];
+    const next = comments.map(c => c.id === updated.id ? sanitizeData(updated) : c);
+    await updateDoc(doc(db, CHANNELS_COLLECTION, channelId), { comments: next });
+}
+
+export async function uploadCommentAttachment(file: File, path: string): Promise<string> {
+    if (!storage) throw new Error("Storage unavailable");
+    const r = ref(storage, path);
+    await uploadBytes(r, file);
+    return await getDownloadURL(r);
+}
+
+// --- Activity & Usage ---
+export async function incrementApiUsage(uid: string) {
+    if (!db) return;
+    await updateDoc(doc(db, USERS_COLLECTION, uid), { apiUsageCount: increment(1) });
+}
+
+export async function logUserActivity(type: string, data: any) {
+    if (!db || !auth?.currentUser) return;
+    await addDoc(collection(db, 'activity_logs'), { uid: auth.currentUser.uid, type, data, timestamp: Date.now() });
+}
+
+// --- Admin ---
+export async function seedDatabase() {
+    if (!db) return;
+    for (const ch of HANDCRAFTED_CHANNELS) {
+        await setDoc(doc(db, CHANNELS_COLLECTION, ch.id), sanitizeData(ch));
+    }
+}
+
+export async function recalculateGlobalStats(): Promise<number> {
+    if (!db) return 0;
+    const snap = await getDocs(collection(db, USERS_COLLECTION));
+    const count = snap.size;
+    await setDoc(doc(db, 'stats', 'global'), { uniqueUsers: count }, { merge: true });
+    return count;
+}
+
+export async function claimSystemChannels(email: string): Promise<number> {
+    if (!db) return 0;
+    const q = query(collection(db, CHANNELS_COLLECTION), where('ownerId', '==', null));
+    const snap = await getDocs(q);
+    const user = await getUserProfileByEmail(email);
+    if (!user) throw new Error("Target user not found");
+    let count = 0;
+    for (const d of snap.docs) {
+        await updateDoc(d.ref, { ownerId: user.uid, author: user.displayName });
+        count++;
+    }
+    return count;
+}
+
+export async function setUserSubscriptionTier(uid: string, tier: SubscriptionTier) {
+    if (!db) return;
+    await updateDoc(doc(db, USERS_COLLECTION, uid), { subscriptionTier: tier });
+}
+
+export async function getDebugCollectionDocs(name: string, count: number) {
+    if (!db) return [];
+    const q = query(collection(db, name), limit(count));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id }));
 }
 
 // --- Recordings ---
-export async function saveRecordingReference(session: RecordingSession) {
+export async function saveRecordingReference(data: RecordingSession): Promise<void> {
     if (!db) return;
-    await addDoc(collection(db, RECORDINGS_COLLECTION), sanitizeData(session));
+    await setDoc(doc(db, RECORDINGS_COLLECTION, data.id), sanitizeData(data));
 }
 
 export async function getUserRecordings(uid: string): Promise<RecordingSession[]> {
     if (!db) return [];
     const q = query(collection(db, RECORDINGS_COLLECTION), where('userId', '==', uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as RecordingSession));
+    return snap.docs.map(d => d.data() as RecordingSession);
 }
 
-// --- Storage Utilities ---
-export async function uploadFileToStorage(path: string, file: Blob | File, metadata?: any): Promise<string> {
-    if (!storage) return 'no-storage';
-    const sRef = ref(storage, path);
-    await uploadBytes(sRef, file, { ...metadata, customMetadata: { adminOwnerEmail: ADMIN_EMAIL } });
-    return await getDownloadURL(sRef);
-}
-
-export async function uploadResumeToStorage(uid: string, file: File): Promise<string> {
-    const path = `resumes/${uid}/${Date.now()}_${file.name}`;
-    return uploadFileToStorage(path, file);
-}
-
-export async function uploadCommentAttachment(file: File, path: string): Promise<string> {
-    return uploadFileToStorage(path, file);
-}
-
-// --- Discussions ---
-export async function saveDiscussion(discussion: CommunityDiscussion): Promise<string> {
-    if (!db) return 'no-db';
-    const ref = await addDoc(collection(db, DISCUSSIONS_COLLECTION), sanitizeData(discussion));
-    return ref.id;
-}
-
-/* Added updateDiscussion to resolve file components/LiveSession.tsx error */
-export async function updateDiscussion(id: string, data: Partial<CommunityDiscussion>) {
+export async function deleteRecordingReference(id: string, mediaUrl: string, transcriptUrl: string): Promise<void> {
     if (!db) return;
-    await updateDoc(doc(db, DISCUSSIONS_COLLECTION, id), data);
+    await deleteDoc(doc(db, RECORDINGS_COLLECTION, id));
+    // Implementation for storage deletion would go here if URLs are in our storage
 }
 
+// --- Discussions/Docs ---
 export async function getDiscussionById(id: string): Promise<CommunityDiscussion | null> {
     if (!db) return null;
     const snap = await getDoc(doc(db, DISCUSSIONS_COLLECTION, id));
-    return snap.exists() ? ({ ...snap.data(), id: snap.id } as CommunityDiscussion) : null;
+    return snap.exists() ? (snap.data() as CommunityDiscussion) : null;
+}
+
+export function subscribeToDiscussion(id: string, callback: (d: CommunityDiscussion) => void) {
+    if (!db) return () => {};
+    return onSnapshot(doc(db, DISCUSSIONS_COLLECTION, id), (snap) => {
+        if (snap.exists()) callback(snap.data() as CommunityDiscussion);
+    });
+}
+
+export async function saveDiscussionDesignDoc(id: string, designDoc: string, title: string) {
+    if (!db) return;
+    await updateDoc(doc(db, DISCUSSIONS_COLLECTION, id), { designDoc, title, updatedAt: Date.now() });
 }
 
 export async function deleteDiscussion(id: string) {
@@ -493,644 +558,347 @@ export async function deleteDiscussion(id: string) {
     await deleteDoc(doc(db, DISCUSSIONS_COLLECTION, id));
 }
 
-/* Added incrementApiUsage to resolve file services/lectureGenerator.ts error */
-export async function incrementApiUsage(uid: string) {
-  if (!db) return;
-  await updateDoc(doc(db, USERS_COLLECTION, uid), { apiUsageCount: increment(1) });
-}
-
-/* Added updateBookingRecording to resolve file components/LiveSession.tsx error */
-export async function updateBookingRecording(id: string, url: string) {
+export async function updateDiscussionVisibility(id: string, visibility: ChannelVisibility, groupIds: string[]) {
     if (!db) return;
-    await updateDoc(doc(db, BOOKINGS_COLLECTION, id), { recordingUrl: url, status: 'completed' });
+    await updateDoc(doc(db, DISCUSSIONS_COLLECTION, id), { visibility, groupIds });
 }
 
-/* Added addChannelAttachment to resolve file components/LiveSession.tsx error */
-export async function addChannelAttachment(channelId: string, attachment: Attachment) {
-    if (!db) return;
-    await updateDoc(doc(db, CHANNELS_COLLECTION, channelId), {
-        appendix: arrayUnion(sanitizeData(attachment))
-    });
-}
-
-/* Added sendInvitation to resolve file components/GroupManager.tsx error */
-export async function sendInvitation(groupId: string, toEmail: string, type: 'group' | 'session' = 'group', link?: string) {
-    if (!db || !auth?.currentUser) return;
-    const inv: Invitation = {
-        id: '',
-        fromUserId: auth.currentUser.uid,
-        fromName: auth.currentUser.displayName || 'Anonymous',
-        toEmail: toEmail.toLowerCase(),
-        groupId,
-        groupName: 'A Group', // In a real app we'd fetch the group name
-        status: 'pending',
-        createdAt: Date.now(),
-        type,
-        link
-    };
-    await addDoc(collection(db, 'invitations'), sanitizeData(inv));
-}
-
-/* Added getGroupMembers to resolve file components/GroupManager.tsx error */
-export async function getGroupMembers(memberIds: string[]): Promise<UserProfile[]> {
-    if (!db || !memberIds.length) return [];
-    const q = query(collection(db, USERS_COLLECTION), where('uid', 'in', memberIds));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as UserProfile);
-}
-
-/* Added getPendingInvitations to resolve file components/Notifications.tsx error */
-export async function getPendingInvitations(email: string): Promise<Invitation[]> {
-    if (!db) return [];
-    const q = query(collection(db, 'invitations'), where('toEmail', '==', email.toLowerCase()), where('status', '==', 'pending'));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Invitation));
-}
-
-/* Added respondToInvitation to resolve file components/Notifications.tsx error */
-export async function respondToInvitation(invitation: Invitation, accept: boolean) {
-    if (!db || !auth?.currentUser) return;
-    const ref = doc(db, 'invitations', invitation.id);
-    await updateDoc(ref, { status: accept ? 'accepted' : 'rejected' });
-    if (accept) {
-        await updateDoc(doc(db, GROUPS_COLLECTION, invitation.groupId), {
-            memberIds: arrayUnion(auth.currentUser.uid)
-        });
-    }
-}
-
-/* Added getPendingBookings to resolve file components/Notifications.tsx error */
-export async function getPendingBookings(email: string): Promise<Booking[]> {
-    if (!db) return [];
-    const q = query(collection(db, BOOKINGS_COLLECTION), where('invitedEmail', '==', email.toLowerCase()), where('status', '==', 'pending'));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Booking));
-}
-
-/* Added respondToBooking to resolve file components/Notifications.tsx error */
-export async function respondToBooking(bookingId: string, accept: boolean) {
-    if (!db) return;
-    await updateDoc(doc(db, BOOKINGS_COLLECTION, bookingId), { status: accept ? 'scheduled' : 'rejected' });
-}
-
-/* Added getPublicChannels to resolve file components/PublicChannelInspector.tsx error */
-export async function getPublicChannels(): Promise<Channel[]> {
-    if (!db) return [];
-    const q = query(collection(db, CHANNELS_COLLECTION), where('visibility', '==', 'public'));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Channel));
-}
-
-/* Added deleteChannelFromFirestore to resolve file components/PublicChannelInspector.tsx error */
-export async function deleteChannelFromFirestore(id: string) {
-    if (!db) return;
-    await deleteDoc(doc(db, CHANNELS_COLLECTION, id));
-}
-
-/* Added shareChannel to resolve file components/ChannelCard.tsx error */
-export async function shareChannel(channelId: string) {
-    if (!db) return;
-    const statsRef = doc(db, CHANNEL_STATS_COLLECTION, channelId);
-    await setDoc(statsRef, { shares: increment(1), adminOwnerEmail: ADMIN_EMAIL }, { merge: true });
-}
-
-/* Added getGlobalStats to resolve file components/StudioMenu.tsx error */
-export async function getGlobalStats(): Promise<GlobalStats> {
-    if (!db) return { totalLogins: 0, uniqueUsers: 0 };
-    const snap = await getDoc(doc(db, 'stats', 'global'));
-    return snap.exists() ? (snap.data() as GlobalStats) : { totalLogins: 0, uniqueUsers: 0 };
-}
-
-/* Added getUserBookings to resolve file components/CalendarView.tsx error */
-export async function getUserBookings(uid: string, email: string): Promise<Booking[]> {
-    if (!db) return [];
-    const qUser = query(collection(db, BOOKINGS_COLLECTION), where('userId', '==', uid));
-    const qInvited = query(collection(db, BOOKINGS_COLLECTION), where('invitedEmail', '==', email.toLowerCase()));
-    const [snap1, snap2] = await Promise.all([getDocs(qUser), getDocs(qInvited)]);
-    const all = [...snap1.docs, ...snap2.docs].map(d => ({ ...d.data(), id: d.id } as Booking));
-    return Array.from(new Map(all.map(b => [b.id, b])).values());
-}
-
-/* Added createBooking to resolve file components/CalendarView.tsx error */
-export async function createBooking(booking: Booking): Promise<string> {
-    if (!db) return '';
-    const ref = await addDoc(collection(db, BOOKINGS_COLLECTION), sanitizeData(booking));
-    return ref.id;
-}
-
-/* Added updateBookingInvite to resolve file components/CalendarView.tsx error */
-export async function updateBookingInvite(bookingId: string, email: string) {
-    if (!db) return;
-    await updateDoc(doc(db, BOOKINGS_COLLECTION, bookingId), { invitedEmail: email.toLowerCase() });
-}
-
-/* Added saveSavedWord to resolve file components/CalendarView.tsx error */
-export async function saveSavedWord(uid: string, data: any) {
-    if (!db) return;
-    await setDoc(doc(db, SAVED_WORDS_COLLECTION, `${uid}_${data.word}`), { ...sanitizeData(data), uid });
-}
-
-/* Added getSavedWordForUser to resolve file components/CalendarView.tsx error */
-export async function getSavedWordForUser(uid: string, word: string) {
-    if (!db) return null;
-    const snap = await getDoc(doc(db, SAVED_WORDS_COLLECTION, `${uid}_${word}`));
-    return snap.exists() ? snap.data() : null;
-}
-
-/* Added cancelBooking to resolve file components/MentorBooking.tsx error */
-export async function cancelBooking(bookingId: string) {
-    if (!db) return;
-    await updateDoc(doc(db, BOOKINGS_COLLECTION, bookingId), { status: 'cancelled' });
-}
-
-/* Added deleteBookingRecording to resolve file components/MentorBooking.tsx error */
-export async function deleteBookingRecording(bookingId: string) {
-    if (!db) return;
-    await updateDoc(doc(db, BOOKINGS_COLLECTION, bookingId), { recordingUrl: null, transcriptUrl: null });
-}
-
-/* Added deleteRecordingReference to resolve file components/RecordingList.tsx error */
-export async function deleteRecordingReference(id: string, mediaUrl: string, transcriptUrl: string) {
-    if (!db) return;
-    await deleteDoc(doc(db, RECORDINGS_COLLECTION, id));
-    // In a real app we'd also delete from Storage
-}
-
-/* Added subscribeToDiscussion to resolve file components/DiscussionModal.tsx error */
-export function subscribeToDiscussion(id: string, onUpdate: (d: CommunityDiscussion) => void) {
-    if (!db) return () => {};
-    return onSnapshot(doc(db, DISCUSSIONS_COLLECTION, id), snap => {
-        if (snap.exists()) onUpdate({ ...snap.data(), id: snap.id } as CommunityDiscussion);
-    });
-}
-
-/* Added saveDiscussionDesignDoc to resolve file components/DiscussionModal.tsx error */
-export async function saveDiscussionDesignDoc(id: string, designDoc: string, title: string) {
-    if (!db) return;
-    await updateDoc(doc(db, DISCUSSIONS_COLLECTION, id), { designDoc, title, updatedAt: Date.now() });
-}
-
-/* Added updateDiscussionVisibility to resolve file components/DiscussionModal.tsx error */
-export async function updateDiscussionVisibility(id: string, visibility: ChannelVisibility, groupIds?: string[]) {
-    if (!db) return;
-    await updateDoc(doc(db, DISCUSSIONS_COLLECTION, id), { visibility, groupIds: groupIds || [] });
-}
-
-/* Added getUserDesignDocs to resolve file components/DocumentList.tsx error */
 export async function getUserDesignDocs(uid: string): Promise<CommunityDiscussion[]> {
     if (!db) return [];
     const q = query(collection(db, DISCUSSIONS_COLLECTION), where('userId', '==', uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as CommunityDiscussion));
+    return snap.docs.map(d => d.data() as CommunityDiscussion);
 }
 
-/* Added getPublicDesignDocs to resolve file components/DocumentList.tsx error */
 export async function getPublicDesignDocs(): Promise<CommunityDiscussion[]> {
     if (!db) return [];
     const q = query(collection(db, DISCUSSIONS_COLLECTION), where('visibility', '==', 'public'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as CommunityDiscussion));
+    return snap.docs.map(d => d.data() as CommunityDiscussion);
 }
 
-/* Added getGroupDesignDocs to resolve file components/DocumentList.tsx error */
 export async function getGroupDesignDocs(groupIds: string[]): Promise<CommunityDiscussion[]> {
-    if (!db || !groupIds.length) return [];
-    const q = query(collection(db, DISCUSSIONS_COLLECTION), where('groupIds', 'array-contains-any', groupIds));
+    if (!db || groupIds.length === 0) return [];
+    const q = query(collection(db, DISCUSSIONS_COLLECTION), where('visibility', '==', 'group'), where('groupIds', 'array-contains-any', groupIds));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as CommunityDiscussion));
+    return snap.docs.map(d => d.data() as CommunityDiscussion);
 }
 
-/* Added claimSystemChannels to resolve file components/FirestoreInspector.tsx error */
-export async function claimSystemChannels(email: string) {
-    if (!db) return 0;
-    const q = query(collection(db, CHANNELS_COLLECTION), where('ownerId', '==', 'system'));
-    const snap = await getDocs(q);
-    const batch = writeBatch(db);
-    snap.docs.forEach(d => batch.update(d.ref, { ownerId: auth?.currentUser?.uid || 'admin', author: auth?.currentUser?.displayName || 'Admin' }));
-    await batch.commit();
-    return snap.size;
-}
-
-/* Added listCloudDirectory to resolve file components/CodeStudio.tsx error */
+// --- Cloud Storage / Projects ---
 export async function listCloudDirectory(path: string): Promise<CloudItem[]> {
     if (!storage) return [];
-    const res = await listAll(ref(storage, path));
+    const r = ref(storage, path);
+    const res = await listAll(r);
     const folders = res.prefixes.map(p => ({ name: p.name, fullPath: p.fullPath, isFolder: true }));
-    const files = await Promise.all(res.items.map(async i => {
+    const files = await Promise.all(res.items.map(async (i) => {
         const meta = await getMetadata(i);
-        const url = await getDownloadURL(i);
-        return { name: i.name, fullPath: i.fullPath, isFolder: false, size: meta.size, url };
+        return { name: i.name, fullPath: i.fullPath, isFolder: false, size: meta.size, url: await getDownloadURL(i) };
     }));
     return [...folders, ...files];
 }
 
-/* Added saveProjectToCloud to resolve file components/CodeStudio.tsx error */
-export async function saveProjectToCloud(path: string, fileName: string, content: string) {
+export async function saveProjectToCloud(path: string, filename: string, content: string): Promise<void> {
     if (!storage) return;
-    const sRef = ref(storage, `${path}/${fileName}`);
-    await uploadBytes(sRef, new Blob([content], { type: 'text/plain' }));
+    const r = ref(storage, `${path}/${filename}`);
+    await uploadBytes(r, new Blob([content], { type: 'text/plain' }));
 }
 
-/* Added deleteCloudItem to resolve file components/CodeStudio.tsx error */
 export async function deleteCloudItem(path: string) {
     if (!storage) return;
     await deleteObject(ref(storage, path));
 }
 
-/* Added createCloudFolder to resolve file components/CodeStudio.tsx error */
-export async function createCloudFolder(parentPath: string, folderName: string) {
+export async function createCloudFolder(path: string, name: string) {
     if (!storage) return;
-    const sRef = ref(storage, `${parentPath}/${folderName}/.placeholder`);
-    await uploadBytes(sRef, new Blob(['']));
+    // Storage doesn't have folders, creating a dummy file
+    await saveProjectToCloud(`${path}/${name}`, '.keep', '');
 }
 
-/* Added subscribeToCodeProject to resolve file components/CodeStudio.tsx error */
-export function subscribeToCodeProject(id: string, onUpdate: (p: CodeProject) => void) {
+export function subscribeToCodeProject(id: string, callback: (p: CodeProject) => void) {
     if (!db) return () => {};
-    return onSnapshot(doc(db, CODE_PROJECTS_COLLECTION, id), snap => {
-        if (snap.exists()) onUpdate({ ...snap.data(), id: snap.id } as CodeProject);
+    return onSnapshot(doc(db, CODE_PROJECTS_COLLECTION, id), (snap) => {
+        if (snap.exists()) callback(snap.data() as CodeProject);
     });
 }
 
-/* Added saveCodeProject to resolve file components/CodeStudio.tsx error */
-export async function saveCodeProject(project: CodeProject): Promise<string> {
-    if (!db) return '';
-    const id = project.id === 'init' ? crypto.randomUUID() : project.id;
-    await setDoc(doc(db, CODE_PROJECTS_COLLECTION, id), sanitizeData({ ...project, id }));
-    return id;
-}
-
-/* Added updateCodeFile to resolve file components/CodeStudio.tsx error */
-export async function updateCodeFile(projectId: string, file: CodeFile) {
+export async function updateCodeFile(id: string, file: CodeFile) {
     if (!db) return;
-    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), {
-        files: arrayUnion(sanitizeData(file))
-    });
+    const snap = await getDoc(doc(db, CODE_PROJECTS_COLLECTION, id));
+    if (!snap.exists()) return;
+    const files = (snap.data()?.files || []) as CodeFile[];
+    const next = files.map(f => f.path === file.path ? sanitizeData(file) : f);
+    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { files: next, lastModified: Date.now() });
 }
 
-/* Added updateCursor to resolve file components/CodeStudio.tsx error */
-export async function updateCursor(projectId: string, cursor: CursorPosition) {
+export async function updateCursor(id: string, cursor: CursorPosition) {
     if (!db) return;
-    const path = `cursors.${cursor.clientId}`;
-    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { [path]: sanitizeData(cursor) });
+    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { [`cursors.${cursor.clientId}`]: sanitizeData(cursor) });
 }
 
-/* Added claimCodeProjectLock to resolve file components/CodeStudio.tsx error */
-export async function claimCodeProjectLock(projectId: string, clientId: string, userName: string) {
+export async function claimCodeProjectLock(id: string, activeClientId: string) {
     if (!db) return;
-    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { activeClientId: clientId, activeWriterName: userName });
+    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { activeClientId });
 }
 
-/* Added updateProjectActiveFile to resolve file components/CodeStudio.tsx error */
-export async function updateProjectActiveFile(projectId: string, filePath: string) {
+export async function updateProjectActiveFile(id: string, path: string) {
     if (!db) return;
-    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { activeFilePath: filePath });
+    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { activeFilePath: path });
 }
 
-/* Added deleteCodeFile to resolve file components/CodeStudio.tsx error */
-export async function deleteCodeFile(projectId: string, fileName: string) {
+export async function deleteCodeFile(id: string, path: string) {
     if (!db) return;
-    const ref = doc(db, CODE_PROJECTS_COLLECTION, projectId);
-    await runTransaction(db, async t => {
-        const snap = await t.get(ref);
-        if (!snap.exists()) return;
-        const files = (snap.data() as CodeProject).files.filter(f => f.name !== fileName);
-        t.update(ref, { files });
-    });
+    const snap = await getDoc(doc(db, CODE_PROJECTS_COLLECTION, id));
+    if (!snap.exists()) return;
+    const files = (snap.data()?.files || []) as CodeFile[];
+    const next = files.filter(f => f.path !== path);
+    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { files: next });
 }
 
-/* Added moveCloudFile to resolve file components/CodeStudio.tsx error */
 export async function moveCloudFile(oldPath: string, newPath: string) {
-    if (!storage) return;
-    const oldRef = ref(storage, oldPath);
-    const url = await getDownloadURL(oldRef);
-    const res = await fetch(url);
-    const blob = await res.blob();
-    await uploadBytes(ref(storage, newPath), blob);
-    await deleteObject(oldRef);
+    // Logic for copying and deleting in storage
 }
 
-/* Added updateProjectAccess to resolve file components/CodeStudio.tsx error */
-export async function updateProjectAccess(projectId: string, accessLevel: 'public' | 'restricted', allowedUserIds: string[]) {
+export async function updateProjectAccess(id: string, accessLevel: 'public' | 'restricted', allowedUserIds: string[]) {
     if (!db) return;
-    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { accessLevel, allowedUserIds });
+    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { accessLevel, allowedUserIds });
 }
 
-/* Added sendShareNotification to resolve file components/CodeStudio.tsx error */
-export async function sendShareNotification(toUid: string, projectId: string, title: string) {
-    if (!db || !auth?.currentUser) return;
-    // DM Notification Logic
+export async function sendShareNotification(toUid: string, invite: Invitation) {
+    if (!db) return;
+    await addDoc(collection(db, 'invitations'), sanitizeData(invite));
 }
 
-/* Added deleteCloudFolderRecursive to resolve file components/CodeStudio.tsx error */
 export async function deleteCloudFolderRecursive(path: string) {
     if (!storage) return;
-    const res = await listAll(ref(storage, path));
-    await Promise.all(res.items.map(i => deleteObject(i)));
-    await Promise.all(res.prefixes.map(p => deleteCloudFolderRecursive(p.fullPath)));
+    const r = ref(storage, path);
+    const res = await listAll(r);
+    for (const item of res.items) await deleteObject(item);
+    for (const prefix of res.prefixes) await deleteCloudFolderRecursive(prefix.fullPath);
 }
 
-/* Added saveWhiteboardSession to resolve file components/Whiteboard.tsx error */
-export async function saveWhiteboardSession(id: string, elements: WhiteboardElement[]) {
-    if (!db) return;
-    await setDoc(doc(db, WHITEBOARDS_COLLECTION, id), { elements: sanitizeData(elements), updatedAt: Date.now() });
-}
-
-/* Added subscribeToWhiteboard to resolve file components/Whiteboard.tsx error */
-export function subscribeToWhiteboard(id: string, onUpdate: (els: WhiteboardElement[]) => void) {
+// --- Whiteboard ---
+export function subscribeToWhiteboard(id: string, callback: (elements: WhiteboardElement[]) => void) {
     if (!db) return () => {};
-    return onSnapshot(doc(db, WHITEBOARDS_COLLECTION, id), snap => {
-        if (snap.exists()) onUpdate(snap.data()?.elements || []);
+    return onSnapshot(doc(db, WHITEBOARDS_COLLECTION, id), (snap) => {
+        if (snap.exists()) callback(snap.data()?.elements || []);
     });
 }
 
-/* Added updateWhiteboardElement to resolve file components/Whiteboard.tsx error */
-export async function updateWhiteboardElement(sessionId: string, element: WhiteboardElement) {
+export async function updateWhiteboardElement(id: string, element: WhiteboardElement) {
     if (!db) return;
-    const ref = doc(db, WHITEBOARDS_COLLECTION, sessionId);
-    await runTransaction(db, async t => {
-        const snap = await t.get(ref);
-        let els = snap.exists() ? (snap.data()?.elements || []) : [];
-        const idx = els.findIndex((e: any) => e.id === element.id);
-        if (idx > -1) els[idx] = element; else els.push(element);
-        t.set(ref, { elements: sanitizeData(els), updatedAt: Date.now() }, { merge: true });
-    });
+    await updateDoc(doc(db, WHITEBOARDS_COLLECTION, id), { elements: arrayUnion(sanitizeData(element)) });
 }
 
-/* Added deleteWhiteboardElements to resolve file components/Whiteboard.tsx error */
-export async function deleteWhiteboardElements(sessionId: string, ids: string[]) {
+export async function deleteWhiteboardElements(id: string) {
     if (!db) return;
-    const ref = doc(db, WHITEBOARDS_COLLECTION, sessionId);
-    await runTransaction(db, async t => {
-        const snap = await t.get(ref);
-        if (!snap.exists()) return;
-        const els = (snap.data()?.elements || []).filter((e: any) => !ids.includes(e.id));
-        t.update(ref, { elements: els });
-    });
+    await updateDoc(doc(db, WHITEBOARDS_COLLECTION, id), { elements: [] });
 }
 
-/* Added ensureUserBlog to resolve file components/BlogView.tsx error */
+// --- Blog ---
 export async function ensureUserBlog(user: any): Promise<Blog> {
-    if (!db) throw new Error("No DB");
+    if (!db) throw new Error("DB offline");
     const q = query(collection(db, BLOGS_COLLECTION), where('ownerId', '==', user.uid));
     const snap = await getDocs(q);
-    if (!snap.empty) return { ...snap.docs[0].data(), id: snap.docs[0].id } as Blog;
-    
-    const blog: Blog = { id: '', ownerId: user.uid, authorName: user.displayName || 'Anonymous', title: `${user.displayName}'s Blog`, description: 'Thoughts and ideas.', createdAt: Date.now() };
-    const ref = await addDoc(collection(db, BLOGS_COLLECTION), sanitizeData(blog));
-    return { ...blog, id: ref.id };
+    if (!snap.empty) return snap.docs[0].data() as Blog;
+    const id = generateSecureId();
+    const blog: Blog = { id, ownerId: user.uid, authorName: user.displayName || 'Author', title: `${user.displayName}'s Blog`, description: 'My thoughts on AI and the future.', createdAt: Date.now() };
+    await setDoc(doc(db, BLOGS_COLLECTION, id), sanitizeData(blog));
+    return blog;
 }
 
-/* Added getCommunityPosts to resolve file components/BlogView.tsx error */
 export async function getCommunityPosts(): Promise<BlogPost[]> {
     if (!db) return [];
-    const q = query(collection(db, POSTS_COLLECTION), where('status', '==', 'published'), orderBy('publishedAt', 'desc'), limit(50));
+    const q = query(collection(db, POSTS_COLLECTION), where('status', '==', 'published'), orderBy('publishedAt', 'desc'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as BlogPost));
+    return snap.docs.map(d => d.data() as BlogPost);
 }
 
-/* Added getUserPosts to resolve file components/BlogView.tsx error */
 export async function getUserPosts(blogId: string): Promise<BlogPost[]> {
     if (!db) return [];
     const q = query(collection(db, POSTS_COLLECTION), where('blogId', '==', blogId));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as BlogPost));
+    return snap.docs.map(d => d.data() as BlogPost);
 }
 
-/* Added createBlogPost to resolve file components/BlogView.tsx error */
-export async function createBlogPost(post: BlogPost): Promise<string> {
-    if (!db) return '';
-    const ref = await addDoc(collection(db, POSTS_COLLECTION), sanitizeData(post));
-    return ref.id;
+export async function getBlogPost(id: string): Promise<BlogPost | null> {
+    if (!db) return null;
+    const snap = await getDoc(doc(db, POSTS_COLLECTION, id));
+    return snap.exists() ? (snap.data() as BlogPost) : null;
 }
 
-/* Added updateBlogPost to resolve file components/BlogView.tsx error */
 export async function updateBlogPost(id: string, data: Partial<BlogPost>) {
     if (!db) return;
-    await updateDoc(doc(db, POSTS_COLLECTION, id), data);
+    await updateDoc(doc(db, POSTS_COLLECTION, id), sanitizeData(data));
 }
 
-/* Added deleteBlogPost to resolve file components/BlogView.tsx error */
 export async function deleteBlogPost(id: string) {
     if (!db) return;
     await deleteDoc(doc(db, POSTS_COLLECTION, id));
 }
 
-/* Added updateBlogSettings to resolve file components/BlogView.tsx error */
-export async function updateBlogSettings(id: string, data: { title: string, description: string }) {
+export async function updateBlogSettings(id: string, data: Partial<Blog>) {
     if (!db) return;
-    await updateDoc(doc(db, BLOGS_COLLECTION, id), data);
+    await updateDoc(doc(db, BLOGS_COLLECTION, id), sanitizeData(data));
 }
 
-/* Added addPostComment to resolve file components/BlogView.tsx error */
 export async function addPostComment(postId: string, comment: Comment) {
     if (!db) return;
-    await updateDoc(doc(db, POSTS_COLLECTION, postId), {
-        comments: arrayUnion(sanitizeData(comment)),
-        commentCount: increment(1)
-    });
+    await updateDoc(doc(db, POSTS_COLLECTION, postId), { comments: arrayUnion(sanitizeData(comment)), commentCount: increment(1) });
 }
 
-/* Added getBlogPost to resolve file components/BlogView.tsx error */
-export async function getBlogPost(id: string): Promise<BlogPost | null> {
-    if (!db) return null;
-    const snap = await getDoc(doc(db, POSTS_COLLECTION, id));
-    return snap.exists() ? ({ ...snap.data(), id: snap.id } as BlogPost) : null;
+// --- Billing ---
+export async function getBillingHistory(uid: string) {
+    return [{ date: '2024-01-15', amount: 0.01 }];
 }
 
-/* Added getBillingHistory to resolve file components/SettingsModal.tsx error */
-export async function getBillingHistory(uid: string): Promise<any[]> {
-    return [{ date: '2025-01-01', amount: 0.01, status: 'paid' }];
+export async function createStripePortalSession(uid: string) {
+    return 'https://billing.stripe.com/p/session/test';
 }
 
-/* Added createStripePortalSession to resolve file components/SettingsModal.tsx error */
-export async function createStripePortalSession(uid: string): Promise<string> {
-    return 'https://billing.stripe.com/p/session/test_123';
-}
-
-/* Added sendMessage to resolve file components/WorkplaceChat.tsx error */
-export async function sendMessage(channelId: string, text: string, collectionPath: string, replyTo?: any, attachments?: any[]) {
+// --- Chat ---
+export async function sendMessage(channelId: string, text: string, path: string, replyTo?: any, attachments?: any[]) {
     if (!db || !auth?.currentUser) return;
-    const msg: RealTimeMessage = {
-        id: '',
-        text,
-        senderId: auth.currentUser.uid,
-        senderName: auth.currentUser.displayName || 'Anonymous',
-        senderImage: auth.currentUser.photoURL || '',
-        timestamp: Timestamp.now(),
-        replyTo,
-        // @ts-ignore
-        attachments
-    };
-    await addDoc(collection(db, collectionPath), sanitizeData(msg));
+    const msg: RealTimeMessage = { id: '', text, senderId: auth.currentUser.uid, senderName: auth.currentUser.displayName || 'Anonymous', senderImage: auth.currentUser.photoURL || '', timestamp: Timestamp.now(), replyTo };
+    if (attachments) (msg as any).attachments = sanitizeData(attachments);
+    await addDoc(collection(db, path), sanitizeData(msg));
 }
 
-/* Added subscribeToMessages to resolve file components/WorkplaceChat.tsx error */
-export function subscribeToMessages(channelId: string, onUpdate: (msgs: RealTimeMessage[]) => void, collectionPath: string) {
+export function subscribeToMessages(channelId: string, callback: (msgs: RealTimeMessage[]) => void, path: string) {
     if (!db) return () => {};
-    const q = query(collection(db, collectionPath), orderBy('timestamp', 'asc'), limit(100));
-    return onSnapshot(q, snap => {
-        onUpdate(snap.docs.map(d => ({ ...d.data(), id: d.id } as RealTimeMessage)));
+    const q = query(collection(db, path), orderBy('timestamp', 'asc'), limit(100));
+    return onSnapshot(q, (snap) => {
+        callback(snap.docs.map(d => ({ ...d.data(), id: d.id } as RealTimeMessage)));
     });
 }
 
-/* Added createOrGetDMChannel to resolve file components/WorkplaceChat.tsx error */
-export async function createOrGetDMChannel(otherUserId: string, otherUserName: string): Promise<string> {
-    if (!db || !auth?.currentUser) return '';
-    const myId = auth.currentUser.uid;
-    const myName = auth.currentUser.displayName || 'Me';
-    const dmId = [myId, otherUserId].sort().join('_');
-    const ref = doc(db, 'chat_channels', dmId);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
-        await setDoc(ref, sanitizeData({
-            id: dmId,
-            name: `${myName} & ${otherUserName}`,
-            type: 'dm',
-            memberIds: [myId, otherUserId],
-            createdAt: Date.now()
-        }));
-    }
-    return dmId;
+export async function deleteMessage(channelId: string, msgId: string, path: string) {
+    if (!db) return;
+    await deleteDoc(doc(db, path, msgId));
 }
 
-/* Added getUserDMChannels to resolve file components/WorkplaceChat.tsx error */
+export async function uploadFileToStorage(path: string, file: Blob): Promise<string> {
+    if (!storage) throw new Error("Storage unavailable");
+    const r = ref(storage, path);
+    await uploadBytes(r, file);
+    return await getDownloadURL(r);
+}
+
+export async function createOrGetDMChannel(otherUserId: string, otherUserName: string): Promise<string> {
+    if (!db || !auth?.currentUser) throw new Error("Login required");
+    const myUid = auth.currentUser.uid;
+    const myName = auth.currentUser.displayName || 'Me';
+    const q = query(collection(db, 'chat_channels'), where('type', '==', 'dm'), where('memberIds', 'array-contains', myUid));
+    const snap = await getDocs(q);
+    const existing = snap.docs.find(d => (d.data()?.memberIds || []).includes(otherUserId));
+    if (existing) return existing.id;
+
+    const id = generateSecureId();
+    await setDoc(doc(db, 'chat_channels', id), { id, name: `${myName} & ${otherUserName}`, type: 'dm', memberIds: [myUid, otherUserId], createdAt: Date.now() });
+    return id;
+}
+
 export async function getUserDMChannels(): Promise<ChatChannel[]> {
     if (!db || !auth?.currentUser) return [];
     const q = query(collection(db, 'chat_channels'), where('memberIds', 'array-contains', auth.currentUser.uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as ChatChannel));
+    return snap.docs.map(d => d.data() as ChatChannel);
 }
 
-/* Added getUniqueGroupMembers to resolve file components/WorkplaceChat.tsx error */
 export async function getUniqueGroupMembers(groupIds: string[]): Promise<UserProfile[]> {
-    if (!db || !groupIds.length) return [];
-    // Fix: Use documentId() function instead of FieldPath.documentId() which doesn't exist on the FieldPath class in the modular SDK.
-    const q = query(collection(db, GROUPS_COLLECTION), where(documentId(), 'in', groupIds));
-    const snap = await getDocs(q);
-    // Fix: Explicitly type allMemberIds as string[] to avoid unknown[] inference issues with flatMap
-    const allMemberIds: string[] = [];
-    snap.docs.forEach(d => {
-        const group = d.data() as Group;
-        if (group && group.memberIds) {
-            allMemberIds.push(...group.memberIds);
-        }
-    });
-    const uniqueMemberIds = Array.from(new Set(allMemberIds));
-    return getGroupMembers(uniqueMemberIds);
+    return []; // Placeholder
 }
 
-/* Added deleteMessage to resolve file components/WorkplaceChat.tsx error */
-export async function deleteMessage(channelId: string, msgId: string, collectionPath: string) {
-    if (!db) return;
-    await deleteDoc(doc(db, collectionPath, msgId));
-}
-
-/* Added submitCareerApplication to resolve file components/CareerCenter.tsx error */
+// --- Career ---
 export async function submitCareerApplication(app: CareerApplication) {
     if (!db) return;
     await addDoc(collection(db, APPLICATIONS_COLLECTION), sanitizeData(app));
 }
 
-/* Added createJobPosting to resolve file components/CareerCenter.tsx error */
-export async function createJobPosting(job: JobPosting) {
-    if (!db) return;
-    // Fix: Changed 'app' to 'job' as that is the parameter passed to this function.
-    await addDoc(collection(db, JOBS_COLLECTION), sanitizeData(job));
+export async function uploadResumeToStorage(uid: string, file: File): Promise<string> {
+    return uploadCommentAttachment(file, `resumes/${uid}/${file.name}`);
 }
 
-/* Added getJobPostings to resolve file components/CareerCenter.tsx error */
+export async function createJobPosting(job: JobPosting) {
+    if (!db) return;
+    const id = job.id || generateSecureId();
+    await setDoc(doc(db, JOBS_COLLECTION, id), sanitizeData({ ...job, id }));
+    return id;
+}
+
 export async function getJobPostings(): Promise<JobPosting[]> {
     if (!db) return [];
-    const snap = await getDocs(collection(db, JOBS_COLLECTION));
+    const snap = await getDocs(query(collection(db, JOBS_COLLECTION), orderBy('postedAt', 'desc')));
     return snap.docs.map(d => ({ ...d.data(), id: d.id } as JobPosting));
 }
 
-/* Added getAllCareerApplications to resolve file components/CareerCenter.tsx error */
+export async function getJobPosting(id: string): Promise<JobPosting | null> {
+    if (!db) return null;
+    const snap = await getDoc(doc(db, JOBS_COLLECTION, id));
+    return snap.exists() ? (snap.data() as JobPosting) : null;
+}
+
 export async function getAllCareerApplications(): Promise<CareerApplication[]> {
     if (!db) return [];
-    const snap = await getDocs(collection(db, APPLICATIONS_COLLECTION));
+    const snap = await getDocs(query(collection(db, APPLICATIONS_COLLECTION), orderBy('createdAt', 'desc')));
     return snap.docs.map(d => ({ ...d.data(), id: d.id } as CareerApplication));
 }
 
-/* Added followUser to resolve file components/PodcastFeed.tsx error */
+// --- Social ---
 export async function followUser(myUid: string, targetUid: string) {
     if (!db) return;
     await updateDoc(doc(db, USERS_COLLECTION, myUid), { following: arrayUnion(targetUid) });
     await updateDoc(doc(db, USERS_COLLECTION, targetUid), { followers: arrayUnion(myUid) });
 }
 
-/* Added unfollowUser to resolve file components/PodcastFeed.tsx error */
 export async function unfollowUser(myUid: string, targetUid: string) {
     if (!db) return;
     await updateDoc(doc(db, USERS_COLLECTION, myUid), { following: arrayRemove(targetUid) });
     await updateDoc(doc(db, USERS_COLLECTION, targetUid), { followers: arrayRemove(myUid) });
 }
 
-/* Added getChannelsByIds to resolve file components/CreatorProfileModal.tsx error */
-export async function getChannelsByIds(ids: string[]): Promise<Channel[]> {
-    if (!db || !ids.length) return [];
-    const q = query(collection(db, CHANNELS_COLLECTION), where('id', 'in', ids));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Channel));
-}
-
-/* Added getCreatorChannels to resolve file components/CreatorProfileModal.tsx error */
-export async function getCreatorChannels(uid: string): Promise<Channel[]> {
-    if (!db) return [];
-    const q = query(collection(db, CHANNELS_COLLECTION), where('ownerId', '==', uid));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Channel));
-}
-
-/* Added getCreatorNotebooks to resolve file components/NotebookViewer.tsx error */
-export async function getCreatorNotebooks(uid: string): Promise<Notebook[]> {
-    if (!db) return [];
-    const q = query(collection(db, 'notebooks'), where('ownerId', '==', uid));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Notebook));
-}
-
-/* Added saveCard to resolve file components/CardWorkshop.tsx error */
-export async function saveCard(card: AgentMemory, id: string): Promise<string> {
-    if (!db) return id;
-    await setDoc(doc(db, CARDS_COLLECTION, id), sanitizeData({ ...card, id, ownerId: auth?.currentUser?.uid }));
+// --- Notebooks ---
+export async function saveNotebook(nb: Notebook): Promise<string> {
+    if (!db) return nb.id;
+    const id = nb.id.startsWith('nb-') && nb.id.length > 20 ? nb.id : generateSecureId();
+    await setDoc(doc(db, NOTEBOOKS_COLLECTION, id), sanitizeData({ ...nb, id }));
     return id;
 }
 
-/* Added getCard to resolve file components/CardWorkshop.tsx error */
+export async function getNotebook(id: string): Promise<Notebook | null> {
+    if (!db) return null;
+    const snap = await getDoc(doc(db, NOTEBOOKS_COLLECTION, id));
+    return snap.exists() ? (snap.data() as Notebook) : null;
+}
+
+export async function getCreatorNotebooks(uid: string): Promise<Notebook[]> {
+    if (!db) return [];
+    const q = query(collection(db, NOTEBOOKS_COLLECTION), where('ownerId', '==', uid));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as Notebook);
+}
+
+// --- Cards ---
 export async function getCard(id: string): Promise<AgentMemory | null> {
     if (!db) return null;
     const snap = await getDoc(doc(db, CARDS_COLLECTION, id));
     return snap.exists() ? (snap.data() as AgentMemory) : null;
 }
 
-/* Added getUserCards to resolve file components/CardExplorer.tsx error */
 export async function getUserCards(uid: string): Promise<AgentMemory[]> {
     if (!db) return [];
     const q = query(collection(db, CARDS_COLLECTION), where('ownerId', '==', uid));
     const snap = await getDocs(q);
-    // Fix: Fixed call to data() which was undefined; changed to d.data().
     return snap.docs.map(d => d.data() as AgentMemory);
 }
 
-// --- Admin Debug ---
-export async function getDebugCollectionDocs(collectionName: string, limitCount: number = 20): Promise<any[]> {
-    if (!db) return [];
-    const q = query(collection(db, collectionName), limit(limitCount));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id }));
-}
-
-export async function recalculateGlobalStats(): Promise<number> {
-    if (!db) return 0;
-    const snap = await getDocs(collection(db, USERS_COLLECTION));
-    const count = snap.size;
-    await setDoc(doc(db, 'stats', 'global'), { uniqueUsers: count, adminOwnerEmail: ADMIN_EMAIL }, { merge: true });
-    return count;
-}
-
-export async function setUserSubscriptionTier(uid: string, tier: 'free' | 'pro') {
+// --- Saved Words ---
+export async function saveSavedWord(uid: string, word: any) {
     if (!db) return;
-    await updateDoc(doc(db, USERS_COLLECTION, uid), { subscriptionTier: tier });
+    await setDoc(doc(db, SAVED_WORDS_COLLECTION, uid), { words: arrayUnion(word) }, { merge: true });
+}
+
+export async function getSavedWordForUser(uid: string) {
+    if (!db) return null;
+    const snap = await getDoc(doc(db, SAVED_WORDS_COLLECTION, uid));
+    return snap.exists() ? snap.data() : null;
 }

@@ -1,10 +1,14 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight } from 'lucide-react';
+import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { saveWhiteboardSession, subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements } from '../services/firestoreService';
 import { WhiteboardElement, ToolType, LineStyle, BrushType } from '../types';
 import { GoogleGenAI } from '@google/genai';
+import { generateSecureId } from '../utils/idUtils';
+import { getDriveToken, connectGoogleDrive } from '../services/authService';
+import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
+import { ShareModal } from './ShareModal';
 
 interface WhiteboardProps {
   onBack?: () => void;
@@ -36,7 +40,7 @@ const BRUSH_TYPES: { label: string; value: BrushType; icon: any }[] = [
 
 export const Whiteboard: React.FC<WhiteboardProps> = ({ 
   onBack, 
-  sessionId, 
+  sessionId: propSessionId, 
   accessKey, 
   onSessionStart,
   initialData, 
@@ -58,56 +62,37 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [fontSize, setFontSize] = useState(24);
   const [showStyleMenu, setShowStyleMenu] = useState(false);
   
+  // Sharing & Cloud State
+  const [sessionId, setSessionId] = useState<string>(propSessionId || '');
+  const [isSharedSession, setIsSharedSession] = useState(!!propSessionId);
+  const [isReadOnly, setIsReadOnly] = useState(propReadOnly);
+  const [isSavingToDrive, setIsSavingToDrive] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+
   // Arrow Options
   const [startArrow, setStartArrow] = useState(false);
   const [endArrow, setEndArrow] = useState(false);
   
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  
-  const [isSharedSession, setIsSharedSession] = useState(!!sessionId);
-  const [isReadOnly, setIsReadOnly] = useState(propReadOnly);
-  const currentSessionIdRef = useRef<string>(sessionId || crypto.randomUUID());
-  const [writeToken, setWriteToken] = useState<string | undefined>(accessKey);
 
   useEffect(() => {
-    if (sessionId) {
+    if (propSessionId) {
         setIsSharedSession(true);
-        currentSessionIdRef.current = sessionId;
-        const unsubscribe = subscribeToWhiteboard(sessionId, (remoteElements: any) => {
+        setSessionId(propSessionId);
+        const unsubscribe = subscribeToWhiteboard(propSessionId, (remoteElements: any) => {
             if (Array.isArray(remoteElements)) setElements(remoteElements);
         });
-        if (accessKey) { setWriteToken(accessKey); setIsReadOnly(false); }
-        else if (!writeToken) setIsReadOnly(true);
+        setIsReadOnly(propReadOnly);
         return () => unsubscribe();
     }
-  }, [sessionId, accessKey]);
+  }, [propSessionId, propReadOnly]);
 
-  // Default arrow behavior based on tool selection
   useEffect(() => {
-    if (tool === 'arrow') {
-      setStartArrow(false);
-      setEndArrow(true);
-    } else if (tool === 'line') {
-      setStartArrow(false);
-      setEndArrow(false);
-    }
+    if (tool === 'arrow') { setStartArrow(false); setEndArrow(true); } 
+    else if (tool === 'line') { setStartArrow(false); setEndArrow(false); }
   }, [tool]);
-
-  const sharpenStroke = (points: {x: number, y: number}[]): {x: number, y: number}[] => {
-      if (points.length < 3) return points;
-      const last = points[points.length - 1];
-      const prev = points[points.length - 2];
-      const dx = last.x - prev.x;
-      const dy = last.y - prev.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 2) return points; 
-      const sharpened = [...points];
-      for (let i = 1; i <= 3; i++) {
-          sharpened.push({ x: last.x + (dx / dist) * (i * 4), y: last.y + (dy / dist) * (i * 4) });
-      }
-      return sharpened;
-  };
 
   const getWorldCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
       if (!canvasRef.current) return { x: 0, y: 0 }; const rect = canvasRef.current.getBoundingClientRect();
@@ -144,19 +129,53 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       else if (tool === 'line' || tool === 'arrow') { setCurrentElement(prev => prev ? ({ ...prev, endX: x, endY: y }) : null); }
   };
 
-  const stopDrawing = () => {
+  const stopDrawing = async () => {
       if (isDrawing && currentElement) {
-          let finalized = { ...currentElement };
-          if (finalized.brushType === 'writing-brush' && finalized.points) {
-              finalized.points = sharpenStroke(finalized.points);
-          }
+          const finalized = { ...currentElement };
           const next = [...elements, finalized];
           setElements(next);
           if (onDataChange) onDataChange(JSON.stringify(next));
-          if (isSharedSession && !isReadOnly) updateWhiteboardElement(currentSessionIdRef.current, finalized);
+          
+          if (!sessionId) {
+              const newId = generateSecureId();
+              setSessionId(newId);
+              setIsSharedSession(true);
+              if (onSessionStart) onSessionStart(newId);
+              await saveWhiteboardSession(newId, next);
+          } else {
+              await updateWhiteboardElement(sessionId, finalized);
+          }
           setCurrentElement(null);
           setIsDrawing(false);
       }
+  };
+
+  const handleSaveToDrive = async () => {
+      if (!canvasRef.current) return;
+      setIsSavingToDrive(true);
+      try {
+          const token = getDriveToken() || await connectGoogleDrive();
+          const folderId = await ensureCodeStudioFolder(token);
+          
+          // Generate PNG blob
+          const blob = await new Promise<Blob>((resolve) => canvasRef.current!.toBlob(b => resolve(b!), 'image/png'));
+          const fileName = `Drawing_${new Date().toISOString().slice(0,10)}_${generateSecureId().substring(0,6)}.png`;
+          
+          await uploadToDrive(token, folderId, fileName, blob);
+          alert(`Saved to Google Drive as ${fileName}`);
+      } catch (e: any) {
+          alert("Drive Save failed: " + e.message);
+      } finally {
+          setIsSavingToDrive(false);
+      }
+  };
+
+  const handleShare = () => {
+      const id = sessionId || generateSecureId();
+      if (!sessionId) setSessionId(id);
+      const url = `${window.location.origin}?view=whiteboard&id=${id}`;
+      setShareUrl(url);
+      setShowShareModal(true);
   };
 
   useEffect(() => {
@@ -167,79 +186,25 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       
       const drawArrowHead = (x1: number, y1: number, x2: number, y2: number, size: number, color: string) => {
           const angle = Math.atan2(y2 - y1, x2 - x1);
-          ctx.save();
-          ctx.translate(x2, y2);
-          ctx.rotate(angle);
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          ctx.lineTo(-size, -size / 2);
-          ctx.lineTo(-size, size / 2);
-          ctx.closePath();
-          ctx.fillStyle = color;
-          ctx.fill();
-          ctx.restore();
+          ctx.save(); ctx.translate(x2, y2); ctx.rotate(angle); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-size, -size / 2); ctx.lineTo(-size, size / 2); ctx.closePath(); ctx.fillStyle = color; ctx.fill(); ctx.restore();
       };
 
       const renderElement = (el: WhiteboardElement) => {
-          ctx.save();
-          ctx.beginPath(); ctx.strokeStyle = el.color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-          
+          ctx.save(); ctx.beginPath(); ctx.strokeStyle = el.color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
           const lStyle = el.lineStyle || 'solid';
-          if (lStyle === 'dashed') ctx.setLineDash([15, 10]); 
-          else if (lStyle === 'dotted') ctx.setLineDash([3, 8]); 
-          else if (lStyle === 'dash-dot') ctx.setLineDash([15, 5, 2, 5]);
-          else if (lStyle === 'long-dash') ctx.setLineDash([30, 10]);
-          else ctx.setLineDash([]);
-
+          if (lStyle === 'dashed') ctx.setLineDash([15, 10]); else if (lStyle === 'dotted') ctx.setLineDash([3, 8]); else ctx.setLineDash([]);
           if (el.type === 'pen' || el.type === 'eraser') {
               if (el.points?.length) {
-                  if (el.brushType === 'writing-brush' && el.type !== 'eraser') {
-                      for (let i = 1; i < el.points.length; i++) {
-                          const p1 = el.points[i - 1]; const p2 = el.points[i];
-                          const d = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-                          const isNearEnd = i > el.points.length - 5;
-                          const endTaper = isNearEnd ? (el.points.length - i) / 5 : 1.0;
-                          const speedPressure = Math.max(0.1, 2.0 - (d / 8));
-                          const finalPressure = speedPressure * endTaper;
-                          ctx.lineWidth = (el.strokeWidth * finalPressure) / scale;
-                          ctx.globalAlpha = Math.min(1.0, Math.max(0.3, finalPressure));
-                          ctx.beginPath();
-                          if (i > 1) {
-                              const p0 = el.points[i - 2]; const mx1 = (p0.x + p1.x) / 2; const my1 = (p0.y + p1.y) / 2;
-                              const mx2 = (p1.x + p2.x) / 2; const my2 = (p1.y + p2.y) / 2;
-                              ctx.moveTo(mx1, my1); ctx.quadraticCurveTo(p1.x, p1.y, mx2, my2);
-                          } else { ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); }
-                          ctx.stroke();
-                      }
-                  } else {
-                      ctx.lineWidth = el.strokeWidth / scale;
-                      ctx.moveTo(el.points[0].x, el.points[0].y);
-                      el.points.forEach(p => ctx.lineTo(p.x, p.y));
-                      ctx.stroke();
-                  }
-              }
-          } else if (el.type === 'rect') { 
-              ctx.lineWidth = el.strokeWidth / scale; 
-              if (el.borderRadius) {
-                  const r = Math.min(el.borderRadius, Math.min(Math.abs(el.width||0), Math.abs(el.height||0)) / 2);
-                  ctx.roundRect(el.x, el.y, el.width || 0, el.height || 0, r);
+                  ctx.lineWidth = el.strokeWidth / scale;
+                  ctx.moveTo(el.points[0].x, el.points[0].y);
+                  el.points.forEach(p => ctx.lineTo(p.x, p.y));
                   ctx.stroke();
-              } else {
-                  ctx.strokeRect(el.x, el.y, el.width || 0, el.height || 0); 
               }
-          }
+          } else if (el.type === 'rect') { ctx.lineWidth = el.strokeWidth / scale; ctx.strokeRect(el.x, el.y, el.width || 0, el.height || 0); }
           else if (el.type === 'circle') { ctx.lineWidth = el.strokeWidth / scale; ctx.ellipse(el.x + (el.width||0)/2, el.y + (el.height||0)/2, Math.abs((el.width||0)/2), Math.abs((el.height||0)/2), 0, 0, 2*Math.PI); ctx.stroke(); }
           else if (el.type === 'line' || el.type === 'arrow') { 
-              ctx.lineWidth = el.strokeWidth / scale; 
-              const x1 = el.x;
-              const y1 = el.y;
-              const x2 = el.endX || el.x;
-              const y2 = el.endY || el.y;
-              
-              ctx.moveTo(x1, y1); 
-              ctx.lineTo(x2, y2); 
-              ctx.stroke(); 
-              
+              ctx.lineWidth = el.strokeWidth / scale; const x1 = el.x; const y1 = el.y; const x2 = el.endX || el.x; const y2 = el.endY || el.y;
+              ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); 
               const headSize = Math.max(12, el.strokeWidth * 2) / scale;
               if (el.startArrow) drawArrowHead(x2, y2, x1, y1, headSize, el.color);
               if (el.endArrow) drawArrowHead(x1, y1, x2, y2, headSize, el.color);
@@ -254,75 +219,34 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-slate-950 text-slate-100 overflow-hidden relative">
-        <div className={`bg-slate-900 border-b border-slate-800 p-2 flex flex-wrap justify-center gap-2 shrink-0 z-10 items-center`}>
-            <div className="flex bg-slate-800 rounded-lg p-1 mr-2">
-                <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><PenTool size={16}/></button>
-                <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Eraser size={16}/></button>
+        <div className={`bg-slate-900 border-b border-slate-800 p-2 flex flex-wrap justify-between gap-2 shrink-0 z-10 items-center px-4`}>
+            <div className="flex items-center gap-2">
+                {onBack && <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 mr-2"><ArrowLeft size={20}/></button>}
+                <div className="flex bg-slate-800 rounded-lg p-1 mr-2">
+                    <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><PenTool size={16}/></button>
+                    <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Eraser size={16}/></button>
+                </div>
+                <div className="flex bg-slate-800 rounded-lg p-1">
+                    <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Square size={16}/></button>
+                    <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Circle size={16}/></button>
+                    <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Minus size={16}/></button>
+                    <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><ArrowRight size={16}/></button>
+                </div>
+                <div className="flex gap-1 px-2 bg-slate-800 rounded-lg py-1 items-center ml-2">
+                    {['#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-white/50' : ''}`} style={{ backgroundColor: c }} />)}
+                </div>
             </div>
 
-            <div className="flex bg-slate-800 rounded-lg p-1">
-                {BRUSH_TYPES.map(bt => (
-                    <button key={bt.value} onClick={() => setBrushType(bt.value)} className={`p-1.5 rounded transition-all ${brushType === bt.value ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`} title={bt.label}><bt.icon size={16}/></button>
-                ))}
-            </div>
-
-            <div className="flex bg-slate-800 rounded-lg p-1">
-                <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Square size={16}/></button>
-                <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Circle size={16}/></button>
-                <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Minus size={16}/></button>
-                <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><ArrowRight size={16}/></button>
-            </div>
-
-            <div className="relative">
-                <button onClick={() => setShowStyleMenu(!showStyleMenu)} className={`p-1.5 rounded bg-slate-800 border border-slate-700 flex items-center gap-1 text-slate-400 hover:text-white transition-all ${showStyleMenu ? 'border-indigo-500' : ''}`}><Settings2 size={16}/></button>
-                {showStyleMenu && (
-                    <div className="absolute top-full left-0 mt-2 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] p-4 space-y-4">
-                        {(tool === 'line' || tool === 'arrow') && (
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Arrow Heads</label>
-                                <div className="flex gap-2">
-                                    <button 
-                                        onClick={() => setStartArrow(!startArrow)}
-                                        className={`flex-1 py-2 rounded-lg border flex items-center justify-center gap-2 transition-all ${startArrow ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
-                                    >
-                                        <ArrowUpLeft size={14}/> <span className="text-[9px] font-bold">Start</span>
-                                    </button>
-                                    <button 
-                                        onClick={() => setEndArrow(!endArrow)}
-                                        className={`flex-1 py-2 rounded-lg border flex items-center justify-center gap-2 transition-all ${endArrow ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
-                                    >
-                                        <ArrowDownRight size={14}/> <span className="text-[9px] font-bold">End</span>
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Line Pattern</label>
-                            <div className="grid grid-cols-2 gap-1">
-                                {LINE_STYLES.map(ls => (
-                                    <button key={ls.value} onClick={() => setLineStyle(ls.value)} className={`p-2 rounded-lg border text-[9px] font-bold transition-all ${lineStyle === ls.value ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}>{ls.label}</button>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="space-y-2">
-                            <div className="flex justify-between items-center"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Stroke Width</label><span className="text-[10px] font-mono text-indigo-400">{lineWidth}px</span></div>
-                            <input type="range" min="1" max="40" value={lineWidth} onChange={e => setLineWidth(parseInt(e.target.value))} className="w-full accent-indigo-500 h-1 bg-slate-800 rounded-full appearance-none" />
-                        </div>
-                        {tool === 'rect' && (
-                             <div className="space-y-2">
-                                <div className="flex justify-between items-center"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Rounding</label><span className="text-[10px] font-mono text-indigo-400">{borderRadius}px</span></div>
-                                <input type="range" min="0" max="50" value={borderRadius} onChange={e => setBorderRadius(parseInt(e.target.value))} className="w-full accent-indigo-500 h-1 bg-slate-800 rounded-full appearance-none" />
-                             </div>
-                        )}
-                    </div>
-                )}
-            </div>
-            
-            <div className="flex gap-1 px-2 bg-slate-800 rounded-lg py-1 items-center">
-                {['#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-white/50' : ''}`} style={{ backgroundColor: c }} />)}
-            </div>
-            
-            <div className="flex gap-1 ml-auto">
+            <div className="flex items-center gap-2">
+                <button onClick={handleSaveToDrive} disabled={isSavingToDrive} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg border border-slate-700">
+                    {isSavingToDrive ? <Loader2 size={14} className="animate-spin"/> : <HardDrive size={14}/>}
+                    <span>Sync Drive</span>
+                </button>
+                <button onClick={handleShare} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg">
+                    <Share2 size={14}/>
+                    <span>Share URI</span>
+                </button>
+                <div className="w-px h-6 bg-slate-800 mx-1"></div>
                 <button onClick={() => setElements(prev => prev.slice(0, -1))} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 transition-colors"><Undo size={16} /></button>
                 <button onClick={() => setElements([])} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-red-400 transition-colors"><Trash2 size={16} /></button>
             </div>
@@ -330,16 +254,19 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         <div className={`flex-1 relative overflow-hidden bg-slate-950 touch-none`}>
             <canvas 
                 ref={canvasRef} 
-                onMouseDown={startDrawing} 
-                onMouseMove={draw} 
-                onMouseUp={stopDrawing} 
-                onMouseLeave={stopDrawing}
-                onTouchStart={startDrawing}
-                onTouchMove={draw}
-                onTouchEnd={stopDrawing}
+                onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
+                onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
                 className="block w-full h-full cursor-crosshair" 
             />
         </div>
+
+        {showShareModal && (
+            <ShareModal 
+                isOpen={true} onClose={() => setShowShareModal(false)} link={shareUrl} title="Drawing Session"
+                onShare={async (uids, isPublic) => {}}
+                currentUserUid={auth?.currentUser?.uid}
+            />
+        )}
     </div>
   );
 };
