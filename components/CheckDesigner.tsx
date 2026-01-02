@@ -142,7 +142,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash-image',
-              contents: { parts: [{ text: `A professional fine-line watermark etching for a check: ${check.memo}. Minimalist, elegant.` }] },
+              contents: { parts: [{ text: `A professional fine-line watermark etching for a check: ${check.memo}. Minimalist, elegant, high contrast for easy reading as a background watermark.` }] },
           });
           for (const part of response.candidates[0].content.parts) {
               if (part.inlineData) {
@@ -327,7 +327,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                         </div>
                         <div className="flex gap-2">
                             <button onClick={() => setShowSignPad(true)} className="flex-1 py-3 bg-slate-800 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors"><PenTool size={16}/> Sign</button>
-                            <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="flex-1 py-3 bg-slate-800 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors">{isGeneratingArt ? <Loader2 size={16} className="animate-spin"/> : <ImageIcon size={16}/>} Neural Art</button>
+                            <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="flex-1 py-3 bg-slate-800 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors">{isGeneratingArt ? <Loader2 size={16} className="animate-spin"/> : <ImageIcon size={16}/>} Add Watermark</button>
                         </div>
                     </div>
                 </div>
@@ -355,7 +355,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <img src={qrCodeUrl} className="w-20 h-20 border-2 border-white p-0.5 rounded shadow-2xl bg-white" />
                   </div>
 
-                  <div className="absolute inset-0 opacity-[0.04] flex items-center justify-center pointer-events-none z-0">
+                  {/* WATERMARK - INCREASED OPACITY FOR READABILITY */}
+                  <div className="absolute inset-0 opacity-[0.1] flex items-center justify-center pointer-events-none z-0">
                       {customArtUrl ? <img src={customArtUrl} className="w-[400px] h-[400px] object-contain grayscale" /> : <Landmark size={200}/>}
                   </div>
 
