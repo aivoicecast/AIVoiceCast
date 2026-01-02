@@ -1,6 +1,7 @@
+
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getAuth, Auth } from "firebase/auth";
-import { getFirestore, Firestore } from "firebase/firestore";
+import { initializeFirestore, Firestore, enableMultiTabIndexedDbPersistence } from "firebase/firestore";
 import { getStorage, FirebaseStorage } from "firebase/storage";
 import { firebaseKeys } from './private_keys';
 
@@ -30,11 +31,35 @@ const initializeFirebase = (): FirebaseApp | null => {
 const appInstance = initializeFirebase();
 
 /**
+ * Robust Firestore Initialization
+ * experimentalForceLongPolling: true fixes connectivity in environments with restricted WebSockets.
+ */
+const initDb = (): Firestore | null => {
+    if (!appInstance) return null;
+    
+    const firestore = initializeFirestore(appInstance, {
+        experimentalForceLongPolling: true,
+    });
+
+    // Enable local persistence for better offline/flaky connection handling
+    enableMultiTabIndexedDbPersistence(firestore).catch((err) => {
+        if (err.code === 'failed-precondition') {
+            // Multiple tabs open, persistence can only be enabled in one tab at a time.
+            console.warn("[Firestore] Persistence failed: Multiple tabs open.");
+        } else if (err.code === 'unimplemented') {
+            // The current browser does not support all of the features required to enable persistence
+            console.warn("[Firestore] Persistence failed: Browser not supported.");
+        }
+    });
+
+    return firestore;
+};
+
+/**
  * Exported service instances using standard modular pattern.
- * We explicitly pass the appInstance to ensure they attach to the correct registry.
  */
 export const auth: Auth | null = appInstance ? getAuth(appInstance) : null;
-export const db: Firestore | null = appInstance ? getFirestore(appInstance) : null;
+export const db: Firestore | null = initDb();
 export const storage: FirebaseStorage | null = appInstance ? getStorage(appInstance) : null;
 
 /**
