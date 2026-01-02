@@ -1,3 +1,4 @@
+
 import { 
   collection, 
   doc, 
@@ -18,7 +19,9 @@ import {
   arrayRemove, 
   Timestamp, 
   writeBatch,
-  FieldPath
+  FieldPath,
+  // Added documentId to imports to fix line 1006 error
+  documentId
 } from 'firebase/firestore';
 import { 
   ref, 
@@ -1002,8 +1005,8 @@ export async function getUserDMChannels(): Promise<ChatChannel[]> {
 /* Added getUniqueGroupMembers to resolve file components/WorkplaceChat.tsx error */
 export async function getUniqueGroupMembers(groupIds: string[]): Promise<UserProfile[]> {
     if (!db || !groupIds.length) return [];
-    // Fix: Using FieldPath.documentId() for clarity and ensuring string type for groupIds
-    const q = query(collection(db, GROUPS_COLLECTION), where(FieldPath.documentId(), 'in', groupIds));
+    // Fix: Use documentId() function instead of FieldPath.documentId() which doesn't exist on the FieldPath class in the modular SDK.
+    const q = query(collection(db, GROUPS_COLLECTION), where(documentId(), 'in', groupIds));
     const snap = await getDocs(q);
     // Fix: Explicitly type allMemberIds as string[] to avoid unknown[] inference issues with flatMap
     const allMemberIds: string[] = [];
@@ -1107,7 +1110,7 @@ export async function getUserCards(uid: string): Promise<AgentMemory[]> {
     if (!db) return [];
     const q = query(collection(db, CARDS_COLLECTION), where('ownerId', '==', uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as AgentMemory);
+    return snap.docs.map(d => data() as AgentMemory);
 }
 
 // --- Admin Debug ---

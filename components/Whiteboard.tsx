@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages } from 'lucide-react';
+import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { saveWhiteboardSession, subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements } from '../services/firestoreService';
 import { WhiteboardElement, ToolType, LineStyle, BrushType } from '../types';
@@ -58,6 +58,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [fontSize, setFontSize] = useState(24);
   const [showStyleMenu, setShowStyleMenu] = useState(false);
   
+  // Arrow Options
+  const [startArrow, setStartArrow] = useState(false);
+  const [endArrow, setEndArrow] = useState(false);
+  
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   
@@ -78,6 +82,17 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         return () => unsubscribe();
     }
   }, [sessionId, accessKey]);
+
+  // Default arrow behavior based on tool selection
+  useEffect(() => {
+    if (tool === 'arrow') {
+      setStartArrow(false);
+      setEndArrow(true);
+    } else if (tool === 'line') {
+      setStartArrow(false);
+      setEndArrow(false);
+    }
+  }, [tool]);
 
   const sharpenStroke = (points: {x: number, y: number}[]): {x: number, y: number}[] => {
       if (points.length < 3) return points;
@@ -112,7 +127,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           lineStyle: tool === 'eraser' ? 'solid' : lineStyle,
           brushType: tool === 'eraser' ? 'standard' : brushType, 
           points: tool === 'pen' || tool === 'eraser' ? [{ x, y }] : undefined, 
-          width: 0, height: 0, endX: x, endY: y, borderRadius: tool === 'rect' ? borderRadius : undefined, rotation: 0 
+          width: 0, height: 0, endX: x, endY: y, borderRadius: tool === 'rect' ? borderRadius : undefined, rotation: 0,
+          startArrow: ['line', 'arrow'].includes(tool) ? startArrow : undefined,
+          endArrow: ['line', 'arrow'].includes(tool) ? endArrow : undefined
       };
       setCurrentElement(newEl);
   };
@@ -148,6 +165,21 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.save(); ctx.translate(offset.x, offset.y); ctx.scale(scale, scale);
       
+      const drawArrowHead = (x1: number, y1: number, x2: number, y2: number, size: number, color: string) => {
+          const angle = Math.atan2(y2 - y1, x2 - x1);
+          ctx.save();
+          ctx.translate(x2, y2);
+          ctx.rotate(angle);
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(-size, -size / 2);
+          ctx.lineTo(-size, size / 2);
+          ctx.closePath();
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.restore();
+      };
+
       const renderElement = (el: WhiteboardElement) => {
           ctx.save();
           ctx.beginPath(); ctx.strokeStyle = el.color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -197,7 +229,21 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
               }
           }
           else if (el.type === 'circle') { ctx.lineWidth = el.strokeWidth / scale; ctx.ellipse(el.x + (el.width||0)/2, el.y + (el.height||0)/2, Math.abs((el.width||0)/2), Math.abs((el.height||0)/2), 0, 0, 2*Math.PI); ctx.stroke(); }
-          else if (el.type === 'line' || el.type === 'arrow') { ctx.lineWidth = el.strokeWidth / scale; ctx.moveTo(el.x, el.y); ctx.lineTo(el.endX||el.x, el.endY||el.y); ctx.stroke(); }
+          else if (el.type === 'line' || el.type === 'arrow') { 
+              ctx.lineWidth = el.strokeWidth / scale; 
+              const x1 = el.x;
+              const y1 = el.y;
+              const x2 = el.endX || el.x;
+              const y2 = el.endY || el.y;
+              
+              ctx.moveTo(x1, y1); 
+              ctx.lineTo(x2, y2); 
+              ctx.stroke(); 
+              
+              const headSize = Math.max(12, el.strokeWidth * 2) / scale;
+              if (el.startArrow) drawArrowHead(x2, y2, x1, y1, headSize, el.color);
+              if (el.endArrow) drawArrowHead(x1, y1, x2, y2, headSize, el.color);
+          }
           ctx.restore();
       };
 
@@ -224,12 +270,32 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Square size={16}/></button>
                 <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Circle size={16}/></button>
                 <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><Minus size={16}/></button>
+                <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><ArrowRight size={16}/></button>
             </div>
 
             <div className="relative">
                 <button onClick={() => setShowStyleMenu(!showStyleMenu)} className={`p-1.5 rounded bg-slate-800 border border-slate-700 flex items-center gap-1 text-slate-400 hover:text-white transition-all ${showStyleMenu ? 'border-indigo-500' : ''}`}><Settings2 size={16}/></button>
                 {showStyleMenu && (
                     <div className="absolute top-full left-0 mt-2 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] p-4 space-y-4">
+                        {(tool === 'line' || tool === 'arrow') && (
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Arrow Heads</label>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => setStartArrow(!startArrow)}
+                                        className={`flex-1 py-2 rounded-lg border flex items-center justify-center gap-2 transition-all ${startArrow ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
+                                    >
+                                        <ArrowUpLeft size={14}/> <span className="text-[9px] font-bold">Start</span>
+                                    </button>
+                                    <button 
+                                        onClick={() => setEndArrow(!endArrow)}
+                                        className={`flex-1 py-2 rounded-lg border flex items-center justify-center gap-2 transition-all ${endArrow ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
+                                    >
+                                        <ArrowDownRight size={14}/> <span className="text-[9px] font-bold">End</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                         <div className="space-y-2">
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Line Pattern</label>
                             <div className="grid grid-cols-2 gap-1">
