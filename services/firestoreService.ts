@@ -153,6 +153,14 @@ export async function saveBankingCheck(check: BankingCheck): Promise<string> {
     return id;
 }
 
+export async function getCheckById(id: string): Promise<BankingCheck | null> {
+    if (!db) return null;
+    try {
+        const snap = await getDoc(doc(db, CHECKS_COLLECTION, id));
+        return snap.exists() ? (snap.data() as BankingCheck) : null;
+    } catch(e) { return null; }
+}
+
 export async function saveShippingLabel(label: ShippingLabel): Promise<string> {
     if (!db) return label.id || 'local';
     const id = label.id || generateSecureId();
@@ -531,7 +539,6 @@ export async function getUserRecordings(uid: string): Promise<RecordingSession[]
 export async function deleteRecordingReference(id: string, mediaUrl: string, transcriptUrl: string): Promise<void> {
     if (!db) return;
     await deleteDoc(doc(db, RECORDINGS_COLLECTION, id));
-    // Implementation for storage deletion would go here if URLs are in our storage
 }
 
 // --- Discussions/Docs ---
@@ -610,7 +617,6 @@ export async function deleteCloudItem(path: string) {
 
 export async function createCloudFolder(path: string, name: string) {
     if (!storage) return;
-    // Storage doesn't have folders, creating a dummy file
     await saveProjectToCloud(`${path}/${name}`, '.keep', '');
 }
 
@@ -652,10 +658,6 @@ export async function deleteCodeFile(id: string, path: string) {
     const files = (snap.data()?.files || []) as CodeFile[];
     const next = files.filter(f => f.path !== path);
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { files: next });
-}
-
-export async function moveCloudFile(oldPath: string, newPath: string) {
-    // Logic for copying and deleting in storage
 }
 
 export async function updateProjectAccess(id: string, accessLevel: 'public' | 'restricted', allowedUserIds: string[]) {
@@ -802,10 +804,6 @@ export async function getUserDMChannels(): Promise<ChatChannel[]> {
     const q = query(collection(db, 'chat_channels'), where('memberIds', 'array-contains', auth.currentUser.uid));
     const snap = await getDocs(q);
     return snap.docs.map(d => d.data() as ChatChannel);
-}
-
-export async function getUniqueGroupMembers(groupIds: string[]): Promise<UserProfile[]> {
-    return []; // Placeholder
 }
 
 // --- Career ---

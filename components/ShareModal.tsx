@@ -1,29 +1,31 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Search, Check, Globe, Lock, Copy, Send, User, Loader2, Users } from 'lucide-react';
+import { X, Search, Check, Globe, Lock, Copy, Send, User, Loader2, Users, Eye, Edit3 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { getAllUsers } from '../services/firestoreService';
 
 interface ShareModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onShare: (selectedUids: string[], isPublic: boolean) => Promise<void>;
+  onShare: (selectedUids: string[], isPublic: boolean, permission: 'read' | 'write') => Promise<void>;
   link: string;
   title: string;
   currentAccess?: 'public' | 'restricted';
   currentAllowedUsers?: string[];
   currentUserUid?: string;
+  defaultPermission?: 'read' | 'write';
 }
 
 export const ShareModal: React.FC<ShareModalProps> = ({ 
   isOpen, onClose, onShare, link, title, 
-  currentAccess = 'public', currentAllowedUsers, currentUserUid 
+  currentAccess = 'public', currentAllowedUsers, currentUserUid,
+  defaultPermission = 'read'
 }) => {
   const [accessLevel, setAccessLevel] = useState<'public' | 'restricted'>(currentAccess);
+  const [permission, setPermission] = useState<'read' | 'write'>(defaultPermission);
   const [searchQuery, setSearchQuery] = useState('');
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   
-  // Ensure we have a stable reference for allowed users to prevent unnecessary effect firing
   const stableAllowedUsers = useMemo(() => currentAllowedUsers || [], [currentAllowedUsers]);
   const [selectedUids, setSelectedUids] = useState<Set<string>>(new Set(stableAllowedUsers));
   
@@ -35,20 +37,19 @@ export const ShareModal: React.FC<ShareModalProps> = ({
     if (isOpen && accessLevel === 'restricted') {
       setIsLoading(true);
       getAllUsers().then(users => {
-        setAllUsers(users.filter(u => u.uid !== currentUserUid)); // Exclude self
+        setAllUsers(users.filter(u => u.uid !== currentUserUid));
         setIsLoading(false);
       });
     }
   }, [isOpen, accessLevel, currentUserUid]);
 
-  // Sync access level prop changes
   useEffect(() => {
       if (isOpen) {
           setAccessLevel(currentAccess);
+          setPermission(defaultPermission);
       }
-  }, [isOpen, currentAccess]);
+  }, [isOpen, currentAccess, defaultPermission]);
 
-  // Sync allowed users prop changes
   useEffect(() => {
       if (isOpen) {
           setSelectedUids(new Set(stableAllowedUsers));
@@ -57,8 +58,21 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   if (!isOpen) return null;
 
+  const finalLink = useMemo(() => {
+      const url = new URL(link);
+      if (permission === 'read') {
+          // If the view is check_designer, change it to check_viewer for read-only
+          const currentView = url.searchParams.get('view');
+          if (currentView === 'check_designer') url.searchParams.set('view', 'check_viewer');
+          url.searchParams.set('mode', 'view');
+      } else {
+          url.searchParams.set('mode', 'edit');
+      }
+      return url.toString();
+  }, [link, permission]);
+
   const handleCopy = () => {
-    navigator.clipboard.writeText(link);
+    navigator.clipboard.writeText(finalLink);
     setCopyFeedback(true);
     setTimeout(() => setCopyFeedback(false), 2000);
   };
@@ -66,7 +80,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   const handleConfirmShare = async () => {
     setIsSharing(true);
     try {
-        await onShare(Array.from(selectedUids), accessLevel === 'public');
+        await onShare(Array.from(selectedUids), accessLevel === 'public', permission);
         onClose();
     } catch (e) {
         console.error(e);
@@ -89,7 +103,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-fade-in-up">
         
         <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-900 shrink-0">
@@ -106,28 +120,47 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
         <div className="p-5 overflow-y-auto flex-1 space-y-6">
             
-            {/* Access Toggle */}
-            <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
-                <button 
-                    onClick={() => setAccessLevel('public')}
-                    className={`flex-1 py-2 text-sm font-bold rounded-md flex items-center justify-center gap-2 transition-colors ${accessLevel === 'public' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
-                >
-                    <Globe size={14} /> Anyone with Link
-                </button>
-                <button 
-                    onClick={() => setAccessLevel('restricted')}
-                    className={`flex-1 py-2 text-sm font-bold rounded-md flex items-center justify-center gap-2 transition-colors ${accessLevel === 'restricted' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
-                >
-                    <Lock size={14} /> Restricted
-                </button>
+            <div className="space-y-3">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Access Scope</label>
+                <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+                    <button 
+                        onClick={() => setAccessLevel('public')}
+                        className={`flex-1 py-2 text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-colors ${accessLevel === 'public' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
+                    >
+                        <Globe size={14} /> Anyone with Link
+                    </button>
+                    <button 
+                        onClick={() => setAccessLevel('restricted')}
+                        className={`flex-1 py-2 text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-colors ${accessLevel === 'restricted' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
+                    >
+                        <Lock size={14} /> Restricted
+                    </button>
+                </div>
             </div>
 
-            {/* Link Copy Area */}
+            <div className="space-y-3">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Permission Level</label>
+                <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+                    <button 
+                        onClick={() => setPermission('read')}
+                        className={`flex-1 py-2 text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-colors ${permission === 'read' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
+                    >
+                        <Eye size={14} /> Read Only
+                    </button>
+                    <button 
+                        onClick={() => setPermission('write')}
+                        className={`flex-1 py-2 text-xs font-bold rounded-md flex items-center justify-center gap-2 transition-colors ${permission === 'write' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}
+                    >
+                        <Edit3 size={14} /> Read / Write
+                    </button>
+                </div>
+            </div>
+
             <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Project Link</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Sharable Link</label>
                 <div className="flex gap-2">
-                    <div className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 truncate font-mono select-all">
-                        {link}
+                    <div className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 truncate font-mono select-all">
+                        {finalLink}
                     </div>
                     <button 
                         onClick={handleCopy}
@@ -139,7 +172,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                 </div>
             </div>
 
-            {/* User Selection (Restricted Only) */}
             {accessLevel === 'restricted' && (
                 <div className="space-y-3 animate-fade-in">
                     <div className="flex items-center justify-between">
@@ -158,7 +190,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                         />
                     </div>
 
-                    <div className="border border-slate-800 rounded-xl overflow-hidden max-h-48 overflow-y-auto bg-slate-900/30">
+                    <div className="border border-slate-800 rounded-xl overflow-hidden max-h-40 overflow-y-auto bg-slate-900/30">
                         {isLoading ? (
                             <div className="py-8 flex justify-center text-slate-500"><Loader2 className="animate-spin" size={20}/></div>
                         ) : filteredUsers.length === 0 ? (
@@ -191,7 +223,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({
                             </div>
                         )}
                     </div>
-                    <p className="text-[10px] text-slate-500">Selected members will receive a Direct Message with the link.</p>
                 </div>
             )}
         </div>
