@@ -57,12 +57,10 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [isExporting, setIsExporting] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isGeneratingArt, setIsGeneratingArt] = useState(false);
-  const [customArtUrl, setCustomArtUrl] = useState<string | null>(null);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [showSignPad, setShowSignPad] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [zoom, setZoom] = useState(1.0);
-  const [justCopied, setJustCopied] = useState(false);
   const [isLoadingCheck, setIsLoadingCheck] = useState(!!checkIdFromUrl);
   
   const checkRef = useRef<HTMLDivElement>(null);
@@ -76,7 +74,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   const data = await getCheckById(checkIdFromUrl);
                   if (data) {
                       setCheck(data);
-                      if (data.watermarkUrl) setCustomArtUrl(data.watermarkUrl);
                       setShareLink(`${window.location.origin}?view=check_viewer&id=${data.id}`);
                   }
               } catch(e) { console.warn("Failed to load check", e); }
@@ -89,7 +86,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   useEffect(() => {
     const handleAutoZoom = () => {
         if (window.innerWidth < 640) {
-            // Give extra margin for mobile
+            // Margin for mobile viewport
             const ratio = (window.innerWidth - 32) / 600;
             setZoom(ratio);
         } else {
@@ -143,11 +140,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash-image',
-              contents: { parts: [{ text: `A professional fine-line watermark etching for a check: ${check.memo}. Minimalist, elegant, high contrast for easy reading as a background watermark.` }] },
+              contents: { parts: [{ text: `A professional high-contrast fine-line watermark etching for a check background: ${check.memo}. Minimalist, bold lines, easy to see against white. Full width aspect ratio.` }] },
           });
           for (const part of response.candidates[0].content.parts) {
               if (part.inlineData) {
-                  setCustomArtUrl(`data:image/png;base64,${part.inlineData.data}`);
+                  setCheck(prev => ({ ...prev, watermarkUrl: `data:image/png;base64,${part.inlineData.data}` }));
                   break;
               }
           }
@@ -178,9 +175,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       try {
           const id = check.id || generateSecureId();
           
-          let finalWatermarkUrl = customArtUrl || '';
-          if (customArtUrl?.startsWith('data:')) {
-             const res = await fetch(customArtUrl);
+          let finalWatermarkUrl = check.watermarkUrl || '';
+          if (check.watermarkUrl?.startsWith('data:')) {
+             const res = await fetch(check.watermarkUrl);
              const blob = await res.blob();
              finalWatermarkUrl = await uploadFileToStorage(`checks/${id}/watermark.png`, blob);
           }
@@ -192,10 +189,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               finalSignatureUrl = await uploadFileToStorage(`checks/${id}/signature.png`, blob);
           }
 
-          const finalId = await saveBankingCheck({
+          const checkToSave = {
               ...check, id, ownerId: auth.currentUser.uid,
               watermarkUrl: finalWatermarkUrl, signatureUrl: finalSignatureUrl
-          });
+          };
+
+          const finalId = await saveBankingCheck(checkToSave);
 
           try {
               const blob = await generatePDFBlob();
@@ -208,14 +207,19 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
           const link = `${window.location.origin}?view=check_viewer&id=${finalId}`;
           setShareLink(link);
-          setCheck(prev => ({ ...prev, id: finalId }));
+          setCheck(checkToSave);
           setShowShareModal(true);
       } catch (e: any) { alert("Publishing failed: " + (e.message || "Network Error")); } finally { setIsSharing(false); }
   };
 
   const generatePDFBlob = async (): Promise<Blob | null> => {
     if (!checkRef.current) return null;
-    const canvas = await html2canvas(checkRef.current, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
+    const canvas = await html2canvas(checkRef.current, { 
+        scale: 4, 
+        useCORS: true, 
+        backgroundColor: '#ffffff',
+        allowTaint: true
+    });
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
     pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, 600, 270);
     return pdf.output('blob');
@@ -346,8 +350,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
               )}
 
-              {/* Wrapper to maintain scaled height on mobile */}
-              <div style={{ height: `${270 * zoom}px`, width: `${600 * zoom}px` }} className="flex-shrink-0 transition-all duration-300">
+              {/* Wrapper to maintain scaled height on mobile with safety padding */}
+              <div style={{ height: `${280 * zoom}px`, width: `${610 * zoom}px` }} className="flex-shrink-0 transition-all duration-300 p-2">
                   <div 
                     ref={checkRef}
                     style={{ 
@@ -362,13 +366,19 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <img src={qrCodeUrl} className="w-20 h-20 border-2 border-white p-0.5 rounded shadow-2xl bg-white" />
                       </div>
 
-                      {/* WATERMARK - INCREASED OPACITY AND BLEND MODE FOR MOBILE VISIBILITY */}
-                      <div className="absolute inset-0 opacity-[0.15] flex items-center justify-center pointer-events-none z-0 mix-blend-multiply">
-                          {customArtUrl ? <img src={customArtUrl} className="w-[400px] h-[400px] object-contain grayscale" /> : <Landmark size={200} className="text-slate-400"/>}
+                      {/* WATERMARK - MATCHES CHECK DIMENSIONS (600x270) with crossOrigin for cloud sync */}
+                      <div className="absolute inset-0 opacity-[0.20] pointer-events-none z-0">
+                          {check.watermarkUrl ? (
+                              <img src={check.watermarkUrl} className="w-full h-full object-cover grayscale" crossOrigin="anonymous" />
+                          ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                  <Landmark size={200} className="text-slate-400 opacity-20"/>
+                              </div>
+                          )}
                       </div>
 
-                      {/* Header row - Pushed up */}
-                      <div className="flex justify-between items-start mb-1 relative z-10">
+                      {/* Header row - Pulled UP further */}
+                      <div className="flex justify-between items-start mb-0.5 relative z-10">
                           <div className="flex flex-col">
                               <div className="font-black uppercase text-[9px] leading-tight">{check.senderName}</div>
                               <div className="text-[7px] text-slate-600 max-w-[150px] leading-tight whitespace-pre-wrap">{check.senderAddress}</div>
@@ -379,8 +389,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                       </div>
 
-                      {/* Date and Amount box - Pushed up */}
-                      <div className="flex justify-end gap-6 items-center mb-4 relative z-10">
+                      {/* Date and Amount box - Pulled UP */}
+                      <div className="flex justify-end gap-6 items-center mb-2 relative z-10">
                           <div className="flex flex-col items-end">
                             <span className="text-[7px] font-bold text-slate-400 uppercase">Date</span>
                             <span className="text-xs font-bold border-b border-black min-w-[80px] text-center">{check.date}</span>
@@ -390,36 +400,36 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                       </div>
 
-                      {/* Payee line - Pushed up further */}
-                      <div className="flex items-center gap-4 relative z-10 mb-1">
+                      {/* Payee line - MOVED ONE LINE UPPER */}
+                      <div className="flex items-center gap-4 relative z-10 mb-0.5">
                           <div className="flex-1 flex flex-col">
-                              <span className="text-[7px] font-bold text-slate-400 uppercase">Pay to the Order of</span>
-                              <div className="border-b border-black text-base font-black italic pt-0.5 h-7">{check.payee}</div>
+                              <span className="text-[7px] font-bold text-slate-400 uppercase leading-none mb-1">Pay to the Order of</span>
+                              <div className="border-b border-black text-base font-black italic h-7 flex items-center">{check.payee}</div>
                           </div>
                       </div>
 
-                      {/* Amount Words line - Pushed up further */}
-                      <div className="flex flex-col relative z-10 mb-2">
-                          <div className="border-b border-black text-[11px] font-bold pt-0.5 h-5 flex items-center">
+                      {/* Amount Words line - MOVED ONE LINE UPPER */}
+                      <div className="flex flex-col relative z-10 mb-1">
+                          <div className="border-b border-black text-[11px] font-bold h-6 flex items-center">
                             {check.amountWords}
                             <span className="ml-auto text-[7px] text-slate-400 uppercase font-black">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                           </div>
                       </div>
 
-                      {/* Memo line - REPOSITIONED HIGHER ABOVE MICR */}
+                      {/* Memo line - Pinned above MICR */}
                       <div className="absolute bottom-16 left-8 z-10">
                           <div className="w-[220px] flex flex-col">
                               <span className="text-[7px] font-bold text-slate-400 uppercase">Memo</span>
-                              <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5 leading-tight">{check.memo}</div>
+                              <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5 flex items-center">{check.memo}</div>
                           </div>
                       </div>
 
-                      {/* Signature line - MOVED TO BOTTOM RIGHT CORNER (Above MICR) */}
+                      {/* Signature line - MOVED TO ABSOLUTE BOTTOM RIGHT CORNER (Above MICR) */}
                       <div className="absolute bottom-10 right-8 z-10">
                           <div className="w-[180px] flex flex-col items-center">
                               <div className="border-b border-black w-full text-center pb-0.5 h-10 flex items-end justify-center">
                                   {check.signatureUrl ? (
-                                      <img src={check.signatureUrl} className="h-10 max-w-full object-contain" />
+                                      <img src={check.signatureUrl} className="h-10 max-w-full object-contain" crossOrigin="anonymous" />
                                   ) : (
                                       <span className="text-xl font-script text-slate-400">{check.signature || check.senderName}</span>
                                   )}
@@ -440,7 +450,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               </div>
 
               {!isReadOnly && (
-                  <div className="mt-12 flex gap-4 shrink-0">
+                  <div className="mt-12 mb-20 flex gap-4 shrink-0">
                       <button onClick={() => setZoom(prev => Math.max(0.1, prev - 0.1))} className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white"><ZoomOut size={16}/></button>
                       <button onClick={() => setZoom(1)} className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-slate-400">{Math.round(zoom * 100)}%</button>
                       <button onClick={() => setZoom(prev => Math.min(2, prev + 0.1))} className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white"><ZoomIn size={16}/></button>
