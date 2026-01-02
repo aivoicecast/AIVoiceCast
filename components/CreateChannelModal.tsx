@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Channel, Group, Chapter } from '../types';
 import { X, Podcast, Sparkles, Lock, Globe, Users, FileText, Loader2, Clipboard, Crown, Calendar, Star } from 'lucide-react';
@@ -136,7 +137,10 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
     }
   };
 
-  const isSpecializedVoice = (v: string) => ['Software Interview Voice', 'Linux Kernel Voice', 'Default Gem'].includes(v);
+  const isSpecializedVoice = (v: string) => {
+      const specializedNames = ['Software Interview Voice', 'Linux Kernel Voice', 'Default Gem'];
+      return specializedNames.some(name => v.includes(name));
+  };
 
   if (!effectiveUser) {
     return (

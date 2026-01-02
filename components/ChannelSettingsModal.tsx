@@ -93,7 +93,10 @@ export const ChannelSettingsModal: React.FC<ChannelSettingsModalProps> = ({ isOp
     onClose();
   };
 
-  const isSpecializedVoice = (v: string) => ['Software Interview Voice', 'Linux Kernel Voice', 'Default Gem'].includes(v);
+  const isSpecializedVoice = (v: string) => {
+    const specializedNames = ['Software Interview Voice', 'Linux Kernel Voice', 'Default Gem'];
+    return specializedNames.some(name => v.includes(name));
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">

@@ -75,10 +75,10 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const qrCodeUrl = useMemo(() => {
       // For Coin Checks, the QR code encodes the check ID for claiming
       if (check.isCoinCheck && check.id) {
-          return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(window.location.origin + '?claim=' + check.id)}`;
+          return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(window.location.origin + '?claim=' + check.id)}`;
       }
       const data = `payee:${check.payee}|amount:${check.amount}|memo:${check.memo}|bank:${check.bankName}`;
-      return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(data)}`;
+      return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data)}`;
   }, [check.payee, check.amount, check.memo, check.bankName, check.isCoinCheck, check.id]);
 
   const handleParseCheckDetails = async () => {
@@ -483,7 +483,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                           
                           <div className="flex flex-col items-center">
-                              <img src={qrCodeUrl} className={`w-12 h-12 border p-0.5 rounded shadow-sm ${check.isCoinCheck ? 'border-amber-400 bg-amber-50' : 'border-slate-100 bg-white'}`} alt="QR Code" crossOrigin="anonymous"/>
+                              <img src={qrCodeUrl} className={`w-20 h-20 border p-0.5 rounded shadow-sm ${check.isCoinCheck ? 'border-amber-400 bg-amber-50' : 'border-slate-100 bg-white'}`} alt="QR Code" crossOrigin="anonymous"/>
                               <span className="text-[6px] font-black uppercase text-slate-400 mt-1">{check.isCoinCheck ? 'Scan to Claim Coins' : 'Scan for Digital Pay'}</span>
                           </div>
 

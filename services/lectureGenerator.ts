@@ -70,11 +70,24 @@ async function getAIProvider(): Promise<'gemini' | 'openai'> {
     return provider;
 }
 
+/**
+ * Extracts the specific tuned model ID if present in the voice name.
+ */
+function getModelForVoice(voiceName: string = '', defaultModel: string): string {
+    if (voiceName.includes('gen-lang-client')) {
+        const parts = voiceName.split(' ');
+        const id = parts.find(p => p.startsWith('gen-lang-client'));
+        return id || defaultModel;
+    }
+    return defaultModel;
+}
+
 export async function generateLectureScript(
   topic: string, 
   channelContext: string,
   language: 'en' | 'zh' = 'en',
-  channelId?: string
+  channelId?: string,
+  voiceName?: string
 ): Promise<GeneratedLecture | null> {
   try {
     const provider = await getAIProvider();
@@ -118,8 +131,12 @@ export async function generateLectureScript(
         text = await callOpenAI(systemPrompt, userPrompt, openaiKey);
     } else {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const modelName = (channelId === '1' || channelId === '2') ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview';
         
+        // Priority: Tuned Model ID > Specific Channel Model > Default Flash
+        let modelName = 'gemini-3-flash-preview';
+        if (channelId === '1' || channelId === '2') modelName = 'gemini-3-pro-preview';
+        modelName = getModelForVoice(voiceName, modelName);
+
         const response = await ai.models.generateContent({
             model: modelName, 
             contents: `${systemPrompt}\n\n${userPrompt}`,
