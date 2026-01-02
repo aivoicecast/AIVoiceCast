@@ -492,6 +492,8 @@ export interface Notebook {
   title: string;
   author: string;
   description: string;
+  // Added optional ownerId to support ownership tracking in backend
+  ownerId?: string;
   kernel: 'python' | 'javascript';
   cells: NotebookCell[];
   createdAt: number;

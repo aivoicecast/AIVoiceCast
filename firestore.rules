@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -84,7 +85,11 @@ service cloud.firestore {
     match /saved_words/{wordId} { allow read, write: if isAuthenticated(); }
     
     // Utility App Collections
-    match /checks/{checkId} { allow read, write: if isAuthenticated(); }
+    // ALLOW PUBLIC READ for checks to enable shared link viewing
+    match /checks/{checkId} { 
+      allow read: if true;
+      allow write: if isAuthenticated(); 
+    }
     match /shipping/{labelId} { allow read, write: if isAuthenticated(); }
     match /icons/{iconId} { allow read, write: if isAuthenticated(); }
     match /cards/{cardId} { allow read, write: if isAuthenticated(); }

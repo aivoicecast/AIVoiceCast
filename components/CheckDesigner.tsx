@@ -86,7 +86,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   useEffect(() => {
     const handleAutoZoom = () => {
         if (window.innerWidth < 640) {
-            // Margin for mobile viewport
             const ratio = (window.innerWidth - 32) / 600;
             setZoom(ratio);
         } else {
@@ -102,11 +101,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (isReadOnly) return;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
 
-    const amountToSpell = check.isCoinCheck ? (check.coinAmount || 0) : (check.amount || 0);
-    if (amountToSpell > 0) {
+    const amountToSpell = check.isCoinCheck ? (check.coinAmount) : (check.amount);
+    
+    if (amountToSpell !== undefined && amountToSpell !== null && !isNaN(amountToSpell as number) && (amountToSpell as number) > 0) {
         debounceTimerRef.current = setTimeout(() => {
-            handleGenerateAmountWords(amountToSpell, check.isCoinCheck);
+            handleGenerateAmountWords(amountToSpell as number, check.isCoinCheck);
         }, 1200); 
+    } else {
+        setCheck(prev => ({ ...prev, amountWords: '' }));
     }
 
     return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
@@ -125,7 +127,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-3-flash-preview',
-              contents: `Parse into JSON for a banking check. Include fields: payee, amount, memo, routingNumber, accountNumber, senderName, senderAddress, recipientAddress. Input: "${input}"`,
+              contents: `Parse into JSON for a banking check. Include fields: payee, amount, memo, routingNumber, accountNumber, senderName, senderAddress. Input: "${input}"`,
               config: { responseMimeType: 'application/json' }
           });
           const parsed = JSON.parse(response.text || '{}');
@@ -140,7 +142,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash-image',
-              contents: { parts: [{ text: `A professional high-contrast fine-line watermark etching for a check background: ${check.memo}. Minimalist, bold lines, easy to see against white. Full width aspect ratio.` }] },
+              contents: { parts: [{ text: `A professional high-contrast watermark etching for a bank check: ${check.memo}. Wide aspect ratio, minimalist, grayscale.` }] },
+              config: { imageConfig: { aspectRatio: "16:9" } }
           });
           for (const part of response.candidates[0].content.parts) {
               if (part.inlineData) {
@@ -190,11 +193,16 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           }
 
           const checkToSave = {
-              ...check, id, ownerId: auth.currentUser.uid,
-              watermarkUrl: finalWatermarkUrl, signatureUrl: finalSignatureUrl
+              ...check, 
+              id, 
+              ownerId: auth.currentUser.uid,
+              watermarkUrl: finalWatermarkUrl, 
+              signatureUrl: finalSignatureUrl,
+              amount: (check.amount === undefined || check.amount === null || isNaN(check.amount as number)) ? null : check.amount,
+              coinAmount: (check.coinAmount === undefined || check.coinAmount === null || isNaN(check.coinAmount as number)) ? null : check.coinAmount
           };
 
-          const finalId = await saveBankingCheck(checkToSave);
+          const finalId = await saveBankingCheck(checkToSave as any);
 
           try {
               const blob = await generatePDFBlob();
@@ -207,7 +215,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
           const link = `${window.location.origin}?view=check_viewer&id=${finalId}`;
           setShareLink(link);
-          setCheck(checkToSave);
+          setCheck(checkToSave as any);
           setShowShareModal(true);
       } catch (e: any) { alert("Publishing failed: " + (e.message || "Network Error")); } finally { setIsSharing(false); }
   };
@@ -246,6 +254,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           </div>
       );
   }
+
+  const isDataUrl = (url?: string) => url?.startsWith('data:');
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
@@ -322,7 +332,16 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                 <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Amount</label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">{check.isCoinCheck ? <Coins size={14}/> : '$'}</span>
-                                    <input type="number" value={check.isCoinCheck ? check.coinAmount : check.amount} onChange={e => setCheck(check.isCoinCheck ? {...check, coinAmount: parseInt(e.target.value) || 0} : {...check, amount: parseFloat(e.target.value) || 0})} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-8 pr-2.5 py-2.5 text-sm text-white text-right"/>
+                                    <input 
+                                        type="number" 
+                                        value={check.isCoinCheck ? (check.coinAmount ?? '') : (check.amount ?? '')} 
+                                        onChange={e => {
+                                            const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                                            setCheck(check.isCoinCheck ? {...check, coinAmount: val as any} : {...check, amount: val as any});
+                                        }} 
+                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-8 pr-2.5 py-2.5 text-sm text-white text-right"
+                                        placeholder="Blank"
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -350,7 +369,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
               )}
 
-              {/* Wrapper to maintain scaled height on mobile with safety padding */}
               <div style={{ height: `${280 * zoom}px`, width: `${610 * zoom}px` }} className="flex-shrink-0 transition-all duration-300 p-2">
                   <div 
                     ref={checkRef}
@@ -367,9 +385,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
 
                       {/* WATERMARK - MATCHES CHECK DIMENSIONS (600x270) with crossOrigin for cloud sync */}
-                      <div className="absolute inset-0 opacity-[0.20] pointer-events-none z-0">
+                      <div className="absolute inset-0 opacity-[0.30] pointer-events-none z-0">
                           {check.watermarkUrl ? (
-                              <img src={check.watermarkUrl} className="w-full h-full object-cover grayscale" crossOrigin="anonymous" />
+                              <img 
+                                src={check.watermarkUrl} 
+                                className="w-full h-full object-cover grayscale" 
+                                crossOrigin={isDataUrl(check.watermarkUrl) ? undefined : "anonymous"}
+                              />
                           ) : (
                               <div className="w-full h-full flex items-center justify-center">
                                   <Landmark size={200} className="text-slate-400 opacity-20"/>
@@ -378,60 +400,68 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
 
                       {/* Header row - Pulled UP further */}
-                      <div className="flex justify-between items-start mb-0.5 relative z-10">
-                          <div className="flex flex-col">
+                      <div className="flex justify-between items-start mb-0.5 relative z-10 bg-transparent">
+                          <div className="flex flex-col bg-transparent">
                               <div className="font-black uppercase text-[9px] leading-tight">{check.senderName}</div>
                               <div className="text-[7px] text-slate-600 max-w-[150px] leading-tight whitespace-pre-wrap">{check.senderAddress}</div>
                           </div>
-                          <div className="text-right">
+                          <div className="text-right bg-transparent">
                               <p className="text-sm font-black italic text-indigo-900 leading-none">{check.isCoinCheck ? 'VOICECOIN PROTOCOL' : check.bankName}</p>
                               <p className="text-[9px] font-bold mt-0.5">CHECK NO. {check.checkNumber}</p>
                           </div>
                       </div>
 
                       {/* Date and Amount box - Pulled UP */}
-                      <div className="flex justify-end gap-6 items-center mb-2 relative z-10">
-                          <div className="flex flex-col items-end">
+                      <div className="flex justify-end gap-6 items-center mb-2 relative z-10 bg-transparent">
+                          <div className="flex flex-col items-end bg-transparent">
                             <span className="text-[7px] font-bold text-slate-400 uppercase">Date</span>
                             <span className="text-xs font-bold border-b border-black min-w-[80px] text-center">{check.date}</span>
                           </div>
                           <div className="bg-slate-50 border border-slate-300 px-4 py-2 font-black text-xl shadow-inner min-w-[120px] text-right">
-                            {check.isCoinCheck ? `VC ${check.coinAmount || 0}` : `$ ${(check.amount || 0).toFixed(2)}`}
+                            {check.isCoinCheck ? (
+                                check.coinAmount !== undefined && check.coinAmount !== null ? `VC ${check.coinAmount}` : 'VC _______'
+                            ) : (
+                                check.amount !== undefined && check.amount !== null ? `$ ${check.amount.toFixed(2)}` : '$ _______'
+                            )}
                           </div>
                       </div>
 
                       {/* Payee line - MOVED ONE LINE UPPER */}
-                      <div className="flex items-center gap-4 relative z-10 mb-0.5">
-                          <div className="flex-1 flex flex-col">
+                      <div className="flex items-center gap-4 relative z-10 mb-0.5 bg-transparent">
+                          <div className="flex-1 flex flex-col bg-transparent">
                               <span className="text-[7px] font-bold text-slate-400 uppercase leading-none mb-1">Pay to the Order of</span>
-                              <div className="border-b border-black text-base font-black italic h-7 flex items-center">{check.payee}</div>
+                              <div className="border-b border-black text-base font-black italic h-7 flex items-center bg-transparent">{check.payee || '____________________'}</div>
                           </div>
                       </div>
 
                       {/* Amount Words line - MOVED ONE LINE UPPER */}
-                      <div className="flex flex-col relative z-10 mb-1">
-                          <div className="border-b border-black text-[11px] font-bold h-6 flex items-center">
-                            {check.amountWords}
-                            <span className="ml-auto text-[7px] text-slate-400 uppercase font-black">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
+                      <div className="flex flex-col relative z-10 mb-1 bg-transparent">
+                          <div className="border-b border-black text-[11px] font-bold h-6 flex items-center bg-transparent">
+                            {check.amountWords || '____________________________________________________________________'}
+                            <span className="ml-auto text-[7px] text-slate-400 uppercase font-black pl-2">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                           </div>
                       </div>
 
                       {/* Memo line - Pinned above MICR */}
-                      <div className="absolute bottom-16 left-8 z-10">
-                          <div className="w-[220px] flex flex-col">
+                      <div className="absolute bottom-[60px] left-8 z-10 bg-transparent">
+                          <div className="w-[220px] flex flex-col bg-transparent">
                               <span className="text-[7px] font-bold text-slate-400 uppercase">Memo</span>
-                              <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5 flex items-center">{check.memo}</div>
+                              <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5 flex items-center bg-transparent">{check.memo || '____________________'}</div>
                           </div>
                       </div>
 
                       {/* Signature line - MOVED TO ABSOLUTE BOTTOM RIGHT CORNER (Above MICR) */}
-                      <div className="absolute bottom-10 right-8 z-10">
-                          <div className="w-[180px] flex flex-col items-center">
-                              <div className="border-b border-black w-full text-center pb-0.5 h-10 flex items-end justify-center">
+                      <div className="absolute bottom-[36px] right-8 z-10 bg-transparent">
+                          <div className="w-[180px] flex flex-col items-center bg-transparent">
+                              <div className="border-b border-black w-full text-center pb-0.5 h-10 flex items-end justify-center overflow-hidden bg-transparent">
                                   {check.signatureUrl ? (
-                                      <img src={check.signatureUrl} className="h-10 max-w-full object-contain" crossOrigin="anonymous" />
+                                      <img 
+                                        src={check.signatureUrl} 
+                                        className="h-full max-w-full object-contain" 
+                                        crossOrigin={isDataUrl(check.signatureUrl) ? undefined : "anonymous"}
+                                      />
                                   ) : (
-                                      <span className="text-xl font-script text-slate-400">{check.signature || check.senderName}</span>
+                                      <span className="text-xl font-script text-slate-400">{check.signature || (check.amount ? check.senderName : '____________________')}</span>
                                   )}
                               </div>
                               <span className="text-[7px] font-bold text-slate-400 uppercase mt-0.5">Authorized Signature</span>
@@ -439,7 +469,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
 
                       {/* MICR Line - FIXED TO BOTTOM LEFT CORNER */}
-                      <div className="absolute bottom-4 left-8 pointer-events-none z-20">
+                      <div className="absolute bottom-4 left-8 pointer-events-none z-20 bg-transparent">
                           <div className="font-mono text-sm tracking-[0.25em] text-slate-900 flex items-center gap-6">
                               <span>⑆ {check.routingNumber} ⑆</span>
                               <span>{check.accountNumber} ⑈</span>
