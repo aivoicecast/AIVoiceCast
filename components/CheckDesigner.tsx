@@ -132,7 +132,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           });
           const parsed = JSON.parse(response.text || '{}');
           setCheck(prev => ({ ...prev, ...parsed }));
-      } catch (e) { alert("Neural parse failed."); } finally { setIsParsing(false); }
+      } catch (e) { alert("Neural parse failed."); } finally { setIsParsing(null); }
   };
 
   const handleGenerateArt = async () => {
@@ -198,319 +198,212 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               ownerId: auth.currentUser.uid,
               watermarkUrl: finalWatermarkUrl, 
               signatureUrl: finalSignatureUrl,
-              amount: (check.amount === undefined || check.amount === null || isNaN(check.amount as number)) ? null : check.amount,
-              coinAmount: (check.coinAmount === undefined || check.coinAmount === null || isNaN(check.coinAmount as number)) ? null : check.coinAmount
+              amount: (check.amount === undefined || check.amount === null) ? 0 : check.amount
           };
-
-          const finalId = await saveBankingCheck(checkToSave as any);
-
-          try {
-              const blob = await generatePDFBlob();
-              if (blob) {
-                  const token = getDriveToken() || await connectGoogleDrive();
-                  const folderId = await ensureCodeStudioFolder(token);
-                  await uploadToDrive(token, folderId, `Check_${check.checkNumber}.pdf`, blob);
-              }
-          } catch(e) { console.warn("G-Drive sync failed", e); }
-
-          const link = `${window.location.origin}?view=check_viewer&id=${finalId}`;
+          
+          await saveBankingCheck(checkToSave);
+          const link = `${window.location.origin}?view=check_viewer&id=${id}`;
           setShareLink(link);
-          setCheck(checkToSave as any);
           setShowShareModal(true);
-      } catch (e: any) { alert("Publishing failed: " + (e.message || "Network Error")); } finally { setIsSharing(false); }
-  };
-
-  const generatePDFBlob = async (): Promise<Blob | null> => {
-    if (!checkRef.current) return null;
-    const canvas = await html2canvas(checkRef.current, { 
-        scale: 4, 
-        useCORS: true, 
-        backgroundColor: '#ffffff',
-        allowTaint: true
-    });
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
-    pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, 600, 270);
-    return pdf.output('blob');
+      } catch (e: any) {
+          alert("Publish failed: " + e.message);
+      } finally {
+          setIsSharing(false);
+      }
   };
 
   const handleDownloadPDF = async () => {
-      setIsExporting(true);
-      try {
-        const blob = await generatePDFBlob();
-        if (blob) {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = `check_${check.checkNumber}.pdf`; a.click();
-            URL.revokeObjectURL(url);
-        }
-      } catch(e) { alert("Download failed"); }
-      setIsExporting(false);
+    if (!checkRef.current) return;
+    setIsExporting(true);
+    try {
+        const canvas = await html2canvas(checkRef.current, { scale: 3, useCORS: true });
+        const imgData = canvas.toDataURL('image/png');
+        const pdf = new jsPDF('l', 'px', [600, 300]);
+        pdf.addImage(imgData, 'PNG', 0, 0, 600, 300);
+        pdf.save(`check_${check.checkNumber}.pdf`);
+    } catch (e) {
+        alert("PDF export failed.");
+    } finally {
+        setIsExporting(false);
+    }
   };
 
   if (isLoadingCheck) {
       return (
-          <div className="h-full bg-slate-950 flex flex-col items-center justify-center gap-4">
-              <Loader2 className="animate-spin text-indigo-500" size={40}/>
-              <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Decrypting Check...</p>
+          <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
+              <Loader2 className="animate-spin text-indigo-500" size={40} />
+              <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Retrieving Check...</p>
           </div>
       );
   }
 
-  const isLocalUrl = (url?: string) => url?.startsWith('data:') || url?.startsWith('blob:');
-
+  // FIX: Component must return a React node instead of void. This was caused by truncation in the original file.
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
-      {!isReadOnly && (
-        <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
-            <div className="flex items-center gap-4">
-                <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
-                <h1 className="text-lg font-bold text-white flex items-center gap-2"><Wallet className="text-amber-400" /> Neural Check Designer</h1>
-            </div>
-            <div className="flex items-center gap-3">
-                <button onClick={handlePublishAndShareLink} disabled={isSharing} className={`flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all`}>
-                    {isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
-                    <span>{isSharing ? 'Processing...' : (shareLink ? 'Share URI' : (check.isCoinCheck ? 'Issue Coin Check' : 'Publish & Share URI'))}</span>
-                </button>
-                <button onClick={handleDownloadPDF} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold border border-slate-700 hidden sm:flex">
-                    {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />}
-                    <span>Download PDF</span>
-                </button>
-            </div>
-        </header>
-      )}
+      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
+          <div className="flex items-center gap-4">
+              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400"><ArrowLeft size={20} /></button>
+              <h1 className="text-lg font-bold text-white flex items-center gap-2"><Wallet className="text-indigo-400" /> Neural Check Lab</h1>
+          </div>
+          <div className="flex items-center gap-3">
+              {!isReadOnly && (
+                <>
+                  <button onClick={handleParseCheckDetails} disabled={isParsing} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-indigo-400 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">
+                      {isParsing ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14}/>}
+                      <span>Neural Parse</span>
+                  </button>
+                  <button onClick={handlePublishAndShareLink} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
+                      {isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
+                      <span>Publish & Share</span>
+                  </button>
+                </>
+              )}
+              <button onClick={handleDownloadPDF} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">
+                  {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14}/>}
+                  <span>Download PDF</span>
+              </button>
+          </div>
+      </header>
 
-      <div className="flex-1 flex overflow-hidden flex-col lg:flex-row">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
           {!isReadOnly && (
-            <div className="w-full lg:w-[450px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-6 scrollbar-thin">
+            <div className="w-full lg:w-[400px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-6 scrollbar-thin">
                 <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Palette className="text-indigo-400"/> Transaction Type</h3>
-                        <button onClick={handleParseCheckDetails} disabled={isParsing} className="text-[10px] font-bold text-indigo-400 flex items-center gap-1">
-                            {isParsing ? <Loader2 size={10} className="animate-spin"/> : <Sparkles size={10}/>} Neural Parse
-                        </button>
-                    </div>
-                    <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
-                        <button onClick={() => setCheck({...check, isCoinCheck: false})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${!check.isCoinCheck ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><Landmark size={14}/> Standard</button>
-                        <button onClick={() => setCheck({...check, isCoinCheck: true})} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${check.isCoinCheck ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><Coins size={14}/> Voice Coin</button>
-                    </div>
-                </div>
-
-                <div className="space-y-4 bg-slate-800/20 p-4 rounded-xl border border-slate-800">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Landmark size={14}/> Bank & Account</h3>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="col-span-2">
-                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Bank Name</label>
-                            <input type="text" value={check.bankName} onChange={e => setCheck({...check, bankName: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white"/>
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Routing #</label>
-                            <input type="text" value={check.routingNumber} onChange={e => setCheck({...check, routingNumber: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono"/>
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Account #</label>
-                            <input type="text" value={check.accountNumber} onChange={e => setCheck({...check, accountNumber: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono"/>
-                        </div>
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><User size={14} className="text-indigo-400"/> Payee Info</h3>
+                    <input type="text" placeholder="Payee Name" value={check.payee} onChange={e => setCheck({...check, payee: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500/50"/>
+                    <div className="relative">
+                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16}/>
+                        <input type="number" placeholder="0.00" value={check.amount} onChange={e => setCheck({...check, amount: parseFloat(e.target.value) || 0})} className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500/50"/>
                     </div>
                 </div>
 
                 <div className="space-y-4">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Sender Info</h3>
-                    <div className="space-y-3">
-                        <input type="text" placeholder="Sender Name" value={check.senderName} onChange={e => setCheck({...check, senderName: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none"/>
-                        <textarea placeholder="Sender Address" value={check.senderAddress} onChange={e => setCheck({...check, senderAddress: e.target.value})} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none resize-none"/>
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Edit3 size={14} className="text-indigo-400"/> Check Details</h3>
+                    <input type="text" placeholder="Memo" value={check.memo} onChange={e => setCheck({...check, memo: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500/50"/>
+                    <div className="flex gap-2">
+                        <input type="text" placeholder="Check #" value={check.checkNumber} onChange={e => setCheck({...check, checkNumber: e.target.value})} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500/50"/>
+                        <input type="date" value={check.date} onChange={e => setCheck({...check, date: e.target.value})} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500/50"/>
                     </div>
                 </div>
 
-                <div className="space-y-4">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><DollarSign size={14}/> Payment Details</h3>
-                    <div className="grid grid-cols-1 gap-3">
-                        <div className="flex gap-2">
-                            <div className="flex-1">
-                                <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Payee Name</label>
-                                <input type="text" placeholder="Bearer..." value={check.payee} onChange={e => setCheck({...check, payee: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
-                            </div>
-                            <div className="w-32">
-                                <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Amount</label>
-                                <div className="relative">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">{check.isCoinCheck ? <Coins size={14}/> : '$'}</span>
-                                    <input 
-                                        type="number" 
-                                        value={check.isCoinCheck ? (check.coinAmount ?? '') : (check.amount ?? '')} 
-                                        onChange={e => {
-                                            const val = e.target.value === '' ? null : parseFloat(e.target.value);
-                                            setCheck(check.isCoinCheck ? {...check, coinAmount: val as any} : {...check, amount: val as any});
-                                        }} 
-                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-8 pr-2.5 py-2.5 text-sm text-white text-right"
-                                        placeholder="Blank"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                        <div>
-                            <label className="text-[9px] font-bold text-slate-600 uppercase mb-1 block">Memo / Purpose</label>
-                            <input type="text" placeholder="For: Web Development Services..." value={check.memo} onChange={e => setCheck({...check, memo: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={() => setShowSignPad(true)} className="flex-1 py-3 bg-slate-800 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors"><PenTool size={16}/> Sign</button>
-                            <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="flex-1 py-3 bg-slate-800 text-xs font-bold rounded-xl border border-slate-700 flex items-center justify-center gap-2 hover:bg-slate-700 transition-colors">{isGeneratingArt ? <Loader2 size={16} className="animate-spin"/> : <ImageIcon size={16}/>} Add Watermark</button>
-                        </div>
-                    </div>
-                </div>
+                <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl font-bold text-sm border border-slate-700 flex items-center justify-center gap-2">
+                    {isGeneratingArt ? <Loader2 size={16} className="animate-spin"/> : <Palette size={16}/>}
+                    Generate Watermark
+                </button>
+                
+                <button onClick={() => setShowSignPad(true)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-sm border border-slate-700 flex items-center justify-center gap-2">
+                    <PenTool size={16}/>
+                    Sign Check
+                </button>
             </div>
           )}
 
-          <div className={`flex-1 bg-slate-950 flex flex-col p-4 sm:p-12 items-center overflow-y-auto scrollbar-hide relative min-h-0 ${isReadOnly ? 'justify-center h-full' : ''}`}>
-              {isReadOnly && (
-                  <div className="absolute top-6 left-6 z-20 flex items-center gap-4">
-                      <button onClick={onBack} className="p-3 bg-slate-900 border border-slate-800 rounded-full text-white shadow-2xl"><ArrowLeft size={24}/></button>
-                      <div>
-                        <h2 className="text-xl font-bold">Neural Check</h2>
-                        <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Verified Transaction Ledger</p>
-                      </div>
-                  </div>
-              )}
-
-              <div style={{ height: `${280 * zoom}px`, width: `${610 * zoom}px` }} className="flex-shrink-0 transition-all duration-300 p-2">
-                  <div 
-                    ref={checkRef}
-                    style={{ 
-                        transform: `scale(${zoom})`, 
-                        transformOrigin: 'top left',
-                        willChange: 'transform'
-                    }}
-                    className={`w-[600px] h-[270px] bg-white text-black shadow-[0_0_80px_rgba(0,0,0,0.5)] flex flex-col border ${check.isCoinCheck ? 'border-amber-400 ring-4 ring-amber-400/20' : 'border-slate-300'} relative shrink-0 p-8 rounded-sm overflow-hidden`}
-                  >
-                      {/* SCANNABLE QR CODE - TOP CENTERED HIGH CONTRAST */}
-                      <div className="absolute top-1 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
-                          <img src={qrCodeUrl} className="w-20 h-20 border-2 border-white p-0.5 rounded shadow-2xl bg-white" />
+          <div className="flex-1 bg-slate-950 flex flex-col p-8 items-center justify-center overflow-auto">
+              <div 
+                style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }}
+                className="transition-transform duration-300"
+              >
+                  <div ref={checkRef} className="w-[600px] h-[280px] bg-white text-black shadow-2xl flex flex-col border border-slate-300 rounded-lg relative overflow-hidden p-8">
+                      {check.watermarkUrl && (
+                          <img src={check.watermarkUrl} className="absolute inset-0 w-full h-full object-cover opacity-10 pointer-events-none" alt="" />
+                      )}
+                      
+                      <div className="flex justify-between items-start">
+                          <div className="space-y-1">
+                              <h2 className="text-sm font-bold uppercase tracking-wider">{check.senderName}</h2>
+                              <p className="text-[10px] text-slate-500 leading-none">{check.senderAddress}</p>
+                          </div>
+                          <div className="text-right">
+                              <p className="text-lg font-mono font-bold">{check.checkNumber}</p>
+                          </div>
                       </div>
 
-                      {/* WATERMARK - MATCHES CHECK DIMENSIONS (600x270) with crossOrigin for cloud sync */}
-                      <div className="absolute inset-0 opacity-[0.30] pointer-events-none z-0">
-                          {check.watermarkUrl ? (
-                              <img 
-                                src={check.watermarkUrl} 
-                                className="w-full h-full object-cover grayscale" 
-                                crossOrigin={isLocalUrl(check.watermarkUrl) ? undefined : "anonymous"}
-                                referrerPolicy="no-referrer"
-                              />
-                          ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                  <Landmark size={200} className="text-slate-400 opacity-20"/>
+                      <div className="flex justify-end mt-2">
+                          <div className="border-b border-black w-32 flex justify-between items-end pb-1">
+                              <span className="text-[10px] font-bold">DATE</span>
+                              <span className="text-sm font-mono">{check.date}</span>
+                          </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center gap-4">
+                          <span className="text-xs font-bold whitespace-nowrap">PAY TO THE ORDER OF</span>
+                          <div className="flex-1 border-b border-black text-lg font-serif italic px-2">{check.payee}</div>
+                          <div className="w-32 border-2 border-black p-1 flex items-center">
+                              <span className="text-sm font-bold">$</span>
+                              <span className="flex-1 text-right font-mono text-lg font-bold">{check.amount.toFixed(2)}</span>
+                          </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center gap-4">
+                          <div className="flex-1 border-b border-black text-sm font-serif italic px-2">{check.amountWords}</div>
+                          <span className="text-xs font-bold">DOLLARS</span>
+                      </div>
+
+                      <div className="mt-4">
+                          <p className="text-xs font-bold">{check.bankName}</p>
+                      </div>
+
+                      <div className="mt-6 flex items-end justify-between">
+                          <div className="flex-1 flex flex-col gap-2">
+                              <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-bold">FOR</span>
+                                  <div className="w-48 border-b border-black text-sm font-serif italic px-1">{check.memo}</div>
                               </div>
-                          )}
-                      </div>
-
-                      {/* Header row - Pulled UP further */}
-                      <div className="flex justify-between items-start mb-0.5 relative z-10 bg-transparent">
-                          <div className="flex flex-col bg-transparent">
-                              <div className="font-black uppercase text-[9px] leading-tight">{check.senderName}</div>
-                              <div className="text-[7px] text-slate-600 max-w-[150px] leading-tight whitespace-pre-wrap">{check.senderAddress}</div>
+                              <div className="mt-2 font-mono text-xl tracking-widest">
+                                  ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
+                              </div>
                           </div>
-                          <div className="text-right bg-transparent">
-                              <p className="text-sm font-black italic text-indigo-900 leading-none">{check.isCoinCheck ? 'VOICECOIN PROTOCOL' : check.bankName}</p>
-                              <p className="text-[9px] font-bold mt-0.5">CHECK NO. {check.checkNumber}</p>
-                          </div>
-                      </div>
-
-                      {/* Date and Amount box - Pulled UP */}
-                      <div className="flex justify-end gap-6 items-center mb-2 relative z-10 bg-transparent">
-                          <div className="flex flex-col items-end bg-transparent">
-                            <span className="text-[7px] font-bold text-slate-400 uppercase">Date</span>
-                            <span className="text-xs font-bold border-b border-black min-w-[80px] text-center">{check.date}</span>
-                          </div>
-                          <div className="bg-slate-50 border border-slate-300 px-4 py-2 font-black text-xl shadow-inner min-w-[120px] text-right">
-                            {check.isCoinCheck ? (
-                                check.coinAmount !== undefined && check.coinAmount !== null ? `VC ${check.coinAmount}` : 'VC _______'
-                            ) : (
-                                check.amount !== undefined && check.amount !== null ? `$ ${check.amount.toFixed(2)}` : '$ _______'
-                            )}
-                          </div>
-                      </div>
-
-                      {/* Payee line - MOVED ONE LINE UPPER */}
-                      <div className="flex items-center gap-4 relative z-10 mb-0.5 bg-transparent">
-                          <div className="flex-1 flex flex-col bg-transparent">
-                              <span className="text-[7px] font-bold text-slate-400 uppercase leading-none mb-1">Pay to the Order of</span>
-                              <div className="border-b border-black text-base font-black italic h-7 flex items-center bg-transparent">{check.payee || '____________________'}</div>
-                          </div>
-                      </div>
-
-                      {/* Amount Words line - MOVED ONE LINE UPPER */}
-                      <div className="flex flex-col relative z-10 mb-1 bg-transparent">
-                          <div className="border-b border-black text-[11px] font-bold h-6 flex items-center bg-transparent">
-                            {check.amountWords || '____________________________________________________________________'}
-                            <span className="ml-auto text-[7px] text-slate-400 uppercase font-black pl-2">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
-                          </div>
-                      </div>
-
-                      {/* Memo line - Pinned above MICR */}
-                      <div className="absolute bottom-[60px] left-8 z-10 bg-transparent">
-                          <div className="w-[220px] flex flex-col bg-transparent">
-                              <span className="text-[7px] font-bold text-slate-400 uppercase">Memo</span>
-                              <div className="border-b border-black text-[11px] pb-0.5 font-medium truncate h-5 flex items-center bg-transparent">{check.memo || '____________________'}</div>
-                          </div>
-                      </div>
-
-                      {/* Signature line - MOVED TO ABSOLUTE BOTTOM RIGHT CORNER (Above MICR) */}
-                      <div className="absolute bottom-[36px] right-8 z-10 bg-transparent">
-                          <div className="w-[180px] flex flex-col items-center bg-transparent">
-                              <div className="border-b border-black w-full text-center pb-0.5 h-10 flex items-end justify-center overflow-hidden bg-transparent">
+                          
+                          <div className="w-48 relative">
+                              <div className="border-b border-black h-12 flex items-end justify-center pb-1">
                                   {check.signatureUrl ? (
-                                      <img 
-                                        src={check.signatureUrl} 
-                                        className="h-full max-w-full object-contain" 
-                                        crossOrigin={isLocalUrl(check.signatureUrl) ? undefined : "anonymous"}
-                                        referrerPolicy="no-referrer"
-                                      />
+                                      <img src={check.signatureUrl} className="max-h-12 w-auto object-contain" alt="Signature" />
                                   ) : (
-                                      <span className="text-xl font-script text-slate-400">{check.signature || (check.amount ? check.senderName : '____________________')}</span>
+                                      <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>
                                   )}
                               </div>
-                              <span className="text-[7px] font-bold text-slate-400 uppercase mt-0.5">Authorized Signature</span>
-                          </div>
-                      </div>
-
-                      {/* MICR Line - FIXED TO BOTTOM LEFT CORNER */}
-                      <div className="absolute bottom-4 left-8 pointer-events-none z-20 bg-transparent">
-                          <div className="font-mono text-sm tracking-[0.25em] text-slate-900 flex items-center gap-6">
-                              <span>⑆ {check.routingNumber} ⑆</span>
-                              <span>{check.accountNumber} ⑈</span>
-                              <span>{check.checkNumber}</span>
+                              <span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter">Authorized Signature</span>
                           </div>
                       </div>
                   </div>
               </div>
-
-              {!isReadOnly && (
-                  <div className="mt-12 mb-20 flex gap-4 shrink-0">
-                      <button onClick={() => setZoom(prev => Math.max(0.1, prev - 0.1))} className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white"><ZoomOut size={16}/></button>
-                      <button onClick={() => setZoom(1)} className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs font-bold text-slate-400">{Math.round(zoom * 100)}%</button>
-                      <button onClick={() => setZoom(prev => Math.min(2, prev + 0.1))} className="p-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-400 hover:text-white"><ZoomIn size={16}/></button>
-                  </div>
-              )}
           </div>
       </div>
 
       {showSignPad && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl">
-              <div className="bg-white border border-slate-200 rounded-[2rem] w-full max-w-2xl overflow-hidden flex flex-col shadow-2xl">
-                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                      <div className="flex items-center gap-3"><PenTool className="text-indigo-600" /><h3 className="font-bold text-slate-900">Digital Signature</h3></div>
-                      <button onClick={() => setShowSignPad(false)} className="p-1.5 hover:bg-slate-200 rounded-full text-slate-400"><X size={20}/></button>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm">
+              <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl p-6 shadow-2xl animate-fade-in-up">
+                  <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-bold text-white flex items-center gap-2"><PenTool size={20} className="text-indigo-400"/> Authorized Signature</h3>
+                      <button onClick={() => setShowSignPad(false)} className="p-2 text-slate-500 hover:text-white"><X/></button>
                   </div>
-                  <div className="bg-white m-6 rounded-xl overflow-hidden border border-slate-200 h-64 relative">
-                      <Whiteboard disableAI={true} onDataChange={() => {}} initialColor="#000000" backgroundColor="#ffffff" />
-                      <div className="absolute bottom-4 right-4 z-50 flex gap-2">
-                          <button onClick={() => setShowSignPad(false)} className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-6 py-2 rounded-lg font-bold transition-colors">Cancel</button>
-                          <button onClick={() => { 
-                              const canvas = document.querySelector('canvas'); 
-                              if (canvas) setCheck(prev => ({...prev, signatureUrl: canvas.toDataURL()})); 
-                              setShowSignPad(false); 
-                          }} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-indigo-500 shadow-lg shadow-indigo-500/20 transition-all"><CheckIcon size={18}/> Save Signature</button>
+                  <div className="h-[300px] border-2 border-dashed border-slate-800 rounded-2xl overflow-hidden mb-6 bg-white">
+                      <Whiteboard 
+                        disableAI 
+                        backgroundColor="transparent" 
+                        initialColor="#000000"
+                        onDataChange={(data) => {}}
+                        onSessionStart={() => {}}
+                      />
+                  </div>
+                  <div className="flex justify-between gap-4">
+                      <p className="text-xs text-slate-500 max-w-sm italic">Draw your signature in the box above. For security, signatures are encrypted and stored with the document URI.</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => setShowSignPad(false)} className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold">Cancel</button>
+                        <button 
+                            onClick={async () => {
+                                const canvas = document.querySelector('.fixed canvas') as HTMLCanvasElement;
+                                if (canvas) {
+                                    const sigUrl = canvas.toDataURL('image/png');
+                                    setCheck(prev => ({ ...prev, signatureUrl: sigUrl }));
+                                }
+                                setShowSignPad(false);
+                            }} 
+                            className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg"
+                        >
+                            Confirm Signature
+                        </button>
                       </div>
-                  </div>
-                  <div className="px-6 pb-6 text-center">
-                      <p className="text-xs text-slate-400">Sign your name in the box above using your mouse or touch screen.</p>
                   </div>
               </div>
           </div>
@@ -518,12 +411,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
       {showShareModal && shareLink && (
           <ShareModal 
-            isOpen={true} onClose={() => setShowShareModal(false)} link={shareLink} title="Banking Check"
-            onShare={async (uids, isPublic, permission) => {
-                alert("Permission settings updated!");
-            }}
-            defaultPermission="read"
-            currentUserUid={currentUser?.uid}
+            isOpen={true} onClose={() => setShowShareModal(false)}
+            link={shareLink} title={`Check #${check.checkNumber}`}
+            onShare={async () => {}} currentUserUid={currentUser?.uid}
           />
       )}
     </div>

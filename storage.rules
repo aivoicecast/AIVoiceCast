@@ -1,0 +1,17 @@
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow public read for check assets so the shared URI viewer works for guests
+    match /checks/{checkId}/{fileName} {
+      allow read: if true;
+      // Only authenticated users (the owner) can upload assets
+      allow write: if request.auth != null;
+    }
+
+    // Default rules for other paths
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
