@@ -42,6 +42,7 @@ const DEFAULT_CHECK: BankingCheck = {
 
 export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUser, userProfile }) => {
   const params = new URLSearchParams(window.location.search);
+  // Support both view modes
   const isReadOnly = params.get('mode') === 'view' || params.get('view') === 'check_viewer';
   const checkIdFromUrl = params.get('id');
 
@@ -67,11 +68,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           setIsLoadingCheck(true);
           getCheckById(checkIdFromUrl).then(data => {
               if (data) {
-                  setCheck(data);
+                  // Ensure we normalize properties for older data
+                  setCheck({
+                      ...DEFAULT_CHECK,
+                      ...data,
+                      // Ensure signature fields are mapped correctly
+                      signatureUrl: data.signatureUrl || data.signature || ''
+                  });
                   setShareLink(`${window.location.origin}?view=check_viewer&id=${data.id}`);
               }
               setIsLoadingCheck(false);
-          });
+          }).catch(() => setIsLoadingCheck(false));
       } else {
           // New check: Hydrate from profile template if available
           let initial = { ...DEFAULT_CHECK, senderName: currentUser?.displayName || DEFAULT_CHECK.senderName };
@@ -88,7 +95,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
   useEffect(() => {
     const handleAutoZoom = () => {
-        if (window.innerWidth < 640) { setZoom((window.innerWidth - 32) / 600); } else { setZoom(1.0); }
+        if (window.innerWidth < 768) { 
+            const containerWidth = window.innerWidth - 64;
+            setZoom(Math.min(1.0, containerWidth / 600)); 
+        } else { 
+            setZoom(1.0); 
+        }
     };
     handleAutoZoom();
     window.addEventListener('resize', handleAutoZoom);
@@ -145,7 +157,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       if (!currentUser) return alert("Sign in to save templates.");
       setIsSavingTemplate(true);
       try {
-          // Template only saves recurring fields
           const template: Partial<BankingCheck> = {
               bankName: check.bankName,
               routingNumber: check.routingNumber,
@@ -168,34 +179,69 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       setIsSharing(true);
       try {
           const id = check.id || generateSecureId();
+          
+          // 1. Sync Watermark
           let finalWatermarkUrl = check.watermarkUrl || '';
           if (check.watermarkUrl?.startsWith('data:')) {
              const res = await fetch(check.watermarkUrl);
              const blob = await res.blob();
              finalWatermarkUrl = await uploadFileToStorage(`checks/${id}/watermark.png`, blob);
           }
-          let finalSignatureUrl = check.signatureUrl || '';
-          if (check.signatureUrl?.startsWith('data:')) {
-              const res = await fetch(check.signatureUrl);
+          
+          // 2. Sync Signature
+          let finalSignatureUrl = check.signatureUrl || check.signature || '';
+          if (finalSignatureUrl.startsWith('data:')) {
+              const res = await fetch(finalSignatureUrl);
               const blob = await res.blob();
               finalSignatureUrl = await uploadFileToStorage(`checks/${id}/signature.png`, blob);
           }
-          const checkToSave = { ...check, id, ownerId: auth.currentUser.uid, watermarkUrl: finalWatermarkUrl, signatureUrl: finalSignatureUrl };
+          
+          // 3. Prepare Final Document
+          const checkToSave = { 
+              ...check, 
+              id, 
+              ownerId: auth.currentUser.uid, 
+              watermarkUrl: finalWatermarkUrl, 
+              signatureUrl: finalSignatureUrl,
+              signature: finalSignatureUrl // redundant for legacy compat
+          };
+          
+          // 4. Update Database
           await saveBankingCheck(checkToSave as any);
+          
+          // 5. IMPORTANT: Update local state so owner is now looking at Cloud URLs
+          setCheck(checkToSave);
+          
+          // 6. Generate Links
           setShareLink(`${window.location.origin}?view=check_viewer&id=${id}`);
           setShowShareModal(true);
-      } catch (e: any) { alert("Publish failed: " + e.message); } finally { setIsSharing(false); }
+      } catch (e: any) { 
+          alert("Publish failed: " + e.message); 
+      } finally { 
+          setIsSharing(false); 
+      }
   };
 
   const handleDownloadPDF = async () => {
     if (!checkRef.current) return;
     setIsExporting(true);
     try {
-        const canvas = await html2canvas(checkRef.current, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
+        const canvas = await html2canvas(checkRef.current, { 
+            scale: 4, 
+            useCORS: true, 
+            backgroundColor: '#ffffff',
+            logging: false,
+            // Ensure images are fully loaded
+            allowTaint: false
+        });
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
         pdf.save(`check_${check.checkNumber}.pdf`);
-    } finally { setIsExporting(false); }
+    } catch(e) {
+        alert("PDF Generation failed. Try again.");
+    } finally { 
+        setIsExporting(false); 
+    }
   };
 
   if (isLoadingCheck) return <div className="h-screen bg-slate-950 flex items-center justify-center animate-pulse"><Loader2 className="animate-spin text-indigo-500" size={40} /></div>;
@@ -205,14 +251,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
               <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400"><ArrowLeft size={20} /></button>
-              <h1 className="text-lg font-bold text-white flex items-center gap-2"><Wallet className="text-indigo-400" /> Neural Check Lab</h1>
+              <h1 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Wallet className="text-indigo-400" />
+                  {isReadOnly ? 'Neural Check Viewer' : 'Neural Check Lab'}
+              </h1>
           </div>
           <div className="flex items-center gap-3">
               {!isReadOnly && (
                 <>
                   <button onClick={handleSaveAsTemplate} disabled={isSavingTemplate} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">
                       {isSavingTemplate ? <Loader2 size={14} className="animate-spin"/> : <HardDrive size={14}/>}
-                      <span>Save Default</span>
+                      <span className="hidden sm:inline">Save Default</span>
                   </button>
                   <button onClick={handlePublishAndShareLink} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
                       {isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
@@ -222,7 +271,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               )}
               <button onClick={handleDownloadPDF} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">
                   {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14}/>}
-                  <span>PDF</span>
+                  <span>Download PDF</span>
               </button>
           </div>
       </header>
@@ -269,10 +318,40 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           )}
 
           <div className="flex-1 bg-slate-950 flex flex-col p-8 items-center justify-center overflow-auto relative">
-              <div style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }} className="transition-transform duration-300">
+              {isReadOnly && (
+                  <div className="absolute top-8 text-center max-w-md animate-fade-in mb-8">
+                      <div className="bg-emerald-900/20 border border-emerald-500/30 px-6 py-4 rounded-3xl backdrop-blur-md">
+                          <p className="text-emerald-400 font-bold flex items-center justify-center gap-2 mb-1">
+                              <ShieldCheckIcon /> Authenticated Document
+                          </p>
+                          <p className="text-slate-400 text-xs leading-relaxed">This is an officially signed document verified via AIVoiceCast Neural Prism bank records.</p>
+                      </div>
+                  </div>
+              )}
+              
+              <div style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }} className="transition-transform duration-300 mt-12">
                   <div ref={checkRef} className="w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border border-slate-300 rounded-lg relative overflow-hidden p-8">
-                      {check.watermarkUrl && <div className="absolute inset-0 opacity-[0.35] pointer-events-none z-0"><img key={check.watermarkUrl} src={check.watermarkUrl} className="w-full h-full object-cover grayscale" crossOrigin="anonymous"/></div>}
-                      <div className="absolute top-8 left-[210px] z-40 pointer-events-none"><img key={qrCodeUrl} src={qrCodeUrl} className="w-14 h-14 border border-white p-0.5 rounded shadow-md bg-white" crossOrigin="anonymous" /></div>
+                      {check.watermarkUrl && (
+                        <div className="absolute inset-0 opacity-[0.25] pointer-events-none z-0">
+                          <img 
+                            key={check.watermarkUrl} 
+                            src={check.watermarkUrl} 
+                            className="w-full h-full object-cover grayscale" 
+                            crossOrigin="anonymous"
+                            alt="Security Watermark"
+                          />
+                        </div>
+                      )}
+                      
+                      <div className="absolute top-8 left-[210px] z-40 pointer-events-none">
+                        <img 
+                            key={qrCodeUrl} 
+                            src={qrCodeUrl} 
+                            className="w-14 h-14 border border-slate-100 p-0.5 rounded shadow-sm bg-white" 
+                            crossOrigin="anonymous" 
+                            alt="Verification QR"
+                        />
+                      </div>
                       
                       <div className="flex justify-between items-start relative z-10">
                           <div className="space-y-1">
@@ -301,7 +380,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <div className="flex-1 flex flex-col gap-2"><div className="flex items-center gap-2"><span className="text-[10px] font-bold">FOR</span><div className="w-48 border-b border-black text-sm font-serif italic px-1 truncate">{check.memo || '____________________'}</div></div></div>
                           <div className="w-48 relative ml-4 z-20">
                               <div className="border-b border-black h-12 flex items-end justify-center pb-1 overflow-hidden">
-                                  {check.signatureUrl ? <img key={check.signatureUrl} src={check.signatureUrl} className="max-h-12 w-auto object-contain" crossOrigin="anonymous"/> : <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>}
+                                  {check.signatureUrl || check.signature ? (
+                                    <img 
+                                        key={check.signatureUrl || check.signature} 
+                                        src={check.signatureUrl || check.signature} 
+                                        className="max-h-12 w-auto object-contain" 
+                                        crossOrigin="anonymous"
+                                        alt="Signature"
+                                    />
+                                  ) : (
+                                    <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>
+                                  )}
                               </div>
                               <span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter">Authorized Signature</span>
                           </div>
@@ -309,11 +398,33 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <div className="absolute bottom-6 left-8 font-mono text-xl tracking-widest text-slate-800 whitespace-nowrap bg-white/70 inline-block px-1 z-30">⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}</div>
                   </div>
               </div>
+
+              {isReadOnly && (
+                  <div className="mt-12 flex flex-col items-center gap-4">
+                      <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Shared Document Archive</p>
+                      <div className="flex gap-3">
+                        <button onClick={handleDownloadPDF} disabled={isExporting} className="px-8 py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-slate-100 transition-all flex items-center gap-3 shadow-xl active:scale-95">
+                            {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                            Download Verified Copy
+                        </button>
+                        {currentUser && currentUser.uid === check.ownerId && (
+                            <button onClick={() => {
+                                const url = new URL(window.location.href);
+                                url.searchParams.set('mode', 'edit');
+                                url.searchParams.set('view', 'check_designer');
+                                window.location.assign(url.toString());
+                            }} className="px-8 py-3 bg-slate-800 text-white font-bold rounded-xl border border-slate-700 hover:bg-slate-700">
+                                Edit Original
+                            </button>
+                        )}
+                      </div>
+                  </div>
+              )}
           </div>
       </div>
 
       {showSignPad && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl p-6 shadow-2xl animate-fade-in-up">
                   <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-bold text-white flex items-center gap-2"><PenTool size={20} className="text-indigo-400"/> Authorized Signature</h3>
@@ -327,7 +438,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <button 
                         onClick={() => {
                             const canvas = document.querySelector('.fixed canvas') as HTMLCanvasElement;
-                            if (canvas) setCheck(prev => ({ ...prev, signatureUrl: canvas.toDataURL('image/png') }));
+                            if (canvas) setCheck(prev => ({ ...prev, signatureUrl: canvas.toDataURL('image/png'), signature: canvas.toDataURL('image/png') }));
                             setShowSignPad(false);
                         }} 
                         className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg"
@@ -345,3 +456,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     </div>
   );
 };
+
+const ShieldCheckIcon = () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+);
