@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -67,6 +66,8 @@ interface ErrorBoundaryState {
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   // Explicitly define state on the class to ensure TypeScript correctly identifies it
   state: ErrorBoundaryState = { hasError: false, error: null };
+  // FIX: Explicitly declare props to satisfy strict compiler checks on inherited properties from Component
+  declare props: ErrorBoundaryProps;
 
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -104,7 +105,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
     
-    // FIX: Accessing props inherited from React.Component
+    // FIX: Accessing props which is now explicitly declared on the class to avoid 'Property props does not exist' error
     return this.props.children;
   }
 }

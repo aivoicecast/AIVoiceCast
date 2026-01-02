@@ -1,5 +1,4 @@
 
-
 export interface Address {
   name: string;
   street: string;
@@ -41,7 +40,9 @@ export interface BankingCheck {
   bankName: string;
   senderName: string;
   senderAddress: string;
+  recipientAddress?: string; // Added field
   signature: string;
+  signatureUrl?: string; // Added field for drawn/uploaded signature
   ownerId?: string;
   watermarkUrl?: string;
   // Coin related fields
@@ -446,12 +447,9 @@ export interface WhiteboardElement {
   id: string;
   type: ToolType;
   points?: { x: number; y: number }[];
-  x: number;
-  y: number;
-  width?: number;
-  height?: number;
-  endX?: number;
-  endY?: number;
+  x: number; y: number;
+  width?: number; height?: number;
+  endX?: number; endY?: number;
   text?: string;
   color: string;
   strokeWidth: number;

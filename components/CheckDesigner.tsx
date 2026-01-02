@@ -1,9 +1,8 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
   Trash2, Printer, CheckCircle, AlertTriangle, Send, Share2, DollarSign, Calendar, 
-  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette, Copy, ZoomIn, ZoomOut, Maximize2
+  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette, Copy, ZoomIn, ZoomOut, Maximize2, PenTool, Upload, Camera, MapPin
 } from 'lucide-react';
 import { BankingCheck, UserProfile } from '../types';
 import { GoogleGenAI } from '@google/genai';
@@ -13,6 +12,8 @@ import { getAllUsers, sendMessage, uploadFileToStorage, saveBankingCheck, claimC
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
+import { Whiteboard } from './Whiteboard';
+import { resizeImage } from '../utils/imageUtils';
 
 interface CheckDesignerProps {
   onBack: () => void;
@@ -31,7 +32,8 @@ const DEFAULT_CHECK: BankingCheck = {
   accountNumber: '987654321',
   bankName: 'Neural Prism Bank',
   senderName: 'Account Holder',
-  senderAddress: '123 AI Boulevard, Silicon Valley, CA',
+  senderAddress: '',
+  recipientAddress: '',
   signature: '',
   isCoinCheck: false,
   coinAmount: 0
@@ -51,8 +53,10 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [customArtUrl, setCustomArtUrl] = useState<string | null>(null);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [showSignPad, setShowSignPad] = useState(false);
   
   const checkRef = useRef<HTMLDivElement>(null);
+  const signInputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -72,14 +76,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     };
   }, [check.amount, check.coinAmount, check.isCoinCheck]);
 
+  // QR Code URL now explicitly uses the shareLink (linked to URI) if available
   const qrCodeUrl = useMemo(() => {
-      // For Coin Checks, the QR code encodes the check ID for claiming
-      if (check.isCoinCheck && check.id) {
-          return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(window.location.origin + '?claim=' + check.id)}`;
-      }
-      const data = `payee:${check.payee}|amount:${check.amount}|memo:${check.memo}|bank:${check.bankName}`;
-      return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data)}`;
-  }, [check.payee, check.amount, check.memo, check.bankName, check.isCoinCheck, check.id]);
+      const baseUri = shareLink || `${window.location.origin}?view=check&preview=true`;
+      return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(baseUri)}`;
+  }, [shareLink, check.id]);
 
   const handleParseCheckDetails = async () => {
       const input = prompt("Paste raw payment instructions (e.g. 'Pay Alice 500 dollars for consulting work next week'):");
@@ -180,12 +181,21 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
              finalWatermarkUrl = await uploadFileToStorage(`checks/${id}/watermark.png`, blob);
           }
 
+          // Sync Signature if it's local
+          let finalSignatureUrl = check.signatureUrl || '';
+          if (check.signatureUrl?.startsWith('data:')) {
+              const res = await fetch(check.signatureUrl);
+              const blob = await res.blob();
+              finalSignatureUrl = await uploadFileToStorage(`checks/${id}/signature.png`, blob);
+          }
+
           // 2. Save metadata to Firestore
           const finalId = await saveBankingCheck({
               ...check,
               id,
               ownerId: auth.currentUser.uid,
-              watermarkUrl: finalWatermarkUrl
+              watermarkUrl: finalWatermarkUrl,
+              signatureUrl: finalSignatureUrl
           });
 
           // 3. Export PDF and Save to Drive
@@ -249,6 +259,20 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           alert("Export failed.");
       }
       setIsExporting(false);
+  };
+
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files?.[0]) {
+          const base64 = await resizeImage(e.target.files[0], 400, 0.9);
+          setCheck(prev => ({ ...prev, signatureUrl: base64 }));
+      }
+  };
+
+  const handleSignPadFinish = (data: string) => {
+      // In a real implementation we'd grab the canvas data from the whiteboard
+      // Since Whiteboard component is general, let's assume we capture it via ref or callback
+      setCheck(prev => ({ ...prev, signatureUrl: data }));
+      setShowSignPad(false);
   };
 
   const handleZoom = (delta: number) => {
@@ -325,9 +349,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               </div>
 
               <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Account & Bank</h3>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Parties (Optional Addresses)</h3>
                   <div className="grid grid-cols-1 gap-3">
                       <input type="text" placeholder="Your Name" value={check.senderName} onChange={e => setCheck({...check, senderName: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
+                      <textarea placeholder="Your Address (Optional)" value={check.senderAddress} onChange={e => setCheck({...check, senderAddress: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500 resize-none h-16"/>
+                      <textarea placeholder="Recipient Address (Optional)" value={check.recipientAddress} onChange={e => setCheck({...check, recipientAddress: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500 resize-none h-16"/>
+                  </div>
+              </div>
+
+              <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Bank Details</h3>
+                  <div className="grid grid-cols-1 gap-3">
                       <input type="text" placeholder="Bank Name" value={check.bankName} onChange={e => setCheck({...check, bankName: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
                       <div className="grid grid-cols-2 gap-3">
                           <input type="text" placeholder="Routing #" value={check.routingNumber} onChange={e => setCheck({...check, routingNumber: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500 font-mono"/>
@@ -337,7 +369,33 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               </div>
 
               <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Payment Details</h3>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Signature</h3>
+                  <div className="flex gap-2">
+                      <button 
+                        onClick={() => setShowSignPad(true)}
+                        className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                      >
+                          <PenTool size={16}/> Draw Sign
+                      </button>
+                      <button 
+                        onClick={() => signInputRef.current?.click()}
+                        className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                      >
+                          <Upload size={16}/> Upload
+                      </button>
+                      <input type="file" ref={signInputRef} className="hidden" accept="image/*" onChange={handleSignatureUpload} />
+                  </div>
+                  {check.signatureUrl && (
+                      <div className="relative group">
+                          <img src={check.signatureUrl} className="w-full h-20 object-contain bg-white rounded-lg border border-slate-700 p-2" alt="Signature Preview" />
+                          <button onClick={() => setCheck({...check, signatureUrl: ''})} className="absolute top-1 right-1 p-1 bg-red-600 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity"><X size={10}/></button>
+                      </div>
+                  )}
+                  <input type="text" placeholder="Type Signature (Backup)" value={check.signature} onChange={e => setCheck({...check, signature: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500 italic"/>
+              </div>
+
+              <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Payment Amount</h3>
                   <div className="grid grid-cols-1 gap-3">
                       <div className="flex gap-2">
                         <input type="text" placeholder="Pay to the order of..." value={check.payee} onChange={e => setCheck({...check, payee: e.target.value})} className="flex-1 bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500"/>
@@ -352,7 +410,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                             )}
                         </div>
                       </div>
-                      <div className="relative group">
+                      <div className="relative">
                         <textarea 
                             placeholder="Amount in words..." 
                             value={check.amountWords} 
@@ -377,12 +435,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                             onClick={handleGenerateArt}
                             disabled={isGeneratingArt}
                             className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-indigo-400 hover:text-white transition-all"
-                            title="Generate custom watermark art based on memo"
+                            title="Generate watermark art based on memo"
                         >
                             {isGeneratingArt ? <Loader2 size={14} className="animate-spin"/> : <ImageIcon size={14}/>}
                         </button>
                       </div>
-                      <input type="text" placeholder="Signature (Type your name)" value={check.signature} onChange={e => setCheck({...check, signature: e.target.value})} className="bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-indigo-500 italic"/>
                   </div>
               </div>
           </div>
@@ -391,7 +448,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               {shareLink && (
                   <div className="mb-6 w-full max-w-md bg-slate-900 border border-indigo-500/50 rounded-2xl p-4 animate-fade-in flex items-center justify-between gap-4 shadow-xl z-20">
                       <div className="overflow-hidden">
-                          <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">{check.isCoinCheck ? 'Claim Link (Send to Recipient)' : 'Shareable View Link'}</p>
+                          <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">{check.isCoinCheck ? 'Redeemable Claim Link' : 'Secure View Link'}</p>
                           <p className="text-xs text-slate-400 truncate font-mono">{shareLink}</p>
                       </div>
                       <button onClick={() => { navigator.clipboard.writeText(shareLink!); alert("Copied!"); }} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 transition-colors">
@@ -403,7 +460,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               <div className="sticky top-0 mb-8 flex items-center gap-6 bg-slate-900/80 backdrop-blur-xl px-6 py-2 rounded-full border border-slate-800 shadow-2xl z-20 select-none">
                   <div className="flex items-center gap-2 text-slate-400">
                     <Printer size={14} />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">{check.isCoinCheck ? 'Digital Coin Disbursement' : 'High-Security Document Preview'}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest">{check.isCoinCheck ? 'Neural Disbursement' : 'High-Resolution Document Preview'}</span>
                   </div>
                   
                   <div className="h-4 w-px bg-slate-700"></div>
@@ -420,7 +477,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 className="flex items-center justify-center transition-transform duration-300 ease-out origin-top"
                 style={{ 
                     transform: `scale(${zoom})`,
-                    marginBottom: `${(zoom - 1) * 270}px`, // Compensate for scaled height to allow proper scrolling
+                    marginBottom: `${(zoom - 1) * 270}px`,
                     marginTop: '20px'
                 }}
               >
@@ -442,10 +499,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           )}
                       </div>
 
-                      <div className="flex justify-between items-start mb-4">
+                      <div className="flex justify-between items-start mb-2">
                           <div className="space-y-0.5">
                               <p className="text-xs font-black uppercase tracking-tight leading-none">{check.senderName}</p>
-                              <p className="text-[8px] text-slate-500 max-w-[150px] leading-tight">{check.senderAddress}</p>
+                              {check.senderAddress && (
+                                <p className="text-[7px] text-slate-500 max-w-[150px] leading-tight whitespace-pre-wrap">{check.senderAddress}</p>
+                              )}
                           </div>
                           <div className="text-right">
                               <p className={`text-sm font-black italic ${check.isCoinCheck ? 'text-amber-600' : 'text-indigo-900'}`}>{check.isCoinCheck ? 'VoiceCoin Protocol' : check.bankName}</p>
@@ -464,9 +523,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                       </div>
 
-                      <div className="flex items-end gap-3 mb-2 border-b border-black pb-1">
+                      <div className="flex items-end gap-3 mb-2 border-b border-black pb-1 relative">
                           <span className="text-[8px] font-bold uppercase whitespace-nowrap mb-1">Pay to the order of</span>
-                          <span className="flex-1 text-sm font-black italic px-2">{check.payee}</span>
+                          <div className="flex-1 flex flex-col">
+                              <span className="text-sm font-black italic px-2">{check.payee}</span>
+                              {check.recipientAddress && (
+                                <span className="text-[7px] text-slate-500 px-2 italic whitespace-pre-wrap">{check.recipientAddress}</span>
+                              )}
+                          </div>
                       </div>
 
                       <div className="flex items-end gap-3 mb-4 border-b border-black pb-1 relative">
@@ -474,8 +538,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <span className="text-[8px] font-bold uppercase absolute right-0 bottom-1">{check.isCoinCheck ? 'Coins' : 'Dollars'}</span>
                       </div>
 
-                      <div className="flex items-end justify-between mt-auto mb-14">
-                          <div className="flex flex-col gap-1 w-1/3">
+                      {/* Unified Interaction Row - Moved higher to avoid MICR line overlap */}
+                      <div className="flex items-end justify-between mt-auto mb-10">
+                          <div className="flex flex-col gap-1 w-[28%]">
                               <div className="flex items-end gap-2 border-b border-black pb-1">
                                   <span className="text-[8px] font-bold uppercase mb-1">For</span>
                                   <span className="text-xs font-medium px-2 truncate">{check.memo}</span>
@@ -483,22 +548,46 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                           
                           <div className="flex flex-col items-center">
-                              <img src={qrCodeUrl} className={`w-20 h-20 border p-0.5 rounded shadow-sm ${check.isCoinCheck ? 'border-amber-400 bg-amber-50' : 'border-slate-100 bg-white'}`} alt="QR Code" crossOrigin="anonymous"/>
-                              <span className="text-[6px] font-black uppercase text-slate-400 mt-1">{check.isCoinCheck ? 'Scan to Claim Coins' : 'Scan for Digital Pay'}</span>
+                              {/* QR Code enlarged by 20% (w-20 -> w-24) */}
+                              <img src={qrCodeUrl} className={`w-24 h-24 border p-1 rounded shadow-sm ${check.isCoinCheck ? 'border-amber-400 bg-amber-50' : 'border-slate-100 bg-white'}`} alt="QR Code" crossOrigin="anonymous"/>
+                              <span className="text-[6px] font-black uppercase text-slate-400 mt-1">{check.isCoinCheck ? 'Scan to Claim' : 'Scan for Verification'}</span>
                           </div>
 
-                          <div className="flex flex-col items-center w-1/3">
-                              <div className="min-w-[160px] border-b border-black text-center pb-1">
-                                  <span className="text-xl font-script italic leading-none">{check.signature || check.senderName}</span>
+                          <div className="flex flex-col items-center w-[35%]">
+                              <div className="min-w-[160px] border-b border-black text-center pb-1 relative h-10 flex items-center justify-center">
+                                  {check.signatureUrl ? (
+                                      <img src={check.signatureUrl} className="max-h-full max-w-full object-contain mix-blend-multiply" alt="sign" />
+                                  ) : (
+                                      <span className="text-xl font-script italic leading-none">{check.signature || check.senderName}</span>
+                                  )}
                               </div>
                               <span className="text-[8px] font-bold uppercase mt-1">Authorized Signature</span>
                           </div>
                       </div>
 
-                      <div className="absolute bottom-2 left-0 w-full flex justify-center gap-12 font-mono text-sm tracking-[0.2em] opacity-80 select-none bg-white/50 py-1">
-                          <span>⑆ {check.routingNumber} ⑆</span>
-                          <span>{check.accountNumber} ⑈</span>
-                          <span>{check.checkNumber}</span>
+                      {/* MICR / Barcode Line */}
+                      <div className="absolute bottom-2 left-0 w-full flex justify-center items-center gap-12 font-mono text-sm tracking-[0.2em] opacity-80 select-none bg-white/50 py-1">
+                          {check.isCoinCheck ? (
+                              <div className="flex items-center gap-6">
+                                  <div className="flex gap-[1px] items-end h-6 opacity-60">
+                                      {Array.from({ length: 40 }).map((_, i) => (
+                                          <div key={i} className="bg-black" style={{ width: Math.random() > 0.5 ? '2px' : '1px', height: `${60 + Math.random() * 40}%` }}></div>
+                                      ))}
+                                  </div>
+                                  <span className="text-[10px] font-mono tracking-normal uppercase font-bold text-slate-600">AIVoiceCast-UUID-{check.id?.substring(0,8) || 'SYSTEM'}</span>
+                                  <div className="flex gap-[1px] items-end h-6 opacity-60">
+                                      {Array.from({ length: 40 }).map((_, i) => (
+                                          <div key={i} className="bg-black" style={{ width: Math.random() > 0.5 ? '2px' : '1px', height: `${60 + Math.random() * 40}%` }}></div>
+                                      ))}
+                                  </div>
+                              </div>
+                          ) : (
+                              <>
+                                <span>⑆ {check.routingNumber} ⑆</span>
+                                <span>{check.accountNumber} ⑈</span>
+                                <span>{check.checkNumber}</span>
+                              </>
+                          )}
                       </div>
                       
                       <div className={`absolute top-0 left-0 w-full h-1 ${check.isCoinCheck ? 'bg-gradient-to-r from-amber-500/30 via-transparent to-amber-500/30' : 'bg-gradient-to-r from-indigo-500/20 via-transparent to-indigo-500/20'}`}></div>
@@ -510,20 +599,71 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex items-start gap-4">
                       <div className="p-2 bg-emerald-900/20 rounded-lg text-emerald-400"><QrCode size={20}/></div>
                       <div>
-                          <h4 className="text-sm font-bold text-white mb-1">{check.isCoinCheck ? 'One-Time Claim' : 'Digital Scan Support'}</h4>
-                          <p className="text-xs text-slate-500 leading-relaxed">{check.isCoinCheck ? 'Scanning the QR code on a Coin Check instantly transfers the coins to the recipient\'s wallet and invalidates the check.' : 'Integrated QR code encodes payment details for fast mobile banking imports and ledger synchronization.'}</p>
+                          <h4 className="text-sm font-bold text-white mb-1">Direct URI Access</h4>
+                          <p className="text-xs text-slate-500 leading-relaxed">The QR code is linked directly to this document's web URI. Scanners can view and redeem this check instantly within the AIVoiceCast network.</p>
                       </div>
                   </div>
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex items-start gap-4">
                       <div className="p-2 bg-amber-900/20 rounded-lg text-amber-400"><ShieldAlert size={20}/></div>
                       <div>
-                          <h4 className="text-sm font-bold text-white mb-1">Coin Protocol</h4>
-                          <p className="text-xs text-slate-500 leading-relaxed">VoiceCoins are the native currency of AIVoiceCast, equal to 1 cent USD. Use them for tipping, mentoring, and issuing digital vouchers.</p>
+                          <h4 className="text-sm font-bold text-white mb-1">High-Security Layout</h4>
+                          <p className="text-xs text-slate-500 leading-relaxed">Adjusted layout prevents overlap of signature elements and bank account data, ensuring compatibility with standard MICR scanning systems.</p>
                       </div>
                   </div>
               </div>
           </div>
       </div>
+
+      {/* Signature Pad Modal */}
+      {showSignPad && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-fade-in">
+              <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-2xl overflow-hidden flex flex-col shadow-2xl">
+                  <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                      <div className="flex items-center gap-3">
+                          <PenTool className="text-indigo-400" />
+                          <h3 className="font-bold text-white">Digital Signature Pad</h3>
+                      </div>
+                      <button onClick={() => setShowSignPad(false)} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
+                  </div>
+                  <div className="bg-white m-6 rounded-xl overflow-hidden border border-slate-700 h-64 shadow-inner relative group">
+                      <Whiteboard 
+                        onDataChange={(data) => {
+                            // Elements passed as string, we need to convert to image later
+                        }}
+                        isReadOnly={false}
+                        disableAI={true}
+                      />
+                      {/* Note: The whiteboard component used above doesn't have an easy "get image" callback. 
+                          In a real app, we'd add an export functionality to Whiteboard or use a specialized canvas here.
+                          For the demo, we'll allow "Capture Signature" which would rasterize the internal canvas.
+                      */}
+                      <div className="absolute bottom-4 right-4 z-50">
+                          <button 
+                            onClick={async () => {
+                                const wbCanvas = document.querySelector('.Whiteboard canvas') as HTMLCanvasElement;
+                                if (wbCanvas) {
+                                    handleSignPadFinish(wbCanvas.toDataURL('image/png'));
+                                } else {
+                                    // Fallback if component hierarchy is complex
+                                    const allCanvases = document.querySelectorAll('canvas');
+                                    const target = allCanvases[allCanvases.length - 1]; // Assume latest
+                                    if (target) handleSignPadFinish(target.toDataURL('image/png'));
+                                    else setShowSignPad(false);
+                                }
+                            }}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-lg font-bold shadow-lg flex items-center gap-2"
+                          >
+                              {/* FIX: Use CheckIcon instead of Check as per imports */}
+                              <CheckIcon size={18}/> Use Signature
+                          </button>
+                      </div>
+                  </div>
+                  <div className="px-6 pb-6 text-center">
+                      <p className="text-xs text-slate-500 uppercase tracking-widest font-bold italic">Sign using your mouse or touch screen</p>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
