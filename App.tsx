@@ -46,12 +46,13 @@ import { CoinWallet } from './components/CoinWallet';
 
 import { getCurrentUser, getDriveToken } from './services/authService';
 import { auth, db } from './services/firebaseConfig';
+import { onAuthStateChanged } from 'firebase/auth';
 import { onSnapshot, doc } from 'firebase/firestore';
 import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from './services/googleDriveService';
 import { getUserChannels, saveUserChannel } from './utils/db';
 import { HANDCRAFTED_CHANNELS } from './utils/initialData';
 import { stopAllPlatformAudio } from './utils/audioUtils';
-import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, claimCoinCheck } from './services/firestoreService';
+import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, claimCoinCheck, syncUserProfile } from './services/firestoreService';
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -269,20 +270,22 @@ const App: React.FC = () => {
         });
         return () => unsubscribeProfile();
     }
-  }, [currentUser?.uid, db]);
+  }, [currentUser?.uid]);
 
   useEffect(() => {
-    const initializeApp = async () => {
-      try {
-        const user = getCurrentUser();
+    const activeAuth = auth;
+    if (!activeAuth) return;
+
+    const unsubscribe = onAuthStateChanged(activeAuth, async (user) => {
         if (user) {
             setCurrentUser(user);
+            await syncUserProfile(user);
+            
             const token = getDriveToken();
             if (token) {
                 const fid = await ensureCodeStudioFolder(token);
                 const data = await loadAppStateFromDrive(token, fid);
                 if (data) {
-                    if (data.userProfile) setUserProfile(data.userProfile);
                     if (data.userChannels) {
                         setUserChannels(data.userChannels);
                         data.userChannels.forEach((ch: any) => saveUserChannel(ch));
@@ -304,22 +307,27 @@ const App: React.FC = () => {
                     window.history.replaceState({}, '', url.toString());
                 }
             }
+        } else {
+            setCurrentUser(null);
+            setUserProfile(null);
         }
-        
+        setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const initializeChannels = async () => {
         const localChannels = await getUserChannels();
         setUserChannels(localChannels);
-        setAuthLoading(false);
         
         const unsubscribe = subscribeToPublicChannels((channels) => { 
           setPublicChannels(channels); 
         });
         return () => unsubscribe();
-      } catch (err: any) { 
-        console.error("Init error:", err);
-        setAuthLoading(false); 
-      }
     };
-    initializeApp();
+    initializeChannels();
   }, []);
 
   const allChannels = useMemo(() => {
