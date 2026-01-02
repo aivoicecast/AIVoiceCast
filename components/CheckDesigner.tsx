@@ -255,7 +255,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       );
   }
 
-  const isDataUrl = (url?: string) => url?.startsWith('data:');
+  const isLocalUrl = (url?: string) => url?.startsWith('data:') || url?.startsWith('blob:');
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
@@ -390,7 +390,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                               <img 
                                 src={check.watermarkUrl} 
                                 className="w-full h-full object-cover grayscale" 
-                                crossOrigin={isDataUrl(check.watermarkUrl) ? undefined : "anonymous"}
+                                crossOrigin={isLocalUrl(check.watermarkUrl) ? undefined : "anonymous"}
+                                referrerPolicy="no-referrer"
                               />
                           ) : (
                               <div className="w-full h-full flex items-center justify-center">
@@ -458,7 +459,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                       <img 
                                         src={check.signatureUrl} 
                                         className="h-full max-w-full object-contain" 
-                                        crossOrigin={isDataUrl(check.signatureUrl) ? undefined : "anonymous"}
+                                        crossOrigin={isLocalUrl(check.signatureUrl) ? undefined : "anonymous"}
+                                        referrerPolicy="no-referrer"
                                       />
                                   ) : (
                                       <span className="text-xl font-script text-slate-400">{check.signature || (check.amount ? check.senderName : '____________________')}</span>
