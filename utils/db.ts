@@ -5,8 +5,9 @@ const DB_NAME = 'AIVoiceCast_AudioCache';
 const STORE_NAME = 'audio_segments';
 const TEXT_STORE_NAME = 'lecture_scripts';
 const CHANNELS_STORE_NAME = 'user_channels'; 
-const RECORDINGS_STORE_NAME = 'local_recordings'; // Store for guest/local recordings
-const VERSION = 5; // Bump version to 5
+const RECORDINGS_STORE_NAME = 'local_recordings';
+const IDENTITY_STORE_NAME = 'identity_keys'; // New store for crypto keys
+const VERSION = 6; // Bump version to 6 for new store
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -30,6 +31,9 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(RECORDINGS_STORE_NAME)) {
         db.createObjectStore(RECORDINGS_STORE_NAME, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(IDENTITY_STORE_NAME)) {
+        db.createObjectStore(IDENTITY_STORE_NAME);
       }
     };
 
@@ -208,6 +212,34 @@ export async function deleteLocalRecording(id: string): Promise<void> {
     } catch(e) {}
 }
 
+// --- Identity Keys Functions ---
+
+export async function getLocalPrivateKey(uid: string): Promise<CryptoKey | undefined> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(IDENTITY_STORE_NAME, 'readonly');
+            const store = transaction.objectStore(IDENTITY_STORE_NAME);
+            const request = store.get(uid);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    } catch(e) { return undefined; }
+}
+
+export async function saveLocalPrivateKey(uid: string, key: CryptoKey): Promise<void> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(IDENTITY_STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(IDENTITY_STORE_NAME);
+            const request = store.put(key, uid);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    } catch(e) {}
+}
+
 // --- Backup & Restore Functions ---
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -274,7 +306,6 @@ export async function exportFullDatabase(): Promise<string> {
   return JSON.stringify(exportData);
 }
 
-/* Added exportMetadataOnly function to support cloud sync of non-audio data */
 export async function exportMetadataOnly(): Promise<string> {
   const db = await openDB();
   const exportData: any = {
@@ -350,7 +381,7 @@ export interface DebugEntry {
 export async function getAllDebugEntries(): Promise<DebugEntry[]> {
   const db = await openDB();
   const entries: DebugEntry[] = [];
-  const stores = [STORE_NAME, TEXT_STORE_NAME, CHANNELS_STORE_NAME, RECORDINGS_STORE_NAME];
+  const stores = [STORE_NAME, TEXT_STORE_NAME, CHANNELS_STORE_NAME, RECORDINGS_STORE_NAME, IDENTITY_STORE_NAME];
 
   for (const storeName of stores) {
     try {
@@ -359,8 +390,8 @@ export async function getAllDebugEntries(): Promise<DebugEntry[]> {
         const store = tx.objectStore(storeName);
         const request = store.openCursor();
         
-        request.onsuccess = (e) => {
-          const cursor = (event?.target as IDBRequest).result;
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest).result;
           if (cursor) {
             let size = 0;
             if (storeName === STORE_NAME) { 

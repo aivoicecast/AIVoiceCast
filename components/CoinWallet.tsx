@@ -1,11 +1,13 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent } from 'lucide-react';
+import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History } from 'lucide-react';
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
 import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile, registerIdentity, claimOfflinePayment, DEFAULT_MONTHLY_GRANT } from '../services/firestoreService';
 import { auth, db, getDb } from '../services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { generateMemberIdentity, requestIdentityCertificate, verifyCertificateOffline, verifySignature, signPayment, AIVOICECAST_TRUST_PUBLIC_KEY } from '../utils/cryptoUtils';
 import { generateSecureId } from '../utils/idUtils';
+import { getLocalPrivateKey, saveLocalPrivateKey } from '../utils/db';
 
 interface CoinWalletProps {
   onBack: () => void;
@@ -13,13 +15,17 @@ interface CoinWalletProps {
 }
 
 export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }) => {
-  // Use a ref and effect to ensure we have the most current user profile
   const [user, setUser] = useState<UserProfile | null>(propUser);
   const [transactions, setTransactions] = useState<CoinTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [databaseInstance, setDatabaseInstance] = useState(db);
   
+  // Ledger Search & Filter
+  const [ledgerSearch, setLedgerSearch] = useState('');
+  const [ledgerFilter, setLedgerFilter] = useState<'all' | 'in' | 'out'>('all');
+  const [showLedgerInPayment, setShowLedgerInPayment] = useState(false);
+
   // Transfer States
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
@@ -32,7 +38,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [receiveAmount, setReceiveAmount] = useState('');
   const [receiveMemo, setReceiveMemo] = useState('');
   const [isDonationMode, setIsDonationMode] = useState(false);
-  const [minAmount, setMinAmount] = useState('');
+  const [minAmount, setMinAmount] = useState('1');
   const [maxAmount, setMaxAmount] = useState('');
   const [allowTips, setAllowTips] = useState(false);
   const [showReceiveForm, setShowReceiveForm] = useState(true);
@@ -80,6 +86,43 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
         getUserProfile(auth.currentUser.uid).then(setUser);
     }
   }, [propUser]);
+
+  // Try to restore Private Key from IndexedDB
+  useEffect(() => {
+      if (user?.uid) {
+          getLocalPrivateKey(user.uid).then(key => {
+              if (key) setPrivateKey(key);
+          });
+      }
+  }, [user?.uid]);
+
+  // Handle donation range defaults
+  useEffect(() => {
+    if (publicPaymentTarget && (publicPaymentTarget.min || publicPaymentTarget.max)) {
+        if (!transferAmount) {
+            setTransferAmount(publicPaymentTarget.min || '1');
+        }
+    }
+  }, [publicPaymentTarget]);
+
+  // Filtered Ledger Logic
+  const filteredLedger = useMemo(() => {
+      let result = transactions;
+      if (ledgerFilter === 'in') result = result.filter(tx => tx.toId === user?.uid);
+      if (ledgerFilter === 'out') result = result.filter(tx => tx.fromId === user?.uid);
+      
+      if (ledgerSearch.trim()) {
+          const q = ledgerSearch.toLowerCase();
+          result = result.filter(tx => 
+              tx.fromName.toLowerCase().includes(q) || 
+              tx.toName.toLowerCase().includes(q) || 
+              (tx.memo && tx.memo.toLowerCase().includes(q)) ||
+              tx.type.toLowerCase().includes(q) ||
+              tx.amount.toString().includes(q)
+          );
+      }
+      return result;
+  }, [transactions, ledgerSearch, ledgerFilter, user?.uid]);
 
   // Auto-Claim Effect
   useEffect(() => {
@@ -149,7 +192,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
             tips: tips
         });
         
-        // Populate local state for the form immediately
         if (amt) setTransferAmount(amt);
         else if (min) setTransferAmount(min);
         if (mmo) setTransferMemo(mmo);
@@ -208,8 +250,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           const certificate = await requestIdentityCertificate(publicKey);
           await registerIdentity(user.uid, publicKey, certificate);
           setPrivateKey(privateKey);
+          await saveLocalPrivateKey(user.uid, privateKey);
           await handleRefresh();
-          alert("Cryptographic Identity Created!");
+          alert("Cryptographic Identity Created! You can now pay offline.");
       } catch (e) { alert("Failed to create identity."); } finally { setIsCreatingIdentity(false); }
   };
 
@@ -218,7 +261,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       const memo = transferMemo || publicPaymentTarget?.memo || '';
 
       if (!user || !privateKey || !user.certificate) {
-          return alert("Incomplete identity profile. Ensure you have 'Signed Identity' first.");
+          return alert("Incomplete identity profile. Ensure you have 'Sign Identity' first on this device.");
       }
       if (amount <= 0 || amount > user.coinBalance) {
           return alert(`Invalid amount (${amount}). Ensure you have enough balance.`);
@@ -302,6 +345,16 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       if (amount <= 0) return alert("Please enter a valid amount.");
       if (amount > (user?.coinBalance || 0)) return alert("Insufficient VoiceCoin balance.");
 
+      // Range check for donation mode
+      if (publicPaymentTarget.min || publicPaymentTarget.max) {
+          const min = parseInt(publicPaymentTarget.min || '1');
+          const max = parseInt(publicPaymentTarget.max || '1000000');
+          const baseAmount = parseInt(transferAmount) || 0;
+          if (baseAmount < min || baseAmount > max) {
+              return alert(`Amount must be between ${min} and ${max} VoiceCoins.`);
+          }
+      }
+
       setIsTransferring(true);
       try {
           await transferCoins(publicPaymentTarget.uid, publicPaymentTarget.name, amount, memo);
@@ -327,16 +380,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           const mmo = url.searchParams.get('memo');
           
           if (payUid && payName) {
-              setPublicPaymentTarget({ 
-                  uid: payUid, 
-                  name: payName, 
-                  img: payImg || undefined,
-                  amount: amt || undefined, 
-                  memo: mmo || undefined, 
-                  min: min || undefined, 
-                  max: max || undefined, 
-                  tips: tips 
-              });
+              setPublicPaymentTarget({ uid: payUid, name: payName, img: payImg || undefined, amount: amt || undefined, memo: mmo || undefined, min: min || undefined, max: max || undefined, tips: tips });
               if (amt) setTransferAmount(amt);
               else if (min) setTransferAmount(min);
               if (mmo) setTransferMemo(mmo);
@@ -366,14 +410,37 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       return `${window.location.origin}${window.location.pathname}?view=coin_wallet&token=${encodeURIComponent(token)}`;
   };
 
+  const renderLedgerItems = (txList: CoinTransaction[]) => {
+      if (txList.length === 0) return (<div className="p-20 text-center space-y-5"><div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto opacity-20"><HardDrive size={32} className="text-slate-400" /></div><p className="text-slate-500 italic text-sm">No matching ledger entries.</p></div>);
+      
+      return txList.map(tx => {
+          const isIncoming = tx.toId === user?.uid;
+          const isPending = !tx.isVerified && tx.type === 'transfer';
+          return (
+              <div key={tx.id} className="p-5 flex items-center justify-between hover:bg-slate-800/40 transition-all group">
+                  <div className="flex items-center gap-4 min-w-0">
+                      <div className={`p-3 rounded-2xl transition-transform group-hover:scale-110 ${isIncoming ? 'bg-emerald-900/20 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>{isIncoming ? <ArrowDownLeft size={24}/> : <ArrowUpRight size={24}/>}</div>
+                      <div className="min-w-0">
+                          <p className="text-sm font-bold text-white flex items-center gap-2 truncate">{tx.type === 'grant' ? 'Monthly Neural Grant' : tx.type === 'contribution' ? 'Contribution Award' : isIncoming ? `From ${tx.fromName}` : `To ${tx.toName}`} <span className={`hidden sm:flex text-[9px] px-2 py-0.5 rounded border uppercase font-black tracking-tighter items-center gap-1.5 shrink-0 ${isPending ? 'bg-amber-900/30 text-amber-400 border-amber-500/30 animate-pulse' : 'bg-slate-950 text-slate-500 border-slate-800'}`}>{isPending ? 'PENDING' : tx.type}</span></p>
+                          <p className="text-[10px] text-slate-500 mt-1 font-medium truncate">{tx.memo || new Date(tx.timestamp).toLocaleString()}</p>
+                      </div>
+                  </div>
+                  <div className={`text-xl font-black shrink-0 ${isIncoming ? 'text-emerald-400' : 'text-slate-200'} ${isPending && isIncoming ? 'opacity-40' : ''}`}>{isIncoming ? '+' : '-'}{tx.amount}</div>
+              </div>
+          );
+      });
+  };
+
   if (publicPaymentTarget) {
       const isAutoMode = !!publicPaymentTarget.amount;
       const isDonationRange = !!(publicPaymentTarget.min || publicPaymentTarget.max);
       const isFixedWithTips = !!publicPaymentTarget.tips;
       
       const currentVal = parseInt(transferAmount) || 0;
-      const minVal = parseInt(publicPaymentTarget.min || '0');
+      const minVal = Math.max(1, parseInt(publicPaymentTarget.min || '1'));
       const maxVal = parseInt(publicPaymentTarget.max || '1000000');
+      
+      const isRangeValid = !isDonationRange || (currentVal >= minVal && currentVal <= maxVal);
 
       return (
           <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden animate-fade-in">
@@ -381,8 +448,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                   <button onClick={() => setPublicPaymentTarget(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors mr-4"><ArrowLeft size={20} /></button>
                   <h1 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Authorize Payment</h1>
               </header>
-              <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center">
-                  <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 shadow-2xl flex flex-col animate-fade-in-up">
+              <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center">
+                  <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 shadow-2xl flex flex-col animate-fade-in-up mt-8">
                       <div className="flex flex-col items-center text-center mb-8">
                         <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center mb-4 border border-indigo-500/20 overflow-hidden">
                             {publicPaymentTarget.img ? (
@@ -400,24 +467,29 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                       <div className="space-y-6">
                         <div className="space-y-4">
                             <div>
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
-                                    {isDonationRange ? `Amount (${minVal} - ${maxVal})` : 'Base Amount'}
+                                <label className={`text-[10px] font-bold uppercase tracking-widest block mb-2 ${isRangeValid ? 'text-slate-500' : 'text-red-500 animate-pulse'}`}>
+                                    {isDonationRange ? `Amount Range: ${minVal} - ${maxVal}` : 'Base Amount'}
                                 </label>
                                 <div className="relative">
-                                    <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500" size={24}/>
+                                    <Coins className={`absolute left-4 top-1/2 -translate-y-1/2 ${isRangeValid ? 'text-amber-500' : 'text-red-500'}`} size={24}/>
                                     <input 
                                         type="number" 
                                         value={transferAmount}
                                         onChange={e => setTransferAmount(e.target.value)}
                                         placeholder="0"
                                         readOnly={isAutoMode}
-                                        className={`w-full bg-slate-950 border ${isAutoMode ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white'} rounded-2xl pl-12 pr-6 py-5 text-4xl font-black focus:outline-none focus:border-amber-500 transition-all`}
+                                        className={`w-full bg-slate-950 border ${!isRangeValid ? 'border-red-500 text-red-200 ring-2 ring-red-500/20' : (isAutoMode ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white')} rounded-2xl pl-12 pr-6 py-5 text-4xl font-black focus:outline-none focus:border-amber-500 transition-all`}
                                     />
                                 </div>
+                                {!isRangeValid && (
+                                    <div className="mt-2 text-[10px] text-red-400 font-bold uppercase flex items-center gap-1">
+                                        <AlertTriangle size={12}/> Value must be between {minVal} and {maxVal}
+                                    </div>
+                                )}
                                 {isDonationRange && (
                                     <input 
                                         type="range" min={minVal} max={maxVal} step="1"
-                                        value={currentVal}
+                                        value={currentVal < minVal ? minVal : (currentVal > maxVal ? maxVal : currentVal)}
                                         onChange={e => setTransferAmount(e.target.value)}
                                         className="w-full mt-4 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                                     />
@@ -468,7 +540,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                         <div className="grid grid-cols-2 gap-3">
                             <button 
                                 onClick={handleTransfer}
-                                disabled={isTransferring || totalWithTip <= 0 || (isDonationRange && (currentVal < minVal || currentVal > maxVal))}
+                                disabled={isTransferring || totalWithTip <= 0 || !isRangeValid}
                                 className="py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
                             >
                                 {isTransferring ? <Loader2 size={18} className="animate-spin" /> : <Globe size={18}/>}
@@ -476,7 +548,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                             </button>
                             <button 
                                 onClick={handleGenerateOfflineToken}
-                                disabled={!user?.certificate || !privateKey || totalWithTip <= 0}
+                                disabled={!user?.certificate || !privateKey || totalWithTip <= 0 || !isRangeValid}
                                 className="py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl border border-slate-700 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
                             >
                                 <WifiOff size={18}/>
@@ -484,6 +556,29 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                             </button>
                         </div>
                       </div>
+                  </div>
+
+                  {/* Context Summary for Payment View */}
+                  <div className="w-full max-w-md mt-6 space-y-4">
+                      <button 
+                        onClick={() => setShowLedgerInPayment(!showLedgerInPayment)}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between group transition-all"
+                      >
+                          <div className="flex items-center gap-3">
+                              <History size={18} className="text-indigo-400"/>
+                              <span className="text-sm font-bold text-slate-300">My Balance & Recent History</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                              <span className="text-sm font-black text-white">{user?.coinBalance || 0} VC</span>
+                              {showLedgerInPayment ? <X size={14} className="text-slate-500"/> : <ChevronDown size={14} className="text-slate-500"/>}
+                          </div>
+                      </button>
+
+                      {showLedgerInPayment && (
+                          <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden divide-y divide-slate-800 shadow-2xl animate-fade-in-up max-h-64 overflow-y-auto scrollbar-hide">
+                              {renderLedgerItems(transactions.slice(0, 10))}
+                          </div>
+                      )}
                   </div>
               </div>
           </div>
@@ -504,6 +599,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       </header>
 
       <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 max-w-4xl mx-auto w-full scrollbar-thin scrollbar-thumb-slate-800">
+          {/* Main Card */}
           <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-32 bg-white/10 blur-[80px] rounded-full group-hover:bg-white/20 transition-all"></div>
               <div className="relative z-10">
@@ -531,30 +627,36 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                   <h3 className="text-lg font-bold text-white mb-1 flex items-center justify-center md:justify-start gap-2">Identity Protocol {user?.certificate && <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest font-black">Trusted</span>}</h3>
                   <p className="text-sm text-slate-400 leading-relaxed">Initialize your cryptographic identity to support verified offline payments and peer-to-peer trust.</p>
               </div>
-              {!user?.certificate && (<button onClick={handleCreateIdentity} disabled={isCreatingIdentity} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 whitespace-nowrap active:scale-95">{isCreatingIdentity ? <Loader2 size={18} className="animate-spin"/> : <Key size={18}/>}Sign Identity</button>)}
+              {!privateKey && (<button onClick={handleCreateIdentity} disabled={isCreatingIdentity} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 whitespace-nowrap active:scale-95">{isCreatingIdentity ? <Loader2 size={18} className="animate-spin"/> : <Key size={18}/>}{user?.certificate ? 'Restore Key' : 'Sign Identity'}</button>)}
+              {privateKey && <div className="text-[10px] font-black text-emerald-500 border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 rounded-lg uppercase tracking-widest">Active Session Key</div>}
           </div>
 
-          <div className="space-y-4">
-              <div className="flex items-center justify-between px-2"><h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Clock size={16}/> Transaction Ledger</h3></div>
+          {/* Enhanced Ledger with Lookup */}
+          <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-2">
+                  <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Clock size={16}/> Transaction Ledger</h3>
+                  
+                  <div className="flex items-center gap-2 flex-1 md:max-w-md">
+                      <div className="relative flex-1">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14}/>
+                          <input 
+                            type="text" 
+                            placeholder="Search history..." 
+                            value={ledgerSearch}
+                            onChange={e => setLedgerSearch(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-all shadow-inner"
+                          />
+                      </div>
+                      <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800 shrink-0">
+                          <button onClick={() => setLedgerFilter('all')} className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${ledgerFilter === 'all' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>All</button>
+                          <button onClick={() => setLedgerFilter('in')} className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${ledgerFilter === 'in' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>In</button>
+                          <button onClick={() => setLedgerFilter('out')} className={`px-2 py-1 text-[10px] font-bold rounded transition-colors ${ledgerFilter === 'out' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>Out</button>
+                      </div>
+                  </div>
+              </div>
+
               <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden divide-y divide-slate-800 shadow-2xl">
-                  {transactions.length === 0 ? (<div className="p-20 text-center space-y-5"><div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto opacity-20"><HardDrive size={32} className="text-slate-400" /></div><p className="text-slate-500 italic text-sm">No ledger entries found.</p></div>) : (
-                      transactions.map(tx => {
-                          const isIncoming = tx.toId === user?.uid;
-                          const isPending = !tx.isVerified && tx.type === 'transfer';
-                          return (
-                              <div key={tx.id} className="p-5 flex items-center justify-between hover:bg-slate-800/40 transition-all group">
-                                  <div className="flex items-center gap-4">
-                                      <div className={`p-3 rounded-2xl transition-transform group-hover:scale-110 ${isIncoming ? 'bg-emerald-900/20 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>{isIncoming ? <ArrowDownLeft size={24}/> : <ArrowUpRight size={24}/>}</div>
-                                      <div className="min-w-0">
-                                          <p className="text-sm font-bold text-white flex items-center gap-2">{tx.type === 'grant' ? 'Monthly Neural Grant' : tx.type === 'contribution' ? 'Contribution Award' : isIncoming ? `From ${tx.fromName}` : `To ${tx.toName}`} <span className={`hidden sm:flex text-[9px] px-2 py-0.5 rounded border uppercase font-black tracking-tighter items-center gap-1.5 shrink-0 ${isPending ? 'bg-amber-900/30 text-amber-400 border-amber-500/30 animate-pulse' : 'bg-slate-950 text-slate-500 border-slate-800'}`}>{isPending ? 'PENDING' : tx.type}</span></p>
-                                          <p className="text-[10px] text-slate-500 mt-1 font-medium truncate">{tx.memo || new Date(tx.timestamp).toLocaleString()}</p>
-                                      </div>
-                                  </div>
-                                  <div className={`text-xl font-black shrink-0 ${isIncoming ? 'text-emerald-400' : 'text-slate-200'} ${isPending && isIncoming ? 'opacity-40' : ''}`}>{isIncoming ? '+' : '-'}{tx.amount}</div>
-                              </div>
-                          );
-                      })
-                  )}
+                  {renderLedgerItems(filteredLedger)}
               </div>
           </div>
       </div>
@@ -596,8 +698,15 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                             ) : (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2 px-1">Min VC</label>
-                                        <input type="number" value={minAmount} onChange={e => setMinAmount(e.target.value)} placeholder="0" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white text-xl font-bold focus:outline-none focus:border-indigo-500"/>
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2 px-1">Min VC (Min 1)</label>
+                                        <input 
+                                            type="number" 
+                                            min="1"
+                                            value={minAmount} 
+                                            onChange={e => setMinAmount(e.target.value)} 
+                                            placeholder="1" 
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white text-xl font-bold focus:outline-none focus:border-indigo-500"
+                                        />
                                     </div>
                                     <div>
                                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2 px-1">Max VC</label>
@@ -612,7 +721,18 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                             </div>
                         </div>
 
-                        <button onClick={() => setShowReceiveForm(false)} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95">Generate Invoice QR</button>
+                        <button 
+                            onClick={() => {
+                                if (isDonationMode && parseInt(minAmount) < 1) {
+                                    alert("Minimum donation must be at least 1 VoiceCoin.");
+                                    return;
+                                }
+                                setShowReceiveForm(false);
+                            }} 
+                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95"
+                        >
+                            Generate Invoice QR
+                        </button>
                       </div>
                   ) : (
                       <div className="p-8 flex flex-col items-center text-center">
@@ -621,7 +741,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                             {isDonationMode ? `Donation Range` : `Invoice: ${receiveAmount} VC`}
                         </h3>
                         <p className="text-xs text-slate-400 mb-8 max-w-xs">
-                            {isDonationMode ? `${minAmount || '0'} to ${maxAmount || '∞'} VC` : (allowTips ? 'Fixed Price + Tips' : 'Exact Amount')}
+                            {isDonationMode ? `${minAmount || '1'} to ${maxAmount || '∞'} VC` : (allowTips ? 'Fixed Price + Tips' : 'Exact Amount')}
                         </p>
                         
                         <div className="w-full bg-white p-6 rounded-[2rem] border-8 border-slate-800 mb-8 shadow-inner flex flex-col items-center">
