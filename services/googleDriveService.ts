@@ -70,17 +70,23 @@ export async function ensureCodeStudioFolder(accessToken: string): Promise<strin
 }
 
 /**
- * Saves a file to Google Drive. Updates if exists, creates if not.
+ * Saves a file to Google Drive. Updates if ID or name matches, creates if not.
  */
-export async function saveToDrive(accessToken: string, folderId: string, filename: string, content: string): Promise<string> {
-  const query = `'${folderId}' in parents and name='${filename}' and trashed=false`;
-  const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id)`, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
-  const searchData = await searchRes.json();
-  const existingFileId = searchData.files?.[0]?.id;
+export async function saveToDrive(accessToken: string, folderId: string, filename: string, content: string, fileId?: string): Promise<string> {
+  let existingFileId = fileId;
+
+  // If no ID was provided, try to find the file by name in the target folder
+  if (!existingFileId) {
+    const query = `'${folderId}' in parents and name='${filename}' and trashed=false`;
+    const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id)`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const searchData = await searchRes.json();
+    existingFileId = searchData.files?.[0]?.id;
+  }
 
   const metadata: any = { name: filename, mimeType: 'text/plain' };
+  // Only set parents for new files. Patching by ID doesn't require parents field.
   if (!existingFileId) metadata.parents = [folderId];
 
   const form = new FormData();

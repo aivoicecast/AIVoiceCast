@@ -401,7 +401,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     setSaveStatus('saving');
     try {
         if (activeTab === 'drive' && driveToken && driveRootId) {
-             await saveToDrive(driveToken, driveRootId, fileToSave.name, fileToSave.content);
+             const driveId = fileToSave.path?.startsWith('drive://') ? fileToSave.path.replace('drive://', '') : undefined;
+             // Ensure the ID is valid (not 'welcome' or empty)
+             const validId = (driveId && driveId.length > 20) ? driveId : undefined;
+             await saveToDrive(driveToken, driveRootId, fileToSave.name, fileToSave.content, validId);
         } else if (activeTab === 'cloud' && currentUser) {
              await saveProjectToCloud(`projects/${currentUser.uid}`, fileToSave.name, fileToSave.content);
         } else if (activeTab === 'github' && githubToken && project.github) {
@@ -597,7 +600,14 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           try {
               if (activeTab === 'drive' && driveToken) {
                   const files = await listDriveFiles(driveToken, node.id);
-                  setDriveItems(prev => [...prev, ...files.map(f => ({ ...f, parentId: node.id, isLoaded: false }))]);
+                  setDriveItems(prev => {
+                      const next = prev.map(item => item.id === node.id ? { ...item, isLoaded: true } : item);
+                      const existingIds = new Set(next.map(i => i.id));
+                      const newItems = files
+                        .filter(f => !existingIds.has(f.id))
+                        .map(f => ({ ...f, parentId: node.id, isLoaded: false }));
+                      return [...next, ...newItems];
+                  });
               } else if (activeTab === 'github' && project.github) {
                   const { owner, repo, branch } = project.github;
                   const children = await fetchRepoSubTree(githubToken, owner, repo, node.data.treeSha, node.id);
@@ -951,7 +961,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                                   <h3 className="font-bold text-white text-sm">Octopus Protocol</h3>
                                   <p className="text-xs text-slate-500 leading-relaxed px-2">Import repositories and push updates directly from the studio.</p>
                               </div>
-                              <button onClick={handleConnectGithub} className="px-8 py-3 bg-white text-slate-900 font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg hover:bg-slate-100 transition-all active:scale-95 flex items-center gap-2">
+                              <button onClick={handleConnectGithub} className="px-8 py-3 bg-white text-slate-900 font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg hover:bg-slate-100 transition-all active:scale-[0.98] flex items-center gap-2">
                                   <Key size={14}/> Login with GitHub
                               </button>
                           </div>
