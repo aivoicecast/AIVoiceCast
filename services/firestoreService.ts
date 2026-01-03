@@ -179,6 +179,11 @@ export async function getUserChecks(uid: string): Promise<BankingCheck[]> {
     }
 }
 
+export async function deleteCheck(id: string): Promise<void> {
+    if (!db) return;
+    await deleteDoc(doc(db, CHECKS_COLLECTION, id));
+}
+
 export async function saveShippingLabel(label: ShippingLabel): Promise<string> {
     if (!db) return label.id || 'local';
     const id = label.id || generateSecureId();

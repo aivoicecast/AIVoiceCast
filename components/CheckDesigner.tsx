@@ -9,13 +9,13 @@ import { BankingCheck, UserProfile } from '../types';
 import { GoogleGenAI } from "@google/genai";
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { getAllUsers, sendMessage, uploadFileToStorage, saveBankingCheck, claimCoinCheck, getCheckById, updateUserProfile, getUserChecks } from '../services/firestoreService';
+import { getAllUsers, sendMessage, uploadFileToStorage, saveBankingCheck, claimCoinCheck, getCheckById, updateUserProfile, getUserChecks, deleteCheck } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
 import { Whiteboard } from './Whiteboard';
 import { generateSecureId } from '../utils/idUtils';
 import { ShareModal } from './ShareModal';
 import { connectGoogleDrive, getDriveToken } from '../services/authService';
-import { ensureCodeStudioFolder, uploadToDrive, makeFilePubliclyViewable, getDriveFileSharingLink, createDriveFolder } from '../services/googleDriveService';
+import { ensureFolder, uploadToDrive, makeFilePubliclyViewable, getDriveFileSharingLink } from '../services/googleDriveService';
 
 interface CheckDesignerProps {
   onBack: () => void;
@@ -95,7 +95,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   const sigUrl = data.signatureUrl || data.signature || '';
                   const wmUrl = data.watermarkUrl || '';
                   
-                  // In Read-Only view, if we have a Drive PDF URL, we'll prefer pointing to that
                   if (data.drivePdfUrl) {
                       setShareLink(data.drivePdfUrl);
                   }
@@ -241,15 +240,15 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
           const pdfBlob = pdf.output('blob');
 
-          // 2. Upload to Google Drive for persistent image visibility
+          // 2. Upload to Google Drive
           const token = getDriveToken() || await connectGoogleDrive();
-          const studioFolderId = await ensureCodeStudioFolder(token);
-          const checksFolderId = await createDriveFolder(token, 'Checks', studioFolderId);
+          const studioFolderId = await ensureFolder(token, 'CodeStudio');
+          const checksFolderId = await ensureFolder(token, 'Checks', studioFolderId);
           
-          const filename = `Check_${check.checkNumber}_${check.payee.replace(/\s/g, '_')}.pdf`;
+          const filename = `Check_${check.checkNumber}_${check.payee.replace(/\s/g, '_') || 'General'}.pdf`;
           const driveFileId = await uploadToDrive(token, checksFolderId, filename, pdfBlob);
           
-          // 3. Set Public Permissions so shared link works for anyone
+          // 3. Set Public Permissions
           await makeFilePubliclyViewable(token, driveFileId);
           const driveWebViewLink = await getDriveFileSharingLink(token, driveFileId);
 
@@ -279,15 +278,15 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           
           await saveBankingCheck(checkToSave as any);
           
-          // 5. Update Profile with Next Check Number
-          const nextNum = parseInt(check.checkNumber) + 1;
+          // 5. Update Profile with Next Check Number (Atomic update)
+          const nextNum = (parseInt(check.checkNumber) || 1000) + 1;
           await updateUserProfile(auth.currentUser.uid, { nextCheckNumber: nextNum });
           
           setCheck(checkToSave);
           setShareLink(driveWebViewLink);
           setShowShareModal(true);
       } catch (e: any) { 
-          alert("Publish failed: " + e.message); 
+          alert("Publish failed: " + (e.message || "Unknown error")); 
       } finally { 
           setIsSharing(false); 
       }
@@ -301,6 +300,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const data = await getUserChecks(currentUser.uid);
           setArchiveChecks(data);
       } catch (e) { console.error("Archive load failed", e); } finally { setLoadingArchive(false); }
+  };
+
+  const handleDeleteArchiveCheck = async (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      if (!confirm("Are you sure you want to delete this check from your archive?")) return;
+      try {
+          await deleteCheck(id);
+          setArchiveChecks(prev => prev.filter(c => c.id !== id));
+      } catch (err) {
+          alert("Failed to delete check.");
+      }
   };
 
   const handleDownloadPDF = async () => {
@@ -521,7 +531,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-800">
                           {loadingArchive ? (<div className="flex flex-col items-center justify-center h-40 gap-3 text-slate-500"><Loader2 size={24} className="animate-spin"/><span className="text-xs font-bold uppercase tracking-widest">Scanning Ledger...</span></div>) : archiveChecks.length === 0 ? (<div className="text-center py-20 text-slate-600 italic text-sm">No published checks found.</div>) : (
                               archiveChecks.map(ac => (
-                                  <div key={ac.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4 hover:border-indigo-500/50 transition-all group">
+                                  <div key={ac.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4 hover:border-indigo-500/50 transition-all group relative">
+                                      <button 
+                                          onClick={(e) => handleDeleteArchiveCheck(e, ac.id)}
+                                          className="absolute top-2 right-2 p-1.5 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                          title="Delete Check"
+                                      >
+                                          <Trash2 size={14} />
+                                      </button>
                                       <div className="flex justify-between items-start mb-2"><div><p className="text-[10px] font-bold text-indigo-400 uppercase">Check #{ac.checkNumber}</p><h4 className="font-bold text-white text-sm line-clamp-1">{ac.payee || 'Unnamed Payee'}</h4></div><div className="text-right"><p className="text-sm font-black text-white">${(ac.amount || ac.coinAmount || 0).toFixed(2)}</p><p className="text-[9px] text-slate-500">{ac.date}</p></div></div>
                                       <p className="text-xs text-slate-500 italic mb-4 line-clamp-1">"{ac.memo}"</p>
                                       <div className="flex gap-2">

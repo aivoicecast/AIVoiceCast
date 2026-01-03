@@ -10,9 +10,15 @@ export interface DriveFile {
 
 const APP_STATE_FILE = 'aivoicecast_state_v2.json';
 
-export async function ensureCodeStudioFolder(accessToken: string): Promise<string> {
-  const query = "mimeType='application/vnd.google-apps.folder' and name='CodeStudio' and trashed=false";
-  const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`;
+/**
+ * Searches for a folder by name, optionally within a parent folder.
+ */
+export async function findFolder(accessToken: string, name: string, parentId?: string): Promise<string | null> {
+  let query = `mimeType='application/vnd.google-apps.folder' and name='${name}' and trashed=false`;
+  if (parentId) {
+    query += ` and '${parentId}' in parents`;
+  }
+  const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id)`;
   
   const searchRes = await fetch(searchUrl, {
     headers: { Authorization: `Bearer ${accessToken}` }
@@ -22,11 +28,21 @@ export async function ensureCodeStudioFolder(accessToken: string): Promise<strin
   if (data.files && data.files.length > 0) {
     return data.files[0].id;
   }
+  return null;
+}
 
-  const metadata = {
-    name: 'CodeStudio',
+/**
+ * Ensures a folder exists by searching first and creating if not found.
+ */
+export async function ensureFolder(accessToken: string, name: string, parentId?: string): Promise<string> {
+  const existingId = await findFolder(accessToken, name, parentId);
+  if (existingId) return existingId;
+
+  const metadata: any = {
+    name,
     mimeType: 'application/vnd.google-apps.folder'
   };
+  if (parentId) metadata.parents = [parentId];
   
   const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
     method: 'POST',
@@ -37,8 +53,20 @@ export async function ensureCodeStudioFolder(accessToken: string): Promise<strin
     body: JSON.stringify(metadata)
   });
   
+  if (!createRes.ok) {
+    const errData = await createRes.json().catch(() => ({}));
+    throw new Error(`Drive folder creation failed (${createRes.status}): ${errData.error?.message || createRes.statusText}`);
+  }
+
   const folder = await createRes.json();
   return folder.id;
+}
+
+/**
+ * Legacy wrapper for backward compatibility with CodeStudio
+ */
+export async function ensureCodeStudioFolder(accessToken: string): Promise<string> {
+  return ensureFolder(accessToken, 'CodeStudio');
 }
 
 export async function saveAppStateToDrive(accessToken: string, folderId: string, state: any): Promise<void> {
@@ -110,6 +138,10 @@ export async function uploadToDrive(accessToken: string, folderId: string, filen
         headers: { Authorization: `Bearer ${accessToken}` },
         body: form
     });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`Drive upload failed (${res.status}): ${err.error?.message || res.statusText}`);
+    }
     const data = await res.json();
     return data.id;
 }
@@ -138,6 +170,7 @@ export async function saveToDrive(accessToken: string, folderId: string, filenam
         headers: { Authorization: `Bearer ${accessToken}` },
         body: form
     });
+    if (!res.ok) throw new Error(`Drive save failed: ${res.statusText}`);
     const data = await res.json();
     return data.id;
 }
@@ -230,7 +263,10 @@ export async function createDriveFolder(accessToken: string, name: string, paren
         },
         body: JSON.stringify(metadata)
     });
-    if (!res.ok) throw new Error("Failed to create Drive folder");
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`Drive folder creation failed: ${err.error?.message || res.statusText}`);
+    }
     const folder = await res.json();
     return folder.id;
 }
