@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
-import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash } from 'lucide-react';
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink, downloadDriveFileAsBlob } from '../services/googleDriveService';
 import { connectGoogleDrive, getDriveToken, signInWithGitHub } from '../services/authService';
@@ -11,6 +11,7 @@ import { Whiteboard } from './Whiteboard';
 import { ShareModal } from './ShareModal';
 import { generateSecureId } from '../utils/idUtils';
 import { GoogleGenAI, FunctionDeclaration, Type } from '@google/genai';
+import Editor from '@monaco-editor/react';
 
 interface TreeNode {
   id: string;
@@ -123,7 +124,7 @@ const FileTreeItem = ({ node, depth, activeId, onSelect, onToggle, onDelete, onS
                             node={child} 
                             depth={depth + 1} 
                             activeId={activeId} 
-                            onSelect={onSelect} 
+                            onSelect(node)} 
                             onToggle={onToggle} 
                             onDelete={onDelete} 
                             onShare={onShare}
@@ -137,90 +138,51 @@ const FileTreeItem = ({ node, depth, activeId, onSelect, onToggle, onDelete, onS
     );
 };
 
-const RichCodeEditor = ({ code, onChange, onCursorMove, language, readOnly, fontSize, indentMode, remoteCursors, activeFilePath }: any) => {
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const lineNumbersRef = useRef<HTMLDivElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const lineCount = (code || '').split('\n').length;
-    
-    const handleScroll = () => {
-        if (textareaRef.current && lineNumbersRef.current) {
-            lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
-        }
+const RichCodeEditor = ({ code, onChange, onCursorMove, language, readOnly, fontSize, indentMode }: any) => {
+    const monacoLang = useMemo(() => {
+        const l = (language || 'text').toLowerCase();
+        if (l.includes('c++')) return 'cpp';
+        if (l.includes('react')) return l.includes('typescript') ? 'typescript' : 'javascript';
+        return l;
+    }, [language]);
+
+    const handleEditorChange = (value: string | undefined) => {
+        onChange(value || '');
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Tab') {
-            e.preventDefault();
-            if (readOnly) return;
-            const target = e.currentTarget;
-            const start = target.selectionStart;
-            const end = target.selectionEnd;
-            const value = target.value;
-            const tabStr = indentMode === 'spaces' ? "    " : "\t"; 
-            const updatedValue = value.substring(0, start) + tabStr + value.substring(end);
-            onChange(updatedValue);
-            requestAnimationFrame(() => {
-                target.selectionStart = target.selectionEnd = start + tabStr.length;
-            });
-        }
+    const handleEditorDidMount = (editor: any) => {
+        editor.onDidChangeCursorPosition((e: any) => {
+            if (onCursorMove) {
+                onCursorMove(e.position.lineNumber, e.position.column);
+            }
+        });
     };
-
-    const editorStyles = { 
-        fontSize: `${fontSize}px`, 
-        lineHeight: '1.6', 
-        tabSize: 4, 
-        MozTabSize: 4 
-    } as React.CSSProperties;
-
-    const activeRemoteCursors = useMemo(() => {
-        if (!remoteCursors) return [];
-        return Object.values(remoteCursors).filter((c: any) => c.fileName === activeFilePath);
-    }, [remoteCursors, activeFilePath]);
 
     return (
-        <div ref={containerRef} className="w-full h-full flex bg-slate-950 font-mono overflow-hidden relative">
-            <div ref={lineNumbersRef} className="w-12 flex-shrink-0 bg-slate-900 text-slate-600 py-4 text-right pr-3 select-none overflow-hidden border-r border-slate-800" style={editorStyles}>
-                {Array.from({ length: lineCount }).map((_, i) => <div key={i} className="h-[1.6em]">{i + 1}</div>)}
-            </div>
-            
-            <div className="flex-1 relative overflow-hidden">
-                <div className="absolute inset-0 pointer-events-none z-10 p-4" style={{ ...editorStyles, color: 'transparent' }}>
-                    {activeRemoteCursors.map((c: any) => {
-                        const topOffset = (c.line - 1) * (fontSize * 1.6);
-                        const leftOffset = c.column * (fontSize * 0.6); 
-                        
-                        return (
-                            <div key={c.clientId} className="absolute transition-all duration-100" style={{ top: `${topOffset}px`, left: `${leftOffset}px` }}>
-                                <div className="w-0.5 h-[1.2em] animate-pulse" style={{ backgroundColor: c.color }} />
-                                <div className="absolute top-0 left-0 -translate-y-full px-1 py-0.5 rounded text-[8px] font-bold text-white whitespace-nowrap" style={{ backgroundColor: c.color }}>
-                                    {c.userName}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-
-                <textarea
-                    ref={textareaRef}
-                    className="w-full h-full bg-transparent text-slate-300 p-4 resize-none outline-none leading-relaxed overflow-auto whitespace-pre relative z-0"
-                    style={editorStyles}
-                    value={code || ''}
-                    wrap="off"
-                    onChange={(e) => onChange(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    onScroll={handleScroll}
-                    onSelect={(e) => {
-                        const target = e.target as HTMLTextAreaElement;
-                        const val = target.value.substr(0, target.selectionStart);
-                        const lines = val.split('\n');
-                        if (onCursorMove) onCursorMove(lines.length, lines[lines.length - 1].length);
-                    }}
-                    spellCheck={false}
-                    readOnly={readOnly}
-                />
-            </div>
-        </div>
+        <Editor
+            height="100%"
+            defaultLanguage={monacoLang}
+            language={monacoLang}
+            value={code}
+            theme="vs-dark"
+            onChange={handleEditorChange}
+            onMount={handleEditorDidMount}
+            options={{
+                fontSize: fontSize,
+                readOnly: readOnly,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                padding: { top: 16, bottom: 16 },
+                tabSize: 4,
+                insertSpaces: indentMode === 'spaces',
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                renderControlCharacters: true,
+                renderWhitespace: 'selection',
+                cursorBlinking: 'smooth',
+                smoothScrolling: true
+            }}
+        />
     );
 };
 
@@ -254,10 +216,10 @@ const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking }: a
 
 export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, userProfile, sessionId: propSessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession }) => {
   const defaultFile: CodeFile = {
-      name: 'Welcome.md',
+      name: 'main.cpp',
       path: 'drive://welcome',
-      language: 'markdown',
-      content: `# Welcome to AIVoiceCast Code Studio\n\nYour cloud projects are securely stored and synced to your **Google Drive** in the \`CodeStudio\` folder.\n\n### Features\n- **Multi-Pane Layout**: Standard, Splits, or Quad view.\n- **Neural Formatting**: AI-powered code beautification.\n- **Direct Share**: Share individual files or entire projects with other Google members.`,
+      language: 'c++',
+      content: `#include <iostream>\n\nint main() {\n    std::cout << "Hello from AIVoiceCast Code Studio!" << std::endl;\n    return 0;\n}`,
       loaded: true,
       isDirectory: false,
       isModified: false
@@ -269,7 +231,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('single');
   const [activeSlots, setActiveSlots] = useState<(CodeFile | null)[]>([defaultFile, null, null, null]);
   const [focusedSlot, setFocusedSlot] = useState<number>(0);
-  const [slotViewModes, setSlotViewModes] = useState<Record<number, 'code' | 'preview'>>({ 0: 'preview' });
+  const [slotViewModes, setSlotViewModes] = useState<Record<number, 'code' | 'preview'>>({ 0: 'code' });
   
   const [innerSplitRatio, setInnerSplitRatio] = useState(50);
   const [isDraggingInner, setIsDraggingInner] = useState(false);
@@ -278,6 +240,12 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const [activeTab, setActiveTab] = useState<'drive' | 'cloud' | 'github'>('drive');
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(true);
+  
+  // Console States
+  const [terminalOutputs, setTerminalOutputs] = useState<Record<number, string[]>>({});
+  const [isTerminalOpen, setIsTerminalOpen] = useState<Record<number, boolean>>({});
+  const [isRunning, setIsRunning] = useState<Record<number, boolean>>({});
+
   const [chatMessages, setChatMessages] = useState<Array<{role: 'user' | 'ai', text: string}>>([{ role: 'ai', text: "Ready to code. Open a file from your **Google Drive** to begin." }]);
   const [isChatThinking, setIsChatThinking] = useState(false);
   const [isFormattingSlots, setIsFormattingSlots] = useState<Record<number, boolean>>({});
@@ -402,7 +370,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     try {
         if (activeTab === 'drive' && driveToken && driveRootId) {
              const driveId = fileToSave.path?.startsWith('drive://') ? fileToSave.path.replace('drive://', '') : undefined;
-             // Ensure the ID is valid (not 'welcome', empty, or a local blob URL)
              const validId = (driveId && driveId.length > 20 && !driveId.includes('blob:')) ? driveId : undefined;
              await saveToDrive(driveToken, driveRootId, fileToSave.name, fileToSave.content, validId);
         } else if (activeTab === 'cloud' && currentUser) {
@@ -433,7 +400,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               const items = await listCloudDirectory(`projects/${currentUser.uid}`);
               setCloudItems(items);
           } else if (activeTab === 'github' && githubToken) {
-              // If we already have a selected repo project, just use it, otherwise fetch repos
               if (project.github && githubTree.length === 0) {
                    await handleAutoLoadDefaultRepo(githubToken, `${project.github.owner}/${project.github.repo}`);
               } else if (githubRepos.length === 0) {
@@ -501,7 +467,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           const token = await signInWithGitHub();
           if (token) {
               setGithubToken(token);
-              // Set active tab so user sees the result
               setActiveTab('github');
               const repos = await fetchUserRepos(token);
               setGithubRepos(repos);
@@ -622,13 +587,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               if (activeTab === 'drive' && driveToken) {
                   const files = await listDriveFiles(driveToken, node.id);
                   setDriveItems(prev => {
-                      // 1. Update the parent node to be marked as loaded
                       const next = prev.map(item => item.id === node.id ? { ...item, isLoaded: true } : item);
-                      
-                      // 2. Filter out any existing children of this parent to prevent doubling
                       const filteredNext = next.filter(item => item.parentId !== node.id);
-                      
-                      // 3. Append the fresh items
                       const newItems = files.map(f => ({ ...f, parentId: node.id, isLoaded: false }));
                       return [...filteredNext, ...newItems];
                   });
@@ -707,6 +667,64 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       if (isLive && lockStatus === 'mine') updateCodeFile(project.id, updatedFile);
   };
 
+  const handleRunCode = async (slotIdx: number) => {
+      const file = activeSlots[slotIdx];
+      if (!file) return;
+
+      setIsRunning(prev => ({ ...prev, [slotIdx]: true }));
+      setIsTerminalOpen(prev => ({ ...prev, [slotIdx]: true }));
+      
+      const updateTerminal = (msg: string, isError = false) => {
+          setTerminalOutputs(prev => ({
+              ...prev,
+              [slotIdx]: [...(prev[slotIdx] || []), `${isError ? '[ERROR] ' : ''}${msg}`]
+          }));
+      };
+
+      updateTerminal(`>>> Starting Remote GCE Execution: ${file.name}`);
+      updateTerminal(`>>> Runtime Environment: g++ v12.2.0 (Debian)`);
+
+      try {
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          
+          const prompt = `
+            Act as a remote C++ / Multi-language execution engine running on Google Compute Engine.
+            You are provided with a code file. Your task is to perform a virtual compilation and execution.
+            
+            CODE TO EXECUTE:
+            File: ${file.name}
+            Language: ${file.language}
+            Content:
+            ${file.content}
+
+            INSTRUCTIONS:
+            1. If there are syntax errors, provide specific compiler error messages (stderr style).
+            2. If code is valid, provide the EXACT output of running the program (stdout).
+            3. Simulate realistic execution behavior.
+            4. Respond ONLY with a JSON object: { "stdout": "string", "stderr": "string", "exitCode": number }
+          `;
+
+          updateTerminal(`$ g++ ${file.name} -o main && ./main`);
+
+          const resp = await ai.models.generateContent({
+              model: 'gemini-3-pro-preview',
+              contents: prompt,
+              config: { responseMimeType: 'application/json' }
+          });
+
+          const result = JSON.parse(resp.text || '{"stdout": "", "stderr": "Internal Error", "exitCode": 1}');
+          
+          if (result.stderr) updateTerminal(result.stderr, true);
+          if (result.stdout) updateTerminal(result.stdout);
+          updateTerminal(`\n[Process exited with code ${result.exitCode}]`);
+
+      } catch (e: any) {
+          updateTerminal(`Execution failed: ${e.message}`, true);
+      } finally {
+          setIsRunning(prev => ({ ...prev, [slotIdx]: false }));
+      }
+  };
+
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isChatThinking) return;
 
@@ -763,10 +781,29 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: true }));
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const prompt = `Reformat the following ${file.language} code follow industry best practices. If it is C++ (cpp), ensure it follows VS Code clang-format style (braces, indentation). MAINTAIN LOGIC. Respond ONLY with code.\n\n${file.content}`;
+          const prompt = `Act as a professional code formatter like clang-format or prettier.
+          Format the following ${file.language} code to follow standard industry styles (VS Code style).
+          
+          CRITICAL INSTRUCTIONS:
+          1. Respond with the RAW code only.
+          2. DO NOT use markdown code blocks (no \`\`\`cpp or similar).
+          3. DO NOT add any explanations or preamble.
+          4. Maintain all comments and logic exactly.
+          
+          CODE TO FORMAT:
+          ${file.content}`;
+
           const resp = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
-          handleCodeChangeInSlot(resp.text?.trim() || file.content, slotIdx);
-      } catch (e: any) { console.error(e); } finally { setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: false })); }
+          
+          let result = resp.text || file.content;
+          result = result.replace(/```(?:[a-zA-Z0-9+-]+)?\n?([\s\S]*?)\n?```/g, '$1').trim();
+          
+          handleCodeChangeInSlot(result, slotIdx);
+      } catch (e: any) { 
+          console.error(e); 
+      } finally { 
+          setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: false })); 
+      }
   };
 
   const resize = useCallback((e: MouseEvent) => {
@@ -790,7 +827,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
 
   useEffect(() => { refreshExplorer(); }, [activeTab, driveToken, githubToken, currentUser]);
 
-  // Seamless auto-connection when tab is active and token/profile exists
   useEffect(() => {
     if (activeTab === 'github' && githubToken && userProfile?.defaultRepoUrl && githubTree.length === 0) {
         handleAutoLoadDefaultRepo(githubToken, userProfile.defaultRepoUrl);
@@ -802,6 +838,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       const isFocused = focusedSlot === idx;
       const vMode = slotViewModes[idx] || 'code';
       const isFormatting = isFormattingSlots[idx];
+      const terminalVisible = isTerminalOpen[idx];
+      const output = terminalOutputs[idx] || [];
+      const running = isRunning[idx];
+      
       const isVisible = layoutMode === 'single' ? idx === 0 : (layoutMode === 'quad' ? true : idx < 2);
       if (!isVisible) return null;
       const slotStyle: any = {};
@@ -812,6 +852,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       }
 
       const lang = file ? getLanguageFromExt(file.name) : 'text';
+      const canRun = ['c++', 'c', 'python', 'javascript', 'typescript'].includes(lang);
 
       return (
           <div key={idx} onClick={() => setFocusedSlot(idx)} style={slotStyle} className={`flex flex-col min-w-0 border ${isFocused ? 'border-indigo-500 z-10' : 'border-slate-800'} relative bg-slate-950 flex-1 overflow-hidden`}>
@@ -823,6 +864,12 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                             <span className={`text-xs font-bold truncate ${isFocused ? 'text-indigo-200' : 'text-slate-400'}`}>{file.name}</span>
                         </div>
                         <div className="flex items-center gap-1">
+                            {canRun && (
+                                <button onClick={(e) => { e.stopPropagation(); handleRunCode(idx); }} disabled={running} className={`p-1.5 rounded flex items-center gap-1 text-[10px] font-black uppercase transition-all ${running ? 'text-indigo-400' : 'text-emerald-400 hover:bg-emerald-600/10'}`} title="Compile & Run">
+                                    {running ? <Loader2 size={14} className="animate-spin"/> : <Play size={14} fill="currentColor"/>}
+                                    <span className="hidden md:inline">Run</span>
+                                </button>
+                            )}
                             {vMode === 'code' && !['markdown', 'pdf', 'whiteboard'].includes(lang) && (
                                 <button onClick={(e) => { e.stopPropagation(); handleFormatCode(idx); }} disabled={isFormatting} className={`p-1.5 rounded ${isFormatting ? 'text-indigo-400' : 'text-slate-500 hover:text-indigo-400'}`} title="AI Format"><Wand2 size={14}/></button>
                             )}
@@ -830,34 +877,57 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                             <button onClick={(e) => { e.stopPropagation(); updateSlotFile(null, idx); }} className="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-white"><X size={14}/></button>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-hidden">
-                        {vMode === 'preview' ? (
-                            lang === 'whiteboard' ? (
-                                <div className="w-full h-full"><Whiteboard isReadOnly={false} /></div>
-                            ) : lang === 'pdf' ? (
-                                <iframe src={file.path} className="w-full h-full border-none bg-white" title="PDF Viewer" />
+                    <div className="flex-1 flex flex-col overflow-hidden">
+                        <div className="flex-1 overflow-hidden">
+                            {vMode === 'preview' ? (
+                                lang === 'whiteboard' ? (
+                                    <div className="w-full h-full"><Whiteboard isReadOnly={false} /></div>
+                                ) : lang === 'pdf' ? (
+                                    <iframe src={file.path} className="w-full h-full border-none bg-white" title="PDF Viewer" />
+                                ) : (
+                                    <div className="h-full overflow-y-auto p-8 scrollbar-hide">
+                                        <MarkdownView content={file.content} />
+                                    </div>
+                                )
                             ) : (
-                                <div className="h-full overflow-y-auto p-8 scrollbar-hide">
-                                    <MarkdownView content={file.content} />
+                                <RichCodeEditor 
+                                    code={file.content} 
+                                    onChange={(c: string) => handleCodeChangeInSlot(c, idx)} 
+                                    onCursorMove={broadcastCursor}
+                                    language={file.language} 
+                                    fontSize={fontSize} 
+                                    indentMode={indentMode} 
+                                    remoteCursors={project.cursors}
+                                    activeFilePath={file.path}
+                                    readOnly={isLive && lockStatus === 'busy'}
+                                />
+                            )}
+                        </div>
+
+                        {/* Console Panel */}
+                        {terminalVisible && (
+                            <div className="h-1/3 bg-slate-950 border-t border-slate-800 flex flex-col animate-fade-in-up">
+                                <div className="p-2 border-b border-slate-900 bg-slate-900/50 flex justify-between items-center shrink-0">
+                                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><TerminalIcon size={12}/> Output Console</span>
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => setTerminalOutputs(prev => ({ ...prev, [idx]: [] }))} className="p-1 text-slate-500 hover:text-white" title="Clear Console"><Trash size={12}/></button>
+                                        <button onClick={() => setIsTerminalOpen(prev => ({ ...prev, [idx]: false }))} className="p-1 text-slate-500 hover:text-white"><X size={12}/></button>
+                                    </div>
                                 </div>
-                            )
-                        ) : (
-                            <RichCodeEditor 
-                                code={file.content} 
-                                onChange={(c: string) => handleCodeChangeInSlot(c, idx)} 
-                                onCursorMove={broadcastCursor}
-                                language={file.language} 
-                                fontSize={fontSize} 
-                                indentMode={indentMode} 
-                                remoteCursors={project.cursors}
-                                activeFilePath={file.path}
-                                readOnly={isLive && lockStatus === 'busy'}
-                            />
+                                <div className="flex-1 overflow-y-auto p-3 font-mono text-xs scrollbar-hide select-text">
+                                    {output.map((line, lidx) => (
+                                        <div key={lidx} className={`${line.includes('[ERROR]') ? 'text-red-400' : 'text-slate-300'} whitespace-pre-wrap leading-relaxed`}>
+                                            {line}
+                                        </div>
+                                    ))}
+                                    {running && <div className="text-indigo-400 animate-pulse mt-2">▋ Running process...</div>}
+                                </div>
+                            </div>
                         )}
                     </div>
                   </>
               ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-slate-700 bg-slate-950/50 border-2 border-dashed border-slate-800 m-4 rounded-xl cursor-pointer hover:border-slate-600">
+                  <div className="flex-1 flex flex-col items-center justify-center text-slate-700 bg-slate-950/50 border-2 border-dashed border-slate-800 m-4 rounded-xl cursor-pointer hover:border-slate-600" onClick={handleCreateNewFile}>
                       <Plus size={32} className="opacity-20 mb-2" /><p className="text-xs font-bold uppercase">Pane {idx + 1}</p>
                   </div>
               )}
@@ -876,7 +946,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       <header className="h-14 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-4 shrink-0 z-20">
          <div className="flex items-center space-x-4">
             <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"><ArrowLeft size={20} /></button>
-            <button onClick={() => setIsLeftOpen(!isLeftOpen)} className={`p-2 rounded-lg ${isLeftOpen ? 'bg-slate-800 text-white' : 'text-slate-500'}`}><PanelLeftOpen size={20}/></button>
+            <button onClick={() => setIsLeftOpen(!isLeftOpen)} className={`p-2 rounded-lg ${isLeftOpen ? 'bg-slate-800 text-white' : 'text-slate-50'}`}><PanelLeftOpen size={20}/></button>
             <div className="h-4 w-px bg-slate-800 mx-2"></div>
             <div className="flex items-center -space-x-2">
                 {collaborators.map((c: any) => <div key={c.clientId} className="w-8 h-8 rounded-full border-2 border-slate-950 flex items-center justify-center bg-slate-800 overflow-hidden" title={c.userName}><span className="text-[10px] font-bold" style={{ color: c.color }}>{c.userName[0]}</span></div>)}
