@@ -182,7 +182,7 @@ const App: React.FC = () => {
   const getInitialView = (): ViewState | 'firestore_debug' => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
-    if (params.get('claim')) return 'coin_wallet'; 
+    if (params.get('claim') || params.get('pay')) return 'coin_wallet'; 
     if (view === 'card' && params.get('id')) return 'card_workshop';
     if (view === 'icon' && params.get('id')) return 'icon_generator';
     if (view === 'shipping' && params.get('id')) return 'shipping_viewer';
@@ -424,7 +424,7 @@ const App: React.FC = () => {
               )}
               <Notifications />
               <button onClick={() => setIsVoiceCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 group overflow-hidden relative">
-                  <Sparkles size={16} className="relative z-10"/><span className="relative z-10">{t.magic}</span>
+                  <span className="relative z-10">{t.magic}</span>
               </button>
               <div className="relative">
                  <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">

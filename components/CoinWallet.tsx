@@ -1,13 +1,11 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-// Added Heart, Globe, WifiOff to imports
-import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff } from 'lucide-react';
-import { UserProfile, CoinTransaction, OfflinePaymentToken } from '../types';
+import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link } from 'lucide-react';
+import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
 import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile, registerIdentity, claimOfflinePayment, DEFAULT_MONTHLY_GRANT } from '../services/firestoreService';
 import { auth, db, getDb } from '../services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { generateMemberIdentity, requestIdentityCertificate, verifyCertificateOffline, verifySignature, signPayment, AIVOICECAST_TRUST_PUBLIC_KEY } from '../utils/cryptoUtils';
-// Added generateSecureId to imports
 import { generateSecureId } from '../utils/idUtils';
 
 interface CoinWalletProps {
@@ -43,6 +41,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [verifiedToken, setVerifiedToken] = useState<OfflinePaymentToken | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [isClaiming, setIsClaiming] = useState(false);
+  const [showReceiveQR, setShowReceiveQR] = useState(false);
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
 
   // Local storage for the private key (normally should be highly protected)
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
@@ -55,6 +55,61 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   }, [allUsers, searchQuery]);
 
   const initAttempted = useRef(false);
+
+  // Auto-Claim Effect
+  useEffect(() => {
+    const processQueue = async () => {
+        if (!navigator.onLine || !user) return;
+        const queueRaw = localStorage.getItem(`pending_claims_${user.uid}`);
+        if (!queueRaw) return;
+        
+        const queue: PendingClaim[] = JSON.parse(queueRaw);
+        const pending = queue.filter(q => q.status === 'pending');
+        if (pending.length === 0) return;
+
+        setIsAutoSyncing(true);
+        const nextQueue = [...queue];
+
+        for (let i = 0; i < nextQueue.length; i++) {
+            const item = nextQueue[i];
+            if (item.status !== 'pending') continue;
+
+            try {
+                const token: OfflinePaymentToken = JSON.parse(atob(item.tokenStr));
+                await claimOfflinePayment(token);
+                item.status = 'success';
+            } catch (e: any) {
+                console.error("Auto-claim failed for token", e);
+                item.status = 'failed';
+                item.error = e.message;
+            }
+        }
+
+        localStorage.setItem(`pending_claims_${user.uid}`, JSON.stringify(nextQueue));
+        setIsAutoSyncing(false);
+        if (nextQueue.some(q => q.status === 'success')) handleRefresh();
+    };
+
+    const interval = setInterval(processQueue, 30000); // Check every 30s
+    processQueue();
+    return () => clearInterval(interval);
+  }, [user]);
+
+  // Pay URI Handler
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const payUid = params.get('pay');
+    const payName = params.get('name');
+    if (payUid && payName) {
+        setSelectedUser({ uid: payUid, displayName: payName } as UserProfile);
+        setShowTransfer(true);
+        // Clean URL
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.delete('pay');
+        newUrl.searchParams.delete('name');
+        window.history.replaceState({}, '', newUrl.toString());
+    }
+  }, []);
 
   useEffect(() => {
     if (propUser) {
@@ -154,13 +209,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       setIsCreatingIdentity(true);
       try {
           const { publicKey, privateKey } = await generateMemberIdentity();
-          // Simulate AIVoiceCast signing the key
           const certificate = await requestIdentityCertificate(publicKey);
-          
           await registerIdentity(user.uid, publicKey, certificate);
-          // Store private key in session (or persistent local storage for "offline mode")
           setPrivateKey(privateKey);
-          
           await handleRefresh();
           alert("Cryptographic Identity Created & Verified by AIVoiceCast!");
       } catch (e) {
@@ -180,7 +231,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           const paymentBase = {
               senderId: user.uid,
               senderName: user.displayName,
-              recipientId: selectedUser?.uid || 'any', // If 'any', it's a bearer token
+              recipientId: selectedUser?.uid || 'any',
               amount,
               timestamp: Date.now(),
               nonce
@@ -208,12 +259,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       setVerifiedToken(null);
       try {
           const token: OfflinePaymentToken = JSON.parse(atob(pastedToken));
-          
-          // 1. Check AIVoiceCast Trust
           const isCertValid = verifyCertificateOffline(token.certificate);
           if (!isCertValid) throw new Error("Certificate not signed by AIVoiceCast Trust.");
-
-          // 2. Verify Sender Signature
           const senderCert = JSON.parse(atob(token.certificate));
           const isSigValid = await verifySignature(senderCert.publicKey, token.signature, {
               senderId: token.senderId,
@@ -223,9 +270,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               timestamp: token.timestamp,
               nonce: token.nonce
           });
-
           if (!isSigValid) throw new Error("Invalid transaction signature.");
-
           setVerifiedToken(token);
       } catch (e: any) {
           setVerificationError(e.message || "Invalid token format.");
@@ -235,15 +280,24 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   };
 
   const handleClaimVerifiedToken = async () => {
-      if (!verifiedToken) return;
+      if (!verifiedToken || !user) return;
       setIsClaiming(true);
       try {
-          await claimOfflinePayment(verifiedToken);
-          alert("Offline payment cleared and added to your balance!");
+          if (navigator.onLine) {
+              await claimOfflinePayment(verifiedToken);
+              alert("Offline payment cleared and added to your balance!");
+              handleRefresh();
+          } else {
+              const claim: PendingClaim = { tokenStr: btoa(JSON.stringify(verifiedToken)), timestamp: Date.now(), status: 'pending' };
+              const queueRaw = localStorage.getItem(`pending_claims_${user.uid}`) || '[]';
+              const queue = JSON.parse(queueRaw);
+              queue.push(claim);
+              localStorage.setItem(`pending_claims_${user.uid}`, JSON.stringify(queue));
+              alert("You are offline. Token added to local claim queue and will sync automatically when online.");
+          }
           setShowTokenInput(false);
           setVerifiedToken(null);
           setPastedToken('');
-          await handleRefresh();
       } catch (e: any) {
           alert("Claim failed: " + e.message);
       } finally {
@@ -289,6 +343,13 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       return (coins / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
+  const receiveUri = useMemo(() => {
+      if (!user) return '';
+      return `${window.location.origin}${window.location.pathname}?view=coin_wallet&pay=${user.uid}&name=${encodeURIComponent(user.displayName)}`;
+  }, [user]);
+
+  const qrImageUrl = (data: string) => `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data)}`;
+
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden animate-fade-in">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
@@ -302,9 +363,10 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               </h1>
           </div>
           <div className="flex items-center gap-2">
+              {isAutoSyncing && <div className="flex items-center gap-2 px-3 py-1 bg-emerald-900/20 text-emerald-400 rounded-full text-[10px] font-bold uppercase animate-pulse border border-emerald-500/30"><RefreshCw size={10} className="animate-spin"/> Syncing Ledger</div>}
               <button onClick={() => setShowTokenInput(true)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg text-xs font-bold border border-slate-700 transition-all flex items-center gap-2">
-                  <Upload size={14}/>
-                  Import Offline Token
+                  <Download size={14}/>
+                  Import Token
               </button>
               <button onClick={handleRefresh} disabled={isRefreshing} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
                   <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''}/>
@@ -322,10 +384,10 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                       <div>
                           <p className="text-indigo-100 text-xs font-bold uppercase tracking-[0.2em] mb-1 opacity-80">Available Balance</p>
                           <div className="flex items-center gap-3">
-                              <h2 className="text-5xl font-black text-white tracking-tighter">{user.coinBalance || 0}</h2>
+                              <h2 className="text-5xl font-black text-white tracking-tighter">{user?.coinBalance || 0}</h2>
                               <div className="bg-white/20 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-bold text-white uppercase border border-white/10">VC</div>
                           </div>
-                          <p className="text-indigo-200 text-sm mt-2 opacity-80 font-mono tracking-tighter">Est. Value: {formatCurrency(user.coinBalance || 0)}</p>
+                          <p className="text-indigo-200 text-sm mt-2 opacity-80 font-mono tracking-tighter">Est. Value: {formatCurrency(user?.coinBalance || 0)}</p>
                       </div>
                       <div className="p-4 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 shadow-xl">
                           <Coins size={32} className="text-amber-300" />
@@ -341,43 +403,33 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                           <span>Send Coins</span>
                       </button>
                       <button 
-                        onClick={handleClaimGrant}
-                        disabled={granting}
+                        onClick={() => setShowReceiveQR(true)}
                         className="bg-indigo-500/30 text-white font-bold py-3.5 rounded-2xl border border-white/20 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
                       >
-                          {granting ? <Loader2 size={18} className="animate-spin"/> : <Sparkles size={18} />}
-                          <span>Claim Grant</span>
+                          <QrCode size={18} />
+                          <span>Receive</span>
                       </button>
                   </div>
               </div>
           </div>
 
-          {/* Identity Verification Section */}
+          {/* Identity Section */}
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-xl">
-              <div className={`p-5 rounded-[2rem] border-2 transition-all ${user.certificate ? 'bg-emerald-950/20 border-emerald-500/50 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
-                  {user.certificate ? <ShieldCheck size={40} /> : <Shield size={40} />}
+              <div className={`p-5 rounded-[2rem] border-2 transition-all ${user?.certificate ? 'bg-emerald-950/20 border-emerald-500/50 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+                  {user?.certificate ? <ShieldCheck size={40} /> : <Shield size={40} />}
               </div>
               <div className="flex-1 text-center md:text-left">
                   <h3 className="text-lg font-bold text-white mb-1 flex items-center justify-center md:justify-start gap-2">
                       Identity Protocol
-                      {user.certificate && <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest font-black">Trusted</span>}
+                      {user?.certificate && <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest font-black">Trusted</span>}
                   </h3>
                   <p className="text-sm text-slate-400 leading-relaxed">
-                      {user.certificate 
-                        ? "Your decentralized identity is verified by AIVoiceCast Trust Authority. You can now issue verified offline payment tokens." 
+                      {user?.certificate 
+                        ? "Your decentralized identity is verified by AIVoiceCast. You can issue cryptographically signed offline tokens." 
                         : "Initialize your cryptographic identity to support verified offline payments and peer-to-peer trust."}
                   </p>
-                  {user.certificate && (
-                      <div className="mt-3 p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between group">
-                          <div className="min-w-0">
-                              <p className="text-[10px] text-slate-600 font-bold uppercase mb-1">Public Key Hash</p>
-                              <p className="text-xs font-mono text-indigo-400 truncate">{user.publicKey}</p>
-                          </div>
-                          <button className="p-2 text-slate-600 hover:text-white"><Copy size={14}/></button>
-                      </div>
-                  )}
               </div>
-              {!user.certificate && (
+              {!user?.certificate && (
                 <button 
                     onClick={handleCreateIdentity}
                     disabled={isCreatingIdentity}
@@ -419,11 +471,11 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                           <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto opacity-20">
                               <HardDrive size={32} className="text-slate-400" />
                           </div>
-                          <p className="text-slate-500 italic text-sm">No ledger entries found on this account.</p>
+                          <p className="text-slate-500 italic text-sm">No entries found.</p>
                       </div>
                   ) : (
                       transactions.map(tx => {
-                          const isIncoming = tx.toId === user.uid;
+                          const isIncoming = tx.toId === user?.uid;
                           const icon = tx.type === 'grant' ? <Sparkles size={16}/> : tx.type === 'check' ? <Smartphone size={16}/> : tx.type === 'contribution' ? <Heart size={16}/> : tx.type === 'offline' ? <ShieldCheck size={16}/> : <Send size={16}/>;
                           
                           return (
@@ -450,6 +502,36 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               </div>
           </div>
       </div>
+
+      {/* Receive Modal */}
+      {showReceiveQR && user && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl flex flex-col items-center text-center">
+                  <div className="w-16 h-16 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center mb-6 border border-indigo-500/20">
+                      <QrCode size={32}/>
+                  </div>
+                  <h3 className="text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">Receive VoiceCoins</h3>
+                  <p className="text-sm text-slate-400 mb-8 max-w-xs leading-relaxed">
+                      Other members can scan this code to transfer coins to you instantly or issue an offline payment.
+                  </p>
+                  
+                  <div className="w-full bg-white p-6 rounded-[2rem] border-8 border-slate-800 mb-8 shadow-inner flex flex-col items-center">
+                      <img src={qrImageUrl(receiveUri)} className="w-48 h-48" alt="Receive QR"/>
+                      <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">@{user.displayName.replace(/\s+/g, '_').toLowerCase()}</p>
+                  </div>
+
+                  <div className="flex gap-2 w-full mb-4">
+                      <button onClick={() => { navigator.clipboard.writeText(receiveUri); alert("Payment Link Copied!"); }} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
+                          <Copy size={14}/> Copy Link
+                      </button>
+                      <button onClick={() => { if(navigator.share) navigator.share({ title: 'Receive VoiceCoins', url: receiveUri }); }} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-all">
+                          <Share2 size={18}/>
+                      </button>
+                  </div>
+                  <button onClick={() => setShowReceiveQR(false)} className="w-full py-4 bg-slate-950 text-slate-500 rounded-2xl font-bold hover:text-white transition-all">Close</button>
+              </div>
+          </div>
+      )}
 
       {/* Transfer Modal */}
       {showTransfer && (
@@ -531,9 +613,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                   </button>
                                   <button 
                                     onClick={handleGenerateOfflineToken}
-                                    disabled={!user.certificate || !privateKey || !transferAmount || parseInt(transferAmount) <= 0}
+                                    disabled={!user?.certificate || !privateKey || !transferAmount || parseInt(transferAmount) <= 0}
                                     className="py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 border border-slate-700"
-                                    title={!user.certificate ? "Create Identity First" : "Sign Offline Token"}
+                                    title={!user?.certificate ? "Create Identity First" : "Sign Offline Token"}
                                   >
                                       <WifiOff size={18}/>
                                       Offline
@@ -548,30 +630,24 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
       {/* Offline Token Modal */}
       {showOfflineToken && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl flex flex-col items-center text-center">
                   <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mb-6 border border-emerald-500/20">
                       <ShieldCheck size={32}/>
                   </div>
-                  <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter italic">Verified Payment Ready</h3>
+                  <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter italic">Payment Ready</h3>
                   <p className="text-sm text-slate-400 mb-8 max-w-xs">
-                      This token is cryptographically signed by your identity and trust-certified by AIVoiceCast. Send it to your recipient via any offline method.
+                      The recipient should scan this QR code to claim their VoiceCoins once they are back online.
                   </p>
                   
-                  <div className="w-full bg-slate-950 p-6 rounded-3xl border border-slate-800 mb-8 flex flex-col items-center">
-                      <div className="p-4 bg-white rounded-2xl mb-4">
-                          <QrCode size={160} className="text-slate-900"/>
-                      </div>
-                      <code className="text-[10px] font-mono text-indigo-400 break-all bg-slate-900 p-3 rounded-xl border border-slate-800 w-full mb-4">
+                  <div className="w-full bg-white p-6 rounded-3xl border-8 border-slate-800 mb-8 flex flex-col items-center">
+                      <img src={qrImageUrl(generatedToken!)} className="w-48 h-48" alt="Payment Token QR"/>
+                      <code className="text-[10px] font-mono text-indigo-400 break-all bg-slate-900 p-3 rounded-xl border border-slate-800 w-full mt-4 max-h-20 overflow-y-auto">
                           {generatedToken}
                       </code>
-                      <div className="flex gap-2 w-full">
-                          <button onClick={() => { navigator.clipboard.writeText(generatedToken!); alert("Token copied!"); }} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2">
-                              <Copy size={14}/> Copy Token
-                          </button>
-                      </div>
                   </div>
 
+                  <button onClick={() => { navigator.clipboard.writeText(generatedToken!); alert("Token copied!"); }} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold mb-2 flex items-center justify-center gap-2"><Copy size={16}/> Copy Token String</button>
                   <button onClick={() => setShowOfflineToken(false)} className="w-full py-4 bg-slate-800 text-slate-300 rounded-2xl font-bold transition-all hover:bg-slate-700">Dismiss</button>
               </div>
           </div>
@@ -583,12 +659,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md p-8 shadow-2xl animate-fade-in-up">
                   <div className="flex justify-between items-center mb-6">
                       <h3 className="text-xl font-bold text-white flex items-center gap-2"><Download size={20} className="text-indigo-400"/> Verify Token</h3>
-                      <button onClick={() => { setShowTokenInput(false); setVerifiedToken(null); setPastedToken(''); }} className="p-1 hover:bg-slate-800 rounded-full text-slate-500"><X size={20}/></button>
+                      <button onClick={() => { setShowTokenInput(false); setVerifiedToken(null); setPastedToken(''); }} className="p-1 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
                   </div>
                   
                   {!verifiedToken ? (
                       <div className="space-y-6">
-                          <p className="text-sm text-slate-400">Paste the VoiceCoin token string below to verify its authenticity offline.</p>
+                          <p className="text-sm text-slate-400">Paste the VoiceCoin token string below or use your camera to scan a payment QR code.</p>
                           <textarea 
                             value={pastedToken}
                             onChange={e => setPastedToken(e.target.value)}
@@ -600,14 +676,17 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                   <AlertTriangle size={14}/> {verificationError}
                               </div>
                           )}
-                          <button 
-                            onClick={handleVerifyPastedToken}
-                            disabled={isVerifying || !pastedToken.trim()}
-                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2"
-                          >
-                              {isVerifying ? <Loader2 size={18} className="animate-spin"/> : <ShieldCheck size={18}/>}
-                              Verify Cryptographic Authenticity
-                          </button>
+                          <div className="grid grid-cols-2 gap-2">
+                             <button className="py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl font-bold flex items-center justify-center gap-2"><Camera size={18}/> Scan QR</button>
+                             <button 
+                                onClick={handleVerifyPastedToken}
+                                disabled={isVerifying || !pastedToken.trim()}
+                                className="py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2"
+                              >
+                                {isVerifying ? <Loader2 size={18} className="animate-spin"/> : <ShieldCheck size={18}/>}
+                                Verify
+                             </button>
+                          </div>
                       </div>
                   ) : (
                       <div className="space-y-6 animate-fade-in">
@@ -633,7 +712,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                             disabled={isClaiming}
                             className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2"
                           >
-                              {isClaiming ? <Loader2 size={20} className="animate-spin"/> : 'Clear Payment to Ledger'}
+                              {isClaiming ? <Loader2 size={20} className="animate-spin"/> : navigator.onLine ? 'Clear Payment to Ledger' : 'Queue Claim (Offline)'}
                           </button>
                       </div>
                   )}

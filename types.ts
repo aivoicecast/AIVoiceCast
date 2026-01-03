@@ -93,6 +93,13 @@ export interface OfflinePaymentToken {
   certificate: string; // Sender's cert to verify signature offline
 }
 
+export interface PendingClaim {
+  tokenStr: string;
+  timestamp: number;
+  status: 'pending' | 'failed' | 'success';
+  error?: string;
+}
+
 export interface CoinTransaction {
   id: string;
   fromId: string;
@@ -293,8 +300,6 @@ export interface Group {
   memberIds: string[];
   createdAt: number;
 }
-
-export type SubscriptionTier = 'free' | 'pro';
 
 export interface RecordingSession {
   id: string;
@@ -540,3 +545,5 @@ export interface AgentMemory {
   fontFamily?: string;
   fontSizeScale?: number;
 }
+
+export type SubscriptionTier = 'free' | 'pro';

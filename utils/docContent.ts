@@ -8,45 +8,53 @@ export const APP_COMPARISON_DOC: CommunityDiscussion = {
   userId: 'system',
   userName: 'System Architect',
   transcript: [],
-  createdAt: 1766016000000, // Dec 18, 2025
+  createdAt: 1766016000000, 
   isManual: true,
-  title: "Design Doc: Document Studio vs. Community Blog",
+  title: "AIVoiceCast: OS Design & Financial Protocol",
   designDoc: `
-# Design Specification: Knowledge Pillars
+# AIVoiceCast: System Architecture & VoiceCoin Protocol
 
-**Status:** Draft | **Author:** Engineering Team | **Date:** Dec 18, 2025
+**Status:** Implementation Complete | **Author:** Lead Engineer | **Date:** Dec 19, 2025
 
-## 1. Executive Summary
-The AIVoiceCast platform bifurcates long-form content into two distinct engines: the **Document Studio** and the **Community Blog**. This document outlines the technical and philosophical differences between these two modules.
+## 1. Overview
+AIVoiceCast has evolved into a full-featured "Knowledge OS." Beyond content consumption, it now implements a robust, decentralized-style financial layer called **VoiceCoin (VC)**, designed for peer-to-peer mentorship and contribution rewards.
 
-## 2. Comparison Matrix
+## 2. VoiceCoin Financial Infrastructure
 
-| Feature | Document Studio | Community Blog |
+### A. Cryptographic Identity
+Every member can generate a **unique digital identity**.
+- **Engine:** Web Crypto API.
+- **Algorithm:** ECDSA P-256 (NIST P-256).
+- **Certificate:** Public keys are signed by the **AIVoiceCast Root Trust Key**, enabling offline verification between peers who have never met.
+
+### B. The QR & URI Protocol
+We use a standardized URI format for seamless transfers:
+\`https://aivoicecast.com/?view=coin_wallet&pay={UID}&name={DISPLAY_NAME}\`
+- **Receive Mode:** Generates a QR code encoding this URI. 
+- **In-Store Logic:** A merchant/mentor displays their QR; the sender scans it, and the app auto-populates the recipient and triggers the transaction.
+
+### C. Offline Resilience (The Ledger Sync)
+One of our most advanced features is the **Pending Claims Queue**.
+1. **Issuance:** A sender generates a cryptographically signed **Offline Payment Token** (Base64).
+2. **Transfer:** This token is sent via any medium (QR, NFC, Chat).
+3. **Queueing:** If the recipient is offline, the token is stored in **IndexedDB/LocalStorage** with a \`pending\` status.
+4. **Auto-Sync:** A background service monitors \`navigator.onLine\`. Once connectivity is restored, the system automatically "clears" all pending tokens to the Firestore Global Ledger.
+
+## 3. Application Pillars
+
+| Feature | Document Studio | VoiceCoin Wallet |
 | :--- | :--- | :--- |
-| **Primary Intent** | Knowledge capture & technical archiving | Social storytelling & public updates |
-| **Input Source** | Live Transcripts, AI Analysis, Design notes | Human-authored articles & opinion pieces |
-| **Default Privacy** | Private / Restricted (Team Access) | Public (Community Feed) |
-| **Structure** | Technical Markdown, Tables, Code Blocks | Narrative Prose, Media embeds, Excerpts |
-| **Output Formats** | **Google Docs**, PDF, JSZip Package | Web Feed, Social Share, Comments |
-| **AI Role** | Synthesizes transcripts into Design Docs | Suggests titles, tags, and proofreads |
+| **Primary Intent** | Knowledge capture | Decentralized Economy |
+| **Data Engine** | Markdown / PlantUML | ECDSA / Web Crypto |
+| **Persistence** | Firestore / Google Drive | Global Ledger / IndexedDB |
+| **AI Role** | Synthesizes transcripts | Validates signatures & amounts |
 
-## 3. Behavioral Architecture
-
-### The Document Studio (Workflow Engine)
-The Studio is designed for "Work-in-Progress" and "Institutional Memory." 
-- **The Lifecycle:** A Live Session (Audio) → Transcription → **AI Analysis** → Design Document.
-- **Integration:** Deeply linked to **Google Drive**. It allows users to export a synthesized meeting summary directly into their professional workspace as a formal Google Doc.
-
-### The Community Blog (Social Engine)
-The Blog is designed for "Audience Reach" and "Community Engagement."
-- **The Lifecycle:** Concept → Editor Draft → Peer Review (Optional) → **Published to Feed**.
-- **Engagement:** Focuses on Likes, Comments, and Follower growth. It is the "Social Identity" of a creator.
-
-## 4. Technical Constraints
-- **Documents** require explicit sharing tokens for external viewing to maintain security for technical specifications.
-- **Blog Posts** are automatically indexed by the Public Registry for discovery.
+## 4. Technical Constraints & Security
+- **Atomic Transactions:** All coin transfers use Firestore \`runTransaction\` to ensure balance integrity.
+- **Non-Repudiation:** Offline tokens include a \`nonce\` and \`timestamp\` signed by the sender's private key, preventing replay attacks and double-claiming.
+- **Trust Authority:** The platform acts as a lightweight Certificate Authority (CA) to sign member public keys.
 
 ## 5. Conclusion
-Use the **Document Studio** when you are building and need to remember *how* or *why*. Use the **Blog** when you have something to say to the *world*.
+AIVoiceCast v4.2.0 is now a self-sustaining ecosystem where high-quality learning is incentivized, and financial transactions are resilient to network outages.
 `
 };
