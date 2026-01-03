@@ -46,6 +46,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const checkIdFromUrl = params.get('id');
 
   const [check, setCheck] = useState<BankingCheck>(DEFAULT_CHECK);
+  const [convertedAssets, setConvertedAssets] = useState<Record<string, string>>({});
   
   const [isParsing, setIsParsing] = useState(false);
   const [isUpdatingWords, setIsUpdatingWords] = useState(false);
@@ -63,12 +64,40 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const checkRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Helper to convert remote image to data URL to fix CORS issues in PDF and Shared View
+  const convertRemoteToDataUrl = async (url: string): Promise<string> => {
+      if (!url || !url.startsWith('http')) return url;
+      try {
+          const res = await fetch(url, { mode: 'cors' });
+          const blob = await res.blob();
+          return new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+          });
+      } catch (e) {
+          console.warn("Conversion failed for", url, e);
+          return url; // Fallback to original URL
+      }
+  };
+
   useEffect(() => {
       if (checkIdFromUrl) {
           setIsLoadingCheck(true);
-          getCheckById(checkIdFromUrl).then(data => {
+          getCheckById(checkIdFromUrl).then(async (data) => {
               if (data) {
                   const sig = data.signatureUrl || data.signature || '';
+                  const wm = data.watermarkUrl || '';
+                  
+                  // Neutralize CORS by converting to Base64 on load
+                  const [base64Sig, base64Wm] = await Promise.all([
+                      convertRemoteToDataUrl(sig),
+                      convertRemoteToDataUrl(wm)
+                  ]);
+
+                  setConvertedAssets({ sig: base64Sig, wm: base64Wm });
+
                   const normalizedCheck = {
                       ...DEFAULT_CHECK,
                       ...data,
@@ -141,6 +170,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               if (part.inlineData) { 
                   const dataUrl = `data:image/png;base64,${part.inlineData.data}`;
                   setCheck(prev => ({ ...prev, watermarkUrl: dataUrl })); 
+                  setConvertedAssets(prev => ({ ...prev, wm: dataUrl }));
                   break; 
               }
           }
@@ -225,66 +255,52 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (!checkRef.current) return;
     setIsExporting(true);
     try {
-        // Ensure all images are fully loaded and decoded before capture
-        const images = Array.from(checkRef.current.querySelectorAll('img'));
-        await Promise.all(images.map(img => {
-            if (img.complete) return Promise.resolve();
-            return new Promise((resolve, reject) => {
-                img.onload = resolve;
-                img.onerror = reject;
-            });
-        }));
-
         const canvas = await html2canvas(checkRef.current, { 
             scale: 4, 
             useCORS: true, 
             backgroundColor: '#ffffff',
             logging: false,
-            allowTaint: false, // Strict for high quality export
-            imageTimeout: 15000
+            allowTaint: true,
+            imageTimeout: 10000
         });
-        
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
         pdf.save(`check_${check.checkNumber}.pdf`);
     } catch(e) {
-        console.error("PDF generation failed:", e);
-        alert("PDF Generation failed. This usually happens if network assets (Signature/Watermark) are restricted. Try again or check your connection.");
+        alert("PDF Generation failed. Try again.");
     } finally { 
         setIsExporting(false); 
     }
   };
 
   const renderSignature = () => {
-      const url = check.signatureUrl || check.signature;
+      // Use converted asset (Base64) if available to avoid CORS issues
+      const url = convertedAssets.sig || check.signatureUrl || check.signature;
       if (!url || typeof url !== 'string' || url.length < 10 || imageError['sig']) {
           return <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>;
       }
-      
-      const isRemote = url.startsWith('http');
       return (
           <img 
               key={url}
               src={url} 
               className="max-h-12 w-auto object-contain" 
               alt="Authorized Signature"
-              crossOrigin={isRemote ? "anonymous" : undefined}
               onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
           />
       );
   };
 
   const renderWatermark = () => {
-      if (!check.watermarkUrl || imageError['wm']) return null;
-      const isRemote = check.watermarkUrl.startsWith('http');
+      // Use converted asset (Base64) if available
+      const url = convertedAssets.wm || check.watermarkUrl;
+      if (!url || imageError['wm']) return null;
       return (
           <div className="absolute inset-0 opacity-[0.25] pointer-events-none z-0">
             <img 
-                key={check.watermarkUrl} 
-                src={check.watermarkUrl} 
+                key={url} 
+                src={url} 
                 className="w-full h-full object-cover grayscale" 
                 alt="Security Watermark"
-                crossOrigin={isRemote ? "anonymous" : undefined}
                 onError={() => setImageError(prev => ({ ...prev, 'wm': true }))}
             />
           </div>
@@ -386,7 +402,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                             src={qrCodeUrl} 
                             className="w-14 h-14 border border-slate-100 p-0.5 rounded shadow-sm bg-white" 
                             alt="Verification QR"
-                            crossOrigin="anonymous"
                         />
                       </div>
                       
@@ -396,7 +411,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                               <p className="text-[9px] text-slate-500 leading-tight max-w-[190px] truncate whitespace-pre-wrap">{check.senderAddress}</p>
                           </div>
                           <div className="text-right">
-                              <h2 className="text-xs font-black uppercase text-slate-800">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
+                              <h2 className="text-xs font-black uppercase text-slate-800 leading-none">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
                               <p className="text-lg font-mono font-bold mt-1">{check.checkNumber}</p>
                           </div>
                       </div>
@@ -422,13 +437,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
                       {/* Amount Words Line */}
                       <div className="mt-4 flex items-center gap-4 relative z-10">
-                          <div className="flex-1 max-w-[480px] border-b border-black text-xs md:text-sm font-serif italic px-2 overflow-hidden truncate whitespace-nowrap">
+                          <div className="flex-1 max-w-[480px] border-b border-black text-xs md:text-sm font-serif italic px-2 overflow-hidden truncate whitespace-nowrap min-w-0">
                             {check.amountWords || '____________________________________________________________________'}
                           </div>
                           <span className="text-xs font-bold shrink-0">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                       </div>
 
-                      <div className="mt-auto flex items-end justify-between relative z-10 pb-6">
+                      <div className="mt-auto flex items-end justify-between relative z-10 pb-4">
                           <div className="flex-1 flex flex-col gap-2">
                               <div className="flex items-center gap-2">
                                   <span className="text-[10px] font-bold">FOR</span>
@@ -494,6 +509,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                 setImageError(prev => ({ ...prev, 'sig': false }));
                                 const dataUrl = canvas.toDataURL('image/png');
                                 setCheck(prev => ({ ...prev, signatureUrl: dataUrl, signature: dataUrl }));
+                                setConvertedAssets(prev => ({ ...prev, sig: dataUrl }));
                             }
                             setShowSignPad(false);
                         }} 
