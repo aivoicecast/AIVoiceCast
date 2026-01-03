@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent } from 'lucide-react';
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
@@ -14,11 +13,11 @@ interface CoinWalletProps {
 }
 
 export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }) => {
+  // Use a ref and effect to ensure we have the most current user profile
   const [user, setUser] = useState<UserProfile | null>(propUser);
   const [transactions, setTransactions] = useState<CoinTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  
   const [databaseInstance, setDatabaseInstance] = useState(db);
   
   // Transfer States
@@ -55,6 +54,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [publicPaymentTarget, setPublicPaymentTarget] = useState<{ 
       uid: string, 
       name: string, 
+      img?: string,
       amount?: string, 
       memo?: string,
       min?: string,
@@ -64,6 +64,22 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
   const initAttempted = useRef(false);
+
+  // UseMemo for total calculation to ensure it reacts to input changes
+  const totalWithTip = useMemo(() => {
+    const base = parseInt(transferAmount) || 0;
+    const tipVal = Math.floor(base * (tipPercent / 100));
+    return base + tipVal;
+  }, [transferAmount, tipPercent]);
+
+  // Sync user profile from auth if prop is missing
+  useEffect(() => {
+    if (propUser) {
+        setUser(propUser);
+    } else if (auth?.currentUser) {
+        getUserProfile(auth.currentUser.uid).then(setUser);
+    }
+  }, [propUser]);
 
   // Auto-Claim Effect
   useEffect(() => {
@@ -82,23 +98,20 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
         for (let i = 0; i < nextQueue.length; i++) {
             const item = nextQueue[i];
             if (item.status !== 'pending') continue;
-
             try {
                 const token: OfflinePaymentToken = JSON.parse(atob(item.tokenStr));
                 await claimOfflinePayment(token);
                 item.status = 'success';
             } catch (e: any) {
-                console.error("Auto-claim failed for token", e);
+                console.error("Auto-claim failed", e);
                 item.status = 'failed';
                 item.error = e.message;
             }
         }
-
         localStorage.setItem(`pending_claims_${user.uid}`, JSON.stringify(nextQueue));
         setIsAutoSyncing(false);
         if (nextQueue.some(q => q.status === 'success')) handleRefresh();
     };
-
     const interval = setInterval(processQueue, 30000); 
     processQueue();
     return () => clearInterval(interval);
@@ -109,6 +122,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
     const params = new URLSearchParams(window.location.search);
     const payUid = params.get('pay');
     const payName = params.get('name');
+    const payImg = params.get('img');
     const tokenStr = params.get('token');
     const amt = params.get('amount');
     const mmo = params.get('memo');
@@ -127,6 +141,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
         setPublicPaymentTarget({ 
             uid: payUid, 
             name: payName, 
+            img: payImg || undefined,
             amount: amt || undefined, 
             memo: mmo || undefined,
             min: min || undefined,
@@ -134,13 +149,13 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
             tips: tips
         });
         
+        // Populate local state for the form immediately
         if (amt) setTransferAmount(amt);
         else if (min) setTransferAmount(min);
-        
         if (mmo) setTransferMemo(mmo);
         
         const newUrl = new URL(window.location.href);
-        ['pay','name','amount','memo','min','max','tips'].forEach(p => newUrl.searchParams.delete(p));
+        ['pay','name','img','amount','memo','min','max','tips'].forEach(p => newUrl.searchParams.delete(p));
         window.history.replaceState({}, '', newUrl.toString());
     }
   }, []);
@@ -153,12 +168,11 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
     
     setLoading(true);
     try {
-        const currentUid = auth?.currentUser?.uid;
-        if (!currentUid) {
-            await new Promise(r => setTimeout(r, 1500));
-            if (!auth?.currentUser?.uid) { setLoading(false); return; }
+        const uid = auth?.currentUser?.uid;
+        if (!uid) {
+            setLoading(false);
+            return;
         }
-        const uid = auth?.currentUser?.uid!;
         const [profile, txs] = await Promise.all([ getUserProfile(uid), getCoinTransactions(uid) ]);
         if (profile) setUser(profile);
         setTransactions(txs || []);
@@ -177,9 +191,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const handleRefresh = async () => {
       setIsRefreshing(true);
       try {
-          const currentUid = auth?.currentUser?.uid;
-          if (currentUid) {
-              const [data, freshProfile] = await Promise.all([ getCoinTransactions(currentUid), getUserProfile(currentUid) ]);
+          const uid = auth?.currentUser?.uid;
+          if (uid) {
+              const [data, freshProfile] = await Promise.all([ getCoinTransactions(uid), getUserProfile(uid) ]);
               setTransactions(data || []);
               if (freshProfile) setUser(freshProfile);
           }
@@ -200,15 +214,14 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   };
 
   const handleGenerateOfflineToken = async () => {
-      const amountStr = totalWithTip.toString();
-      const amount = parseInt(amountStr);
+      const amount = totalWithTip;
       const memo = transferMemo || publicPaymentTarget?.memo || '';
 
-      if (!user || !amountStr || !privateKey || !user.certificate) {
-          return alert("Incomplete identity or amount.");
+      if (!user || !privateKey || !user.certificate) {
+          return alert("Incomplete identity profile. Ensure you have 'Signed Identity' first.");
       }
       if (amount <= 0 || amount > user.coinBalance) {
-          return alert("Invalid amount or insufficient balance.");
+          return alert(`Invalid amount (${amount}). Ensure you have enough balance.`);
       }
 
       try {
@@ -270,7 +283,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               const queue = JSON.parse(queueRaw);
               queue.push(claim);
               localStorage.setItem(`pending_claims_${user.uid}`, JSON.stringify(queue));
-              alert("Offline queue synchronized.");
+              alert("Offline. Token added to claim queue.");
           }
           setShowTokenInput(false);
           setVerifiedToken(null);
@@ -282,15 +295,17 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       const amount = totalWithTip;
       const memo = transferMemo || publicPaymentTarget?.memo || '';
 
-      if (!publicPaymentTarget || amount <= 0 || !user) {
-          return alert("Incomplete transfer details.");
+      if (!publicPaymentTarget || !user) {
+          return alert("User context lost. Please try reopening the link.");
       }
-      if (amount > user.coinBalance) return alert("Insufficient balance.");
+      
+      if (amount <= 0) return alert("Please enter a valid amount.");
+      if (amount > (user?.coinBalance || 0)) return alert("Insufficient VoiceCoin balance.");
 
       setIsTransferring(true);
       try {
           await transferCoins(publicPaymentTarget.uid, publicPaymentTarget.name, amount, memo);
-          alert(`Sent ${amount} VoiceCoins!`);
+          alert(`Success! ${amount} VC sent to ${publicPaymentTarget.name}.`);
           setPublicPaymentTarget(null);
           setTransferAmount('');
           setTransferMemo('');
@@ -304,6 +319,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           const url = new URL(pastedPayUri);
           const payUid = url.searchParams.get('pay');
           const payName = url.searchParams.get('name');
+          const payImg = url.searchParams.get('img');
           const amt = url.searchParams.get('amount');
           const min = url.searchParams.get('min');
           const max = url.searchParams.get('max');
@@ -311,7 +327,16 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           const mmo = url.searchParams.get('memo');
           
           if (payUid && payName) {
-              setPublicPaymentTarget({ uid: payUid, name: payName, amount: amt || undefined, memo: mmo || undefined, min: min || undefined, max: max || undefined, tips: tips });
+              setPublicPaymentTarget({ 
+                  uid: payUid, 
+                  name: payName, 
+                  img: payImg || undefined,
+                  amount: amt || undefined, 
+                  memo: mmo || undefined, 
+                  min: min || undefined, 
+                  max: max || undefined, 
+                  tips: tips 
+              });
               if (amt) setTransferAmount(amt);
               else if (min) setTransferAmount(min);
               if (mmo) setTransferMemo(mmo);
@@ -323,8 +348,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
   const qrImageUrl = (data: string) => `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(data)}`;
 
-  const buildReceiveUri = (uid: string, name: string) => {
+  const buildReceiveUri = (uid: string, name: string, photoURL?: string) => {
       let uri = `${window.location.origin}${window.location.pathname}?view=coin_wallet&pay=${uid}&name=${encodeURIComponent(name)}`;
+      if (photoURL) uri += `&img=${encodeURIComponent(photoURL)}`;
       if (isDonationMode) {
           if (minAmount) uri += `&min=${minAmount}`;
           if (maxAmount) uri += `&max=${maxAmount}`;
@@ -336,13 +362,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       return uri;
   };
 
-  const buildTokenUri = (tokenStr: string) => `${window.location.origin}${window.location.pathname}?view=coin_wallet&token=${tokenStr}`;
-
-  const totalWithTip = useMemo(() => {
-      const base = parseInt(transferAmount) || 0;
-      const tipVal = Math.floor(base * (tipPercent / 100));
-      return base + tipVal;
-  }, [transferAmount, tipPercent]);
+  const buildTokenUri = (token: string) => {
+      return `${window.location.origin}${window.location.pathname}?view=coin_wallet&token=${encodeURIComponent(token)}`;
+  };
 
   if (publicPaymentTarget) {
       const isAutoMode = !!publicPaymentTarget.amount;
@@ -362,7 +384,13 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center">
                   <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 shadow-2xl flex flex-col animate-fade-in-up">
                       <div className="flex flex-col items-center text-center mb-8">
-                        <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center mb-4 border border-indigo-500/20"><User size={40} className="text-indigo-400" /></div>
+                        <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center mb-4 border border-indigo-500/20 overflow-hidden">
+                            {publicPaymentTarget.img ? (
+                                <img src={publicPaymentTarget.img} className="w-full h-full object-cover" alt={publicPaymentTarget.name}/>
+                            ) : (
+                                <User size={40} className="text-indigo-400" />
+                            )}
+                        </div>
                         <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter">{publicPaymentTarget.name}</h2>
                         <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-[0.2em] mt-1">
                             {isDonationRange ? 'Requesting Donation' : 'Requesting VoiceCoins'}
@@ -424,7 +452,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                     onChange={e => setTransferMemo(e.target.value)}
                                     placeholder="Add a reason..."
                                     readOnly={!!publicPaymentTarget.memo}
-                                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-3 text-sm focus:outline-none"
+                                    className={`w-full bg-slate-950 border ${!!publicPaymentTarget.memo ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white'} rounded-xl px-4 py-3 text-sm focus:outline-none`}
                                 />
                             </div>
                         </div>
@@ -449,7 +477,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                             <button 
                                 onClick={handleGenerateOfflineToken}
                                 disabled={!user?.certificate || !privateKey || totalWithTip <= 0}
-                                className="py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl border border-slate-700 flex items-center justify-center gap-2 transition-all active:scale-95"
+                                className="py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl border border-slate-700 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
                             >
                                 <WifiOff size={18}/>
                                 Offline
@@ -486,7 +514,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                               <h2 className="text-5xl font-black text-white tracking-tighter">{user?.coinBalance || 0}</h2>
                               <div className="bg-white/20 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-bold text-white uppercase border border-white/10">VC</div>
                           </div>
-                          <p className="text-indigo-200 text-sm mt-2 opacity-80 font-mono tracking-tighter">Est. Value: {(user?.coinBalance || 0 / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</p>
+                          <p className="text-indigo-200 text-sm mt-2 opacity-80 font-mono tracking-tighter">Est. Value: {((user?.coinBalance || 0) / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</p>
                       </div>
                       <div className="p-4 bg-white/10 backdrop-blur-md rounded-2xl border border-white/20 shadow-xl"><Coins size={32} className="text-amber-300" /></div>
                   </div>
@@ -597,12 +625,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                         </p>
                         
                         <div className="w-full bg-white p-6 rounded-[2rem] border-8 border-slate-800 mb-8 shadow-inner flex flex-col items-center">
-                            <img src={qrImageUrl(buildReceiveUri(user.uid, user.displayName))} className="w-48 h-48" alt="Receive QR"/>
+                            <img src={qrImageUrl(buildReceiveUri(user.uid, user.displayName, user.photoURL))} className="w-48 h-48" alt="Receive QR"/>
                             <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">@{user.displayName.replace(/\s+/g, '_').toLowerCase()}</p>
                         </div>
 
                         <div className="flex gap-2 w-full mb-4">
-                            <button onClick={() => { navigator.clipboard.writeText(buildReceiveUri(user.uid, user.displayName)); alert("Link Copied!"); }} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all"><Copy size={14}/> Copy Link</button>
+                            <button onClick={() => { navigator.clipboard.writeText(buildReceiveUri(user.uid, user.displayName, user.photoURL)); alert("Link Copied!"); }} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all"><Copy size={14}/> Copy Link</button>
                             <button onClick={() => setShowReceiveForm(true)} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-all"><Edit3 size={18}/></button>
                         </div>
                         <button onClick={() => setShowReceiveQR(false)} className="w-full py-4 bg-slate-950 text-slate-500 rounded-2xl font-bold hover:text-white transition-all">Dismiss</button>
