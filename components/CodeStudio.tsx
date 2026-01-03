@@ -248,6 +248,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const [driveRootId, setDriveRootId] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [loadingFolders, setLoadingFolders] = useState<Record<string, boolean>>({});
+  const [isDriveLoading, setIsDriveLoading] = useState(false);
   
   const [driveToken, setDriveToken] = useState<string | null>(getDriveToken());
   const [githubToken, setGithubToken] = useState<string | null>(null);
@@ -420,10 +421,15 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
 
   const refreshExplorer = async () => {
       if (activeTab === 'drive' && driveToken) {
-          const rootId = driveRootId || await ensureCodeStudioFolder(driveToken);
-          setDriveRootId(rootId);
-          const files = await listDriveFiles(driveToken, rootId);
-          setDriveItems([{ id: rootId, name: 'CodeStudio', mimeType: 'application/vnd.google-apps.folder', isLoaded: true }, ...files.map(f => ({ ...f, parentId: rootId, isLoaded: false }))]);
+          setIsDriveLoading(true);
+          try {
+            const rootId = driveRootId || await ensureCodeStudioFolder(driveToken);
+            setDriveRootId(rootId);
+            const files = await listDriveFiles(driveToken, rootId);
+            setDriveItems([{ id: rootId, name: 'CodeStudio', mimeType: 'application/vnd.google-apps.folder', isLoaded: true }, ...files.map(f => ({ ...f, parentId: rootId, isLoaded: false }))]);
+          } finally {
+            setIsDriveLoading(false);
+          }
       } else if (activeTab === 'cloud' && currentUser) {
           const items = await listCloudDirectory(`projects/${currentUser.uid}`);
           setCloudItems(items);
@@ -516,7 +522,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     return root;
   }, [cloudItems]);
 
-  useEffect(() => { refreshExplorer(); }, [activeTab, driveToken, currentUser]);
+  useEffect(() => { 
+      if (activeTab === 'drive' && !driveToken) return;
+      refreshExplorer(); 
+  }, [activeTab, driveToken, currentUser]);
 
   const renderSlot = (idx: number) => {
       const file = activeSlots[idx];
@@ -596,10 +605,18 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               </div>
               <div className="p-3 border-b border-slate-800 flex gap-2">
                   <button onClick={handleCreateFile} className="flex-1 bg-indigo-600 text-white py-1.5 rounded text-xs font-bold">New File</button>
-                  <button onClick={refreshExplorer} className="p-1.5 bg-slate-800 text-slate-300 rounded border border-slate-700"><RefreshCw size={16}/></button>
+                  <button onClick={refreshExplorer} disabled={isDriveLoading} className="p-1.5 bg-slate-800 text-slate-300 rounded border border-slate-700 hover:text-white transition-colors">
+                      {isDriveLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}
+                  </button>
               </div>
               <div className="flex-1 overflow-y-auto">
-                  {activeTab === 'drive' && (driveToken ? driveTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path?.replace('drive://','')} onSelect={handleExplorerSelect} onToggle={handleDriveToggle} onShare={handleExplorerShare} expandedIds={expandedFolders} loadingIds={loadingFolders}/>) : <div className="p-4 text-center"><button onClick={handleConnectDrive} className="px-4 py-2 bg-indigo-600 text-white text-xs rounded-lg">Connect Drive</button></div>)}
+                  {activeTab === 'drive' && (driveToken ? (
+                      isDriveLoading && driveItems.length === 0 ? (
+                          <div className="p-8 text-center"><Loader2 size={24} className="animate-spin mx-auto text-indigo-500 opacity-50"/><p className="text-[10px] text-slate-500 mt-2 uppercase font-bold">Syncing Drive...</p></div>
+                      ) : (
+                          driveTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path?.replace('drive://','')} onSelect={handleExplorerSelect} onToggle={handleDriveToggle} onShare={handleExplorerShare} expandedIds={expandedFolders} loadingIds={loadingFolders}/>)
+                      )
+                  ) : <div className="p-4 text-center"><button onClick={handleConnectDrive} className="px-4 py-2 bg-indigo-600 text-white text-xs rounded-lg">Connect Drive</button></div>)}
                   {activeTab === 'cloud' && cloudTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} onSelect={handleExplorerSelect} onToggle={handleCloudToggle} onShare={()=>{}} expandedIds={expandedFolders} loadingIds={loadingFolders}/>)}
               </div>
           </div>

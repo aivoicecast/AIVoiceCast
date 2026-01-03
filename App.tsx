@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } 
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewState } from './types';
@@ -205,6 +205,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isDriveSyncing, setIsDriveSyncing] = useState(false);
   const [activeTab, setActiveTab] = useState('categories');
   const [searchQuery, setSearchQuery] = useState('');
   const [publicChannels, setPublicChannels] = useState<Channel[]>([]);
@@ -279,39 +280,52 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(activeAuth, async (user) => {
         if (user) {
             setCurrentUser(user);
-            await syncUserProfile(user);
-            const token = getDriveToken();
-            if (token) {
-                const fid = await ensureCodeStudioFolder(token);
-                const data = await loadAppStateFromDrive(token, fid);
-                if (data && data.userChannels) {
-                    setUserChannels(data.userChannels);
-                    data.userChannels.forEach((ch: any) => saveUserChannel(ch));
-                }
-            }
+            // Non-blocking profile sync
+            syncUserProfile(user).catch(console.error);
 
+            // Trigger Claim check logic in background
             const params = new URLSearchParams(window.location.search);
             const claimId = params.get('claim');
             if (claimId) {
-                try {
-                    const amount = await claimCoinCheck(claimId);
+                claimCoinCheck(claimId).then(amount => {
                     alert(`Check Claimed! ${amount} coins added.`);
-                } catch(e: any) { alert("Claim failed: " + e.message); }
-                finally {
                     const url = new URL(window.location.href);
                     url.searchParams.delete('claim');
                     window.history.replaceState({}, '', url.toString());
-                }
+                }).catch(e => console.warn("Claim background fail", e));
             }
         } else {
             setCurrentUser(null);
             setUserProfile(null);
         }
+        // CRITICAL: Set loading to false IMMEDIATELY once Firebase Auth responds.
+        // Lazy Drive Sync happens in a separate useEffect.
         setAuthLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
+
+  // Background Drive Sync
+  useEffect(() => {
+    if (currentUser) {
+        const token = getDriveToken();
+        if (token) {
+            setIsDriveSyncing(true);
+            (async () => {
+                try {
+                    const fid = await ensureCodeStudioFolder(token);
+                    const data = await loadAppStateFromDrive(token, fid);
+                    if (data && data.userChannels) {
+                        setUserChannels(data.userChannels);
+                        data.userChannels.forEach((ch: any) => saveUserChannel(ch));
+                    }
+                } catch(e) { console.warn("Lazy Drive sync failed", e); }
+                finally { setIsDriveSyncing(false); }
+            })();
+        }
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -398,6 +412,11 @@ const App: React.FC = () => {
            </div>
 
            <div className="flex items-center gap-2 sm:gap-4">
+              {isDriveSyncing && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-900/20 text-indigo-400 rounded-full border border-indigo-500/30 animate-pulse">
+                      <Cloud size={14}/><span className="text-[10px] font-bold uppercase hidden lg:inline">Syncing Drive...</span>
+                  </div>
+              )}
               {userProfile && (
                   <button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex">
                       <Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span>
