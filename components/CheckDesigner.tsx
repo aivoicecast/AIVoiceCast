@@ -225,18 +225,31 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (!checkRef.current) return;
     setIsExporting(true);
     try {
+        // Ensure all images are fully loaded and decoded before capture
+        const images = Array.from(checkRef.current.querySelectorAll('img'));
+        await Promise.all(images.map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+            });
+        }));
+
         const canvas = await html2canvas(checkRef.current, { 
             scale: 4, 
             useCORS: true, 
             backgroundColor: '#ffffff',
             logging: false,
-            allowTaint: true
+            allowTaint: false, // Strict for high quality export
+            imageTimeout: 15000
         });
+        
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
         pdf.save(`check_${check.checkNumber}.pdf`);
     } catch(e) {
-        alert("PDF Generation failed. Try again.");
+        console.error("PDF generation failed:", e);
+        alert("PDF Generation failed. This usually happens if network assets (Signature/Watermark) are restricted. Try again or check your connection.");
     } finally { 
         setIsExporting(false); 
     }
@@ -247,12 +260,15 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       if (!url || typeof url !== 'string' || url.length < 10 || imageError['sig']) {
           return <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>;
       }
+      
+      const isRemote = url.startsWith('http');
       return (
           <img 
               key={url}
               src={url} 
               className="max-h-12 w-auto object-contain" 
               alt="Authorized Signature"
+              crossOrigin={isRemote ? "anonymous" : undefined}
               onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
           />
       );
@@ -260,6 +276,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
   const renderWatermark = () => {
       if (!check.watermarkUrl || imageError['wm']) return null;
+      const isRemote = check.watermarkUrl.startsWith('http');
       return (
           <div className="absolute inset-0 opacity-[0.25] pointer-events-none z-0">
             <img 
@@ -267,6 +284,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 src={check.watermarkUrl} 
                 className="w-full h-full object-cover grayscale" 
                 alt="Security Watermark"
+                crossOrigin={isRemote ? "anonymous" : undefined}
                 onError={() => setImageError(prev => ({ ...prev, 'wm': true }))}
             />
           </div>
@@ -368,6 +386,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                             src={qrCodeUrl} 
                             className="w-14 h-14 border border-slate-100 p-0.5 rounded shadow-sm bg-white" 
                             alt="Verification QR"
+                            crossOrigin="anonymous"
                         />
                       </div>
                       
