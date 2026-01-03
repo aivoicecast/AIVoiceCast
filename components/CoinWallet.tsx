@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History, Signature } from 'lucide-react';
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
@@ -32,6 +33,10 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [isTransferring, setIsTransferring] = useState(false);
   const [pastedPayUri, setPastedPayUri] = useState('');
   const [tipPercent, setTipPercent] = useState(0);
+
+  // In-place Status States (UX Enhancement)
+  const [actionStatus, setActionStatus] = useState<{ type: 'success' | 'error' | 'info' | null, message: string | null }>({ type: null, message: null });
+  const [paymentStep, setPaymentStep] = useState<'input' | 'processing' | 'receipt'>('input');
 
   // Receive Form States
   const [receiveAmount, setReceiveAmount] = useState('');
@@ -70,41 +75,47 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
   const initAttempted = useRef(false);
 
-  // Constants for Range Clamping
-  const { minVal, effectiveMax, walletBalance, isDonationRange, isAffordable } = useMemo(() => {
+  // Constants for Range Clamping and UI display
+  const { minVal, invoiceMax, effectiveMax, walletBalance, isDonationRange, isAffordable } = useMemo(() => {
     const balance = user?.coinBalance || 0;
     const isDonRange = !!(publicPaymentTarget?.min || publicPaymentTarget?.max);
+    
+    // 1. Get raw bounds from invoice
     const min = Math.max(1, parseInt(publicPaymentTarget?.min || '1'));
     const iMax = parseInt(publicPaymentTarget?.max || '1000000');
     
-    // THE FIX: Upper bound is the minimum of the Invoice Max and current Wallet Balance
-    const effMax = Math.min(iMax, balance);
+    // 2. Calculate what the user can actually pay (intersection of invoice and wallet)
+    const payMax = Math.min(iMax, balance);
     const affordable = balance >= min;
 
-    return { minVal: min, effectiveMax: effMax, walletBalance: balance, isDonationRange: isDonRange, isAffordable: affordable };
+    return { 
+        minVal: min, 
+        invoiceMax: iMax, 
+        effectiveMax: payMax, 
+        walletBalance: balance, 
+        isDonationRange: isDonRange, 
+        isAffordable: affordable 
+    };
   }, [publicPaymentTarget, user?.coinBalance]);
 
-  // Force clamp input whenever dependencies change
+  // Force clamp input to the allowed limit
   useEffect(() => {
-    if (isDonationRange && transferAmount) {
+    if (isDonationRange && transferAmount && paymentStep === 'input') {
         const val = parseInt(transferAmount);
         if (val > effectiveMax) {
             setTransferAmount(effectiveMax.toString());
         } else if (val < minVal && transferAmount !== '') {
-            // Only clamp lower bound if they have enough balance, otherwise let validation error show
             if (isAffordable) setTransferAmount(minVal.toString());
         }
     }
-  }, [effectiveMax, minVal, isDonationRange, isAffordable]);
+  }, [effectiveMax, minVal, isDonationRange, isAffordable, transferAmount, paymentStep]);
 
-  // UseMemo for total calculation to ensure it reacts to input changes
   const totalWithTip = useMemo(() => {
     const base = parseInt(transferAmount) || 0;
     const tipVal = Math.floor(base * (tipPercent / 100));
     return base + tipVal;
   }, [transferAmount, tipPercent]);
 
-  // Sync user profile from auth if prop is missing
   useEffect(() => {
     if (propUser) {
         setUser(propUser);
@@ -113,7 +124,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
     }
   }, [propUser]);
 
-  // Try to restore Private Key from IndexedDB
   useEffect(() => {
       if (user?.uid) {
           getLocalPrivateKey(user.uid).then(key => {
@@ -122,13 +132,15 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       }
   }, [user?.uid]);
 
-  // Handle donation range defaults
   useEffect(() => {
     if (publicPaymentTarget && isDonationRange) {
         if (!transferAmount) {
             setTransferAmount(minVal.toString());
         }
     }
+    // Reset payment step on target change
+    setPaymentStep('input');
+    setActionStatus({ type: null, message: null });
   }, [publicPaymentTarget, isDonationRange, minVal]);
 
   // Filtered Ledger Logic
@@ -172,7 +184,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                 await claimOfflinePayment(token);
                 item.status = 'success';
             } catch (e: any) {
-                console.error("Auto-claim failed", e);
                 item.status = 'failed';
                 item.error = e.message;
             }
@@ -271,6 +282,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const handleCreateIdentity = async () => {
       if (!user) return;
       setIsCreatingIdentity(true);
+      setActionStatus({ type: 'info', message: 'Generating neural keys...' });
       try {
           const { publicKey, privateKey } = await generateMemberIdentity();
           const certificate = await requestIdentityCertificate(publicKey);
@@ -278,8 +290,10 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           setPrivateKey(privateKey);
           await saveLocalPrivateKey(user.uid, privateKey);
           await handleRefresh();
-          alert("Cryptographic Identity Created! You can now pay offline.");
-      } catch (e) { alert("Failed to create identity."); } finally { setIsCreatingIdentity(false); }
+          setActionStatus({ type: 'success', message: 'Identity signed on this device!' });
+      } catch (e) { 
+          setActionStatus({ type: 'error', message: 'Identity creation failed.' });
+      } finally { setIsCreatingIdentity(false); }
   };
 
   const handleAuthorizePayment = async () => {
@@ -287,15 +301,16 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       const memo = transferMemo || publicPaymentTarget?.memo || '';
 
       if (!user || !privateKey || !user.certificate) {
-          return alert("Identity Required: You must 'Sign Identity' on this device before authorizing payments.");
+          return setActionStatus({ type: 'error', message: 'Sign Identity required.' });
       }
       if (amount <= 0 || amount > user.coinBalance) {
-          return alert(`Balance Issue: You only have ${user.coinBalance} VC.`);
+          return setActionStatus({ type: 'error', message: 'Insufficient balance.' });
       }
 
+      setPaymentStep('processing');
       setIsTransferring(true);
       try {
-          // 1. Generate Nonce and Payment Base
+          // 1. Cryptographic Signing
           const nonce = generateSecureId().substring(0, 12);
           const paymentBase = {
               senderId: user.uid,
@@ -307,27 +322,26 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               memo
           };
 
-          // 2. Cryptographic Signing (The Evidence)
           const signature = await signPayment(privateKey, paymentBase);
           const token: OfflinePaymentToken = { ...paymentBase, signature, certificate: user.certificate };
           const tokenStr = btoa(JSON.stringify(token));
           setGeneratedToken(tokenStr);
 
-          // 3. Online Ledger Sync (Attempted if online)
+          // 2. Online Ledger Sync
           if (navigator.onLine && publicPaymentTarget?.uid) {
               try {
                   await transferCoins(publicPaymentTarget.uid, publicPaymentTarget.name, amount, memo);
-                  console.log("Online ledger sync successful.");
               } catch (e) {
-                  console.warn("Ledger sync failed, proceeding with Bearer Token evidence only.", e);
+                  console.warn("Ledger sync failed, proceeding with Bearer Token only.", e);
               }
           }
 
-          // 4. Show the Confirmation "Digital Check" QR
-          setShowOfflineToken(true);
+          // 3. Show In-place Receipt instead of modal
+          setPaymentStep('receipt');
           await handleRefresh();
       } catch (e: any) {
-          alert("Authorization failed: " + e.message);
+          setActionStatus({ type: 'error', message: e.message || "Auth failed." });
+          setPaymentStep('input');
       } finally {
           setIsTransferring(false);
       }
@@ -364,7 +378,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       try {
           if (navigator.onLine) {
               await claimOfflinePayment(verifiedToken);
-              alert("Payment cleared on global ledger!");
+              setActionStatus({ type: 'success', message: 'Cleared to Global Ledger!' });
               handleRefresh();
           } else {
               const claim: PendingClaim = { tokenStr: btoa(JSON.stringify(verifiedToken)), timestamp: Date.now(), status: 'pending' };
@@ -372,12 +386,18 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               const queue = JSON.parse(queueRaw);
               queue.push(claim);
               localStorage.setItem(`pending_claims_${user.uid}`, JSON.stringify(queue));
-              alert("Recipient is offline. Token added to local claim queue. Coins will settle when online.");
+              setActionStatus({ type: 'info', message: 'Stored in claim queue (offline).' });
           }
-          setShowTokenInput(false);
-          setVerifiedToken(null);
-          setPastedToken('');
-      } catch (e: any) { alert("Claim failed: " + e.message); } finally { setIsClaiming(false); }
+          // Close in-place
+          setTimeout(() => {
+            setShowTokenInput(false);
+            setVerifiedToken(null);
+            setPastedToken('');
+            setActionStatus({ type: null, message: null });
+          }, 2000);
+      } catch (e: any) { 
+          setActionStatus({ type: 'error', message: 'Claim failed: ' + e.message });
+      } finally { setIsClaiming(false); }
   };
 
   const handlePastePayUri = () => {
@@ -399,8 +419,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               if (mmo) setTransferMemo(mmo);
               setShowTransfer(false);
               setPastedPayUri('');
-          } else { alert("Invalid Payment URI."); }
-      } catch(e) { alert("Invalid URL format."); }
+          } else { setActionStatus({ type: 'error', message: 'Invalid Payment URI.' }); }
+      } catch(e) { setActionStatus({ type: 'error', message: 'Invalid URL format.' }); }
   };
 
   const qrImageUrl = (data: string) => `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(data)}`;
@@ -424,6 +444,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   };
 
   const renderLedgerItems = (txList: CoinTransaction[]) => {
+      if (loading) return (<div className="p-20 text-center"><Loader2 size={32} className="animate-spin text-indigo-400 mx-auto" /><p className="text-slate-500 text-xs mt-4 uppercase font-bold tracking-widest">Scanning Ledger...</p></div>);
       if (txList.length === 0) return (<div className="p-20 text-center space-y-5"><div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto opacity-20"><HardDrive size={32} className="text-slate-400" /></div><p className="text-slate-500 italic text-sm">No matching ledger entries.</p></div>);
       
       return txList.map(tx => {
@@ -456,122 +477,194 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                   <h1 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Authorize Payment</h1>
               </header>
               <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center">
-                  <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 shadow-2xl flex flex-col animate-fade-in-up mt-8">
-                      <div className="flex flex-col items-center text-center mb-8">
-                        <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center mb-4 border border-indigo-500/20 overflow-hidden">
-                            {publicPaymentTarget.img ? (
-                                <img src={publicPaymentTarget.img} className="w-full h-full object-cover" alt={publicPaymentTarget.name}/>
-                            ) : (
-                                <User size={40} className="text-indigo-400" />
-                            )}
-                        </div>
-                        <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter">{publicPaymentTarget.name}</h2>
-                        <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-[0.2em] mt-1">
-                            {isDonationRange ? 'Requesting Donation' : 'Requesting VoiceCoins'}
-                        </p>
+                  
+                  {/* Status Banner (In-place UX) */}
+                  {actionStatus.message && (
+                      <div className={`w-full max-w-md mb-4 p-4 rounded-2xl border flex items-center gap-3 animate-fade-in ${
+                          actionStatus.type === 'success' ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' : 
+                          actionStatus.type === 'error' ? 'bg-red-900/20 border-red-900/50 text-red-400' : 
+                          'bg-indigo-900/20 border-indigo-500/30 text-indigo-300'
+                      }`}>
+                          {actionStatus.type === 'success' ? <CheckCircle size={18}/> : <AlertTriangle size={18}/>}
+                          <span className="text-xs font-bold uppercase tracking-wider">{actionStatus.message}</span>
+                          <button onClick={() => setActionStatus({ type: null, message: null })} className="ml-auto opacity-50 hover:opacity-100"><X size={14}/></button>
                       </div>
+                  )}
 
-                      <div className="space-y-6">
-                        <div className="space-y-4">
-                            <div>
-                                <label className={`text-[10px] font-bold uppercase tracking-widest block mb-2 ${isRangeValid ? 'text-slate-500' : 'text-red-500 animate-pulse'}`}>
-                                    {isDonationRange ? `Affordable Range: ${minVal} - ${effectiveMax}` : 'Base Amount'}
-                                </label>
-                                <div className="relative">
-                                    <Coins className={`absolute left-4 top-1/2 -translate-y-1/2 ${isRangeValid ? 'text-amber-500' : 'text-red-500'}`} size={24}/>
-                                    <input 
-                                        type="number" 
-                                        value={transferAmount}
-                                        max={effectiveMax}
-                                        onChange={e => setTransferAmount(e.target.value)}
-                                        placeholder="0"
-                                        readOnly={isAutoMode}
-                                        className={`w-full bg-slate-950 border ${!isRangeValid ? 'border-red-500 text-red-200 ring-2 ring-red-500/20' : (isAutoMode ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white')} rounded-2xl pl-12 pr-6 py-5 text-4xl font-black focus:outline-none focus:border-amber-500 transition-all`}
-                                    />
+                  <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 shadow-2xl flex flex-col animate-fade-in-up mt-4 relative min-h-[500px] justify-center">
+                      
+                      {paymentStep === 'input' && (
+                        <div className="animate-fade-in">
+                            <div className="flex flex-col items-center text-center mb-8">
+                                <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center mb-4 border border-indigo-500/20 overflow-hidden">
+                                    {publicPaymentTarget.img ? (
+                                        <img src={publicPaymentTarget.img} className="w-full h-full object-cover" alt={publicPaymentTarget.name}/>
+                                    ) : (
+                                        <User size={40} className="text-indigo-400" />
+                                    )}
                                 </div>
-                                {!isAffordable && (
-                                    <div className="mt-2 text-[10px] text-red-400 font-bold uppercase flex items-center gap-1">
-                                        <AlertTriangle size={12}/> Insufficient Balance. (Min: {minVal}, Yours: {walletBalance})
-                                    </div>
-                                )}
-                                {isAffordable && !isRangeValid && (
-                                    <div className="mt-2 text-[10px] text-red-400 font-bold uppercase flex items-center gap-1">
-                                        <AlertTriangle size={12}/> Out of Range. (Limit: {effectiveMax})
-                                    </div>
-                                )}
-                                {isDonationRange && isAffordable && (
-                                    <input 
-                                        type="range" min={minVal} max={effectiveMax} step="1"
-                                        value={currentVal < minVal ? minVal : (currentVal > effectiveMax ? effectiveMax : currentVal)}
-                                        onChange={e => setTransferAmount(e.target.value)}
-                                        className="w-full mt-4 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-                                    />
-                                )}
+                                <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter">{publicPaymentTarget.name}</h2>
+                                <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-[0.2em] mt-1">
+                                    {isDonationRange ? 'Requesting Donation' : 'Requesting VoiceCoins'}
+                                </p>
                             </div>
 
-                            {publicPaymentTarget.tips && (
-                                <div className="p-4 bg-emerald-900/10 border border-emerald-500/20 rounded-2xl animate-fade-in">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1">
-                                            <Percent size={12}/> Optional Tip ({tipPercent}%)
-                                        </label>
-                                        <span className="text-xs font-mono text-emerald-300">+{Math.floor((parseInt(transferAmount)||0)*(tipPercent/100))} VC</span>
+                            <div className="space-y-6">
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="flex justify-between items-center mb-2 px-1">
+                                            <label className={`text-[10px] font-bold uppercase tracking-widest ${isRangeValid ? 'text-slate-500' : 'text-red-500 animate-pulse'}`}>
+                                                {isDonationRange ? `Invoice Range: ${minVal} - ${invoiceMax}` : 'Base Amount'}
+                                            </label>
+                                            {isDonationRange && walletBalance < invoiceMax && (
+                                                <span className="text-[9px] font-black text-amber-500 uppercase tracking-tighter">Limited by Balance</span>
+                                            )}
+                                        </div>
+                                        <div className="relative">
+                                            <Coins className={`absolute left-4 top-1/2 -translate-y-1/2 ${isRangeValid ? 'text-amber-500' : 'text-red-500'}`} size={24}/>
+                                            <input 
+                                                type="number" 
+                                                value={transferAmount}
+                                                max={invoiceMax}
+                                                onChange={e => setTransferAmount(e.target.value)}
+                                                placeholder="0"
+                                                readOnly={isAutoMode}
+                                                className={`w-full bg-slate-950 border ${!isRangeValid ? 'border-red-500 text-red-200 ring-2 ring-red-500/20' : (isAutoMode ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white')} rounded-2xl pl-12 pr-6 py-5 text-4xl font-black focus:outline-none focus:border-amber-500 transition-all`}
+                                            />
+                                        </div>
+                                        {!isAffordable && (
+                                            <div className="mt-2 text-[10px] text-red-400 font-bold uppercase flex items-center gap-1">
+                                                <AlertTriangle size={12}/> Insufficient Balance. (Min: {minVal}, Yours: {walletBalance})
+                                            </div>
+                                        )}
+                                        {isAffordable && !isRangeValid && (
+                                            <div className="mt-2 text-[10px] text-red-400 font-bold uppercase flex items-center gap-1">
+                                                <AlertTriangle size={12}/> Out of Limits. (Your Max: {effectiveMax})
+                                            </div>
+                                        )}
+                                        {isDonationRange && isAffordable && (
+                                            <div className="mt-4 px-1">
+                                                <input 
+                                                    type="range" 
+                                                    min={minVal} 
+                                                    max={invoiceMax} 
+                                                    step="1"
+                                                    value={currentVal < minVal ? minVal : (currentVal > effectiveMax ? effectiveMax : currentVal)}
+                                                    onChange={e => setTransferAmount(e.target.value)}
+                                                    className={`w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer ${currentVal > effectiveMax ? 'accent-red-500' : 'accent-indigo-500'}`}
+                                                />
+                                                <div className="flex justify-between mt-2">
+                                                    <span className="text-[9px] font-bold text-slate-600">{minVal} VC</span>
+                                                    <span className="text-[9px] font-bold text-slate-600">{invoiceMax} VC</span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                    <input 
-                                        type="range" min="0" max="300" step="5"
-                                        value={tipPercent}
-                                        onChange={e => setTipPercent(parseInt(e.target.value))}
-                                        className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                                    />
-                                    <div className="flex justify-between mt-2 px-1">
-                                        {['0%', '100%', '200%', '300%'].map(p => <span key={p} className="text-[8px] text-slate-600 font-bold">{p}</span>)}
+
+                                    {publicPaymentTarget.tips && (
+                                        <div className="p-4 bg-emerald-900/10 border border-emerald-500/20 rounded-2xl animate-fade-in">
+                                            <div className="flex justify-between items-center mb-3">
+                                                <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1">
+                                                    <Percent size={12}/> Optional Tip ({tipPercent}%)
+                                                </label>
+                                                <span className="text-xs font-mono text-emerald-300">+{Math.floor((parseInt(transferAmount)||0)*(tipPercent/100))} VC</span>
+                                            </div>
+                                            <input 
+                                                type="range" min="0" max="300" step="5"
+                                                value={tipPercent}
+                                                onChange={e => setTipPercent(parseInt(e.target.value))}
+                                                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                            />
+                                            <div className="flex justify-between mt-2 px-1">
+                                                {['0%', '100%', '200%', '300%'].map(p => <span key={p} className="text-[8px] text-slate-600 font-bold">{p}</span>)}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Reference/Reason</label>
+                                        <input 
+                                            type="text" 
+                                            value={transferMemo || publicPaymentTarget.memo || ''}
+                                            onChange={e => setTransferMemo(e.target.value)}
+                                            placeholder="Add a reason..."
+                                            readOnly={!!publicPaymentTarget.memo}
+                                            className={`w-full bg-slate-950 border ${!!publicPaymentTarget.memo ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white'} rounded-xl px-4 py-3 text-sm focus:outline-none`}
+                                        />
                                     </div>
                                 </div>
-                            )}
 
-                            <div>
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Reference/Reason</label>
-                                <input 
-                                    type="text" 
-                                    value={transferMemo || publicPaymentTarget.memo || ''}
-                                    onChange={e => setTransferMemo(e.target.value)}
-                                    placeholder="Add a reason..."
-                                    readOnly={!!publicPaymentTarget.memo}
-                                    className={`w-full bg-slate-950 border ${!!publicPaymentTarget.memo ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white'} rounded-xl px-4 py-3 text-sm focus:outline-none`}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="bg-slate-950 p-4 rounded-2xl border border-indigo-500/20 flex items-center justify-between shadow-inner">
-                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Charge</span>
-                            <div className="flex items-center gap-2">
-                                <span className={`text-3xl font-black ${totalWithTip > walletBalance ? 'text-red-500' : 'text-white'}`}>{totalWithTip}</span>
-                                <span className="text-[10px] font-black text-indigo-400">VC</span>
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col gap-3">
-                            {!privateKey ? (
-                                <div className="p-4 bg-amber-900/20 border border-amber-500/30 rounded-2xl flex flex-col items-center text-center gap-3">
-                                    <Shield size={24} className="text-amber-500"/>
-                                    <p className="text-xs text-amber-200">You need to sign your identity on this device before paying.</p>
-                                    <button onClick={handleCreateIdentity} className="px-6 py-2 bg-amber-600 text-white font-bold rounded-lg text-xs uppercase tracking-widest">Sign Identity</button>
-                                </div>
-                            ) : (
-                                <button 
-                                    onClick={handleAuthorizePayment}
-                                    disabled={isTransferring || totalWithTip <= 0 || !isRangeValid || totalWithTip > walletBalance}
-                                    className="py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex flex-col items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
-                                >
+                                <div className="bg-slate-950 p-4 rounded-2xl border border-indigo-500/20 flex items-center justify-between shadow-inner">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Charge</span>
                                     <div className="flex items-center gap-2">
-                                        {isTransferring ? <Loader2 size={20} className="animate-spin" /> : <Signature size={20}/>}
-                                        <span>{isTransferring ? 'Signing...' : (totalWithTip > walletBalance ? 'Insufficient Funds' : 'Pay Now')}</span>
+                                        <span className={`text-3xl font-black ${totalWithTip > walletBalance ? 'text-red-500' : 'text-white'}`}>{totalWithTip}</span>
+                                        <span className="text-[10px] font-black text-indigo-400">VC</span>
                                     </div>
-                                    <span className="text-[8px] opacity-70 tracking-widest">Secured by Neural Identity</span>
-                                </button>
-                            )}
+                                </div>
+
+                                <div className="flex flex-col gap-3">
+                                    {!privateKey ? (
+                                        <div className="p-4 bg-amber-900/20 border border-amber-500/30 rounded-2xl flex flex-col items-center text-center gap-3">
+                                            <Shield size={24} className="text-amber-500"/>
+                                            <p className="text-xs text-amber-200">You need to sign your identity on this device before paying.</p>
+                                            <button onClick={handleCreateIdentity} disabled={isCreatingIdentity} className="px-6 py-2 bg-amber-600 text-white font-bold rounded-lg text-xs uppercase tracking-widest transition-all hover:bg-amber-500 disabled:opacity-50">
+                                                {isCreatingIdentity ? 'Signing...' : 'Sign Identity'}
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button 
+                                            onClick={handleAuthorizePayment}
+                                            disabled={isTransferring || totalWithTip <= 0 || !isRangeValid || totalWithTip > walletBalance}
+                                            className="py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex flex-col items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                {isTransferring ? <Loader2 size={20} className="animate-spin" /> : <Signature size={20}/>}
+                                                <span>{isTransferring ? 'Signing...' : (totalWithTip > walletBalance ? 'Insufficient Funds' : 'Pay Now')}</span>
+                                            </div>
+                                            <span className="text-[8px] opacity-70 tracking-widest">Secured by Neural Identity</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
-                      </div>
+                      )}
+
+                      {paymentStep === 'processing' && (
+                          <div className="flex flex-col items-center justify-center p-12 text-center space-y-6 animate-fade-in">
+                              <div className="relative">
+                                <div className="w-24 h-24 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <Sparkles className="text-indigo-400 animate-pulse" size={32}/>
+                                </div>
+                              </div>
+                              <div>
+                                  <h3 className="text-xl font-bold text-white uppercase tracking-tighter">Securing Transfer</h3>
+                                  <p className="text-xs text-slate-500 mt-2">Computing ECDSA signature and syncing ledger...</p>
+                              </div>
+                          </div>
+                      )}
+
+                      {paymentStep === 'receipt' && (
+                          <div className="flex flex-col items-center animate-fade-in space-y-6">
+                              <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center border border-emerald-500/20 shadow-xl shadow-emerald-500/20"><CheckCircle size={32}/></div>
+                              <div className="text-center">
+                                  <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter italic">Transfer Verified</h3>
+                                  <p className="text-xs text-slate-400 px-8">The payment has been cryptographically signed. Share this proof to finalize.</p>
+                              </div>
+                              <div className="w-full bg-white p-4 rounded-3xl border-4 border-slate-800 flex flex-col items-center shadow-inner">
+                                  <img src={qrImageUrl(buildTokenUri(generatedToken!))} className="w-40 h-40" alt="Payment Token QR"/>
+                                  <p className="text-[8px] font-black text-slate-400 uppercase mt-2 tracking-widest">Neural Bearer Token</p>
+                              </div>
+                              <div className="w-full space-y-2">
+                                <button onClick={() => { navigator.clipboard.writeText(buildTokenUri(generatedToken!)); setActionStatus({ type: 'success', message: 'URI Copied!' }); }} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase flex items-center justify-center gap-2 hover:bg-indigo-500 transition-colors">
+                                    <Copy size={14}/> Copy Proof URI
+                                </button>
+                                <button onClick={() => setPublicPaymentTarget(null)} className="w-full py-3 bg-slate-800 text-slate-400 rounded-xl font-bold text-xs uppercase hover:bg-slate-700 transition-colors">
+                                    Close Wallet
+                                </button>
+                              </div>
+                          </div>
+                      )}
                   </div>
 
                   {/* Context Summary for Payment View */}
@@ -615,6 +708,20 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       </header>
 
       <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 max-w-4xl mx-auto w-full scrollbar-thin scrollbar-thumb-slate-800">
+          
+          {/* Status Notification (Global In-place) */}
+          {actionStatus.message && (
+              <div className={`w-full p-4 rounded-2xl border flex items-center gap-3 animate-fade-in-up ${
+                  actionStatus.type === 'success' ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' : 
+                  actionStatus.type === 'error' ? 'bg-red-900/20 border-red-900/50 text-red-400' : 
+                  'bg-indigo-900/20 border-indigo-500/30 text-indigo-300'
+              }`}>
+                  {actionStatus.type === 'success' ? <CheckCircle size={20}/> : <Info size={20}/>}
+                  <span className="text-sm font-bold uppercase tracking-wider">{actionStatus.message}</span>
+                  <button onClick={() => setActionStatus({ type: null, message: null })} className="ml-auto p-1 hover:bg-white/10 rounded-full"><X size={16}/></button>
+              </div>
+          )}
+
           {/* Main Card */}
           <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-32 bg-white/10 blur-[80px] rounded-full group-hover:bg-white/20 transition-all"></div>
@@ -771,7 +878,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                         </div>
 
                         <div className="flex gap-2 w-full mb-4">
-                            <button onClick={() => { navigator.clipboard.writeText(buildReceiveUri(user.uid, user.displayName, user.photoURL)); alert("Link Copied!"); }} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all"><Copy size={14}/> Copy Link</button>
+                            <button onClick={() => { navigator.clipboard.writeText(buildReceiveUri(user.uid, user.displayName, user.photoURL)); setActionStatus({ type: 'success', message: 'Link Copied!' }); }} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all"><Copy size={14}/> Copy Link</button>
                             <button onClick={() => setShowReceiveForm(true)} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-all"><Edit3 size={18}/></button>
                         </div>
                         <button onClick={() => setShowReceiveQR(false)} className="w-full py-4 bg-slate-950 text-slate-500 rounded-2xl font-bold hover:text-white transition-all">Dismiss</button>
@@ -800,28 +907,21 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           </div>
       )}
 
-      {/* Offline Token Modal (Now the Digital Receipt) */}
-      {showOfflineToken && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
-              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl flex flex-col items-center text-center">
-                  <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mb-6 border border-emerald-500/20 shadow-xl shadow-emerald-500/20"><ShieldCheck size={32}/></div>
-                  <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter italic">Payment Proof Ready</h3>
-                  <p className="text-sm text-slate-400 mb-8 max-w-xs">Scan or share this proof to finalized the transfer. This token is cryptographically signed and serves as digital evidence of your agreement to pay.</p>
-                  <div className="w-full bg-white p-6 rounded-3xl border-8 border-slate-800 mb-8 flex flex-col items-center">
-                      <img src={qrImageUrl(buildTokenUri(generatedToken!))} className="w-48 h-48" alt="Payment Token QR"/>
-                      <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Bearer Token (Evidence)</p>
-                  </div>
-                  <button onClick={() => { navigator.clipboard.writeText(buildTokenUri(generatedToken!)); alert("Token URI copied!"); }} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold mb-2 flex items-center justify-center gap-2"><Copy size={16}/> Copy Evidence URI</button>
-                  <button onClick={() => { setShowOfflineToken(false); setPublicPaymentTarget(null); }} className="w-full py-4 bg-slate-800 text-slate-300 rounded-2xl font-bold transition-all hover:bg-slate-700">Dismiss</button>
-              </div>
-          </div>
-      )}
-
       {/* Import Token Modal */}
       {showTokenInput && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md p-8 shadow-2xl animate-fade-in-up">
-                  <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-white flex items-center gap-2"><Download size={20} className="text-indigo-400"/> Verify Token</h3><button onClick={() => { setShowTokenInput(false); setVerifiedToken(null); setPastedToken(''); }} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button></div>
+                  <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-white flex items-center gap-2"><Download size={20} className="text-indigo-400"/> Verify Token</h3><button onClick={() => { setShowTokenInput(false); setVerifiedToken(null); setPastedToken(''); setActionStatus({ type: null, message: null }); }} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button></div>
+                  
+                  {actionStatus.message && (
+                    <div className={`mb-4 p-3 rounded-xl border flex items-center gap-2 text-xs font-bold ${
+                        actionStatus.type === 'success' ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' : 'bg-indigo-900/20 border-indigo-500/30 text-indigo-300'
+                    }`}>
+                        {actionStatus.type === 'success' ? <CheckCircle size={14}/> : <Info size={14}/>}
+                        {actionStatus.message}
+                    </div>
+                  )}
+
                   {!verifiedToken ? (
                       <div className="space-y-6">
                           <textarea value={pastedToken} onChange={e => setPastedToken(e.target.value)} className="w-full h-32 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-indigo-300 focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Paste token string here..."/>

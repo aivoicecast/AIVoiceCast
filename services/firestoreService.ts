@@ -171,8 +171,11 @@ export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<v
 export async function getCoinTransactions(uid: string): Promise<CoinTransaction[]> {
     if (!db) return [];
     try {
-        const qFrom = query(collection(db, TRANSACTIONS_COLLECTION), where('fromId', '==', uid), orderBy('timestamp', 'desc'), limit(50));
-        const qTo = query(collection(db, TRANSACTIONS_COLLECTION), where('toId', '==', uid), orderBy('timestamp', 'desc'), limit(50));
+        // RESILIENT FETCH: Removed explicit orderBy from query to avoid "Missing Index" failures
+        // We handle sorting in memory to ensure history always shows up even without index config.
+        const qFrom = query(collection(db, TRANSACTIONS_COLLECTION), where('fromId', '==', uid), limit(100));
+        const qTo = query(collection(db, TRANSACTIONS_COLLECTION), where('toId', '==', uid), limit(100));
+        
         const [fromSnap, toSnap] = await Promise.all([getDocs(qFrom), getDocs(qTo)]);
         
         const all = [
@@ -180,9 +183,9 @@ export async function getCoinTransactions(uid: string): Promise<CoinTransaction[
             ...toSnap.docs.map(d => ({ ...d.data(), id: d.id }))
         ] as CoinTransaction[];
         
-        // Sort merged results
+        // Sort merged results in TypeScript
         return all.sort((a, b) => b.timestamp - a.timestamp);
-    } catch(e) { 
+    } catch(e: any) { 
       console.error("Ledger fetch error:", e);
       return []; 
     }
