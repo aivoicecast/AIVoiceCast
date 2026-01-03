@@ -1,4 +1,3 @@
-
 import { 
     GoogleAuthProvider, 
     signInWithPopup, 
@@ -48,33 +47,28 @@ export async function signInWithGoogle(): Promise<User | null> {
 /**
  * Initiates GitHub OAuth Flow
  * Redirects the user to GitHub to authorize the app.
+ * We omit redirect_uri to let GitHub use the one configured in your App settings.
  */
 export function signInWithGitHub(): void {
-    const root = window.location.origin + window.location.pathname;
     const scope = 'repo,user';
     const state = Math.random().toString(36).substring(7);
     localStorage.setItem('gh_auth_state', state);
 
-    const url = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&state=${state}&redirect_uri=${encodeURIComponent(root)}`;
+    // Omit redirect_uri parameter entirely.
+    // GitHub will automatically use the "Authorization callback URL" you provided 
+    // in the app settings (https://github.com/settings/applications/3315482)
+    // This prevents "The redirect_uri is not associated with this application" errors.
+    const url = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&state=${state}`;
     window.location.assign(url);
 }
 
 /**
  * Exchanges OAuth Code for Access Token
- * NOTE: GitHub's token exchange endpoint does not support CORS for pure browser requests
- * because it requires a Client Secret. In production, this call should go through a 
- * backend or a CORS proxy/Gatekeeper.
  */
 export async function exchangeGitHubCode(code: string): Promise<string> {
-    // In a real-world app, you'd call your own backend here:
-    // const res = await fetch('your-backend.com/github/token', { body: { code } });
-    
-    // For this implementation, we simulate the token acquisition 
-    // or assume a proxy is being used.
-    console.log("Exchanging GitHub code:", code);
-    
-    // Placeholder: In an ideal flow, the backend returns the token.
-    // Since we are pure frontend, we advise the user that the 'code' is the first step.
+    // Note: Pure frontend exchange is usually blocked by CORS for security (Client Secret required).
+    // In this environment, we set the token as the code itself for now.
+    console.log("Acquired GitHub authorization code:", code);
     return code; 
 }
 
