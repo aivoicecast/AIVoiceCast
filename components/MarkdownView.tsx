@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Copy, Check, Image as ImageIcon, Loader2, Code as CodeIcon, ExternalLink, Sigma } from 'lucide-react';
 import { encodePlantUML } from '../utils/plantuml';
@@ -111,7 +112,7 @@ const PlantUMLRenderer: React.FC<{ code: string }> = ({ code }) => {
 };
 
 export const MarkdownView: React.FC<MarkdownViewProps> = ({ content }) => {
-  const [copiedIndex, setCopiedIndex] = React.useState<number | null>(null);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const handleCopy = (text: string, index: number) => {
     navigator.clipboard.writeText(text);

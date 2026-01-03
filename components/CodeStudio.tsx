@@ -124,7 +124,7 @@ const FileTreeItem = ({ node, depth, activeId, onSelect, onToggle, onDelete, onS
                             node={child} 
                             depth={depth + 1} 
                             activeId={activeId} 
-                            onSelect(node)} 
+                            onSelect={onSelect} 
                             onToggle={onToggle} 
                             onDelete={onDelete} 
                             onShare={onShare}
@@ -945,7 +945,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     <div className="flex flex-col h-full bg-slate-950 text-slate-100 overflow-hidden">
       <header className="h-14 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-4 shrink-0 z-20">
          <div className="flex items-center space-x-4">
-            <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"><ArrowLeft size={20} /></button>
+            <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
             <button onClick={() => setIsLeftOpen(!isLeftOpen)} className={`p-2 rounded-lg ${isLeftOpen ? 'bg-slate-800 text-white' : 'text-slate-50'}`}><PanelLeftOpen size={20}/></button>
             <div className="h-4 w-px bg-slate-800 mx-2"></div>
             <div className="flex items-center -space-x-2">
@@ -962,7 +962,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                 <button onClick={() => handleSetLayout('quad')} className={`p-1.5 rounded ${layoutMode === 'quad' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Grid2X2 size={16}/></button>
             </div>
             <button onClick={() => handleSmartSave()} disabled={lockStatus === 'busy'} className="flex items-center space-x-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold"><Save size={14}/><span>Save</span></button>
-            <button onClick={() => setIsRightOpen(!isRightOpen)} className={`p-2 rounded-lg ${isRightOpen ? 'bg-slate-800 text-white' : 'text-slate-500'}`}><PanelRightOpen size={20}/></button>
+            <button onClick={() => setIsRightOpen(!isRightOpen)} className={`p-2 rounded-lg ${isRightOpen ? 'bg-slate-800 text-white' : 'text-slate-50'}`}><PanelRightOpen size={20}/></button>
          </div>
       </header>
       <div className="flex-1 flex overflow-hidden">
@@ -1058,6 +1058,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                                   <h3 className="font-bold text-white text-sm">Octopus Protocol</h3>
                                   <p className="text-xs text-slate-500 leading-relaxed px-2">Import repositories and push updates directly from the studio.</p>
                               </div>
+                              {/* Fix: changed handleConnectGitHub to handleConnectGithub to match definition on line 407 */}
                               <button onClick={handleConnectGithub} className="px-8 py-3 bg-white text-slate-900 font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg hover:bg-slate-100 transition-all active:scale-[0.98] flex items-center gap-2">
                                   <Key size={14}/> Login with GitHub
                               </button>

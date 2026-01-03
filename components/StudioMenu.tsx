@@ -32,17 +32,15 @@ interface StudioMenuProps {
 
 export const StudioMenu: React.FC<StudioMenuProps> = ({
   isUserMenuOpen, setIsUserMenuOpen, userProfile, setUserProfile, currentUser,
-  setIsCreateModalOpen, setIsSettingsModalOpen, onOpenUserGuide, onNavigate, onOpenPrivacy,
+  setIsCreateModalOpen, setIsVoiceCreateOpen, setIsSettingsModalOpen, onOpenUserGuide, onNavigate, onOpenPrivacy,
   className, channels = [],
   language, setLanguage
 }) => {
-  // Added useState for pricing and stats state
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [globalStats, setGlobalStats] = useState<GlobalStats>({ totalLogins: 0, uniqueUsers: 0 });
   
   const isSuperAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
   
-  // Added useEffect to fetch global stats when menu opens
   useEffect(() => {
       if (isUserMenuOpen) { getGlobalStats().then(setGlobalStats); }
   }, [isUserMenuOpen]);
