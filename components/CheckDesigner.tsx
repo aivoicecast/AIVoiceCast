@@ -1,8 +1,9 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
   Trash2, Printer, CheckCircle, AlertTriangle, Send, Share2, DollarSign, Calendar, 
-  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette, Copy, ZoomIn, ZoomOut, Maximize2, PenTool, Upload, Camera, MapPin, HardDrive, List
+  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette, Copy, ZoomIn, ZoomOut, Maximize2, PenTool, Upload, Camera, MapPin, HardDrive, List, FileText
 } from 'lucide-react';
 import { BankingCheck, UserProfile } from '../types';
 import { GoogleGenAI } from "@google/genai";
@@ -13,6 +14,8 @@ import { auth } from '../services/firebaseConfig';
 import { Whiteboard } from './Whiteboard';
 import { generateSecureId } from '../utils/idUtils';
 import { ShareModal } from './ShareModal';
+import { connectGoogleDrive, getDriveToken } from '../services/authService';
+import { ensureCodeStudioFolder, uploadToDrive, makeFilePubliclyViewable, getDriveFileSharingLink, createDriveFolder } from '../services/googleDriveService';
 
 interface CheckDesignerProps {
   onBack: () => void;
@@ -66,20 +69,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasHydratedFromTemplate = useRef(false);
 
-  /**
-   * CRITICAL: Converts a remote URL to a local Data URL (Base64).
-   * This is required because html2canvas/jsPDF cannot read pixels from remote 
-   * domains without valid CORS headers and a clean cache.
-   */
   const convertRemoteToDataUrl = async (url: string): Promise<string> => {
       if (!url || !url.startsWith('http')) return url;
       try {
-          // Use a cache-buster to ensure we get fresh CORS headers from the server
           const bust = url.includes('?') ? `&cb_pdf=${Date.now()}` : `?cb_pdf=${Date.now()}`;
-          const res = await fetch(url + bust, { 
-              mode: 'cors',
-              credentials: 'omit'
-          });
+          const res = await fetch(url + bust, { mode: 'cors', credentials: 'omit' });
           if (!res.ok) throw new Error("Fetch failed");
           const blob = await res.blob();
           return new Promise((resolve) => {
@@ -88,7 +82,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               reader.readAsDataURL(blob);
           });
       } catch (e) {
-          console.warn("PDF Asset conversion failed for", url, e);
+          console.warn("Asset conversion failed", url, e);
           return url; 
       }
   };
@@ -101,8 +95,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   const sigUrl = data.signatureUrl || data.signature || '';
                   const wmUrl = data.watermarkUrl || '';
                   
-                  // In Shared View, we BLOCK and PRE-CONVERT assets to Base64 
-                  // before showing the UI. This ensures the PDF generator always has local pixels.
+                  // In Read-Only view, if we have a Drive PDF URL, we'll prefer pointing to that
+                  if (data.drivePdfUrl) {
+                      setShareLink(data.drivePdfUrl);
+                  }
+
                   const [sigB64, wmB64] = await Promise.all([
                       convertRemoteToDataUrl(sigUrl),
                       convertRemoteToDataUrl(wmUrl)
@@ -118,12 +115,15 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       watermarkUrl: wmUrl 
                   };
                   setCheck(normalizedCheck);
-                  setShareLink(`${window.location.origin}?view=check_viewer&id=${data.id}`);
               }
               setIsLoadingCheck(false);
           }).catch(() => setIsLoadingCheck(false));
       } else if (!hasHydratedFromTemplate.current) {
-          let initial = { ...DEFAULT_CHECK, senderName: currentUser?.displayName || DEFAULT_CHECK.senderName };
+          let initial = { 
+              ...DEFAULT_CHECK, 
+              senderName: currentUser?.displayName || DEFAULT_CHECK.senderName,
+              checkNumber: (userProfile?.nextCheckNumber || 1001).toString()
+          };
           if (userProfile) {
               if (userProfile.senderAddress) initial.senderAddress = userProfile.senderAddress;
               if (userProfile.savedSignatureUrl) {
@@ -134,7 +134,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   }
               }
               if (userProfile.checkTemplate) {
-                  initial = { ...initial, ...userProfile.checkTemplate };
+                  initial = { ...initial, ...userProfile.checkTemplate, checkNumber: (userProfile.nextCheckNumber || 1001).toString() };
               }
               hasHydratedFromTemplate.current = true;
           }
@@ -229,10 +229,31 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
   const handlePublishAndShareLink = async () => {
       if (shareLink) { setShowShareModal(true); return; }
-      if (!auth.currentUser) return alert("Please sign in.");
+      if (!auth.currentUser) return alert("Please sign in to publish.");
+      
       setIsSharing(true);
       try {
           const id = check.id || generateSecureId();
+          
+          // 1. Generate PDF locally (where images are visible)
+          const canvas = await html2canvas(checkRef.current!, { scale: 4, useCORS: true });
+          const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
+          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
+          const pdfBlob = pdf.output('blob');
+
+          // 2. Upload to Google Drive for persistent image visibility
+          const token = getDriveToken() || await connectGoogleDrive();
+          const studioFolderId = await ensureCodeStudioFolder(token);
+          const checksFolderId = await createDriveFolder(token, 'Checks', studioFolderId);
+          
+          const filename = `Check_${check.checkNumber}_${check.payee.replace(/\s/g, '_')}.pdf`;
+          const driveFileId = await uploadToDrive(token, checksFolderId, filename, pdfBlob);
+          
+          // 3. Set Public Permissions so shared link works for anyone
+          await makeFilePubliclyViewable(token, driveFileId);
+          const driveWebViewLink = await getDriveFileSharingLink(token, driveFileId);
+
+          // 4. Finalize Cloud Records
           let finalWatermarkUrl = check.watermarkUrl || '';
           if (check.watermarkUrl?.startsWith('data:')) {
              const res = await fetch(check.watermarkUrl);
@@ -245,12 +266,31 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               const blob = await res.blob();
               finalSignatureUrl = await uploadFileToStorage(`checks/${id}/signature.png`, blob);
           }
-          const checkToSave = { ...check, id, ownerId: auth.currentUser.uid, watermarkUrl: finalWatermarkUrl, signatureUrl: finalSignatureUrl, signature: finalSignatureUrl };
+
+          const checkToSave = { 
+              ...check, 
+              id, 
+              ownerId: auth.currentUser.uid, 
+              watermarkUrl: finalWatermarkUrl, 
+              signatureUrl: finalSignatureUrl, 
+              signature: finalSignatureUrl,
+              drivePdfUrl: driveWebViewLink 
+          };
+          
           await saveBankingCheck(checkToSave as any);
+          
+          // 5. Update Profile with Next Check Number
+          const nextNum = parseInt(check.checkNumber) + 1;
+          await updateUserProfile(auth.currentUser.uid, { nextCheckNumber: nextNum });
+          
           setCheck(checkToSave);
-          setShareLink(`${window.location.origin}?view=check_viewer&id=${id}`);
+          setShareLink(driveWebViewLink);
           setShowShareModal(true);
-      } catch (e: any) { alert("Publish failed: " + e.message); } finally { setIsSharing(false); }
+      } catch (e: any) { 
+          alert("Publish failed: " + e.message); 
+      } finally { 
+          setIsSharing(false); 
+      }
   };
 
   const loadArchive = async () => {
@@ -272,7 +312,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         let newAssets: Record<string, string> = { ...convertedAssets };
         let needsUpdate = false;
 
-        // Ensure assets are local before snapshot
         if (sigUrl && sigUrl.startsWith('http') && !newAssets.sig) {
             newAssets.sig = await convertRemoteToDataUrl(sigUrl);
             needsUpdate = true;
@@ -305,7 +344,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         pdf.save(`check_${check.checkNumber}.pdf`);
     } catch(e) {
         console.error("PDF Export error", e);
-        alert("Failed to generate PDF. If the signature is missing, please ensure you have signed the check and wait for it to load.");
+        alert("Failed to generate PDF. If image issues persist, try publishing and using the Drive URI.");
     } finally { setIsExporting(false); }
   };
 
@@ -361,10 +400,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 <>
                   <button onClick={loadArchive} className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all"><List size={14}/><span className="hidden sm:inline">My Archive</span></button>
                   <button onClick={handleSaveAsTemplate} disabled={isSavingTemplate} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">{isSavingTemplate ? <Loader2 size={14} className="animate-spin"/> : <HardDrive size={14}/><span className="hidden sm:inline">Save Default</span>}</button>
-                  <button onClick={handlePublishAndShareLink} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">{isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}<span>{shareLink ? 'Share URI' : 'Publish & Share'}</span></button>
+                  <button onClick={handlePublishAndShareLink} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">{isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}<span>{shareLink ? 'Share URI' : 'Publish to Drive'}</span></button>
                 </>
               )}
-              <button onClick={handleDownloadPDF} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">{isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />}<span>Download PDF</span></button>
+              {isReadOnly && check.drivePdfUrl ? (
+                  <a href={check.drivePdfUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
+                      <FileText size={14} />
+                      <span>Open Original PDF</span>
+                  </a>
+              ) : (
+                <button onClick={handleDownloadPDF} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">{isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />}<span>Download PDF</span></button>
+              )}
           </div>
       </header>
 
@@ -377,7 +423,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                     <textarea placeholder="Sender Address" value={check.senderAddress} onChange={e => setCheck({...check, senderAddress: e.target.value})} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none resize-none"/>
                 </div>
                 <div className="space-y-4 bg-slate-800/20 p-4 rounded-xl border border-slate-800">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Landmark size={14}/> Bank & Account</h3>
+                    <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Landmark size={14}/> Bank & Account</h3>
+                        <div className="flex items-center gap-1.5 text-indigo-400 bg-indigo-900/20 px-2 py-0.5 rounded border border-indigo-500/20">
+                            <span className="text-[10px] font-bold">NEXT NO.</span>
+                            <span className="text-xs font-mono font-black">{check.checkNumber}</span>
+                        </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                         <div className="col-span-2"><input type="text" placeholder="Bank Name" value={check.bankName} onChange={e => setCheck({...check, bankName: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white"/></div>
                         <div><input type="text" placeholder="Routing #" value={check.routingNumber} onChange={e => setCheck({...check, routingNumber: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono"/></div>
@@ -447,7 +499,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   <div className="mt-12 flex flex-col items-center gap-4">
                       <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Shared Document Archive</p>
                       <div className="flex gap-3">
-                        <button onClick={handleDownloadPDF} disabled={isExporting} className="px-8 py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-slate-100 transition-all flex items-center gap-3 shadow-xl active:scale-95">{isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}Download Verified Copy</button>
+                        {check.drivePdfUrl ? (
+                            <a href={check.drivePdfUrl} target="_blank" rel="noreferrer" className="px-8 py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-slate-100 transition-all flex items-center gap-3 shadow-xl active:scale-95">
+                                <FileText size={18} />
+                                Download Pre-Generated PDF
+                            </a>
+                        ) : (
+                            <button onClick={handleDownloadPDF} disabled={isExporting} className="px-8 py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-slate-100 transition-all flex items-center gap-3 shadow-xl active:scale-95">{isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}Download Verified Copy</button>
+                        )}
                         {currentUser && currentUser.uid === check.ownerId && (<button onClick={() => { const url = new URL(window.location.href); url.searchParams.set('mode', 'edit'); url.searchParams.set('view', 'check_designer'); window.location.assign(url.toString()); }} className="px-8 py-3 bg-slate-800 text-white font-bold rounded-xl border border-slate-700 hover:bg-slate-700">Edit Original</button>)}
                       </div>
                   </div>
@@ -466,8 +525,18 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                       <div className="flex justify-between items-start mb-2"><div><p className="text-[10px] font-bold text-indigo-400 uppercase">Check #{ac.checkNumber}</p><h4 className="font-bold text-white text-sm line-clamp-1">{ac.payee || 'Unnamed Payee'}</h4></div><div className="text-right"><p className="text-sm font-black text-white">${(ac.amount || ac.coinAmount || 0).toFixed(2)}</p><p className="text-[9px] text-slate-500">{ac.date}</p></div></div>
                                       <p className="text-xs text-slate-500 italic mb-4 line-clamp-1">"{ac.memo}"</p>
                                       <div className="flex gap-2">
-                                          <button onClick={() => { const url = new URL(window.location.origin); url.searchParams.set('view', 'check_viewer'); url.searchParams.set('id', ac.id); window.history.pushState({}, '', url.toString()); window.location.reload(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold uppercase transition-all">Open URI</button>
-                                          <button onClick={() => { setCheck({...ac, id: '', checkNumber: (parseInt(ac.checkNumber) + 1).toString(), date: new Date().toISOString().split('T')[0]}); setShareLink(null); setShowArchive(false); }} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-bold uppercase transition-all" title="Clone to Draft">Clone</button>
+                                          <button onClick={() => { 
+                                              if (ac.drivePdfUrl) {
+                                                  window.open(ac.drivePdfUrl, '_blank');
+                                              } else {
+                                                  const url = new URL(window.location.origin);
+                                                  url.searchParams.set('view', 'check_viewer');
+                                                  url.searchParams.set('id', ac.id);
+                                                  window.history.pushState({}, '', url.toString());
+                                                  window.location.reload(); 
+                                              }
+                                          }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold uppercase transition-all">View Static URI</button>
+                                          <button onClick={() => { setCheck({...ac, id: '', checkNumber: (userProfile?.nextCheckNumber || 1001).toString(), date: new Date().toISOString().split('T')[0]}); setShareLink(null); setShowArchive(false); }} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-bold uppercase transition-all" title="Clone to Draft">Clone</button>
                                       </div>
                                   </div>
                               ))

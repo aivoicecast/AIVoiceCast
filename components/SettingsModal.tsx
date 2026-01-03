@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile } from '../types';
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool } from 'lucide-react';
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon } from 'lucide-react';
 import { logUserActivity, getBillingHistory, createStripePortalSession, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut } from '../services/authService';
 import { clearAudioCache } from '../services/tts';
@@ -33,6 +33,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [senderAddress, setSenderAddress] = useState(user.senderAddress || '');
   const [showSignPad, setShowSignPad] = useState(false);
   const [signaturePreview, setSignaturePreview] = useState(user.savedSignatureUrl || '');
+  const [nextCheckNumber, setNextCheckNumber] = useState(user.nextCheckNumber || 1001);
   const [isSavingBanking, setIsSavingBanking] = useState(false);
   
   // Interests State
@@ -54,6 +55,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setAiProvider(user.preferredAiProvider || 'gemini');
           setSenderAddress(user.senderAddress || '');
           setSignaturePreview(user.savedSignatureUrl || '');
+          setNextCheckNumber(user.nextCheckNumber || 1001);
           setDisplayName(user.displayName);
       }
   }, [isOpen, user]);
@@ -106,10 +108,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           await updateUserProfile(user.uid, { 
               senderAddress, 
-              savedSignatureUrl: finalSigUrl 
+              savedSignatureUrl: finalSigUrl,
+              nextCheckNumber: nextCheckNumber
           });
 
-          const updatedProfile = { ...user, senderAddress, savedSignatureUrl: finalSigUrl };
+          const updatedProfile = { ...user, senderAddress, savedSignatureUrl: finalSigUrl, nextCheckNumber: nextCheckNumber };
           if (onUpdateProfile) onUpdateProfile(updatedProfile);
           setSignaturePreview(finalSigUrl);
           alert("Banking profile saved!");
@@ -214,6 +217,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
 
                         <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><HashIcon size={12} className="text-indigo-400"/> Next Check Number</label>
+                            <input 
+                                type="number"
+                                value={nextCheckNumber}
+                                onChange={(e) => setNextCheckNumber(parseInt(e.target.value) || 0)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            />
+                            <p className="text-[10px] text-slate-500 mt-1">This will auto-increment each time you publish a check.</p>
+                        </div>
+
+                        <div>
                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><PenTool size={12} className="text-indigo-400"/> Official Signature</label>
                             {signaturePreview ? (
                                 <div className="relative w-full aspect-[3/1] bg-white rounded-xl border border-slate-700 overflow-hidden group">
@@ -258,7 +272,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="space-y-6">
                         {Object.keys(TOPIC_CATEGORIES).map(category => (
                             <div key={category} className="bg-slate-800/30 border border-slate-800 rounded-xl p-4">
-                                <h4 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2"><Hash size={14} className="text-indigo-400" /> {category}</h4>
+                                <h4 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2"><HashIcon size={14} className="text-indigo-400" /> {category}</h4>
                                 <div className="flex flex-wrap gap-2">
                                     {TOPIC_CATEGORIES[category].map(tag => (
                                         <button key={tag} onClick={() => toggleInterest(tag)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${selectedInterests.includes(tag) ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'}`}>{tag}</button>

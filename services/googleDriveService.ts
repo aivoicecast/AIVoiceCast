@@ -1,3 +1,4 @@
+
 // Service for Google Drive state synchronization
 
 export interface DriveFile {
@@ -157,6 +158,24 @@ export async function shareFileWithEmail(accessToken: string, fileId: string, em
     if (!res.ok) {
         const err = await res.json();
         throw new Error(`Sharing failed: ${err.error?.message || 'Unknown error'}`);
+    }
+}
+
+export async function makeFilePubliclyViewable(accessToken: string, fileId: string): Promise<void> {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            role: 'reader',
+            type: 'anyone'
+        })
+    });
+    if (!res.ok) {
+        const err = await res.json();
+        throw new Error(`Public sharing failed: ${err.error?.message || 'Unknown error'}`);
     }
 }
 

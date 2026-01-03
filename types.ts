@@ -49,6 +49,34 @@ export interface BankingCheck {
   isCoinCheck?: boolean;
   isClaimed?: boolean;
   claimToken?: string;
+  drivePdfUrl?: string;
+}
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL: string;
+  groups: string[];
+  interests?: string[];
+  apiUsageCount?: number;
+  createdAt?: number;
+  lastLogin?: any;
+  subscriptionTier?: SubscriptionTier;
+  subscriptionStatus?: 'active' | 'past_due' | 'canceled';
+  defaultRepoUrl?: string;
+  followers?: string[];
+  following?: string[];
+  likedChannelIds?: string[];
+  preferredAiProvider?: 'gemini' | 'openai';
+  preferredMobileQuickApp?: string;
+  coinBalance: number;
+  lastCoinGrantAt?: number;
+  // Banking Profile
+  senderAddress?: string;
+  savedSignatureUrl?: string;
+  checkTemplate?: Partial<BankingCheck>;
+  nextCheckNumber?: number;
 }
 
 export interface CoinTransaction {
@@ -251,32 +279,6 @@ export interface Group {
 }
 
 export type SubscriptionTier = 'free' | 'pro';
-
-export interface UserProfile {
-  uid: string;
-  email: string;
-  displayName: string;
-  photoURL: string;
-  groups: string[];
-  interests?: string[];
-  apiUsageCount?: number;
-  createdAt?: number;
-  lastLogin?: any;
-  subscriptionTier?: SubscriptionTier;
-  subscriptionStatus?: 'active' | 'past_due' | 'canceled';
-  defaultRepoUrl?: string;
-  followers?: string[];
-  following?: string[];
-  likedChannelIds?: string[];
-  preferredAiProvider?: 'gemini' | 'openai';
-  preferredMobileQuickApp?: string;
-  coinBalance: number;
-  lastCoinGrantAt?: number;
-  // Banking Profile
-  senderAddress?: string;
-  savedSignatureUrl?: string;
-  checkTemplate?: Partial<BankingCheck>;
-}
 
 export interface RecordingSession {
   id: string;
