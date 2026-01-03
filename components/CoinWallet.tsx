@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History } from 'lucide-react';
+import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History, Signature } from 'lucide-react';
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
 import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile, registerIdentity, claimOfflinePayment, DEFAULT_MONTHLY_GRANT } from '../services/firestoreService';
 import { auth, db, getDb } from '../services/firebaseConfig';
@@ -255,18 +256,20 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       } catch (e) { alert("Failed to create identity."); } finally { setIsCreatingIdentity(false); }
   };
 
-  const handleGenerateOfflineToken = async () => {
+  const handleAuthorizePayment = async () => {
       const amount = totalWithTip;
       const memo = transferMemo || publicPaymentTarget?.memo || '';
 
       if (!user || !privateKey || !user.certificate) {
-          return alert("Incomplete identity profile. Ensure you have 'Sign Identity' first on this device.");
+          return alert("Identity Required: You must 'Sign Identity' on this device before authorizing payments.");
       }
       if (amount <= 0 || amount > user.coinBalance) {
-          return alert(`Invalid amount (${amount}). Ensure you have enough balance.`);
+          return alert(`Balance Issue: You only have ${user.coinBalance} VC.`);
       }
 
+      setIsTransferring(true);
       try {
+          // 1. Generate Nonce and Payment Base
           const nonce = generateSecureId().substring(0, 12);
           const paymentBase = {
               senderId: user.uid,
@@ -278,12 +281,30 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               memo
           };
 
+          // 2. Cryptographic Signing (The Evidence)
           const signature = await signPayment(privateKey, paymentBase);
           const token: OfflinePaymentToken = { ...paymentBase, signature, certificate: user.certificate };
           const tokenStr = btoa(JSON.stringify(token));
           setGeneratedToken(tokenStr);
+
+          // 3. Online Ledger Sync (Attempted if online)
+          if (navigator.onLine && publicPaymentTarget?.uid) {
+              try {
+                  await transferCoins(publicPaymentTarget.uid, publicPaymentTarget.name, amount, memo);
+                  console.log("Online ledger sync successful.");
+              } catch (e) {
+                  console.warn("Ledger sync failed, proceeding with Bearer Token evidence only.", e);
+              }
+          }
+
+          // 4. Show the Confirmation "Digital Check" QR
           setShowOfflineToken(true);
-      } catch (e) { alert("Signing failed."); }
+          await handleRefresh();
+      } catch (e: any) {
+          alert("Authorization failed: " + e.message);
+      } finally {
+          setIsTransferring(false);
+      }
   };
 
   const handleVerifyPastedToken = async (strOverride?: string) => {
@@ -317,7 +338,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       try {
           if (navigator.onLine) {
               await claimOfflinePayment(verifiedToken);
-              alert("Payment cleared!");
+              alert("Payment cleared on global ledger!");
               handleRefresh();
           } else {
               const claim: PendingClaim = { tokenStr: btoa(JSON.stringify(verifiedToken)), timestamp: Date.now(), status: 'pending' };
@@ -325,45 +346,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               const queue = JSON.parse(queueRaw);
               queue.push(claim);
               localStorage.setItem(`pending_claims_${user.uid}`, JSON.stringify(queue));
-              alert("Offline. Token added to claim queue.");
+              alert("Recipient is offline. Token added to local claim queue. Coins will settle when online.");
           }
           setShowTokenInput(false);
           setVerifiedToken(null);
           setPastedToken('');
       } catch (e: any) { alert("Claim failed: " + e.message); } finally { setIsClaiming(false); }
-  };
-
-  const handleTransfer = async () => {
-      const amount = totalWithTip;
-      const memo = transferMemo || publicPaymentTarget?.memo || '';
-
-      if (!publicPaymentTarget || !user) {
-          return alert("User context lost. Please try reopening the link.");
-      }
-      
-      if (amount <= 0) return alert("Please enter a valid amount.");
-      if (amount > (user?.coinBalance || 0)) return alert("Insufficient VoiceCoin balance.");
-
-      // Range check for donation mode
-      if (publicPaymentTarget.min || publicPaymentTarget.max) {
-          const min = parseInt(publicPaymentTarget.min || '1');
-          const max = parseInt(publicPaymentTarget.max || '1000000');
-          const baseAmount = parseInt(transferAmount) || 0;
-          if (baseAmount < min || baseAmount > max) {
-              return alert(`Amount must be between ${min} and ${max} VoiceCoins.`);
-          }
-      }
-
-      setIsTransferring(true);
-      try {
-          await transferCoins(publicPaymentTarget.uid, publicPaymentTarget.name, amount, memo);
-          alert(`Success! ${amount} VC sent to ${publicPaymentTarget.name}.`);
-          setPublicPaymentTarget(null);
-          setTransferAmount('');
-          setTransferMemo('');
-          setTipPercent(0);
-          await handleRefresh();
-      } catch(e: any) { alert("Transfer failed: " + e.message); } finally { setIsTransferring(false); }
   };
 
   const handlePastePayUri = () => {
@@ -536,23 +524,26 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <button 
-                                onClick={handleTransfer}
-                                disabled={isTransferring || totalWithTip <= 0 || !isRangeValid}
-                                className="py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
-                            >
-                                {isTransferring ? <Loader2 size={18} className="animate-spin" /> : <Globe size={18}/>}
-                                {isTransferring ? 'Syncing' : 'Pay Now'}
-                            </button>
-                            <button 
-                                onClick={handleGenerateOfflineToken}
-                                disabled={!user?.certificate || !privateKey || totalWithTip <= 0 || !isRangeValid}
-                                className="py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl border border-slate-700 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-                            >
-                                <WifiOff size={18}/>
-                                Offline
-                            </button>
+                        <div className="flex flex-col gap-3">
+                            {!privateKey ? (
+                                <div className="p-4 bg-amber-900/20 border border-amber-500/30 rounded-2xl flex flex-col items-center text-center gap-3">
+                                    <Shield size={24} className="text-amber-500"/>
+                                    <p className="text-xs text-amber-200">You need to sign your identity on this device before paying.</p>
+                                    <button onClick={handleCreateIdentity} className="px-6 py-2 bg-amber-600 text-white font-bold rounded-lg text-xs uppercase tracking-widest">Sign Identity</button>
+                                </div>
+                            ) : (
+                                <button 
+                                    onClick={handleAuthorizePayment}
+                                    disabled={isTransferring || totalWithTip <= 0 || !isRangeValid}
+                                    className="py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex flex-col items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
+                                >
+                                    <div className="flex items-center gap-2">
+                                        {isTransferring ? <Loader2 size={20} className="animate-spin" /> : <Signature size={20}/>}
+                                        <span>{isTransferring ? 'Signing...' : 'Pay Now'}</span>
+                                    </div>
+                                    <span className="text-[8px] opacity-70 tracking-widest">Secured by Neural Identity</span>
+                                </button>
+                            )}
                         </div>
                       </div>
                   </div>
@@ -783,19 +774,19 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           </div>
       )}
 
-      {/* Offline Token Modal */}
+      {/* Offline Token Modal (Now the Digital Receipt) */}
       {showOfflineToken && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl flex flex-col items-center text-center">
                   <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mb-6 border border-emerald-500/20 shadow-xl shadow-emerald-500/20"><ShieldCheck size={32}/></div>
-                  <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter italic">Payment Token Ready</h3>
-                  <p className="text-sm text-slate-400 mb-8 max-w-xs">Recipient must scan this within their app to claim. The transaction will clear once they are online.</p>
+                  <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter italic">Payment Proof Ready</h3>
+                  <p className="text-sm text-slate-400 mb-8 max-w-xs">Scan or share this proof to finalized the transfer. This token is cryptographically signed and serves as digital evidence of your agreement to pay.</p>
                   <div className="w-full bg-white p-6 rounded-3xl border-8 border-slate-800 mb-8 flex flex-col items-center">
                       <img src={qrImageUrl(buildTokenUri(generatedToken!))} className="w-48 h-48" alt="Payment Token QR"/>
-                      <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Bearer Token (Scan to Claim)</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Bearer Token (Evidence)</p>
                   </div>
-                  <button onClick={() => { navigator.clipboard.writeText(buildTokenUri(generatedToken!)); alert("Token URI copied!"); }} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold mb-2 flex items-center justify-center gap-2"><Copy size={16}/> Copy Token URI</button>
-                  <button onClick={() => setShowOfflineToken(false)} className="w-full py-4 bg-slate-800 text-slate-300 rounded-2xl font-bold transition-all hover:bg-slate-700">Dismiss</button>
+                  <button onClick={() => { navigator.clipboard.writeText(buildTokenUri(generatedToken!)); alert("Token URI copied!"); }} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold mb-2 flex items-center justify-center gap-2"><Copy size={16}/> Copy Evidence URI</button>
+                  <button onClick={() => { setShowOfflineToken(false); setPublicPaymentTarget(null); }} className="w-full py-4 bg-slate-800 text-slate-300 rounded-2xl font-bold transition-all hover:bg-slate-700">Dismiss</button>
               </div>
           </div>
       )}
@@ -824,7 +815,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                               <div className="flex justify-between items-center text-xs"><span className="text-slate-500 font-bold uppercase tracking-widest">Status</span><span className="text-indigo-400 font-bold flex items-center gap-1">{navigator.onLine ? <Globe size={12}/> : <WifiOff size={12}/>} {navigator.onLine ? 'Online (Instant)' : 'Offline (Queued)'}</span></div>
                           </div>
                           <button onClick={handleClaimVerifiedToken} disabled={isClaiming} className={`w-full py-4 ${navigator.onLine ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-800 hover:bg-slate-700'} text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2`}>
-                              {isClaiming ? <Loader2 size={20} className="animate-spin"/> : navigator.onLine ? 'Sync to Ledger' : 'Queue for Sync'}
+                              {isClaiming ? <Loader2 size={20} className="animate-spin"/> : navigator.onLine ? 'Sync to Ledger' : 'Pocket Evidence'}
                           </button>
                       </div>
                   )}
