@@ -44,6 +44,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [showReceiveQR, setShowReceiveQR] = useState(false);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
 
+  // Public Payment View (For scanning/opening receive links)
+  const [publicPaymentTarget, setPublicPaymentTarget] = useState<{ uid: string, name: string } | null>(null);
+
   // Local storage for the private key (normally should be highly protected)
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
   
@@ -95,15 +98,14 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
     return () => clearInterval(interval);
   }, [user]);
 
-  // Pay URI Handler
+  // Pay URI Handler - Now shows Public Payment Profile instead of just the send modal
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payUid = params.get('pay');
     const payName = params.get('name');
     if (payUid && payName) {
-        setSelectedUser({ uid: payUid, displayName: payName } as UserProfile);
-        setShowTransfer(true);
-        // Clean URL
+        setPublicPaymentTarget({ uid: payUid, name: payName });
+        // Clean URL after capturing state
         const newUrl = new URL(window.location.href);
         newUrl.searchParams.delete('pay');
         newUrl.searchParams.delete('name');
@@ -183,24 +185,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           console.error("Refresh failed", e);
       } finally {
           setIsRefreshing(false);
-      }
-  };
-
-  const handleClaimGrant = async () => {
-      if (!user) return;
-      setGranting(true);
-      try {
-          const granted = await checkAndGrantMonthlyCoins(user.uid);
-          if (granted > 0) {
-              alert(`Successfully claimed your monthly grant of ${granted} coins!`);
-              await handleRefresh();
-          } else {
-              alert("You have already claimed your grant for this month. Please come back in 30 days!");
-          }
-      } catch(e) {
-          alert("Failed to claim grant.");
-      } finally {
-          setGranting(false);
       }
   };
 
@@ -343,12 +327,55 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       return (coins / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
-  const receiveUri = useMemo(() => {
-      if (!user) return '';
-      return `${window.location.origin}${window.location.pathname}?view=coin_wallet&pay=${user.uid}&name=${encodeURIComponent(user.displayName)}`;
-  }, [user]);
+  const qrImageUrl = (data: string) => `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(data)}`;
 
-  const qrImageUrl = (data: string) => `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(data)}`;
+  const buildReceiveUri = (uid: string, name: string) => {
+      return `${window.location.origin}${window.location.pathname}?view=coin_wallet&pay=${uid}&name=${encodeURIComponent(name)}`;
+  };
+
+  if (publicPaymentTarget) {
+      const targetUri = buildReceiveUri(publicPaymentTarget.uid, publicPaymentTarget.name);
+      return (
+          <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden animate-fade-in">
+              <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center px-6 shrink-0 z-20">
+                  <button onClick={() => setPublicPaymentTarget(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors mr-4">
+                      <ArrowLeft size={20} />
+                  </button>
+                  <h1 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Personal Payment Page</h1>
+              </header>
+              <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center">
+                  <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center text-center animate-fade-in-up">
+                      <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center mb-6 border border-indigo-500/20 shadow-xl shadow-indigo-500/5">
+                          <User size={40} className="text-indigo-400" />
+                      </div>
+                      <h2 className="text-2xl font-black text-white mb-1 italic uppercase tracking-tighter">{publicPaymentTarget.name}</h2>
+                      <p className="text-xs text-indigo-400 font-bold uppercase tracking-[0.2em] mb-8">Verified AIVoiceCast Member</p>
+
+                      <div className="w-full bg-white p-6 rounded-[2rem] border-8 border-slate-800 mb-8 shadow-inner flex flex-col items-center">
+                          <img src={qrImageUrl(targetUri)} className="w-48 h-48" alt="Recipient QR"/>
+                          <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Scan to Pay</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 w-full gap-3">
+                          <button 
+                            onClick={() => { setSelectedUser({ uid: publicPaymentTarget.uid, displayName: publicPaymentTarget.name } as UserProfile); setShowTransfer(true); setPublicPaymentTarget(null); }}
+                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95"
+                          >
+                              <Send size={18} className="rotate-[-20deg]"/>
+                              Send VoiceCoins
+                          </button>
+                          <button 
+                            onClick={() => setPublicPaymentTarget(null)}
+                            className="w-full py-4 bg-slate-800 text-slate-400 font-bold rounded-2xl border border-slate-700 hover:bg-slate-700 transition-all"
+                          >
+                              Cancel
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      );
+  }
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden animate-fade-in">
@@ -507,7 +534,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       {showReceiveQR && user && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl flex flex-col items-center text-center">
-                  <div className="w-16 h-16 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center mb-6 border border-indigo-500/20">
+                  <div className="w-16 h-16 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center mb-6 border border-indigo-500/20 shadow-xl shadow-indigo-500/10">
                       <QrCode size={32}/>
                   </div>
                   <h3 className="text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">Receive VoiceCoins</h3>
@@ -516,15 +543,15 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                   </p>
                   
                   <div className="w-full bg-white p-6 rounded-[2rem] border-8 border-slate-800 mb-8 shadow-inner flex flex-col items-center">
-                      <img src={qrImageUrl(receiveUri)} className="w-48 h-48" alt="Receive QR"/>
+                      <img src={qrImageUrl(buildReceiveUri(user.uid, user.displayName))} className="w-48 h-48" alt="Receive QR"/>
                       <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">@{user.displayName.replace(/\s+/g, '_').toLowerCase()}</p>
                   </div>
 
                   <div className="flex gap-2 w-full mb-4">
-                      <button onClick={() => { navigator.clipboard.writeText(receiveUri); alert("Payment Link Copied!"); }} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
+                      <button onClick={() => { navigator.clipboard.writeText(buildReceiveUri(user.uid, user.displayName)); alert("Payment Link Copied!"); }} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
                           <Copy size={14}/> Copy Link
                       </button>
-                      <button onClick={() => { if(navigator.share) navigator.share({ title: 'Receive VoiceCoins', url: receiveUri }); }} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-all">
+                      <button onClick={() => { if(navigator.share) navigator.share({ title: 'Receive VoiceCoins', url: buildReceiveUri(user.uid, user.displayName) }); }} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-all">
                           <Share2 size={18}/>
                       </button>
                   </div>
