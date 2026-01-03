@@ -1,6 +1,6 @@
 
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import { getAuth, type Auth, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { initializeFirestore, type Firestore, enableMultiTabIndexedDbPersistence } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { firebaseKeys } from './private_keys';
@@ -10,14 +10,17 @@ import { firebaseKeys } from './private_keys';
  */
 const initializeFirebase = (): FirebaseApp | null => {
     try {
-        // Return existing app if already initialized
         if (getApps().length > 0) {
             return getApp();
         }
 
-        // Initialize new app with configuration
         if (firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY") {
-            return initializeApp(firebaseKeys);
+            // Ensure authDomain is strictly the firebaseapp.com version to minimize cross-origin issues
+            const config = {
+                ...firebaseKeys,
+                authDomain: `${firebaseKeys.projectId}.firebaseapp.com`
+            };
+            return initializeApp(config);
         } else {
             console.warn("[Firebase] Configuration missing or using placeholder key.");
         }
@@ -27,12 +30,10 @@ const initializeFirebase = (): FirebaseApp | null => {
     return null;
 };
 
-// Internal single app instance
 const appInstance = initializeFirebase();
 
 /**
  * Robust Firestore Initialization
- * experimentalForceLongPolling: true fixes connectivity in environments with restricted WebSockets.
  */
 const initDb = (): Firestore | null => {
     if (!appInstance) return null;
@@ -41,13 +42,10 @@ const initDb = (): Firestore | null => {
         experimentalForceLongPolling: true,
     });
 
-    // Enable local persistence for better offline/flaky connection handling
     enableMultiTabIndexedDbPersistence(firestore).catch((err) => {
         if (err.code === 'failed-precondition') {
-            // Multiple tabs open, persistence can only be enabled in one tab at a time.
             console.warn("[Firestore] Persistence failed: Multiple tabs open.");
         } else if (err.code === 'unimplemented') {
-            // The current browser does not support all of the features required to enable persistence
             console.warn("[Firestore] Persistence failed: Browser not supported.");
         }
     });
@@ -55,28 +53,25 @@ const initDb = (): Firestore | null => {
     return firestore;
 };
 
-/**
- * Exported service instances using standard modular pattern.
- */
-export const auth: Auth | null = appInstance ? getAuth(appInstance) : null;
+const authInstance: Auth | null = appInstance ? getAuth(appInstance) : null;
+
+// Explicitly set persistence to Local to survive session storage clearing
+if (authInstance) {
+    setPersistence(authInstance, browserLocalPersistence).catch((err) => {
+        console.error("[Auth] Persistence setup failed:", err);
+    });
+}
+
+export const auth = authInstance;
 export const db: Firestore | null = initDb();
 export const storage: FirebaseStorage | null = appInstance ? getStorage(appInstance) : null;
 
-/**
- * Robust service getters for dynamic access if needed.
- */
 export const getAuthInstance = (): Auth | null => auth;
 export const getDb = (): Firestore | null => db;
 export const getStorageInstance = (): FirebaseStorage | null => storage;
 
-/**
- * Flag used by UI to determine status.
- */
 export const isFirebaseConfigured = !!(firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY");
 
-/**
- * Returns diagnostic information for troubleshooting.
- */
 export const getFirebaseDiagnostics = () => {
     return {
         isInitialized: !!appInstance,
