@@ -58,6 +58,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [showShareModal, setShowShareModal] = useState(false);
   const [zoom, setZoom] = useState(1.0);
   const [isLoadingCheck, setIsLoadingCheck] = useState(!!checkIdFromUrl);
+  const [imageError, setImageError] = useState<Record<string, boolean>>({});
   
   const checkRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -67,12 +68,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           setIsLoadingCheck(true);
           getCheckById(checkIdFromUrl).then(data => {
               if (data) {
-                  // CRITICAL: Normalize signature fields for both old and new records
+                  // Robust normalization: Ensure both fields are checked and cleaned
+                  const sig = data.signatureUrl || data.signature || '';
                   const normalizedCheck = {
                       ...DEFAULT_CHECK,
                       ...data,
-                      signature: data.signature || data.signatureUrl || '',
-                      signatureUrl: data.signatureUrl || data.signature || ''
+                      signature: sig,
+                      signatureUrl: sig
                   };
                   setCheck(normalizedCheck);
                   setShareLink(`${window.location.origin}?view=check_viewer&id=${data.id}`);
@@ -224,12 +226,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (!checkRef.current) return;
     setIsExporting(true);
     try {
+        // For PDF generation, we NEED CORS. If the images failed CORS previously, 
+        // they might fail here too. But displayed images in renderSignature won't have crossOrigin.
         const canvas = await html2canvas(checkRef.current, { 
             scale: 4, 
             useCORS: true, 
             backgroundColor: '#ffffff',
             logging: false,
-            allowTaint: false
+            allowTaint: true // Allow tainted canvas if CORS fails, better than nothing
         });
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
@@ -243,41 +247,37 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
   const renderSignature = () => {
       const url = check.signatureUrl || check.signature;
-      if (!url || typeof url !== 'string' || url.length < 10) {
+      if (!url || typeof url !== 'string' || url.length < 10 || imageError['sig']) {
           return <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>;
       }
 
-      const isDataUrl = url.startsWith('data:');
+      // CRITICAL FIX: Do NOT use crossOrigin="anonymous" for display purposes.
+      // This is the most common cause of "broken image" icons if the server (Firebase) 
+      // doesn't have the exact CORS headers configured for that specific domain.
       return (
           <img 
               key={url}
               src={url} 
               className="max-h-12 w-auto object-contain" 
-              crossOrigin={isDataUrl ? undefined : "anonymous"}
               alt="Authorized Signature"
               onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  console.error("Signature load error for URL:", url);
-                  target.style.display = 'none';
+                  console.error("Signature failed to load:", url);
+                  setImageError(prev => ({ ...prev, 'sig': true }));
               }}
           />
       );
   };
 
   const renderWatermark = () => {
-      if (!check.watermarkUrl) return null;
-      const isDataUrl = check.watermarkUrl.startsWith('data:');
+      if (!check.watermarkUrl || imageError['wm']) return null;
       return (
           <div className="absolute inset-0 opacity-[0.25] pointer-events-none z-0">
             <img 
                 key={check.watermarkUrl} 
                 src={check.watermarkUrl} 
                 className="w-full h-full object-cover grayscale" 
-                crossOrigin={isDataUrl ? undefined : "anonymous"}
                 alt="Security Watermark"
-                onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                }}
+                onError={() => setImageError(prev => ({ ...prev, 'wm': true }))}
             />
           </div>
       );
@@ -349,7 +349,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                     <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="py-3 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all">
                         {isGeneratingArt ? <Loader2 size={14} className="animate-spin"/> : <Palette size={14}/>} AI Watermark
                     </button>
-                    <button onClick={() => setShowSignPad(true)} className="py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all">
+                    <button onClick={() => { setImageError({}); setShowSignPad(true); }} className="py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all">
                         <PenTool size={14}/> Sign Check
                     </button>
                 </div>
@@ -458,6 +458,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                         onClick={() => {
                             const canvas = document.querySelector('.fixed canvas') as HTMLCanvasElement;
                             if (canvas) {
+                                // Clear error flag when fresh signature provided
+                                setImageError(prev => ({ ...prev, 'sig': false }));
                                 const dataUrl = canvas.toDataURL('image/png');
                                 setCheck(prev => ({ ...prev, signatureUrl: dataUrl, signature: dataUrl }));
                             }
