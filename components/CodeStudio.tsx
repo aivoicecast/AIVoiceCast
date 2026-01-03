@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash } from 'lucide-react';
@@ -125,11 +124,7 @@ const FileTreeItem = ({ node, depth, activeId, onSelect, onToggle, onDelete, onS
                             depth={depth + 1} 
                             activeId={activeId} 
                             onSelect={onSelect} 
-                            onToggle={onToggle} 
-                            onDelete={onDelete} 
-                            onShare={onShare}
-                            expandedIds={expandedIds} 
-                            loadingIds={loadingIds}
+                            onToggle(node);
                         />
                     ))}
                 </div>
@@ -186,8 +181,7 @@ const RichCodeEditor = ({ code, onChange, onCursorMove, language, readOnly, font
     );
 };
 
-const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking }: any) => {
-    const [input, setInput] = useState('');
+const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking, currentInput, onInputChange }: any) => {
     return (
         <div className="flex flex-col h-full bg-slate-950 border-l border-slate-800">
             <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
@@ -206,8 +200,15 @@ const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking }: a
             </div>
             <div className="p-3 border-t border-slate-800 bg-slate-950">
                 <div className="flex gap-2">
-                    <input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if(e.key === 'Enter') { onSendMessage(input); setInput(''); } }} className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500 placeholder-slate-600" placeholder="Ask AI to edit code..." />
-                    <button onClick={() => { onSendMessage(input); setInput(''); }} className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"><Send size={16}/></button>
+                    <input 
+                        type="text" 
+                        value={currentInput} 
+                        onChange={e => onInputChange(e.target.value)} 
+                        onKeyDown={e => { if(e.key === 'Enter') { onSendMessage(currentInput); onInputChange(''); } }} 
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500 placeholder-slate-600" 
+                        placeholder="Ask AI to edit code..." 
+                    />
+                    <button onClick={() => { onSendMessage(currentInput); onInputChange(''); }} className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"><Send size={16}/></button>
                 </div>
             </div>
         </div>
@@ -247,6 +248,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const [isRunning, setIsRunning] = useState<Record<number, boolean>>({});
 
   const [chatMessages, setChatMessages] = useState<Array<{role: 'user' | 'ai', text: string}>>([{ role: 'ai', text: "Ready to code. Open a file from your **Google Drive** to begin." }]);
+  const [chatInput, setChatInput] = useState('');
   const [isChatThinking, setIsChatThinking] = useState(false);
   const [isFormattingSlots, setIsFormattingSlots] = useState<Record<number, boolean>>({});
   
@@ -257,7 +259,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const [driveItems, setDriveItems] = useState<(DriveFile & { parentId?: string, isLoaded?: boolean })[]>([]); 
   const [driveRootId, setDriveRootId] = useState<string | null>(null);
   
-  // GitHub UI States
   const [githubToken, setGithubToken] = useState<string | null>(localStorage.getItem('github_token'));
   const [githubRepos, setGithubRepos] = useState<any[]>([]);
   const [githubSearchQuery, setGithubSearchQuery] = useState('');
@@ -280,12 +281,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const centerContainerRef = useRef<HTMLDivElement>(null);
   const activeFile = activeSlots[focusedSlot];
   
-  // Track and clean up blob URLs for PDFs
   const blobUrlsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
       return () => {
-          // Cleanup all blob URLs on unmount
           blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
           blobUrlsRef.current.clear();
       };
@@ -538,8 +537,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           let fileData: CodeFile | null = null;
           try {
               if (activeTab === 'drive' && driveToken) {
-                  const isBinary = node.name.toLowerCase().endsWith('.pdf');
-                  if (isBinary) {
+                  const iSBinary = node.name.toLowerCase().endsWith('.pdf');
+                  if (iSBinary) {
                       const blob = await downloadDriveFileAsBlob(driveToken, node.id);
                       const blobUrl = URL.createObjectURL(blob);
                       blobUrlsRef.current.add(blobUrl);
@@ -557,8 +556,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                       fileData = { name: node.name, path: `drive://${node.id}`, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
                   }
               } else if (activeTab === 'cloud' && node.data?.url) {
-                  const isBinary = node.name.toLowerCase().endsWith('.pdf');
-                  if (isBinary) {
+                  const iSBinary = node.name.toLowerCase().endsWith('.pdf');
+                  if (iSBinary) {
                       fileData = { name: node.name, path: node.data.url, content: '[BINARY DATA]', language: 'pdf', loaded: true, isDirectory: false, isModified: false };
                   } else {
                       const res = await fetch(node.data.url);
@@ -833,106 +832,104 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     }
   }, [activeTab, githubToken, userProfile?.defaultRepoUrl]);
 
-  const renderSlot = (idx: number) => {
-      const file = activeSlots[idx];
-      const isFocused = focusedSlot === idx;
-      const vMode = slotViewModes[idx] || 'code';
-      const isFormatting = isFormattingSlots[idx];
-      const terminalVisible = isTerminalOpen[idx];
-      const output = terminalOutputs[idx] || [];
-      const running = isRunning[idx];
-      
-      const isVisible = layoutMode === 'single' ? idx === 0 : (layoutMode === 'quad' ? true : idx < 2);
-      if (!isVisible) return null;
-      const slotStyle: any = {};
-      if (layoutMode === 'split-v' || layoutMode === 'split-h') {
-          const size = idx === 0 ? `${innerSplitRatio}%` : `${100 - innerSplitRatio}%`;
-          if (layoutMode === 'split-v') slotStyle.width = size; else slotStyle.height = size;
-          slotStyle.flex = 'none';
-      }
+  // Fix: Use any for props to avoid 'key' prop conflict when used in map() at line 1074
+  const Slot = ({ idx }: any) => {
+    const file = activeSlots[idx];
+    const isFocused = focusedSlot === idx;
+    const vMode = slotViewModes[idx] || 'code';
+    const isFormatting = isFormattingSlots[idx];
+    const terminalVisible = isTerminalOpen[idx];
+    const output = terminalOutputs[idx] || [];
+    const running = isRunning[idx];
+    
+    const isVisible = layoutMode === 'single' ? idx === 0 : (layoutMode === 'quad' ? true : idx < 2);
+    if (!isVisible) return null;
+    const slotStyle: any = {};
+    if (layoutMode === 'split-v' || layoutMode === 'split-h') {
+        const size = idx === 0 ? `${innerSplitRatio}%` : `${100 - innerSplitRatio}%`;
+        if (layoutMode === 'split-v') slotStyle.width = size; else slotStyle.height = size;
+        slotStyle.flex = 'none';
+    }
 
-      const lang = file ? getLanguageFromExt(file.name) : 'text';
-      const canRun = ['c++', 'c', 'python', 'javascript', 'typescript'].includes(lang);
+    const lang = file ? getLanguageFromExt(file.name) : 'text';
+    const canRun = ['c++', 'c', 'python', 'javascript', 'typescript'].includes(lang);
 
-      return (
-          <div key={idx} onClick={() => setFocusedSlot(idx)} style={slotStyle} className={`flex flex-col min-w-0 border ${isFocused ? 'border-indigo-500 z-10' : 'border-slate-800'} relative bg-slate-950 flex-1 overflow-hidden`}>
-              {file ? (
-                  <>
-                    <div className={`px-4 py-2 flex items-center justify-between shrink-0 border-b ${isFocused ? 'bg-indigo-900/20 border-indigo-500/30' : 'bg-slate-900 border-slate-800'}`}>
-                        <div className="flex items-center gap-2 overflow-hidden">
-                            <FileIcon filename={file.name} />
-                            <span className={`text-xs font-bold truncate ${isFocused ? 'text-indigo-200' : 'text-slate-400'}`}>{file.name}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                            {canRun && (
-                                <button onClick={(e) => { e.stopPropagation(); handleRunCode(idx); }} disabled={running} className={`p-1.5 rounded flex items-center gap-1 text-[10px] font-black uppercase transition-all ${running ? 'text-indigo-400' : 'text-emerald-400 hover:bg-emerald-600/10'}`} title="Compile & Run">
-                                    {running ? <Loader2 size={14} className="animate-spin"/> : <Play size={14} fill="currentColor"/>}
-                                    <span className="hidden md:inline">Run</span>
-                                </button>
-                            )}
-                            {vMode === 'code' && !['markdown', 'pdf', 'whiteboard'].includes(lang) && (
-                                <button onClick={(e) => { e.stopPropagation(); handleFormatCode(idx); }} disabled={isFormatting} className={`p-1.5 rounded ${isFormatting ? 'text-indigo-400' : 'text-slate-500 hover:text-indigo-400'}`} title="AI Format"><Wand2 size={14}/></button>
-                            )}
-                            {isPreviewable(file.name) && <button onClick={(e) => { e.stopPropagation(); toggleSlotViewMode(idx); }} className={`p-1.5 rounded ${vMode === 'preview' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-white'}`}>{vMode === 'preview' ? <Code size={14}/> : <Eye size={14}/>}</button>}
-                            <button onClick={(e) => { e.stopPropagation(); updateSlotFile(null, idx); }} className="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-white"><X size={14}/></button>
-                        </div>
-                    </div>
-                    <div className="flex-1 flex flex-col overflow-hidden">
-                        <div className="flex-1 overflow-hidden">
-                            {vMode === 'preview' ? (
-                                lang === 'whiteboard' ? (
-                                    <div className="w-full h-full"><Whiteboard isReadOnly={false} /></div>
-                                ) : lang === 'pdf' ? (
-                                    <iframe src={file.path} className="w-full h-full border-none bg-white" title="PDF Viewer" />
-                                ) : (
-                                    <div className="h-full overflow-y-auto p-8 scrollbar-hide">
-                                        <MarkdownView content={file.content} />
-                                    </div>
-                                )
-                            ) : (
-                                <RichCodeEditor 
-                                    code={file.content} 
-                                    onChange={(c: string) => handleCodeChangeInSlot(c, idx)} 
-                                    onCursorMove={broadcastCursor}
-                                    language={file.language} 
-                                    fontSize={fontSize} 
-                                    indentMode={indentMode} 
-                                    remoteCursors={project.cursors}
-                                    activeFilePath={file.path}
-                                    readOnly={isLive && lockStatus === 'busy'}
-                                />
-                            )}
-                        </div>
-
-                        {/* Console Panel */}
-                        {terminalVisible && (
-                            <div className="h-1/3 bg-slate-950 border-t border-slate-800 flex flex-col animate-fade-in-up">
-                                <div className="p-2 border-b border-slate-900 bg-slate-900/50 flex justify-between items-center shrink-0">
-                                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><TerminalIcon size={12}/> Output Console</span>
-                                    <div className="flex items-center gap-1">
-                                        <button onClick={() => setTerminalOutputs(prev => ({ ...prev, [idx]: [] }))} className="p-1 text-slate-500 hover:text-white" title="Clear Console"><Trash size={12}/></button>
-                                        <button onClick={() => setIsTerminalOpen(prev => ({ ...prev, [idx]: false }))} className="p-1 text-slate-500 hover:text-white"><X size={12}/></button>
-                                    </div>
-                                </div>
-                                <div className="flex-1 overflow-y-auto p-3 font-mono text-xs scrollbar-hide select-text">
-                                    {output.map((line, lidx) => (
-                                        <div key={lidx} className={`${line.includes('[ERROR]') ? 'text-red-400' : 'text-slate-300'} whitespace-pre-wrap leading-relaxed`}>
-                                            {line}
-                                        </div>
-                                    ))}
-                                    {running && <div className="text-indigo-400 animate-pulse mt-2">▋ Running process...</div>}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                  </>
-              ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-slate-700 bg-slate-950/50 border-2 border-dashed border-slate-800 m-4 rounded-xl cursor-pointer hover:border-slate-600" onClick={handleCreateNewFile}>
-                      <Plus size={32} className="opacity-20 mb-2" /><p className="text-xs font-bold uppercase">Pane {idx + 1}</p>
+    return (
+        <div key={idx} onClick={() => setFocusedSlot(idx)} style={slotStyle} className={`flex flex-col min-w-0 border ${isFocused ? 'border-indigo-500 z-10' : 'border-slate-800'} relative bg-slate-950 flex-1 overflow-hidden`}>
+            {file ? (
+                <>
+                  <div className={`px-4 py-2 flex items-center justify-between shrink-0 border-b ${isFocused ? 'bg-indigo-900/20 border-indigo-500/30' : 'bg-slate-900 border-slate-800'}`}>
+                      <div className="flex items-center gap-2 overflow-hidden">
+                          <FileIcon filename={file.name} />
+                          <span className={`text-xs font-bold truncate ${isFocused ? 'text-indigo-200' : 'text-slate-400'}`}>{file.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                          {canRun && (
+                              <button onClick={(e) => { e.stopPropagation(); handleRunCode(idx); }} disabled={running} className={`p-1.5 rounded flex items-center gap-1 text-[10px] font-black uppercase transition-all ${running ? 'text-indigo-400' : 'text-emerald-400 hover:bg-emerald-600/10'}`} title="Compile & Run">
+                                  {running ? <Loader2 size={14} className="animate-spin"/> : <Play size={14} fill="currentColor"/>}
+                                  <span className="hidden md:inline">Run</span>
+                              </button>
+                          )}
+                          {vMode === 'code' && !['markdown', 'pdf', 'whiteboard'].includes(lang) && (
+                              <button onClick={(e) => { e.stopPropagation(); handleFormatCode(idx); }} disabled={isFormatting} className={`p-1.5 rounded ${isFormatting ? 'text-indigo-400' : 'text-slate-500 hover:text-indigo-400'}`} title="AI Format"><Wand2 size={14}/></button>
+                          )}
+                          {isPreviewable(file.name) && <button onClick={(e) => { e.stopPropagation(); toggleSlotViewMode(idx); }} className={`p-1.5 rounded ${vMode === 'preview' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-white'}`}>{vMode === 'preview' ? <Code size={14}/> : <Eye size={14}/>}</button>}
+                          <button onClick={(e) => { e.stopPropagation(); updateSlotFile(null, idx); }} className="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-white"><X size={14}/></button>
+                      </div>
                   </div>
-              )}
-          </div>
-      );
+                  <div className="flex-1 flex flex-col overflow-hidden">
+                      <div className="flex-1 overflow-hidden">
+                          {vMode === 'preview' ? (
+                              lang === 'whiteboard' ? (
+                                  <div className="w-full h-full"><Whiteboard isReadOnly={false} /></div>
+                              ) : lang === 'pdf' ? (
+                                  <iframe src={file.path} className="w-full h-full border-none bg-white" title="PDF Viewer" />
+                              ) : (
+                                  <div className="h-full overflow-y-auto p-8 scrollbar-hide">
+                                      <MarkdownView content={file.content} />
+                                  </div>
+                              )
+                          ) : (
+                              <RichCodeEditor 
+                                  code={file.content} 
+                                  onChange={(c: string) => handleCodeChangeInSlot(c, idx)} 
+                                  onCursorMove={broadcastCursor}
+                                  language={file.language} 
+                                  fontSize={fontSize} 
+                                  indentMode={indentMode} 
+                                  readOnly={isLive && lockStatus === 'busy'}
+                              />
+                          )}
+                      </div>
+
+                      {terminalVisible && (
+                          <div className="h-1/3 bg-slate-950 border-t border-slate-800 flex flex-col animate-fade-in-up">
+                              <div className="p-2 border-b border-slate-900 bg-slate-900/50 flex justify-between items-center shrink-0">
+                                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><TerminalIcon size={12}/> Output Console</span>
+                                  <div className="flex items-center gap-1">
+                                      <button onClick={() => setTerminalOutputs(prev => ({ ...prev, [idx]: [] }))} className="p-1 text-slate-500 hover:text-white" title="Clear Console"><Trash size={12}/></button>
+                                      <button onClick={() => setIsTerminalOpen(prev => ({ ...prev, [idx]: false }))} className="p-1 text-slate-500 hover:text-white"><X size={12}/></button>
+                                  </div>
+                              </div>
+                              <div className="flex-1 overflow-y-auto p-3 font-mono text-xs scrollbar-hide select-text">
+                                  {output.map((line, lidx) => (
+                                      <div key={lidx} className={`${line.includes('[ERROR]') ? 'text-red-400' : 'text-slate-300'} whitespace-pre-wrap leading-relaxed`}>
+                                          {line}
+                                      </div>
+                                  ))}
+                                  {running && <div className="text-indigo-400 animate-pulse mt-2">▋ Running process...</div>}
+                              </div>
+                          </div>
+                      )}
+                  </div>
+                </>
+            ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-700 bg-slate-950/50 border-2 border-dashed border-slate-800 m-4 rounded-xl cursor-pointer hover:border-slate-600" onClick={handleCreateNewFile}>
+                    <Plus size={32} className="opacity-20 mb-2" /><p className="text-xs font-bold uppercase">Pane {idx + 1}</p>
+                </div>
+            )}
+        </div>
+    );
   };
 
   const collaborators = useMemo(() => {
@@ -957,9 +954,9 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
             {isLive && (<div className="flex gap-1 mr-4">{lockStatus === 'mine' ? (<button onClick={handleRelinquishControl} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase shadow-lg animate-pulse"><Unlock size={14}/> Active Control</button>) : lockStatus === 'busy' ? (<div className="flex items-center gap-2 px-3 py-1.5 bg-red-900/30 text-red-400 border border-red-500/30 rounded-lg text-[10px] font-black uppercase cursor-not-allowed"><Lock size={14}/> Busy</div>) : (<button onClick={handleTakeControl} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg text-[10px] font-black uppercase border border-slate-700 transition-all"><MousePointer2 size={14}/> Take Control</button>)}</div>)}
             <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 mr-4">
                 <button onClick={() => handleSetLayout('single')} className={`p-1.5 rounded ${layoutMode === 'single' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><SquareIcon size={16}/></button>
-                <button onClick={() => handleSetLayout('split-v')} className={`p-1.5 rounded ${layoutMode === 'split-v' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Columns size={16}/></button>
-                <button onClick={() => handleSetLayout('split-h')} className={`p-1.5 rounded ${layoutMode === 'split-h' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Rows size={16}/></button>
-                <button onClick={() => handleSetLayout('quad')} className={`p-1.5 rounded ${layoutMode === 'quad' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Grid2X2 size={16}/></button>
+                <button onClick={() => handleSetLayout('split-v')} className={`p-1.5 rounded ${layoutMode === 'split-v' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`}><Columns size={16}/></button>
+                <button onClick={() => handleSetLayout('split-h')} className={`p-1.5 rounded ${layoutMode === 'split-h' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`}><Rows size={16}/></button>
+                <button onClick={() => handleSetLayout('quad')} className={`p-1.5 rounded ${layoutMode === 'quad' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`}><Grid2X2 size={16}/></button>
             </div>
             <button onClick={() => handleSmartSave()} disabled={lockStatus === 'busy'} className="flex items-center space-x-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold"><Save size={14}/><span>Save</span></button>
             <button onClick={() => setIsRightOpen(!isRightOpen)} className={`p-2 rounded-lg ${isRightOpen ? 'bg-slate-800 text-white' : 'text-slate-50'}`}><PanelRightOpen size={20}/></button>
@@ -1019,7 +1016,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                                   </div>
                                   <div className="relative">
                                       <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"/>
-                                      <input type="text" placeholder="Search repos..." value={githubSearchQuery} onChange={e => setGithubSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500 transition-all"/>
+                                      <input type="text" placeholder="Search repos..." value={githubSearchQuery} onChange={e => setGithubSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500 transition-all"/>
                                   </div>
                               </div>
                               
@@ -1058,7 +1055,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                                   <h3 className="font-bold text-white text-sm">Octopus Protocol</h3>
                                   <p className="text-xs text-slate-500 leading-relaxed px-2">Import repositories and push updates directly from the studio.</p>
                               </div>
-                              {/* Fix: changed handleConnectGitHub to handleConnectGithub to match definition on line 407 */}
                               <button onClick={handleConnectGithub} className="px-8 py-3 bg-white text-slate-900 font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg hover:bg-slate-100 transition-all active:scale-[0.98] flex items-center gap-2">
                                   <Key size={14}/> Login with GitHub
                               </button>
@@ -1069,14 +1065,14 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           </div>
           <div onMouseDown={() => setIsDraggingLeft(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 z-30 shrink-0 bg-slate-800/20"></div>
           <div ref={centerContainerRef} className={`flex-1 bg-slate-950 flex min-w-0 relative ${layoutMode === 'quad' ? 'grid grid-cols-2 grid-rows-2' : layoutMode === 'split-v' ? 'flex-row' : layoutMode === 'split-h' ? 'flex-col' : 'flex-col'}`}>
-              {layoutMode === 'single' && renderSlot(0)}
-              {layoutMode === 'split-v' && (<>{renderSlot(0)}<div onMouseDown={() => setIsDraggingInner(true)} className="w-1.5 cursor-col-resize hover:bg-indigo-500/50 z-40 bg-slate-800"></div>{renderSlot(1)}</>)}
-              {layoutMode === 'split-h' && (<>{renderSlot(0)}<div onMouseDown={() => setIsDraggingInner(true)} className="h-1.5 cursor-row-resize hover:bg-indigo-500/50 z-40 bg-slate-800"></div>{renderSlot(1)}</>)}
-              {layoutMode === 'quad' && [0,1,2,3].map(i => renderSlot(i))}
+              {layoutMode === 'single' && <Slot idx={0}/>}
+              {layoutMode === 'split-v' && (<><Slot idx={0}/><div onMouseDown={() => setIsDraggingInner(true)} className="w-1.5 cursor-col-resize hover:bg-indigo-500/50 z-40 bg-slate-800"></div><Slot idx={1}/></>)}
+              {layoutMode === 'split-h' && (<><Slot idx={0}/><div onMouseDown={() => setIsDraggingInner(true)} className="h-1.5 cursor-row-resize hover:bg-indigo-500/50 z-40 bg-slate-800"></div><Slot idx={1}/></>)}
+              {layoutMode === 'quad' && [0,1,2,3].map(i => <Slot key={i} idx={i}/>)}
           </div>
           <div onMouseDown={() => setIsDraggingRight(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 z-30 shrink-0 bg-slate-800/20"></div>
           <div className={`${isRightOpen ? '' : 'hidden'} bg-slate-950 flex flex-col shrink-0 overflow-hidden`} style={{ width: `${rightWidth}px` }}>
-              <AIChatPanel isOpen={true} onClose={() => setIsRightOpen(false)} messages={chatMessages} onSendMessage={handleSendMessage} isThinking={isChatThinking} />
+              <AIChatPanel isOpen={true} onClose={() => setIsRightOpen(false)} messages={chatMessages} onSendMessage={handleSendMessage} isThinking={isChatThinking} currentInput={chatInput} onInputChange={setChatInput} />
           </div>
       </div>
 
