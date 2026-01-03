@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save } from 'lucide-react';
 import { auth, db } from '../services/firebaseConfig';
@@ -66,10 +67,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [lineStyle, setLineStyle] = useState<LineStyle>('solid');
   const [brushType, setBrushType] = useState<BrushType>('standard');
   const [borderRadius, setBorderRadius] = useState(0); 
-  const [fontSize, setFontSize] = useState(24);
   const [showStyleMenu, setShowStyleMenu] = useState(false);
   
-  // Fix: Defined missing state variables startArrow and endArrow to prevent ReferenceErrors on lines 155-156
   const [startArrow, setStartArrow] = useState(false);
   const [endArrow, setEndArrow] = useState(false);
   
@@ -84,7 +83,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
   const isDarkBackground = backgroundColor !== 'transparent' && backgroundColor !== '#ffffff';
 
-  // Load state from Firestore (ID) or Google Drive (driveId)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
@@ -155,9 +153,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           brushType: tool === 'eraser' ? 'standard' : brushType, 
           points: tool === 'pen' || tool === 'eraser' ? [{ x, y }] : undefined, 
           width: 0, height: 0, endX: x, endY: y, borderRadius: tool === 'rect' ? borderRadius : undefined, rotation: 0,
-          // Fix: Now uses the correctly defined state variables startArrow and endArrow
-          startArrow: ['line', 'arrow'].includes(tool) ? startArrow : undefined,
-          endArrow: ['line', 'arrow'].includes(tool) ? endArrow : undefined
+          startArrow: ['line', 'arrow'].includes(tool) ? (tool === 'arrow' ? true : startArrow) : undefined,
+          endArrow: ['line', 'arrow'].includes(tool) ? (tool === 'arrow' ? true : endArrow) : undefined
       };
       setCurrentElement(newEl);
   };
@@ -242,14 +239,38 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
       ctx.save(); ctx.translate(offset.x, offset.y); ctx.scale(scale, scale);
       
+      const drawArrowHead = (x1: number, y1: number, x2: number, y2: number, size: number, color: string) => {
+          const angle = Math.atan2(y2 - y1, x2 - x1);
+          ctx.save(); ctx.translate(x2, y2); ctx.rotate(angle); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-size, -size / 2); ctx.lineTo(-size, size / 2); ctx.closePath(); ctx.fillStyle = color; ctx.fill(); ctx.restore();
+      };
+
       const renderElement = (el: WhiteboardElement) => {
           ctx.save(); 
           ctx.beginPath(); 
           ctx.strokeStyle = el.color; 
           ctx.lineCap = 'round'; 
           ctx.lineJoin = 'round';
+          
           const styleConfig = LINE_STYLES.find(s => s.value === (el.lineStyle || 'solid'));
           ctx.setLineDash(styleConfig?.dash || []);
+
+          // Apply Brush Types Logic
+          const bType = el.brushType || 'standard';
+          if (bType === 'airbrush') {
+              ctx.shadowBlur = (el.strokeWidth * 1.5) / scale;
+              ctx.shadowColor = el.color;
+              ctx.globalAlpha = 0.5;
+          } else if (bType === 'pencil') {
+              ctx.globalAlpha = 0.6;
+          } else if (bType === 'marker') {
+              ctx.lineCap = 'square';
+              ctx.globalAlpha = 0.8;
+          } else if (bType === 'writing-brush') {
+              ctx.shadowBlur = el.strokeWidth / 4 / scale;
+              ctx.shadowColor = el.color;
+          } else if (bType === 'calligraphy-pen') {
+              ctx.lineCap = 'butt';
+          }
 
           if (el.type === 'pen' || el.type === 'eraser') {
               if (el.points?.length) {
@@ -260,16 +281,24 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
               }
           } else if (el.type === 'rect') { 
               ctx.lineWidth = el.strokeWidth / scale;
-              ctx.strokeRect(el.x, el.y, el.width || 0, el.height || 0);
+              const radius = el.borderRadius || 0;
+              if (ctx.roundRect) {
+                  ctx.roundRect(el.x, el.y, el.width || 0, el.height || 0, radius / scale);
+                  ctx.stroke();
+              } else {
+                  ctx.strokeRect(el.x, el.y, el.width || 0, el.height || 0);
+              }
           } else if (el.type === 'circle') { 
               ctx.lineWidth = el.strokeWidth / scale; 
               ctx.ellipse(el.x + (el.width||0)/2, el.y + (el.height||0)/2, Math.abs((el.width||0)/2), Math.abs((el.height||0)/2), 0, 0, 2*Math.PI); 
               ctx.stroke(); 
           } else if (el.type === 'line' || el.type === 'arrow') { 
               ctx.lineWidth = el.strokeWidth / scale; 
-              ctx.moveTo(el.x, el.y); 
-              ctx.lineTo(el.endX || el.x, el.endY || el.y); 
-              ctx.stroke(); 
+              const x1 = el.x; const y1 = el.y; const x2 = el.endX || el.x; const y2 = el.endY || el.y;
+              ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); 
+              const headSize = Math.max(12, el.strokeWidth * 2) / scale;
+              if (el.startArrow) drawArrowHead(x2, y2, x1, y1, headSize, el.color);
+              if (el.endArrow) drawArrowHead(x1, y1, x2, y2, headSize, el.color);
           }
           ctx.restore();
       };
@@ -285,25 +314,92 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             <div className="flex items-center gap-2">
                 {onBack && <button onClick={onBack} className={`p-2 rounded-lg ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-2`}><ArrowLeft size={20}/></button>}
                 <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1 mr-2`}>
-                    <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><PenTool size={16}/></button>
-                    <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><Eraser size={16}/></button>
+                    <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Pen"><PenTool size={16}/></button>
+                    <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Eraser"><Eraser size={16}/></button>
                 </div>
                 <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1`}>
-                    <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><Square size={16}/></button>
-                    <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><Circle size={16}/></button>
+                    <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Rectangle"><Square size={16}/></button>
+                    <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Circle"><Circle size={16}/></button>
+                    <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Line"><Minus size={16}/></button>
+                    <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Arrow"><ArrowRight size={16}/></button>
+                </div>
+
+                <div className="relative">
+                    <button onClick={() => setShowStyleMenu(!showStyleMenu)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${isDarkBackground ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+                        <Sliders size={16}/>
+                        <span className="text-xs font-bold uppercase">Styles</span>
+                        <ChevronDown size={14}/>
+                    </button>
+                    
+                    {showStyleMenu && (
+                        <>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowStyleMenu(false)}></div>
+                            <div className={`absolute top-full left-0 mt-2 w-64 ${isDarkBackground ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-2xl'} border rounded-xl z-50 p-4 space-y-4 animate-fade-in-up`}>
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Brush Type</label>
+                                    <div className="grid grid-cols-3 gap-1">
+                                        {BRUSH_TYPES.map(b => (
+                                            <button key={b.value} onClick={() => setBrushType(b.value)} className={`p-2 rounded-lg flex flex-col items-center gap-1 transition-all ${brushType === b.value ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600')}`}>
+                                                <b.icon size={16}/>
+                                                <span className="text-[8px] uppercase font-bold truncate w-full text-center">{b.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Line Style</label>
+                                    <div className="grid grid-cols-2 gap-1">
+                                        {LINE_STYLES.map(s => (
+                                            <button key={s.value} onClick={() => setLineStyle(s.value)} className={`px-2 py-1.5 rounded-lg text-[9px] font-bold transition-all border ${lineStyle === s.value ? 'bg-indigo-600 border-indigo-500 text-white' : (isDarkBackground ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100')}`}>
+                                                {s.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Thickness</label>
+                                        <span className="text-[10px] font-mono text-indigo-400">{lineWidth}px</span>
+                                    </div>
+                                    <input type="range" min="1" max="50" value={lineWidth} onChange={(e) => setLineWidth(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+                                </div>
+
+                                {tool === 'rect' && (
+                                    <div>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Round Corners</label>
+                                            <span className="text-[10px] font-mono text-indigo-400">{borderRadius}px</span>
+                                        </div>
+                                        <input type="range" min="0" max="100" value={borderRadius} onChange={(e) => setBorderRadius(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                <div className={`flex gap-1 px-2 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg py-1 items-center ml-2`}>
+                    {['#000000', '#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-indigo-500' : ''}`} style={{ backgroundColor: c }} />)}
                 </div>
             </div>
 
             <div className="flex items-center gap-2">
+                <button onClick={handleExportPNG} className={`flex items-center gap-2 px-3 py-1.5 ${isDarkBackground ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'} text-xs font-bold rounded-lg border shadow-sm`}>
+                    <Download size={14}/>
+                    <span className="hidden sm:inline">PNG</span>
+                </button>
                 <button onClick={handleArchiveToDrive} disabled={isSyncing} className={`flex items-center gap-2 px-3 py-1.5 ${isDarkBackground ? 'bg-slate-800 hover:bg-slate-700 text-indigo-400 border-slate-700' : 'bg-white hover:bg-slate-100 text-indigo-600 border-slate-200'} text-xs font-bold rounded-lg border shadow-sm`}>
                     <CloudDownload size={14}/>
-                    <span className="hidden sm:inline">Archive to Drive</span>
+                    <span className="hidden sm:inline">Archive</span>
                 </button>
                 <button onClick={handleShare} disabled={isSyncing} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-500/20 disabled:opacity-50">
                     {isSyncing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
                     <span className="hidden sm:inline">Share URI</span>
                 </button>
                 <div className={`w-px h-6 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} mx-1`}></div>
+                <button onClick={() => setElements(prev => prev.slice(0, -1))} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Undo"><Undo size={16} /></button>
                 <button onClick={() => setElements([])} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`} title="Clear Canvas"><Trash2 size={16} /></button>
             </div>
         </div>
