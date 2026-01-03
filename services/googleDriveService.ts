@@ -168,6 +168,17 @@ export async function readDriveFile(accessToken: string, fileId: string): Promis
 }
 
 /**
+ * Fetches the raw blob of a Drive file.
+ */
+export async function downloadDriveFileAsBlob(accessToken: string, fileId: string): Promise<Blob> {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!res.ok) throw new Error("Failed to download file media.");
+  return await res.blob();
+}
+
+/**
  * Reads a publicly shared Drive file using the application's API key.
  * This bypasses the 'drive.file' scope restriction for recipients.
  */

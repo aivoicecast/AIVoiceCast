@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp } from 'lucide-react';
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive } from '../services/firestoreService';
-import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink } from '../services/googleDriveService';
+import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink, downloadDriveFileAsBlob } from '../services/googleDriveService';
 import { connectGoogleDrive, getDriveToken, signInWithGitHub } from '../services/authService';
 import { fetchRepoInfo, fetchRepoContents, fetchFileContent, updateRepoFile, fetchUserRepos, fetchRepoSubTree } from '../services/githubService';
 import { MarkdownView } from './MarkdownView';
@@ -311,6 +311,17 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
 
   const centerContainerRef = useRef<HTMLDivElement>(null);
   const activeFile = activeSlots[focusedSlot];
+  
+  // Track and clean up blob URLs for PDFs
+  const blobUrlsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+      return () => {
+          // Cleanup all blob URLs on unmount
+          blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+          blobUrlsRef.current.clear();
+      };
+  }, []);
 
   const handleSetLayout = (mode: LayoutMode) => {
     setLayoutMode(mode);
@@ -540,10 +551,13 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               if (activeTab === 'drive' && driveToken) {
                   const isBinary = node.name.toLowerCase().endsWith('.pdf');
                   if (isBinary) {
+                      const blob = await downloadDriveFileAsBlob(driveToken, node.id);
+                      const blobUrl = URL.createObjectURL(blob);
+                      blobUrlsRef.current.add(blobUrl);
                       fileData = { 
                         name: node.name, 
-                        path: node.data?.webViewLink || `drive://${node.id}`, 
-                        content: '[PDF DATA]', 
+                        path: blobUrl, 
+                        content: '[BINARY DATA]', 
                         language: 'pdf', 
                         loaded: true, 
                         isDirectory: false, 
@@ -556,7 +570,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               } else if (activeTab === 'cloud' && node.data?.url) {
                   const isBinary = node.name.toLowerCase().endsWith('.pdf');
                   if (isBinary) {
-                      fileData = { name: node.name, path: node.data.url, content: '[PDF DATA]', language: 'pdf', loaded: true, isDirectory: false, isModified: false };
+                      fileData = { name: node.name, path: node.data.url, content: '[BINARY DATA]', language: 'pdf', loaded: true, isDirectory: false, isModified: false };
                   } else {
                       const res = await fetch(node.data.url);
                       const text = await res.text();
@@ -787,7 +801,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                             lang === 'whiteboard' ? (
                                 <div className="w-full h-full"><Whiteboard isReadOnly={false} /></div>
                             ) : lang === 'pdf' ? (
-                                <iframe src={file.path?.startsWith('http') ? file.path : file.path} className="w-full h-full border-none" title="PDF Viewer" />
+                                <iframe src={file.path} className="w-full h-full border-none bg-white" title="PDF Viewer" />
                             ) : (
                                 <div className="h-full overflow-y-auto p-8 scrollbar-hide">
                                     <MarkdownView content={file.content} />
