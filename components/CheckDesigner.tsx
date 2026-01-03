@@ -90,7 +90,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   const sig = data.signatureUrl || data.signature || '';
                   const wm = data.watermarkUrl || '';
                   
-                  // Neutralize CORS by converting to Base64 on load
+                  // Neutralize CORS by converting to Base64 on load for shared view
                   const [base64Sig, base64Wm] = await Promise.all([
                       convertRemoteToDataUrl(sig),
                       convertRemoteToDataUrl(wm)
@@ -102,7 +102,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       ...DEFAULT_CHECK,
                       ...data,
                       signature: sig,
-                      signatureUrl: sig
+                      signatureUrl: sig,
+                      watermarkUrl: wm // Ensure watermark persists in normalized state
                   };
                   setCheck(normalizedCheck);
                   setShareLink(`${window.location.origin}?view=check_viewer&id=${data.id}`);
@@ -261,7 +262,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             backgroundColor: '#ffffff',
             logging: false,
             allowTaint: true,
-            imageTimeout: 10000
+            imageTimeout: 15000
         });
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
@@ -279,12 +280,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       if (!url || typeof url !== 'string' || url.length < 10 || imageError['sig']) {
           return <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>;
       }
+      const isRemote = url.startsWith('http');
       return (
           <img 
               key={url}
               src={url} 
               className="max-h-12 w-auto object-contain" 
               alt="Authorized Signature"
+              crossOrigin={isRemote ? "anonymous" : undefined}
               onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
           />
       );
@@ -294,13 +297,15 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       // Use converted asset (Base64) if available
       const url = convertedAssets.wm || check.watermarkUrl;
       if (!url || imageError['wm']) return null;
+      const isRemote = url.startsWith('http');
       return (
-          <div className="absolute inset-0 opacity-[0.25] pointer-events-none z-0">
+          <div className="absolute inset-0 opacity-[0.35] pointer-events-none z-0">
             <img 
                 key={url} 
                 src={url} 
                 className="w-full h-full object-cover grayscale" 
                 alt="Security Watermark"
+                crossOrigin={isRemote ? "anonymous" : undefined}
                 onError={() => setImageError(prev => ({ ...prev, 'wm': true }))}
             />
           </div>
@@ -402,6 +407,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                             src={qrCodeUrl} 
                             className="w-14 h-14 border border-slate-100 p-0.5 rounded shadow-sm bg-white" 
                             alt="Verification QR"
+                            crossOrigin="anonymous"
                         />
                       </div>
                       
@@ -436,8 +442,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
 
                       {/* Amount Words Line */}
-                      <div className="mt-4 flex items-center gap-4 relative z-10">
-                          <div className="flex-1 max-w-[480px] border-b border-black text-xs md:text-sm font-serif italic px-2 overflow-hidden truncate whitespace-nowrap min-w-0">
+                      <div className="mt-4 flex items-center gap-4 relative z-10 overflow-hidden">
+                          <div className="flex-1 max-w-[460px] border-b border-black text-xs md:text-sm font-serif italic px-2 overflow-hidden truncate whitespace-nowrap min-w-0">
                             {check.amountWords || '____________________________________________________________________'}
                           </div>
                           <span className="text-xs font-bold shrink-0">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
