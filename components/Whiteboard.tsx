@@ -1,26 +1,20 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save } from 'lucide-react';
+import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save, Activity } from 'lucide-react';
 import { auth, db } from '../services/firebaseConfig';
 import { saveWhiteboardSession, subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements } from '../services/firestoreService';
 import { WhiteboardElement, ToolType, LineStyle, BrushType } from '../types';
-import { GoogleGenAI } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
 import { ensureFolder, uploadToDrive, readDriveFile } from '../services/googleDriveService';
 import { ShareModal } from './ShareModal';
-import { doc, getDoc } from 'firebase/firestore';
 
 interface WhiteboardProps {
   onBack?: () => void;
   sessionId?: string;
   driveId?: string; 
-  accessKey?: string;
   onSessionStart?: (id: string) => void;
-  initialData?: string; 
-  onDataChange?: (data: string) => void;
   isReadOnly?: boolean;
-  disableAI?: boolean; 
   initialColor?: string;
   backgroundColor?: string;
 }
@@ -46,12 +40,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   onBack, 
   sessionId: propSessionId, 
   driveId: propDriveId,
-  accessKey, 
-  onSessionStart,
-  initialData, 
-  onDataChange,
   isReadOnly: propReadOnly = false,
-  disableAI = false,
   initialColor = '#ffffff',
   backgroundColor = '#0f172a'
 }) => {
@@ -60,6 +49,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentElement, setCurrentElement] = useState<WhiteboardElement | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLive, setIsLive] = useState(false);
   
   const [tool, setTool] = useState<ToolType>('pen');
   const [color, setColor] = useState(initialColor);
@@ -68,7 +58,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [brushType, setBrushType] = useState<BrushType>('standard');
   const [borderRadius, setBorderRadius] = useState(0); 
   const [showStyleMenu, setShowStyleMenu] = useState(false);
-  
   const [startArrow, setStartArrow] = useState(false);
   const [endArrow, setEndArrow] = useState(false);
   
@@ -83,38 +72,41 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
   const isDarkBackground = backgroundColor !== 'transparent' && backgroundColor !== '#ffffff';
 
+  // 1. Session & URL Detection
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
     const driveId = params.get('driveId') || propDriveId;
+    const mode = params.get('mode');
 
     if (id) {
         setSessionId(id);
-        loadFromFirestore(id);
+        if (mode === 'view') setIsReadOnly(true);
     } else if (driveId) {
         loadFromDrive(driveId);
     }
   }, [propDriveId]);
 
-  const loadFromFirestore = async (id: string) => {
-      setIsLoading(true);
-      try {
-          if (!db) return;
-          const docRef = doc(db, 'whiteboards', id);
-          const snap = await getDoc(docRef);
-          if (snap.exists()) {
-              const data = snap.data();
-              if (Array.isArray(data.elements)) {
-                  setElements(data.elements);
-                  if (onDataChange) onDataChange(JSON.stringify(data.elements));
-              }
-          }
-      } catch (e) {
-          console.error("Firestore load failed", e);
-      } finally {
-          setIsLoading(false);
+  // 2. Real-time Subscription (Google Docs Mode)
+  useEffect(() => {
+      if (!sessionId || sessionId.startsWith('local-')) {
+          setIsLive(false);
+          return;
       }
-  };
+
+      setIsLoading(true);
+      // Start listening to Firestore document changes
+      const unsubscribe = subscribeToWhiteboard(sessionId, (remoteElements) => {
+          setElements(remoteElements);
+          setIsLoading(false);
+          setIsLive(true);
+      });
+
+      return () => {
+          unsubscribe();
+          setIsLive(false);
+      };
+  }, [sessionId]);
 
   const loadFromDrive = async (fileId: string) => {
       setIsLoading(true);
@@ -124,7 +116,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           const parsed = JSON.parse(content);
           if (Array.isArray(parsed)) {
               setElements(parsed);
-              if (onDataChange) onDataChange(content);
           }
       } catch (e: any) {
           console.error("Drive load failed", e);
@@ -135,9 +126,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   };
 
   const getWorldCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
-      if (!canvasRef.current) return { x: 0, y: 0 }; const rect = canvasRef.current.getBoundingClientRect();
-      const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-      const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+      if (!canvasRef.current) return { x: 0, y: 0 }; 
+      const rect = canvasRef.current.getBoundingClientRect();
+      const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
+      const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
       return { x: (clientX - rect.left - offset.x) / scale, y: (clientY - rect.top - offset.y) / scale };
   };
 
@@ -147,7 +139,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       setIsDrawing(true);
       const id = crypto.randomUUID();
       const newEl: WhiteboardElement = { 
-          id, type: tool, x, y, color: tool === 'eraser' ? (backgroundColor === 'transparent' ? '#ffffff' : backgroundColor) : color, 
+          id, type: tool, x, y, 
+          color: tool === 'eraser' ? (backgroundColor === 'transparent' ? '#ffffff' : backgroundColor) : color, 
           strokeWidth: tool === 'eraser' ? 20 : lineWidth, 
           lineStyle: tool === 'eraser' ? 'solid' : lineStyle,
           brushType: tool === 'eraser' ? 'standard' : brushType, 
@@ -165,20 +158,26 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       if (tool === 'pen' || tool === 'eraser') { 
           setCurrentElement(prev => prev ? ({ ...prev, points: [...(prev.points || []), { x, y }] }) : null); 
       }
-      else if (['rect','circle','triangle','star'].includes(tool)) { setCurrentElement(prev => prev ? ({ ...prev, width: x - prev.x, height: y - prev.y }) : null); }
-      else if (tool === 'line' || tool === 'arrow') { setCurrentElement(prev => prev ? ({ ...prev, endX: x, endY: y }) : null); }
+      else if (['rect','circle','triangle','star'].includes(tool)) { 
+          setCurrentElement(prev => prev ? ({ ...prev, width: x - prev.x, height: y - prev.y }) : null); 
+      }
+      else if (tool === 'line' || tool === 'arrow') { 
+          setCurrentElement(prev => prev ? ({ ...prev, endX: x, endY: y }) : null); 
+      }
   };
 
   const stopDrawing = async () => {
       if (isDrawing && currentElement) {
           const finalized = { ...currentElement };
-          const next = [...elements, finalized];
-          setElements(next);
-          if (onDataChange) onDataChange(JSON.stringify(next));
+          
+          // Optimistic local update
+          setElements(prev => [...prev, finalized]);
           
           if (sessionId && !sessionId.startsWith('local-')) {
+              // Push single element to Firestore (arrayUnion)
               await updateWhiteboardElement(sessionId, finalized);
           }
+          
           setCurrentElement(null);
           setIsDrawing(false);
       }
@@ -188,9 +187,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       setIsSyncing(true);
       try {
           const sid = sessionId || generateSecureId();
-          await saveWhiteboardSession(sid, elements);
-          setSessionId(sid);
-          const url = `${window.location.origin}?view=whiteboard&id=${sid}&mode=view`;
+          if (!sessionId) {
+              await saveWhiteboardSession(sid, elements);
+              setSessionId(sid);
+          }
+          const url = `${window.location.origin}?view=whiteboard&id=${sid}`;
           setShareUrl(url);
           setShowShareModal(true);
       } catch (e: any) {
@@ -207,7 +208,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           const token = getDriveToken() || await connectGoogleDrive();
           const studioFolderId = await ensureFolder(token, 'CodeStudio');
           const boardsFolderId = await ensureFolder(token, 'Whiteboards', studioFolderId);
-          const fileName = `Whiteboard_Archive_${new Date().toISOString().slice(0,10)}.draw`;
+          const fileName = `Whiteboard_${sessionId || 'Manual'}_${new Date().toISOString().slice(0,10)}.draw`;
           await uploadToDrive(token, boardsFolderId, fileName, new Blob([JSON.stringify(elements)], { type: 'application/json' }));
           alert("Successfully archived to your Google Drive!");
       } catch (e: any) {
@@ -227,9 +228,14 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     a.click();
   };
 
+  // Rendering Loop
   useEffect(() => {
-      const canvas = canvasRef.current; if (!canvas) return; const ctx = canvas.getContext('2d'); if (!ctx) return;
-      canvas.width = canvas.parentElement?.clientWidth || 800; canvas.height = canvas.parentElement?.clientHeight || 600;
+      const canvas = canvasRef.current; if (!canvas) return; 
+      const ctx = canvas.getContext('2d'); if (!ctx) return;
+      
+      canvas.width = canvas.parentElement?.clientWidth || 800; 
+      canvas.height = canvas.parentElement?.clientHeight || 600;
+      
       ctx.clearRect(0, 0, canvas.width, canvas.height); 
       
       if (backgroundColor !== 'transparent') {
@@ -241,7 +247,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       
       const drawArrowHead = (x1: number, y1: number, x2: number, y2: number, size: number, color: string) => {
           const angle = Math.atan2(y2 - y1, x2 - x1);
-          ctx.save(); ctx.translate(x2, y2); ctx.rotate(angle); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-size, -size / 2); ctx.lineTo(-size, size / 2); ctx.closePath(); ctx.fillStyle = color; ctx.fill(); ctx.restore();
+          ctx.save(); ctx.translate(x2, y2); ctx.rotate(angle); ctx.beginPath(); 
+          ctx.moveTo(0, 0); ctx.lineTo(-size, -size / 2); ctx.lineTo(-size, size / 2); 
+          ctx.closePath(); ctx.fillStyle = color; ctx.fill(); ctx.restore();
       };
 
       const renderElement = (el: WhiteboardElement) => {
@@ -254,7 +262,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           const styleConfig = LINE_STYLES.find(s => s.value === (el.lineStyle || 'solid'));
           ctx.setLineDash(styleConfig?.dash || []);
 
-          // Apply Brush Types Logic
           const bType = el.brushType || 'standard';
           if (bType === 'airbrush') {
               ctx.shadowBlur = (el.strokeWidth * 1.5) / scale;
@@ -313,21 +320,30 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         <div className={`${isDarkBackground ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'} border-b p-2 flex flex-wrap justify-between gap-2 shrink-0 z-10 items-center px-4`}>
             <div className="flex items-center gap-2">
                 {onBack && <button onClick={onBack} className={`p-2 rounded-lg ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-2`}><ArrowLeft size={20}/></button>}
+                
+                {isLive && (
+                    <div className="flex items-center gap-2 px-2 py-1 bg-indigo-900/20 text-indigo-400 border border-indigo-500/20 rounded-full text-[10px] font-black uppercase tracking-widest mr-2">
+                        <Activity size={12} className="animate-pulse" />
+                        Live Sync
+                    </div>
+                )}
+
                 <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1 mr-2`}>
-                    <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Pen"><PenTool size={16}/></button>
-                    <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Eraser"><Eraser size={16}/></button>
+                    <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Pen"><PenTool size={16}/></button>
+                    <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Eraser"><Eraser size={16}/></button>
                 </div>
+
                 <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1`}>
-                    <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Rectangle"><Square size={16}/></button>
-                    <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Circle"><Circle size={16}/></button>
-                    <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Line"><Minus size={16}/></button>
-                    <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Arrow"><ArrowRight size={16}/></button>
+                    <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Rectangle"><Square size={16}/></button>
+                    <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Circle"><Circle size={16}/></button>
+                    <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Line"><Minus size={16}/></button>
+                    <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Arrow"><ArrowRight size={16}/></button>
                 </div>
 
                 <div className="relative">
                     <button onClick={() => setShowStyleMenu(!showStyleMenu)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${isDarkBackground ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
                         <Sliders size={16}/>
-                        <span className="text-xs font-bold uppercase">Styles</span>
+                        <span className="text-xs font-bold uppercase hidden sm:inline">Styles</span>
                         <ChevronDown size={14}/>
                     </button>
                     
@@ -381,26 +397,26 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 </div>
 
                 <div className={`flex gap-1 px-2 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg py-1 items-center ml-2`}>
-                    {['#000000', '#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-indigo-500' : ''}`} style={{ backgroundColor: c }} />)}
+                    {['#000000', '#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-indigo-500 scale-110' : 'hover:scale-105'} transition-all`} style={{ backgroundColor: c }} />)}
                 </div>
             </div>
 
             <div className="flex items-center gap-2">
                 <button onClick={handleExportPNG} className={`flex items-center gap-2 px-3 py-1.5 ${isDarkBackground ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'} text-xs font-bold rounded-lg border shadow-sm`}>
                     <Download size={14}/>
-                    <span className="hidden sm:inline">PNG</span>
+                    <span className="hidden lg:inline">Export PNG</span>
                 </button>
                 <button onClick={handleArchiveToDrive} disabled={isSyncing} className={`flex items-center gap-2 px-3 py-1.5 ${isDarkBackground ? 'bg-slate-800 hover:bg-slate-700 text-indigo-400 border-slate-700' : 'bg-white hover:bg-slate-100 text-indigo-600 border-slate-200'} text-xs font-bold rounded-lg border shadow-sm`}>
                     <CloudDownload size={14}/>
-                    <span className="hidden sm:inline">Archive</span>
+                    <span className="hidden lg:inline">Sync to Drive</span>
                 </button>
-                <button onClick={handleShare} disabled={isSyncing} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-500/20 disabled:opacity-50">
+                <button onClick={handleShare} disabled={isSyncing} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-500/20 disabled:opacity-50 transition-all active:scale-95">
                     {isSyncing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
                     <span className="hidden sm:inline">Share URI</span>
                 </button>
                 <div className={`w-px h-6 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} mx-1`}></div>
                 <button onClick={() => setElements(prev => prev.slice(0, -1))} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Undo"><Undo size={16} /></button>
-                <button onClick={() => setElements([])} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`} title="Clear Canvas"><Trash2 size={16} /></button>
+                <button onClick={() => { if(confirm("Clear everything?")) { setElements([]); if(sessionId) deleteWhiteboardElements(sessionId); } }} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`} title="Clear Canvas"><Trash2 size={16} /></button>
             </div>
         </div>
         
@@ -408,7 +424,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             {isLoading && (
                 <div className="absolute inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
                     <Loader2 size={32} className="animate-spin text-indigo-500"/>
-                    <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Syncing Whiteboard...</span>
+                    <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Hydrating Session...</span>
                 </div>
             )}
             <canvas 
