@@ -48,10 +48,12 @@ export const Notifications: React.FC = () => {
       
       if (invitation.type === 'session' || invitation.type === 'coin') {
           // Just mark as accepted/rejected to remove from list
+          // NOTE: For coin types, respondToInvitation now triggers claimOnlineTransfer internally
           await respondToInvitation(invitation, accept);
           setInvites(prev => prev.filter(i => i.id !== invitation.id));
           
           if (accept && invitation.link) {
+              // Redirect to wallet to see the update
               window.location.href = invitation.link;
           }
       } else {
@@ -63,8 +65,9 @@ export const Notifications: React.FC = () => {
              window.location.reload();
           }
       }
-    } catch (e) {
-      alert("Error processing invitation.");
+    } catch (e: any) {
+      console.error(e);
+      alert("Error processing invitation: " + (e.message || "Unknown error"));
     } finally {
       setProcessingId(null);
     }
@@ -173,10 +176,18 @@ export const Notifications: React.FC = () => {
                                             <button 
                                                 onClick={() => handleRespondInvite(invite, true)}
                                                 disabled={processingId === invite.id}
-                                                className="flex-1 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded flex items-center justify-center space-x-1"
+                                                className="flex-1 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded flex items-center justify-center space-x-1 shadow-lg shadow-amber-900/20 active:scale-95 transition-all"
                                             >
                                                 {processingId === invite.id ? <Loader2 size={12} className="animate-spin"/> : <Check size={12}/>}
-                                                <span>Acknowledge</span>
+                                                <span>Claim Coins</span>
+                                            </button>
+                                            <button 
+                                                onClick={() => handleRespondInvite(invite, false)}
+                                                disabled={processingId === invite.id}
+                                                className="flex-1 py-1.5 bg-slate-800 hover:bg-red-900/30 text-slate-300 hover:text-red-400 text-xs font-bold rounded border border-slate-700"
+                                            >
+                                                <X size={12}/>
+                                                <span>Ignore</span>
                                             </button>
                                         </div>
                                     </>

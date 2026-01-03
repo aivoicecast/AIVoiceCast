@@ -50,13 +50,18 @@ const sanitizeData = (data: any) => { const cleaned = JSON.parse(JSON.stringify(
 // 1,000,000 Coin Monthly Grant
 export const DEFAULT_MONTHLY_GRANT = 1000000;
 
+/**
+ * Initiates a coin transfer.
+ * Deducts from sender immediately, but recipient must claim it via notification.
+ */
 export async function transferCoins(toId: string, toName: string, amount: number, memo?: string): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Database unavailable");
     const fromId = auth.currentUser.uid;
     const fromName = auth.currentUser.displayName || 'Sender';
     const fromRef = doc(db, USERS_COLLECTION, fromId);
     const toRef = doc(db, USERS_COLLECTION, toId);
-    const txRef = doc(collection(db, TRANSACTIONS_COLLECTION), generateSecureId());
+    const txId = generateSecureId();
+    const txRef = doc(db, TRANSACTIONS_COLLECTION, txId);
     
     await runTransaction(db, async (transaction) => {
         const fromSnap = await transaction.get(fromRef);
@@ -68,8 +73,9 @@ export async function transferCoins(toId: string, toName: string, amount: number
         if (!toSnap.exists()) throw new Error("Recipient not found");
         const toData = toSnap.data() as UserProfile;
 
+        // Transaction record marked as pending
         const tx: CoinTransaction = { 
-          id: txRef.id, fromId, fromName, toId, toName, amount, type: 'transfer', memo, timestamp: Date.now() 
+          id: txId, fromId, fromName, toId, toName, amount, type: 'transfer', memo, timestamp: Date.now(), isVerified: false 
         };
         
         // Create an in-app notification (Invitation) for the recipient
@@ -79,7 +85,7 @@ export async function transferCoins(toId: string, toName: string, amount: number
             fromUserId: fromId,
             fromName: fromName,
             toEmail: toData.email || '',
-            groupId: '',
+            groupId: txId, // Store Transaction ID in groupId field temporarily for claim logic
             groupName: 'VoiceCoin Transfer',
             status: 'pending',
             createdAt: Date.now(),
@@ -89,9 +95,31 @@ export async function transferCoins(toId: string, toName: string, amount: number
         };
 
         transaction.update(fromRef, { coinBalance: increment(-amount) });
-        transaction.update(toRef, { coinBalance: increment(amount) });
+        // NOTE: Recipient balance is NOT updated here. It's updated in claimOnlineTransfer.
         transaction.set(txRef, sanitizeData(tx));
         transaction.set(invRef, sanitizeData(notification));
+    });
+}
+
+/**
+ * Finalizes an online transfer.
+ * Adds coins to recipient balance and marks transaction as verified.
+ */
+export async function claimOnlineTransfer(txId: string): Promise<void> {
+    if (!db || !auth?.currentUser) throw new Error("Auth required");
+    const txRef = doc(db, TRANSACTIONS_COLLECTION, txId);
+    const recipientRef = doc(db, USERS_COLLECTION, auth.currentUser.uid);
+
+    await runTransaction(db, async (t) => {
+        const txSnap = await t.get(txRef);
+        if (!txSnap.exists()) throw new Error("Transfer record not found.");
+        const txData = txSnap.data() as CoinTransaction;
+        
+        if (txData.isVerified) throw new Error("Transfer already claimed.");
+        if (txData.toId !== auth.currentUser?.uid) throw new Error("Unauthorized claim.");
+
+        t.update(recipientRef, { coinBalance: increment(txData.amount) });
+        t.update(txRef, { isVerified: true, memo: (txData.memo || "") + " (Claimed)" });
     });
 }
 
@@ -111,6 +139,8 @@ export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<v
         const senderSnap = await t.get(senderRef);
         if (!senderSnap.exists()) throw new Error("Sender identity not found on cloud ledger.");
         const senderData = senderSnap.data() as UserProfile;
+        
+        // Final sanity check on ledger funds
         if ((senderData.coinBalance || 0) < token.amount) throw new Error("Sender has insufficient funds on ledger.");
 
         const tx: CoinTransaction = {
@@ -139,7 +169,12 @@ export async function getCoinTransactions(uid: string): Promise<CoinTransaction[
         const qFrom = query(collection(db, TRANSACTIONS_COLLECTION), where('fromId', '==', uid), orderBy('timestamp', 'desc'), limit(50));
         const qTo = query(collection(db, TRANSACTIONS_COLLECTION), where('toId', '==', uid), orderBy('timestamp', 'desc'), limit(50));
         const [fromSnap, toSnap] = await Promise.all([getDocs(qFrom), getDocs(qTo)]);
-        const all = [...fromSnap.docs.map(d => d.data()), ...toSnap.docs.map(d => d.data())] as CoinTransaction[];
+        
+        const all = [
+            ...fromSnap.docs.map(d => ({ ...d.data(), id: d.id })), 
+            ...toSnap.docs.map(d => ({ ...d.data(), id: d.id }))
+        ] as CoinTransaction[];
+        
         // Sort merged results
         return all.sort((a, b) => b.timestamp - a.timestamp);
     } catch(e) { 
@@ -160,8 +195,9 @@ export async function checkAndGrantMonthlyCoins(uid: string): Promise<number> {
         const lastGrant = data.lastCoinGrantAt || 0;
         if (now - lastGrant > 86400000 * 30) {
             granted = DEFAULT_MONTHLY_GRANT;
-            const txRef = doc(collection(db, TRANSACTIONS_COLLECTION), generateSecureId());
-            const tx: CoinTransaction = { id: txRef.id, fromId: 'system', fromName: 'AIVoiceCast', toId: uid, toName: data.displayName, amount: granted, type: 'grant', timestamp: now };
+            const txId = generateSecureId();
+            const txRef = doc(db, TRANSACTIONS_COLLECTION, txId);
+            const tx: CoinTransaction = { id: txId, fromId: 'system', fromName: 'AIVoiceCast', toId: uid, toName: data.displayName, amount: granted, type: 'grant', timestamp: now, isVerified: true };
             t.update(ref, { coinBalance: increment(granted), lastCoinGrantAt: now });
             t.set(txRef, sanitizeData(tx));
         }
@@ -177,14 +213,16 @@ export async function awardContributionBonus(ownerId: string, type: 'podcast' | 
     if (!db || !ownerId) return;
     const reward = 1000;
     const userRef = doc(db, USERS_COLLECTION, ownerId);
-    const txRef = doc(collection(db, TRANSACTIONS_COLLECTION), generateSecureId());
+    const txId = generateSecureId();
+    const txRef = doc(db, TRANSACTIONS_COLLECTION, txId);
     
     await runTransaction(db, async (t) => {
         const tx: CoinTransaction = { 
-            id: txRef.id, fromId: 'system', fromName: 'Contribution Pool', 
+            id: txId, fromId: 'system', fromName: 'Contribution Pool', 
             toId: ownerId, toName: 'Creator', amount: reward, 
             type: 'contribution', memo: `Reward for high quality ${type} engagement`, 
-            timestamp: Date.now() 
+            timestamp: Date.now(),
+            isVerified: true
         };
         t.update(userRef, { coinBalance: increment(reward) });
         t.set(txRef, sanitizeData(tx));
@@ -203,8 +241,9 @@ export async function claimCoinCheck(checkId: string): Promise<number> {
         if (!checkData.isCoinCheck || checkData.isClaimed) throw new Error("Invalid or claimed check");
         amount = checkData.coinAmount || 0;
         const userRef = doc(db, USERS_COLLECTION, uid);
-        const txRef = doc(collection(db, TRANSACTIONS_COLLECTION), generateSecureId());
-        const tx: CoinTransaction = { id: txRef.id, fromId: checkData.ownerId || 'unknown', fromName: checkData.senderName, toId: uid, toName: auth.currentUser?.displayName || 'Recipient', amount, type: 'check', memo: `Claimed Check #${checkData.checkNumber}`, timestamp: Date.now() };
+        const txId = generateSecureId();
+        const txRef = doc(db, TRANSACTIONS_COLLECTION, txId);
+        const tx: CoinTransaction = { id: txId, fromId: checkData.ownerId || 'unknown', fromName: checkData.senderName, toId: uid, toName: auth.currentUser?.displayName || 'Recipient', amount, type: 'check', memo: `Claimed Check #${checkData.checkNumber}`, timestamp: Date.now(), isVerified: true };
         t.update(checkRef, { isClaimed: true });
         t.update(userRef, { coinBalance: increment(amount) });
         t.set(txRef, sanitizeData(tx));
@@ -440,8 +479,18 @@ export async function getPendingInvitations(email: string): Promise<Invitation[]
 
 export async function respondToInvitation(invitation: Invitation, accept: boolean): Promise<void> {
     if (!db || !auth?.currentUser) return;
+    
+    // Handle specific logic for coin claims
+    if (invitation.type === 'coin' && accept) {
+        // Use the transaction ID stored in the groupId field
+        if (invitation.groupId) {
+            await claimOnlineTransfer(invitation.groupId);
+        }
+    }
+
     await updateDoc(doc(db, INVITATIONS_COLLECTION, invitation.id), { status: accept ? 'accepted' : 'rejected' });
-    if (accept && invitation.groupId) {
+    
+    if (accept && invitation.type === 'group' && invitation.groupId) {
         await updateDoc(doc(db, GROUPS_COLLECTION, invitation.groupId), { memberIds: arrayUnion(auth.currentUser.uid) });
     }
 }
@@ -531,18 +580,6 @@ export async function publishChannelToFirestore(channel: Channel) {
 export async function deleteChannelFromFirestore(id: string): Promise<void> {
     if (!db) return;
     await deleteDoc(doc(db, CHANNELS_COLLECTION, id));
-}
-
-export async function publishLectureToFirestore(channelId: string, subTopicId: string, lecture: GeneratedLecture) {
-    if (!db) return;
-    const ref = doc(db, CHANNELS_COLLECTION, channelId, 'lectures', subTopicId);
-    await setDoc(ref, sanitizeData(lecture));
-}
-
-export async function getLectureFromFirestore(channelId: string, subTopicId: string): Promise<GeneratedLecture | null> {
-    if (!db) return null;
-    const snap = await getDoc(doc(db, CHANNELS_COLLECTION, channelId, 'lectures', subTopicId));
-    return snap.exists() ? (snap.data() as GeneratedLecture) : null;
 }
 
 export async function addChannelAttachment(channelId: string, attachment: Attachment): Promise<void> {

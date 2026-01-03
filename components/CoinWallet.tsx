@@ -309,7 +309,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       setIsTransferring(true);
       try {
           await transferCoins(selectedUser.uid, selectedUser.displayName, amount, transferMemo);
-          alert(`Sent ${amount} coins to ${selectedUser.displayName}! Recipient notified.`);
+          alert(`Sent ${amount} coins to ${selectedUser.displayName}! Recipient notified to claim.`);
           setShowTransfer(false);
           setSelectedUser(null);
           setTransferAmount('');
@@ -518,6 +518,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                   ) : (
                       transactions.map(tx => {
                           const isIncoming = tx.toId === user?.uid;
+                          const isPending = !tx.isVerified && tx.type === 'transfer';
                           const icon = tx.type === 'grant' ? <Sparkles size={16}/> : tx.type === 'check' ? <Smartphone size={16}/> : tx.type === 'contribution' ? <Heart size={16}/> : tx.type === 'offline' ? <ShieldCheck size={16}/> : <Send size={16}/>;
                           
                           return (
@@ -529,12 +530,15 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                       <div className="min-w-0">
                                           <p className="text-sm font-bold text-white flex items-center gap-2">
                                               {tx.type === 'grant' ? 'Monthly Neural Grant' : tx.type === 'contribution' ? 'Contribution Award' : isIncoming ? `From ${tx.fromName}` : `To ${tx.toName}`}
-                                              <span className="hidden sm:flex text-[9px] bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-slate-500 uppercase font-black tracking-tighter items-center gap-1.5 shrink-0">{icon} {tx.type}</span>
+                                              <span className={`hidden sm:flex text-[9px] px-2 py-0.5 rounded border uppercase font-black tracking-tighter items-center gap-1.5 shrink-0 ${isPending ? 'bg-amber-900/30 text-amber-400 border-amber-500/30 animate-pulse' : 'bg-slate-950 text-slate-500 border-slate-800'}`}>
+                                                  {isPending ? <Clock size={10}/> : icon} 
+                                                  {isPending ? 'PENDING' : tx.type}
+                                              </span>
                                           </p>
                                           <p className="text-[10px] text-slate-500 mt-1 font-medium truncate">{tx.memo || new Date(tx.timestamp).toLocaleString()}</p>
                                       </div>
                                   </div>
-                                  <div className={`text-xl font-black shrink-0 ${isIncoming ? 'text-emerald-400' : 'text-slate-200'}`}>
+                                  <div className={`text-xl font-black shrink-0 ${isIncoming ? 'text-emerald-400' : 'text-slate-200'} ${isPending && isIncoming ? 'opacity-40' : ''}`}>
                                       {isIncoming ? '+' : '-'}{tx.amount}
                                   </div>
                               </div>
