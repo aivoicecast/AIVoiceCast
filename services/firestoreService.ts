@@ -39,6 +39,7 @@ const SHIPPING_COLLECTION = 'shipping';
 const TRANSACTIONS_COLLECTION = 'coin_transactions';
 const TASKS_COLLECTION = 'tasks';
 const NOTEBOOKS_COLLECTION = 'notebooks';
+const INVITATIONS_COLLECTION = 'invitations';
 
 export const ADMIN_EMAILS = ['shengliang.song.ai@gmail.com'];
 export const ADMIN_EMAIL = ADMIN_EMAILS[0];
@@ -56,17 +57,41 @@ export async function transferCoins(toId: string, toName: string, amount: number
     const fromRef = doc(db, USERS_COLLECTION, fromId);
     const toRef = doc(db, USERS_COLLECTION, toId);
     const txRef = doc(collection(db, TRANSACTIONS_COLLECTION), generateSecureId());
+    
     await runTransaction(db, async (transaction) => {
         const fromSnap = await transaction.get(fromRef);
         if (!fromSnap.exists()) throw new Error("Sender not found");
         const fromData = fromSnap.data() as UserProfile;
         if ((fromData.coinBalance || 0) < amount) throw new Error("Insufficient coin balance");
+        
         const toSnap = await transaction.get(toRef);
         if (!toSnap.exists()) throw new Error("Recipient not found");
-        const tx: CoinTransaction = { id: txRef.id, fromId, fromName, toId, toName, amount, type: 'transfer', memo, timestamp: Date.now() };
+        const toData = toSnap.data() as UserProfile;
+
+        const tx: CoinTransaction = { 
+          id: txRef.id, fromId, fromName, toId, toName, amount, type: 'transfer', memo, timestamp: Date.now() 
+        };
+        
+        // Create an in-app notification (Invitation) for the recipient
+        const invRef = doc(collection(db, INVITATIONS_COLLECTION), generateSecureId());
+        const notification: Invitation = {
+            id: invRef.id,
+            fromUserId: fromId,
+            fromName: fromName,
+            toEmail: toData.email || '',
+            groupId: '',
+            groupName: 'VoiceCoin Transfer',
+            status: 'pending',
+            createdAt: Date.now(),
+            type: 'coin',
+            amount: amount,
+            link: `${window.location.origin}${window.location.pathname}?view=coin_wallet`
+        };
+
         transaction.update(fromRef, { coinBalance: increment(-amount) });
         transaction.update(toRef, { coinBalance: increment(amount) });
         transaction.set(txRef, sanitizeData(tx));
+        transaction.set(invRef, sanitizeData(notification));
     });
 }
 
@@ -76,7 +101,7 @@ export async function transferCoins(toId: string, toName: string, amount: number
 export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Auth required");
     const txRef = doc(db, TRANSACTIONS_COLLECTION, `offline-${token.nonce}`);
-    const recipientRef = doc(db, USERS_COLLECTION, token.recipientId);
+    const recipientRef = doc(db, USERS_COLLECTION, token.recipientId === 'any' ? auth.currentUser.uid : token.recipientId);
     const senderRef = doc(db, USERS_COLLECTION, token.senderId);
 
     await runTransaction(db, async (t) => {
@@ -92,7 +117,7 @@ export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<v
             id: txRef.id,
             fromId: token.senderId,
             fromName: token.senderName,
-            toId: token.recipientId,
+            toId: auth.currentUser?.uid || '',
             toName: auth.currentUser?.displayName || 'Recipient',
             amount: token.amount,
             type: 'offline',
@@ -111,12 +136,16 @@ export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<v
 export async function getCoinTransactions(uid: string): Promise<CoinTransaction[]> {
     if (!db) return [];
     try {
-        const qFrom = query(collection(db, TRANSACTIONS_COLLECTION), where('fromId', '==', uid), orderBy('timestamp', 'desc'), limit(20));
-        const qTo = query(collection(db, TRANSACTIONS_COLLECTION), where('toId', '==', uid), orderBy('timestamp', 'desc'), limit(20));
+        const qFrom = query(collection(db, TRANSACTIONS_COLLECTION), where('fromId', '==', uid), orderBy('timestamp', 'desc'), limit(50));
+        const qTo = query(collection(db, TRANSACTIONS_COLLECTION), where('toId', '==', uid), orderBy('timestamp', 'desc'), limit(50));
         const [fromSnap, toSnap] = await Promise.all([getDocs(qFrom), getDocs(qTo)]);
-        const all = [...fromSnap.docs, ...toSnap.docs].map(d => ({ ...d.data(), id: d.id } as CoinTransaction));
+        const all = [...fromSnap.docs.map(d => d.data()), ...toSnap.docs.map(d => d.data())] as CoinTransaction[];
+        // Sort merged results
         return all.sort((a, b) => b.timestamp - a.timestamp);
-    } catch(e) { return []; }
+    } catch(e) { 
+      console.error("Ledger fetch error:", e);
+      return []; 
+    }
 }
 
 export async function checkAndGrantMonthlyCoins(uid: string): Promise<number> {
@@ -399,19 +428,19 @@ export async function sendInvitation(groupId: string, toEmail: string): Promise<
     const groupSnap = await getDoc(doc(db, GROUPS_COLLECTION, groupId));
     if (!groupSnap.exists()) return;
     const inv: Invitation = { id: '', fromUserId: auth.currentUser.uid, fromName: auth.currentUser.displayName || 'Friend', toEmail, groupId, groupName: groupSnap.data()?.name, status: 'pending', createdAt: Date.now() };
-    await addDoc(collection(db, 'invitations'), sanitizeData(inv));
+    await addDoc(collection(db, INVITATIONS_COLLECTION), sanitizeData(inv));
 }
 
 export async function getPendingInvitations(email: string): Promise<Invitation[]> {
     if (!db) return [];
-    const q = query(collection(db, 'invitations'), where('toEmail', '==', email), where('status', '==', 'pending'));
+    const q = query(collection(db, INVITATIONS_COLLECTION), where('toEmail', '==', email), where('status', '==', 'pending'));
     const snap = await getDocs(q);
     return snap.docs.map(d => ({ ...d.data(), id: d.id } as Invitation));
 }
 
 export async function respondToInvitation(invitation: Invitation, accept: boolean): Promise<void> {
     if (!db || !auth?.currentUser) return;
-    await updateDoc(doc(db, 'invitations', invitation.id), { status: accept ? 'accepted' : 'rejected' });
+    await updateDoc(doc(db, INVITATIONS_COLLECTION, invitation.id), { status: accept ? 'accepted' : 'rejected' });
     if (accept && invitation.groupId) {
         await updateDoc(doc(db, GROUPS_COLLECTION, invitation.groupId), { memberIds: arrayUnion(auth.currentUser.uid) });
     }
@@ -502,6 +531,18 @@ export async function publishChannelToFirestore(channel: Channel) {
 export async function deleteChannelFromFirestore(id: string): Promise<void> {
     if (!db) return;
     await deleteDoc(doc(db, CHANNELS_COLLECTION, id));
+}
+
+export async function publishLectureToFirestore(channelId: string, subTopicId: string, lecture: GeneratedLecture) {
+    if (!db) return;
+    const ref = doc(db, CHANNELS_COLLECTION, channelId, 'lectures', subTopicId);
+    await setDoc(ref, sanitizeData(lecture));
+}
+
+export async function getLectureFromFirestore(channelId: string, subTopicId: string): Promise<GeneratedLecture | null> {
+    if (!db) return null;
+    const snap = await getDoc(doc(db, CHANNELS_COLLECTION, channelId, 'lectures', subTopicId));
+    return snap.exists() ? (snap.data() as GeneratedLecture) : null;
 }
 
 export async function addChannelAttachment(channelId: string, attachment: Attachment): Promise<void> {
@@ -769,7 +810,7 @@ export async function updateProjectAccess(id: string, accessLevel: 'public' | 'r
 
 export async function sendShareNotification(toUid: string, invite: Invitation) {
     if (!db) return;
-    await addDoc(collection(db, 'invitations'), sanitizeData(invite));
+    await addDoc(collection(db, INVITATIONS_COLLECTION), sanitizeData(invite));
 }
 
 export async function deleteCloudFolderRecursive(path: string) {

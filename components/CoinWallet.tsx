@@ -98,12 +98,22 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
     return () => clearInterval(interval);
   }, [user]);
 
-  // Pay URI Handler - Now shows Public Payment Profile instead of just the send modal
+  // Pay/Token URI Handler
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payUid = params.get('pay');
     const payName = params.get('name');
-    if (payUid && payName) {
+    const tokenStr = params.get('token');
+
+    if (tokenStr) {
+        setPastedToken(tokenStr);
+        setShowTokenInput(true);
+        handleVerifyPastedToken(tokenStr);
+        // Clean URL
+        const newUrl = new URL(window.location.href);
+        newUrl.searchParams.delete('token');
+        window.history.replaceState({}, '', newUrl.toString());
+    } else if (payUid && payName) {
         setPublicPaymentTarget({ uid: payUid, name: payName });
         // Clean URL after capturing state
         const newUrl = new URL(window.location.href);
@@ -236,13 +246,14 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       }
   };
 
-  const handleVerifyPastedToken = async () => {
-      if (!pastedToken.trim()) return;
+  const handleVerifyPastedToken = async (strOverride?: string) => {
+      const tokenToVerify = strOverride || pastedToken;
+      if (!tokenToVerify.trim()) return;
       setIsVerifying(true);
       setVerificationError(null);
       setVerifiedToken(null);
       try {
-          const token: OfflinePaymentToken = JSON.parse(atob(pastedToken));
+          const token: OfflinePaymentToken = JSON.parse(atob(tokenToVerify));
           const isCertValid = verifyCertificateOffline(token.certificate);
           if (!isCertValid) throw new Error("Certificate not signed by AIVoiceCast Trust.");
           const senderCert = JSON.parse(atob(token.certificate));
@@ -298,7 +309,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       setIsTransferring(true);
       try {
           await transferCoins(selectedUser.uid, selectedUser.displayName, amount, transferMemo);
-          alert(`Sent ${amount} coins to ${selectedUser.displayName}!`);
+          alert(`Sent ${amount} coins to ${selectedUser.displayName}! Recipient notified.`);
           setShowTransfer(false);
           setSelectedUser(null);
           setTransferAmount('');
@@ -331,6 +342,10 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
   const buildReceiveUri = (uid: string, name: string) => {
       return `${window.location.origin}${window.location.pathname}?view=coin_wallet&pay=${uid}&name=${encodeURIComponent(name)}`;
+  };
+  
+  const buildTokenUri = (tokenStr: string) => {
+      return `${window.location.origin}${window.location.pathname}?view=coin_wallet&token=${tokenStr}`;
   };
 
   if (publicPaymentTarget) {
@@ -498,7 +513,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                           <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto opacity-20">
                               <HardDrive size={32} className="text-slate-400" />
                           </div>
-                          <p className="text-slate-500 italic text-sm">No entries found.</p>
+                          <p className="text-slate-500 italic text-sm">No ledger entries found.</p>
                       </div>
                   ) : (
                       transactions.map(tx => {
@@ -511,15 +526,15 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                       <div className={`p-3 rounded-2xl transition-transform group-hover:scale-110 ${isIncoming ? 'bg-emerald-900/20 text-emerald-400 border border-emerald-500/20' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>
                                           {isIncoming ? <ArrowDownLeft size={24}/> : <ArrowUpRight size={24}/>}
                                       </div>
-                                      <div>
+                                      <div className="min-w-0">
                                           <p className="text-sm font-bold text-white flex items-center gap-2">
-                                              {tx.type === 'grant' ? 'Neural Grant' : tx.type === 'contribution' ? 'Contribution Award' : isIncoming ? `From ${tx.fromName}` : `To ${tx.toName}`}
-                                              <span className="text-[9px] bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-slate-500 uppercase font-black tracking-tighter flex items-center gap-1.5">{icon} {tx.type}</span>
+                                              {tx.type === 'grant' ? 'Monthly Neural Grant' : tx.type === 'contribution' ? 'Contribution Award' : isIncoming ? `From ${tx.fromName}` : `To ${tx.toName}`}
+                                              <span className="hidden sm:flex text-[9px] bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-slate-500 uppercase font-black tracking-tighter items-center gap-1.5 shrink-0">{icon} {tx.type}</span>
                                           </p>
-                                          <p className="text-[10px] text-slate-500 mt-1 font-medium">{tx.memo || new Date(tx.timestamp).toLocaleString()}</p>
+                                          <p className="text-[10px] text-slate-500 mt-1 font-medium truncate">{tx.memo || new Date(tx.timestamp).toLocaleString()}</p>
                                       </div>
                                   </div>
-                                  <div className={`text-xl font-black ${isIncoming ? 'text-emerald-400' : 'text-slate-200'}`}>
+                                  <div className={`text-xl font-black shrink-0 ${isIncoming ? 'text-emerald-400' : 'text-slate-200'}`}>
                                       {isIncoming ? '+' : '-'}{tx.amount}
                                   </div>
                               </div>
@@ -627,6 +642,13 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                           />
                                       </div>
                                   </div>
+                                  <input 
+                                    type="text" 
+                                    value={transferMemo}
+                                    onChange={e => setTransferMemo(e.target.value)}
+                                    placeholder="Add a memo..."
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none"
+                                  />
                               </div>
 
                               <div className="grid grid-cols-2 gap-3">
@@ -635,8 +657,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                     disabled={isTransferring || !transferAmount || parseInt(transferAmount) <= 0}
                                     className="py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
                                   >
-                                      <Globe size={18}/>
-                                      Online
+                                      {isTransferring ? <Loader2 size={18} className="animate-spin" /> : <Globe size={18}/>}
+                                      {isTransferring ? 'Processing' : 'Send Online'}
                                   </button>
                                   <button 
                                     onClick={handleGenerateOfflineToken}
@@ -645,7 +667,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                     title={!user?.certificate ? "Create Identity First" : "Sign Offline Token"}
                                   >
                                       <WifiOff size={18}/>
-                                      Offline
+                                      Offline QR
                                   </button>
                               </div>
                           </div>
@@ -659,7 +681,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       {showOfflineToken && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl flex flex-col items-center text-center">
-                  <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mb-6 border border-emerald-500/20">
+                  <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mb-6 border border-emerald-500/20 shadow-xl shadow-emerald-500/20">
                       <ShieldCheck size={32}/>
                   </div>
                   <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter italic">Payment Ready</h3>
@@ -668,13 +690,11 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                   </p>
                   
                   <div className="w-full bg-white p-6 rounded-3xl border-8 border-slate-800 mb-8 flex flex-col items-center">
-                      <img src={qrImageUrl(generatedToken!)} className="w-48 h-48" alt="Payment Token QR"/>
-                      <code className="text-[10px] font-mono text-indigo-400 break-all bg-slate-900 p-3 rounded-xl border border-slate-800 w-full mt-4 max-h-20 overflow-y-auto">
-                          {generatedToken}
-                      </code>
+                      <img src={qrImageUrl(buildTokenUri(generatedToken!))} className="w-48 h-48" alt="Payment Token QR"/>
+                      <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Bearer Token (Scan to Claim)</p>
                   </div>
 
-                  <button onClick={() => { navigator.clipboard.writeText(generatedToken!); alert("Token copied!"); }} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold mb-2 flex items-center justify-center gap-2"><Copy size={16}/> Copy Token String</button>
+                  <button onClick={() => { navigator.clipboard.writeText(buildTokenUri(generatedToken!)); alert("Token URI copied!"); }} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold mb-2 flex items-center justify-center gap-2"><Copy size={16}/> Copy Token URI</button>
                   <button onClick={() => setShowOfflineToken(false)} className="w-full py-4 bg-slate-800 text-slate-300 rounded-2xl font-bold transition-all hover:bg-slate-700">Dismiss</button>
               </div>
           </div>
@@ -686,7 +706,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md p-8 shadow-2xl animate-fade-in-up">
                   <div className="flex justify-between items-center mb-6">
                       <h3 className="text-xl font-bold text-white flex items-center gap-2"><Download size={20} className="text-indigo-400"/> Verify Token</h3>
-                      <button onClick={() => { setShowTokenInput(false); setVerifiedToken(null); setPastedToken(''); }} className="p-1 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
+                      <button onClick={() => { setShowTokenInput(false); setVerifiedToken(null); setPastedToken(''); }} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
                   </div>
                   
                   {!verifiedToken ? (
@@ -706,7 +726,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                           <div className="grid grid-cols-2 gap-2">
                              <button className="py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl font-bold flex items-center justify-center gap-2"><Camera size={18}/> Scan QR</button>
                              <button 
-                                onClick={handleVerifyPastedToken}
+                                onClick={() => handleVerifyPastedToken()}
                                 disabled={isVerifying || !pastedToken.trim()}
                                 className="py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2"
                               >

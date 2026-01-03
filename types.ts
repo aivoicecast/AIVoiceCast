@@ -132,8 +132,9 @@ export interface Invitation {
   groupName: string;
   status: 'pending' | 'accepted' | 'rejected';
   createdAt: number;
-  type?: 'group' | 'session';
+  type?: 'group' | 'session' | 'coin';
   link?: string;
+  amount?: number;
 }
 
 export interface Booking {
