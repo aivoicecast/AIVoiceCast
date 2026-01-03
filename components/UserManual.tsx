@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ArrowLeft, Book } from 'lucide-react';
 import { MarkdownView } from './MarkdownView';
@@ -7,13 +6,24 @@ interface UserManualProps {
   onBack: () => void;
 }
 
-// Content extracted from README.md
 const MANUAL_CONTENT = `
 # 🎙️ AIVoiceCast User Guide
 
 **The world's first decentralized, AI-native interactive knowledge community.**
 
 AIVoiceCast is not just a podcast player. It is a **Generative Knowledge Engine**. Unlike Spotify or Apple Podcasts where you consume static audio, AIVoiceCast generates custom curriculums, synthesizes lectures on-demand, and allows you to **talk back** to the host in real-time.
+
+---
+
+### 🚀 The Neural Execution Engine (Exclusive)
+One of the most powerful features in Code Studio is the "Run" button. But unlike other platforms, we don't use real servers to run your code. We use **Neural Simulation**.
+
+*   **What is it?** We prompt **Gemini 3 Flash** to act as a Linux terminal. It "reads" your code and predicts the output.
+*   **Why is it better for learning?** 
+    *   **Speed:** No waiting for virtual machines to boot. 
+    *   **Safety:** You can "run" dangerous code (like system deletions) to see the result without any risk to your hardware.
+    *   **Socratic Debugging:** You can ask the AI *why* it predicted a certain output, and it will explain the logic step-by-step.
+*   **Limitations:** It cannot ping real websites or access your local file system, as it lives entirely in the AI's imagination.
 
 ---
 
@@ -29,7 +39,6 @@ AIVoiceCast is not just a podcast player. It is a **Generative Knowledge Engine*
 *   **Lecture Player**: Click on a channel to view the **Curriculum**.
     *   **Select a Topic**: Click any lesson (e.g., "Chapter 1: Intro").
     *   **Generate Audio**: If the audio doesn't exist, click the **Lightning Bolt** button. The AI will write a script (Teacher/Student dialogue) and synthesize it.
-    *   **Playback**: Use the player controls to listen. You can switch between **Neural Voices** (High Quality) and **System Voices** (Free/Unlimited) in the settings icon.
 
 ### 3. Create Your Own Podcast
 You don't need a microphone to be a creator here. You need an idea.
@@ -37,68 +46,35 @@ You don't need a microphone to be a creator here. You need an idea.
 *   **🪄 Magic Voice Creator** (Recommended):
     1.  Click the **Magic** button in the header.
     2.  Click the Mic icon and **speak your idea** (e.g., *"I want a podcast about advanced Rust programming for C++ developers"*).
-    3.  The AI will design the title, cover art, host persona, and full 10-chapter curriculum automatically.
 *   **📝 Manual / Import**:
     1.  Click **New Podcast (+)**.
-    2.  **Paste a Document**: You can paste a PDF transcript, a lecture note, or a Wikipedia article. The AI will parse it and structure it into a learning path.
+    2.  **Paste a Document**: You can paste a PDF transcript, a lecture note, or a Wikipedia article.
 
 ### 4. ⚡ The Live Studio (Real-Time Voice)
 This is the core differentiator. You can interrupt the podcast and talk to the host.
 
 *   **Start a Session**: Click **"Start Live Chat"** on any channel page.
-*   **Voice Mode**: Have a fluid, low-latency conversation. Ask clarifying questions about the lecture you just heard.
 *   **Multimodal Vision**:
-    *   **Screen Share**: Click the Monitor icon to share your screen. The AI can see your code, slides, or diagrams and give feedback.
-    *   **Camera**: Click the Video icon to show physical objects or whiteboards.
-*   **Meeting Recorder**:
-    *   In the "My Recordings" tab, click **Record Meeting**.
-    *   Choose **"Silent Scribe"** mode. The AI will listen to your human meeting and generate a transcript + summary without speaking.
-    *   Choose **"Translator"** mode to have the AI translate spoken words into another language in real-time.
+    *   **Screen Share**: Share your screen and let the AI review your code or diagrams.
+    *   **Camera**: Show physical objects or whiteboards for analysis.
 
 ### 5. 💻 Code Studio (IDE)
 A full-featured code editor with an embedded AI pair programmer.
 
 *   **Access**: Click **Code Studio** in the navigation bar.
-*   **Projects**: Load a template (e.g., C++, Python) or import a **GitHub Repository**.
-*   **AI Tools**:
-    *   **Chat**: Ask the AI to "Refactor this function" or "Fix the bug".
-    *   **Direct Editing**: The AI has permission to *edit your file directly*. It can rewrite code blocks for you.
+*   **AI Pair Programming**: Ask the AI to "Refactor this function" or "Fix the bug". The AI can edit your files directly.
 
 ### 6. 🎨 Whiteboard
-A collaborative infinite canvas for systems design.
-
-*   **Tools**: Draw rectangles, arrows, text, and freehand sketches.
-*   **AI Analysis**: Ask the AI to generate diagrams or explain visuals drawn on the board.
+A collaborative infinite canvas for systems design. Use it to draw architectures and let the AI explain or refine them.
 
 ### 7. 👥 Real-Time Collaboration
-Work together with peers or mentors in Code Studio and Whiteboard.
-
-*   **Sharing a Session**:
-    1. Click the **Share** button in the top toolbar.
-    2. Choose **Anyone with Link** for public sharing, or **Restricted** to invite specific members.
-    3. Restricted invites appear in the recipient's **Notifications** (Bell Icon) and **Direct Messages**.
-*   **Synchronized Features**:
-    *   **Real-Time Typing**: See code changes as they happen.
-    *   **Live Cursors**: See where other users are looking or typing, labeled with their name.
-    *   **Follow Mode**: When the session host switches files in Code Studio, all viewers automatically switch to the same file. This is ideal for teaching or presentations.
-*   **Security**:
-    *   Edit access is controlled via a unique secure token in the shared link (\`&key=...\`).
-    *   Read-only participants can view the session but cannot type or draw.
-
-### 8. 🤝 Community & Career
-*   **Mentorship Hub**:
-    *   **Book AI**: Schedule a deep-dive session with an AI expert persona.
-    *   **Book Humans**: Find real community members and book P2P learning sessions.
-*   **Groups**: Create private study groups (e.g., "React Learners").
-*   **Career Center**:
-    *   **Job Board**: Post or find jobs.
-    *   **Talent Pool**: Upload your resume to be discovered by others.
+*   **Live Cursors**: See where other users are looking or typing.
+*   **Follow Mode**: When the host switches files, everyone follows. Perfect for teaching.
 `;
 
 export const UserManual: React.FC<UserManualProps> = ({ onBack }) => {
   return (
     <div className="h-full bg-slate-950 text-slate-100 flex flex-col">
-      {/* Header */}
       <div className="p-6 border-b border-slate-900 flex items-center gap-4 sticky top-0 bg-slate-950/90 backdrop-blur-md z-20">
         <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
           <ArrowLeft size={24} />

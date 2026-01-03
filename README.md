@@ -1,9 +1,22 @@
-
 # 🎙️ AIVoiceCast Platform
 
 **The world's first decentralized, AI-native interactive knowledge community.**
 
 AIVoiceCast is not just a podcast player. It is a **Generative Knowledge Engine**. Unlike Spotify or Apple Podcasts where you consume static audio, AIVoiceCast generates custom curriculums, synthesizes lectures on-demand, and allows you to **talk back** to the host in real-time.
+
+---
+
+## 🚀 The Neural Execution Engine
+
+A unique feature of the AIVoiceCast Code Studio is its **Neural Execution Engine**. Unlike traditional online IDEs (like OnlineGDB or Coderbyte) that use heavy server-side Docker containers, we use **Heuristic Logic Simulation**.
+
+### How it Works
+When you click "Run", your code is not compiled into machine code. Instead, it is sent to **Gemini 3 Flash** with a specialized system instruction to act as a "Digital Twin" of a Linux terminal. The AI "traces" the logic of your code and predicts the standard output (stdout) and errors (stderr).
+
+### Why Simulation?
+*   **Security:** There is no risk of malicious code escaping a sandbox, because there is no sandbox. The code never actually "runs" on a real CPU.
+*   **Infrastructure-Less:** We can "execute" any language (C++, Rust, Python, COBOL) instantly without installing 50+ different compilers.
+*   **Socratic Feedback:** Because the execution is driven by an LLM, the "compiler" can actually explain its reasoning if you ask it in the chat.
 
 ---
 
@@ -38,85 +51,21 @@ You don't need a microphone to be a creator here. You need an idea.
 This is our flagship feature. At any point during a lecture, you can click **"Start Live Chat"** on any channel page.
 *   **Voice-to-Voice:** Have a real-time, low-latency conversation with the AI host.
 *   **Multimodal Vision:** The AI can "see." Share your **Screen** or **Camera** during the session, and the AI will analyze your code, diagrams, or environment in real-time.
-*   **Meeting Recorder:**
-    *   In the "My Recordings" tab, click **Record Meeting**.
-    *   Choose **"Silent Scribe"** mode. The AI will listen to your human meeting and generate a transcript + summary without speaking.
-    *   Choose **"Translator"** mode to have the AI translate spoken words into another language in real-time.
 
 ### 5. 💻 Code Studio (Unified Workspace)
 A full-featured Cloud IDE with an embedded AI pair programmer and multi-backend storage.
 
+*   **Neural Execution:** Runs code via high-speed simulation using Gemini 3 Flash.
 *   **Storage Backends**:
-    *   **☁️ Private Cloud**: Uses Firebase Storage. Supports files and folders. Ideal for persistent projects.
-    *   **💾 Google Drive**: Connect your Google Drive to edit files directly. No download required.
-    *   **🐙 GitHub**: Import public repositories or connect your account to browse private repos.
-    *   **🔴 Live Session**: Ephemeral storage for collaborative coding during a call.
-*   **AI Tools**:
-    *   **Chat**: Ask the AI to "Refactor this function" or "Fix the bug".
-    *   **Direct Editing**: The AI has permission to *edit your file directly* using function calling tools.
-*   **Multi-User Collaboration**:
-    *   Click **Share** to generate a link.
-    *   Send it to a friend. You can both edit the same file simultaneously (Google Docs style) with visible cursors.
-
-### 6. 🎨 Whiteboard
-A collaborative infinite canvas for systems design.
-
-*   **Tools**: Draw rectangles, arrows, text, and freehand sketches. Supports various brush types (Pencil, Marker, Airbrush).
-*   **Sharing**: Create read-only or edit links to collaborate with peers in real-time.
-
-### 7. 🏢 Workplace Chat
-A Slack-like communication hub for your teams.
-*   **Channels**: Join public channels (#general, #announcements).
-*   **Groups**: Communicate within your private study groups.
-*   **Direct Messages**: Message any user on the platform privately.
-*   **File Sharing**: Upload images, videos, and documents securely.
-
-### 8. 💼 Career Center
-Connect your learning journey to real-world opportunities.
-*   **Job Board**: Browse openings posted by the community or partner companies.
-*   **Talent Pool**: Create a profile, upload your resume, and tag your skills to be discovered by recruiters.
-*   **Mentorship Application**: Apply to become a verified Mentor or Domain Expert on the platform.
+    *   **☁️ Private Cloud**: Uses Firebase Storage. Supports files and folders.
+    *   **💾 Google Drive**: Connect your Google Drive to edit files directly.
+    *   **🐙 GitHub**: Import public repositories or connect your account for private repos.
+*   **Multi-User Collaboration**: Edit the same file simultaneously with visible cursors.
 
 ---
 
 ## ⚙️ Technical Setup (For Developers)
 
-If you are forking or running this code locally, follow these steps to configure the environment.
-
-### 1. Private Keys
-The file `services/private_keys.ts` is ignored by Git for security. You must create it manually.
-
-1.  Go to `services/` folder.
-2.  Create `private_keys.ts`.
-3.  Paste the following:
-
-```typescript
-// services/private_keys.ts
-export const firebaseKeys = {
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "your-app.firebaseapp.com",
-  projectId: "your-project-id",
-  storageBucket: "your-app.appspot.com",
-  messagingSenderId: "123",
-  appId: "1:123:web:abc",
-  measurementId: "G-XYZ"
-};
-
-// Optional: Default Gemini Key for all users (Not recommended for public deployment)
-export const GEMINI_API_KEY = ""; 
-```
-
-### 2. Installation
-```bash
-npm install
-npm start
-```
-
-### 3. Architecture Notes
-*   **Frontend**: React 19, Tailwind CSS.
-*   **State**: LocalStorage + Context + Refs (No Redux).
-*   **Database**:
-    *   **Firestore**: Public channels, User profiles, Social graph, Chat Messages.
-    *   **IndexedDB**: Local cache for Audio Blobs and Lecture Scripts (Offline-first).
-    *   **Cloud Storage**: User assets, Code Studio files, Meeting recordings.
-*   **AI**: Google Gemini Pro (Logic) + Gemini Flash (Speed) + Gemini Live (Voice).
+1.  **Private Keys**: Create `services/private_keys.ts` with your Firebase config.
+2.  **Installation**: `npm install` and `npm start`.
+3.  **AI engine**: Uses Google Gemini 3 Pro for reasoning and Gemini 3 Flash for execution simulation.
