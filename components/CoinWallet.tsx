@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History, Signature } from 'lucide-react';
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
@@ -243,7 +242,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
     const activeDb = databaseInstance || getDb();
     if (!activeDb) { setLoading(false); return; }
     if (!databaseInstance) setDatabaseInstance(activeDb);
-    if (!force && initAttempted.current && user) { setLoading(false); return; }
+    // CRITICAL: We only load if not already attempted or if forced. 
+    // user is excluded from dependencies to prevent infinite loops.
+    if (!force && initAttempted.current) return;
     
     setLoading(true);
     try {
@@ -257,12 +258,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
         setTransactions(txs || []);
         initAttempted.current = true;
     } catch (e) { console.error("Wallet initialization failed", e); } finally { setLoading(false); }
-  }, [user, databaseInstance]);
+  }, [databaseInstance]); // Removed 'user' to stop dead loop
 
   useEffect(() => {
-    initWallet(true);
+    initWallet();
     if (auth) {
-        const unsubscribe = onAuthStateChanged(auth, (u) => { if (u) initWallet(true); });
+        const unsubscribe = onAuthStateChanged(auth, (u) => { if (u) initWallet(); });
         return () => unsubscribe();
     }
   }, [initWallet]);
@@ -615,7 +616,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                         <button 
                                             onClick={handleAuthorizePayment}
                                             disabled={isTransferring || totalWithTip <= 0 || !isRangeValid || totalWithTip > walletBalance}
-                                            className="py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex flex-col items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
+                                            className="py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
                                         >
                                             <div className="flex items-center gap-2">
                                                 {isTransferring ? <Loader2 size={20} className="animate-spin" /> : <Signature size={20}/>}
