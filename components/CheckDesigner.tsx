@@ -68,7 +68,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           setIsLoadingCheck(true);
           getCheckById(checkIdFromUrl).then(data => {
               if (data) {
-                  // Ensure both fields are checked to recover signatures from various versions
                   const sig = data.signatureUrl || data.signature || '';
                   const normalizedCheck = {
                       ...DEFAULT_CHECK,
@@ -248,9 +247,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       if (!url || typeof url !== 'string' || url.length < 10 || imageError['sig']) {
           return <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>;
       }
-
-      // DO NOT use crossOrigin="anonymous" for display. 
-      // It causes failure if the cloud bucket CORS isn't configured for the viewing domain.
       return (
           <img 
               key={url}
@@ -380,7 +376,10 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                               <h2 className="text-sm font-bold uppercase tracking-wider">{check.senderName}</h2>
                               <p className="text-[9px] text-slate-500 leading-tight max-w-[190px] truncate whitespace-pre-wrap">{check.senderAddress}</p>
                           </div>
-                          <p className="text-lg font-mono font-bold">{check.checkNumber}</p>
+                          <div className="text-right">
+                              <h2 className="text-xs font-black uppercase text-slate-800">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
+                              <p className="text-lg font-mono font-bold mt-1">{check.checkNumber}</p>
+                          </div>
                       </div>
 
                       <div className="flex justify-end mt-2 relative z-10">
@@ -393,8 +392,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       {/* Payee Line */}
                       <div className="mt-4 flex items-center gap-4 relative z-10">
                           <span className="text-xs font-bold whitespace-nowrap uppercase">Pay to the Order of</span>
-                          <div className="flex-1 border-b border-black text-lg font-serif italic px-2">{check.payee || '____________________'}</div>
-                          <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50">
+                          <div className="flex-1 border-b border-black text-lg font-serif italic px-2 truncate min-w-0">{check.payee || '____________________'}</div>
+                          <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50 shrink-0">
                               <span className="text-sm font-bold">$</span>
                               <span className="flex-1 text-right font-mono text-lg font-bold">
                                   {check.isCoinCheck ? (check.coinAmount || 0).toFixed(2) : (check.amount || 0).toFixed(2)}
@@ -404,19 +403,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
                       {/* Amount Words Line */}
                       <div className="mt-4 flex items-center gap-4 relative z-10">
-                          <div className="flex-1 border-b border-black text-sm font-serif italic px-2">{check.amountWords || '____________________________________________________________________'}</div>
-                          <span className="text-xs font-bold">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
+                          <div className="flex-1 max-w-[480px] border-b border-black text-xs md:text-sm font-serif italic px-2 overflow-hidden truncate whitespace-nowrap">
+                            {check.amountWords || '____________________________________________________________________'}
+                          </div>
+                          <span className="text-xs font-bold shrink-0">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                       </div>
 
-                      <div className="mt-4 relative z-10">
-                          <p className="text-xs font-bold uppercase tracking-wide">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</p>
-                      </div>
-
-                      <div className="mt-auto flex items-end justify-between relative z-10">
+                      <div className="mt-auto flex items-end justify-between relative z-10 pb-6">
                           <div className="flex-1 flex flex-col gap-2">
                               <div className="flex items-center gap-2">
                                   <span className="text-[10px] font-bold">FOR</span>
-                                  <div className="w-48 border-b border-black text-sm font-serif italic px-1 truncate">{check.memo || '____________________'}</div>
+                                  <div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate">{check.memo || '____________________'}</div>
                               </div>
                           </div>
                           <div className="w-48 relative ml-4 z-20">
@@ -427,7 +424,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                       </div>
                       
-                      {/* MICR Line - Moved to bottom-left to avoid overlap */}
+                      {/* MICR Line - Absolute Bottom Left */}
                       <div className="absolute bottom-2 left-6 font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 inline-block px-1 z-30">
                           ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
                       </div>
