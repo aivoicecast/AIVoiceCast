@@ -68,7 +68,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasHydratedFromTemplate = useRef(false);
 
-  // Proactive asset conversion to bypass CORS in shared viewer and PDF export
+  // Proactive asset conversion to bypass CORS in designer mode and PDF export
   const convertRemoteToDataUrl = async (url: string): Promise<string> => {
       if (!url || !url.startsWith('http')) return url;
       try {
@@ -83,7 +83,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           });
       } catch (e) {
           console.warn("CORS Conversion failed for", url, e);
-          return url; // Fallback
+          return url; // Fallback to original
       }
   };
 
@@ -95,13 +95,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   const sig = data.signatureUrl || data.signature || '';
                   const wm = data.watermarkUrl || '';
                   
-                  // Proactively convert assets to data URLs to ensure shared link renders correctly
-                  const [base64Sig, base64Wm] = await Promise.all([
-                      convertRemoteToDataUrl(sig),
-                      convertRemoteToDataUrl(wm)
-                  ]);
-
-                  setConvertedAssets({ sig: base64Sig, wm: base64Wm });
+                  // For shared view, we don't block the UI with the conversion, but try it in background
+                  convertRemoteToDataUrl(sig).then(base64 => setConvertedAssets(prev => ({ ...prev, sig: base64 })));
+                  convertRemoteToDataUrl(wm).then(base64 => setConvertedAssets(prev => ({ ...prev, wm: base64 })));
 
                   const normalizedCheck = {
                       ...DEFAULT_CHECK,
@@ -146,7 +142,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     return () => window.removeEventListener('resize', handleAutoZoom);
   }, []);
 
-  // RESTORE: Auto-generate description of the amount with professional formatting
   useEffect(() => {
     if (isReadOnly || isLoadingCheck) return;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -313,14 +308,15 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       if (!url || typeof url !== 'string' || url.length < 10 || imageError['sig']) {
           return <span className="text-slate-200 font-serif text-[10px]">AUTHORIZED SIGNATURE</span>;
       }
-      const isRemote = url.startsWith('http');
+      
+      // CRITICAL: Removed crossOrigin attribute to ensure visibility in shared links for guests
+      // where storage bucket CORS might not be configured.
       return (
           <img 
               key={url}
               src={url} 
               className="max-h-16 w-auto object-contain mb-1" 
               alt="Authorized Signature"
-              crossOrigin={isRemote ? "anonymous" : undefined}
               onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
           />
       );
@@ -329,7 +325,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const renderWatermark = () => {
       const url = convertedAssets.wm || check.watermarkUrl;
       if (!url || imageError['wm']) return null;
-      const isRemote = url.startsWith('http');
+      
       return (
           <div className="absolute inset-0 opacity-[0.35] pointer-events-none z-0">
             <img 
@@ -337,7 +333,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 src={url} 
                 className="w-full h-full object-cover grayscale" 
                 alt="Security Watermark"
-                crossOrigin={isRemote ? "anonymous" : undefined}
                 onError={() => setImageError(prev => ({ ...prev, 'wm': true }))}
             />
           </div>
@@ -445,7 +440,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                             src={qrCodeUrl} 
                             className="w-14 h-14 border border-slate-100 p-0.5 rounded shadow-sm bg-white" 
                             alt="Verification QR"
-                            crossOrigin="anonymous"
                         />
                       </div>
                       
@@ -455,13 +449,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                               <p className="text-[9px] text-slate-500 leading-normal max-w-[240px] whitespace-pre-wrap pb-4">{check.senderAddress}</p>
                           </div>
                           <div className="text-right flex flex-col items-end">
-                              <h2 className="text-xs font-black uppercase text-slate-800 leading-normal mb-1">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
-                              <div className="flex items-center gap-4 border-b border-black pb-0.5 mb-1">
-                                  <div className="flex items-center gap-1">
+                              <h2 className="text-xs font-black uppercase text-slate-800 leading-normal mb-2">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
+                              <div className="flex items-center gap-4">
+                                  <div className="flex items-center gap-1 border-b border-black pb-1">
                                       <span className="text-[8px] font-bold text-slate-400">DATE</span>
                                       <span className="text-xs font-mono font-bold leading-none">{check.date}</span>
                                   </div>
-                                  <div className="flex items-center gap-1">
+                                  <div className="flex items-center gap-1 border-b border-black pb-1">
                                       <span className="text-[8px] font-bold text-slate-400">NO.</span>
                                       <span className="text-sm font-mono font-black leading-none">{check.checkNumber}</span>
                                   </div>
@@ -469,8 +463,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                       </div>
 
-                      {/* Main Body - Positioned higher by reducing top margin */}
-                      <div className="mt-3 flex items-center gap-4 relative z-10">
+                      <div className="mt-2 flex items-center gap-4 relative z-10">
                           <span className="text-xs font-bold whitespace-nowrap uppercase">Pay to the Order of</span>
                           <div className="flex-1 border-b border-black text-lg font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-1 leading-relaxed">{check.payee || '____________________'}</div>
                           <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50 shrink-0">
@@ -493,7 +486,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate leading-relaxed pb-1.5">{check.memo || '____________________'}</div>
                       </div>
 
-                      {/* Unified Footer Row: MICR and Signature side-by-side to prevent word overlap */}
                       <div className="absolute bottom-4 left-0 right-0 px-8 flex items-end justify-between z-30">
                           <div className="font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 px-1 leading-none pb-1">
                               ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
@@ -532,7 +524,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               )}
           </div>
           
-          {/* ARCHIVE SLIDE-OVER */}
           {showArchive && (
               <div className="absolute inset-0 z-40 flex justify-end">
                   <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowArchive(false)}></div>
