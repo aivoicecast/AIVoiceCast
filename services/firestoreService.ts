@@ -900,9 +900,12 @@ export async function ensureUserBlog(user: any): Promise<Blog> {
 
 export async function getCommunityPosts(): Promise<BlogPost[]> {
     if (!db) return [];
-    const q = query(collection(db, POSTS_COLLECTION), where('status', '==', 'published'), orderBy('publishedAt', 'desc'));
+    // RESILIENT FETCH: Remove server-side orderBy to avoid "Missing Index" crash.
+    // We sort on the client side instead.
+    const q = query(collection(db, POSTS_COLLECTION), where('status', '==', 'published'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as BlogPost);
+    const data = snap.docs.map(d => ({ ...d.data(), id: d.id } as BlogPost));
+    return data.sort((a, b) => b.publishedAt! - a.publishedAt!);
 }
 
 export async function getUserPosts(blogId: string): Promise<BlogPost[]> {

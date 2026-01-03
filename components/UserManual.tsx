@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ArrowLeft, Book } from 'lucide-react';
 import { MarkdownView } from './MarkdownView';
@@ -74,9 +75,9 @@ A collaborative infinite canvas for systems design. Use it to draw architectures
 
 export const UserManual: React.FC<UserManualProps> = ({ onBack }) => {
   return (
-    <div className="h-full bg-slate-950 text-slate-100 flex flex-col">
-      <div className="p-6 border-b border-slate-900 flex items-center gap-4 sticky top-0 bg-slate-950/90 backdrop-blur-md z-20">
-        <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
+    <div className="h-full bg-slate-950 flex flex-col">
+      <div className="p-6 border-b border-slate-800 flex items-center gap-4 sticky top-0 bg-slate-950/90 backdrop-blur-md z-20">
+        <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full transition-colors text-slate-400 hover:text-white">
           <ArrowLeft size={24} />
         </button>
         <h1 className="text-xl font-bold tracking-widest uppercase text-slate-400 flex items-center gap-2">
@@ -84,9 +85,9 @@ export const UserManual: React.FC<UserManualProps> = ({ onBack }) => {
         </h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800">
-        <div className="max-w-4xl mx-auto px-6 py-12">
-            <div className="prose prose-invert prose-lg max-w-none">
+      <div className="flex-1 overflow-y-auto bg-[#fdfbf7]">
+        <div className="max-w-4xl mx-auto px-6 py-16 md:py-24">
+            <div className="prose prose-slate prose-lg max-w-none antialiased">
                 <MarkdownView content={MANUAL_CONTENT} />
             </div>
         </div>

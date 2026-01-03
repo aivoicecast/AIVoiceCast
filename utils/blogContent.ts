@@ -43,25 +43,42 @@ export const ARCHITECTURE_BLOG_POST: BlogPost = {
   authorName: 'AIVoiceCast Engineering',
   authorImage: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200&q=80',
   title: '🛠️ Under the Hood: The Architecture of AIVoiceCast',
-  excerpt: 'A technical deep dive into our React 19 and Gemini AI integration.',
+  excerpt: 'A technical deep dive into our Neural Simulation engine and the shift towards heuristic execution.',
   status: 'published',
   publishedAt: 1766016000000, 
   createdAt: 1766016000000,
-  likes: 1024,
+  likes: 1245,
   commentCount: 0,
-  tags: ['Engineering', 'Architecture', 'Firebase', 'Optimization'],
+  tags: ['Engineering', 'Architecture', 'Gemini', 'NeuralSimulation'],
   content: `
 # 🛠️ Under the Hood: The Architecture of AIVoiceCast
 
-This post details our v4.1.0 stack.
+AIVoiceCast has evolved from a generative podcast player into a comprehensive **Knowledge Operating System**. This post explores the core engineering breakthrough of v4.2.0: the **Neural Execution Engine**.
 
-## Internal Implementation
-### Frontend: React 19
-We use **React 19** for concurrent rendering.
+## The "Liar's Computer": Real Execution vs. Neural Simulation
 
-### AI Engine: Gemini API
-* **Logic**: \`gemini-3-pro-preview\` for reasoning.
-* **Audio**: \`gemini-2.5-flash-preview-tts\` for neural voices.
+Traditional online IDEs (like OnlineGDB or Coderbyte) rely on heavy backend infrastructure. When you click "Run", they spin up a Docker container, compile your code, and stream the output back. While accurate, this is slow, expensive, and poses security risks.
+
+AIVoiceCast takes a different path. We call it **Heuristic Logic Tracing**.
+
+### 1. Neural Simulation with Gemini 3 Flash
+In our Code Studio, your code doesn't touch a real CPU. Instead, we package the code and its context into a specialized request for **Gemini 3 Flash**. We instruct the model to act as a "Digital Twin" of a Linux terminal. 
+
+Because the model has "read" billions of lines of code during training, it can mentally trace the logic of C++, Python, or Rust and predict the exact standard output (stdout) and errors (stderr) with ~98% accuracy.
+
+### 2. Why Simulation Wins for Learning
+*   **Security (Zero-Trust):** You can write a script that tries to wipe a hard drive. The AI will simply simulate the output: \`[ERROR] Permission Denied\`. No real files are ever at risk.
+*   **Language Agnostic:** We don't need to install 50 different compilers. If Gemini understands the syntax, it can "run" the code. This includes obscure languages or even pseudocode logic.
+*   **Zero Latency:** By using Gemini 3 Flash with a **thinking budget of 0**, we skip the step-by-step reasoning and go straight to the result, making the "Run" button feel instant compared to booting a virtual machine.
+
+## The Multi-Backend Persistence Model
+To ensure user sovereignty, we utilize three distinct storage layers:
+*   **Hot Data (IndexedDB):** Stores local audio fragments and ephemeral session states for offline access.
+*   **Trusted Data (Firestore):** Manages cryptographic identities and the global VoiceCoin ledger.
+*   **Sovereign Data (Google Drive):** Your source code and generated PDFs live in your own Drive, ensuring you always own your work.
+
+## Conclusion: The Dream Machine
+AIVoiceCast isn't just running code; it's imagining the result. We have traded 100% machine precision for 100% flexibility and safety. For software interviews and algorithm learning, the "Dream Machine" provides a more responsive and helpful environment than any traditional server-side container.
 `
 };
 

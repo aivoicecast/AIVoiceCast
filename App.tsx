@@ -122,7 +122,7 @@ const UI_TEXT = {
     mentorship: "Mentorship",
     groups: "Groups",
     recordings: "Recordings",
-    docs: "Documents",
+    docs: "Document Studio",
     lectures: "Lectures",
     podcasts: "Podcasts",
     mission: "Mission & Manifesto",
@@ -156,7 +156,7 @@ const UI_TEXT = {
     mentorship: "导师",
     groups: "群组",
     recordings: "录音",
-    docs: "文档",
+    docs: "文档工作室",
     lectures: "课程",
     podcasts: "播客",
     mission: "使命与宣言",
@@ -179,7 +179,7 @@ const App: React.FC = () => {
   const [language, setLanguage] = useState<'en' | 'zh'>('en');
   const t = UI_TEXT[language];
   
-  const getInitialView = (): ViewState | 'firestore_debug' => {
+  const getInitialView = (): ViewState | 'firestore_debug' | 'docs' => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
     if (params.get('claim') || params.get('pay')) return 'coin_wallet'; 
@@ -192,7 +192,7 @@ const App: React.FC = () => {
     return (view as any) || 'directory';
   };
 
-  const [viewState, setViewState] = useState<ViewState | 'firestore_debug'>(getInitialView());
+  const [viewState, setViewState] = useState<ViewState | 'firestore_debug' | 'docs'>(getInitialView());
   const [activeChannelId, setActiveChannelId] = useState<string | null>(() => {
       return new URLSearchParams(window.location.search).get('channelId');
   });
@@ -232,6 +232,7 @@ const App: React.FC = () => {
   const allApps = [
     { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); setActiveTab('categories'); }, color: 'text-indigo-400' },
     { id: 'wallet', label: t.wallet, icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400' },
+    { id: 'docs', label: t.docs, icon: FileText, action: () => handleSetViewState('docs'), color: 'text-emerald-400' },
     { id: 'check_designer', label: t.checks, icon: Wallet, action: () => handleSetViewState('check_designer'), color: 'text-orange-400' },
     { id: 'shipping_labels', label: t.shipping, icon: Truck, action: () => handleSetViewState('shipping_labels'), color: 'text-emerald-400' },
     { id: 'icon_lab', label: t.icons, icon: AppWindow, action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400' },
@@ -245,14 +246,14 @@ const App: React.FC = () => {
     { id: 'card_workshop', label: t.cards, icon: Gift, action: () => handleSetViewState('card_workshop'), color: 'text-red-400' },
   ];
 
-  const handleSetViewState = (newState: ViewState | 'firestore_debug', params: Record<string, string> = {}) => {
+  const handleSetViewState = (newState: ViewState | 'firestore_debug' | 'docs', params: Record<string, string> = {}) => {
     stopAllPlatformAudio(`NavigationTransition:${viewState}->${newState}`);
     setViewState(newState);
     setIsAppsMenuOpen(false);
     setIsUserMenuOpen(false);
     const url = new URL(window.location.href);
     if (newState === 'directory') url.searchParams.delete('view');
-    else url.searchParams.set('view', newState);
+    else url.searchParams.set('view', newState as string);
     Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
     if (!params.channelId) url.searchParams.delete('channelId');
     if (!params.id) url.searchParams.delete('id');
@@ -298,15 +299,12 @@ const App: React.FC = () => {
             setCurrentUser(null);
             setUserProfile(null);
         }
-        // CRITICAL: Set loading to false IMMEDIATELY once Firebase Auth responds.
-        // Lazy Drive Sync happens in a separate useEffect.
         setAuthLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  // Background Drive Sync
   useEffect(() => {
     if (currentUser) {
         const token = getDriveToken();
@@ -472,6 +470,7 @@ const App: React.FC = () => {
             {viewState === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice={globalVoice} currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={handleVote} /> )}
             {viewState === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} /> )}
             {viewState === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState('directory')} language={language} recordingEnabled={liveSessionParams.recordingEnabled} /> )}
+            {viewState === 'docs' && ( <DocumentList onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={handleStartLiveSession} /> )}
             {viewState === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} /> )}
