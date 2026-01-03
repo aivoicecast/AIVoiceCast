@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
@@ -71,7 +72,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const convertRemoteToDataUrl = async (url: string): Promise<string> => {
       if (!url || !url.startsWith('http')) return url;
       try {
-          const res = await fetch(url, { mode: 'cors' });
+          // Append timestamp to bust browser cache that might lack CORS headers
+          const cacheBuster = url.includes('?') ? `&t=${Date.now()}` : `?t=${Date.now()}`;
+          const res = await fetch(url + cacheBuster, { mode: 'cors' });
           if (!res.ok) throw new Error("Fetch failed");
           const blob = await res.blob();
           return new Promise((resolve, reject) => {
@@ -305,8 +308,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
         if (needsUpdate) {
             setConvertedAssets(newAssets);
-            // Wait for DOM repaint with local base64 images
-            await new Promise(r => setTimeout(r, 400));
+            // Wait longer for DOM repaint with local base64 images
+            await new Promise(r => setTimeout(r, 600));
         }
 
         const canvas = await html2canvas(checkRef.current, { 
@@ -314,7 +317,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             useCORS: true, 
             backgroundColor: '#ffffff',
             logging: false,
-            allowTaint: true,
+            allowTaint: false, // Disallow tainted canvas to ensure we get a clean render or a fail
             imageTimeout: 20000,
             onclone: (clonedDoc) => {
                 const el = clonedDoc.querySelector('.check-preview-container');
@@ -325,7 +328,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
         pdf.save(`check_${check.checkNumber}.pdf`);
     } catch(e) {
-        alert("PDF Generation failed. Please try again in a moment.");
+        console.error("PDF Export error", e);
+        alert("PDF Generation failed. Please try again or refresh the page.");
     } finally { 
         setIsExporting(false); 
     }
@@ -337,10 +341,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           return <span className="text-slate-200 font-serif text-[10px]">AUTHORIZED SIGNATURE</span>;
       }
       
+      const isRemote = url.startsWith('http');
       return (
           <img 
               key={url}
               src={url} 
+              crossOrigin={isRemote ? "anonymous" : undefined}
               className="max-h-16 w-auto object-contain mb-1" 
               alt="Authorized Signature"
               onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
@@ -352,11 +358,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       const url = convertedAssets.wm || check.watermarkUrl;
       if (!url || imageError['wm']) return null;
       
+      const isRemote = url.startsWith('http');
       return (
           <div className="absolute inset-0 opacity-[0.35] pointer-events-none z-0">
             <img 
                 key={url} 
                 src={url} 
+                crossOrigin={isRemote ? "anonymous" : undefined}
                 className="w-full h-full object-cover grayscale" 
                 alt="Security Watermark"
                 onError={() => setImageError(prev => ({ ...prev, 'wm': true }))}
