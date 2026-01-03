@@ -96,7 +96,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       }
   }, [user?.uid]);
 
-  // Handle donation range defaults
+  // Handle donation range defaults and constrained limits
   useEffect(() => {
     if (publicPaymentTarget && (publicPaymentTarget.min || publicPaymentTarget.max)) {
         if (!transferAmount) {
@@ -425,9 +425,14 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       
       const currentVal = parseInt(transferAmount) || 0;
       const minVal = Math.max(1, parseInt(publicPaymentTarget.min || '1'));
-      const maxVal = parseInt(publicPaymentTarget.max || '1000000');
       
-      const isRangeValid = !isDonationRange || (currentVal >= minVal && currentVal <= maxVal);
+      // CONSTRAIN MAX BY WALLET BALANCE
+      const invoiceMax = parseInt(publicPaymentTarget.max || '1000000');
+      const walletBalance = user?.coinBalance || 0;
+      const effectiveMax = Math.min(invoiceMax, walletBalance);
+      
+      const isAffordable = walletBalance >= minVal;
+      const isRangeValid = !isDonationRange || (currentVal >= minVal && currentVal <= effectiveMax);
 
       return (
           <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden animate-fade-in">
@@ -455,7 +460,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                         <div className="space-y-4">
                             <div>
                                 <label className={`text-[10px] font-bold uppercase tracking-widest block mb-2 ${isRangeValid ? 'text-slate-500' : 'text-red-500 animate-pulse'}`}>
-                                    {isDonationRange ? `Amount Range: ${minVal} - ${maxVal}` : 'Base Amount'}
+                                    {isDonationRange ? `Affordable Range: ${minVal} - ${effectiveMax}` : 'Base Amount'}
                                 </label>
                                 <div className="relative">
                                     <Coins className={`absolute left-4 top-1/2 -translate-y-1/2 ${isRangeValid ? 'text-amber-500' : 'text-red-500'}`} size={24}/>
@@ -468,15 +473,20 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                         className={`w-full bg-slate-950 border ${!isRangeValid ? 'border-red-500 text-red-200 ring-2 ring-red-500/20' : (isAutoMode ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white')} rounded-2xl pl-12 pr-6 py-5 text-4xl font-black focus:outline-none focus:border-amber-500 transition-all`}
                                     />
                                 </div>
-                                {!isRangeValid && (
+                                {!isAffordable && (
                                     <div className="mt-2 text-[10px] text-red-400 font-bold uppercase flex items-center gap-1">
-                                        <AlertTriangle size={12}/> Value must be between {minVal} and {maxVal}
+                                        <AlertTriangle size={12}/> Insufficient Balance. (Min: {minVal}, Yours: {walletBalance})
                                     </div>
                                 )}
-                                {isDonationRange && (
+                                {isAffordable && !isRangeValid && (
+                                    <div className="mt-2 text-[10px] text-red-400 font-bold uppercase flex items-center gap-1">
+                                        <AlertTriangle size={12}/> Out of Range. (Max: {effectiveMax})
+                                    </div>
+                                )}
+                                {isDonationRange && isAffordable && (
                                     <input 
-                                        type="range" min={minVal} max={maxVal} step="1"
-                                        value={currentVal < minVal ? minVal : (currentVal > maxVal ? maxVal : currentVal)}
+                                        type="range" min={minVal} max={effectiveMax} step="1"
+                                        value={currentVal < minVal ? minVal : (currentVal > effectiveMax ? effectiveMax : currentVal)}
                                         onChange={e => setTransferAmount(e.target.value)}
                                         className="w-full mt-4 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                                     />
@@ -519,7 +529,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                         <div className="bg-slate-950 p-4 rounded-2xl border border-indigo-500/20 flex items-center justify-between shadow-inner">
                             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Charge</span>
                             <div className="flex items-center gap-2">
-                                <span className="text-3xl font-black text-white">{totalWithTip}</span>
+                                <span className={`text-3xl font-black ${totalWithTip > walletBalance ? 'text-red-500' : 'text-white'}`}>{totalWithTip}</span>
                                 <span className="text-[10px] font-black text-indigo-400">VC</span>
                             </div>
                         </div>
@@ -534,12 +544,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                             ) : (
                                 <button 
                                     onClick={handleAuthorizePayment}
-                                    disabled={isTransferring || totalWithTip <= 0 || !isRangeValid}
+                                    disabled={isTransferring || totalWithTip <= 0 || !isRangeValid || totalWithTip > walletBalance}
                                     className="py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex flex-col items-center justify-center gap-1 active:scale-95 disabled:opacity-50"
                                 >
                                     <div className="flex items-center gap-2">
                                         {isTransferring ? <Loader2 size={20} className="animate-spin" /> : <Signature size={20}/>}
-                                        <span>{isTransferring ? 'Signing...' : 'Pay Now'}</span>
+                                        <span>{isTransferring ? 'Signing...' : (totalWithTip > walletBalance ? 'Insufficient Funds' : 'Pay Now')}</span>
                                     </div>
                                     <span className="text-[8px] opacity-70 tracking-widest">Secured by Neural Identity</span>
                                 </button>
