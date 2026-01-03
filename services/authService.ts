@@ -64,7 +64,6 @@ export async function signInWithGitHub(): Promise<string | null> {
         let result;
         
         // If user is already logged in (e.g. via Google), attempt to LINK the GitHub account
-        // instead of signing in as a new user. This prevents 'account-exists-with-different-credential' errors.
         if (auth.currentUser) {
             result = await linkWithPopup(auth.currentUser, provider);
         } else {
@@ -81,11 +80,21 @@ export async function signInWithGitHub(): Promise<string | null> {
         return null;
     } catch (error: any) {
         console.error("Firebase GitHub Auth Exception:", error);
+        // Log detailed internal structure for the user to see in console
+        console.dir(error);
+        
+        if (error.code === 'auth/credential-already-in-use') {
+            // Extract the conflicting email if Firebase provides it
+            const email = error.customData?.email || "Unknown Email";
+            const message = `CONFLICT: This GitHub account is already bound to a different Firebase User.\n\nAssociated Email: ${email}\n\nYou must sign out and sign in using THAT account, or use a Manual Token.`;
+            const newErr = new Error(message);
+            (newErr as any).code = error.code;
+            (newErr as any).conflictingEmail = email;
+            throw newErr;
+        }
         
         if (error.code === 'auth/account-exists-with-different-credential') {
             alert("This GitHub email is already associated with another sign-in method (likely Google). \n\nFIX: Sign in with Google first, then return here to connect GitHub.");
-        } else if (error.code === 'auth/credential-already-in-use') {
-            alert("This GitHub account is already linked to a different user in our system.");
         }
         
         handleAuthError(error);

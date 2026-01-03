@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
-import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash, ExternalLink } from 'lucide-react';
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink, downloadDriveFileAsBlob } from '../services/googleDriveService';
 import { connectGoogleDrive, getDriveToken, signInWithGitHub } from '../services/authService';
@@ -352,6 +352,8 @@ const Slot: React.FC<SlotProps> = ({
 };
 
 export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, userProfile, sessionId: propSessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession }) => {
+  const [githubLinkingError, setGithubLinkingError] = useState<string | null>(null);
+  
   const defaultFile: CodeFile = {
       name: 'main.cpp',
       path: 'drive://welcome',
@@ -399,6 +401,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const [githubSearchQuery, setGithubSearchQuery] = useState('');
   const [isGithubLoading, setIsGithubLoading] = useState(false);
   const [githubTree, setGithubTree] = useState<TreeNode[]>([]);
+  const [showManualToken, setShowManualToken] = useState(false);
+  const [manualToken, setManualToken] = useState('');
 
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [loadingIds, setLoadingIds] = useState<Record<string, boolean>>({});
@@ -462,14 +466,29 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   };
 
   const handleGithubLogin = async () => {
+      setGithubLinkingError(null);
       try {
           const token = await signInWithGitHub();
           if (token) {
               setGithubToken(token);
               await refreshExplorer();
           }
-      } catch (e) {
+      } catch (e: any) {
           console.error("GitHub Login Failed", e);
+          if (e.code === 'auth/credential-already-in-use' || e.message?.includes('already bound')) {
+              setGithubLinkingError(e.message);
+              setShowManualToken(true);
+          }
+      }
+  };
+
+  const handleSetManualToken = () => {
+      if (manualToken.trim()) {
+          setGithubToken(manualToken.trim());
+          localStorage.setItem('github_token', manualToken.trim());
+          setShowManualToken(false);
+          setGithubLinkingError(null);
+          refreshExplorer();
       }
   };
 
@@ -838,7 +857,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                                   <button onClick={handleGithubLogin} className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-2">
                                       <Github size={14}/> Connect GitHub
                                   </button>
-                                  <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest leading-relaxed">Required for Private Repos</p>
+                                  <div className="flex flex-col gap-2 mt-4 text-center">
+                                      <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest leading-relaxed">Problems connecting?</p>
+                                      <button onClick={() => setShowManualToken(true)} className="text-[10px] text-indigo-400 hover:text-white underline font-bold uppercase tracking-widest">Use Access Token</button>
+                                  </div>
                               </div>
                           ) : isGithubLoading ? (
                               <div className="flex-1 flex flex-col items-center justify-center text-indigo-400 gap-4">
@@ -852,7 +874,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                                           <Github size={12} className="text-slate-500"/>
                                           <span className="text-[10px] font-bold text-indigo-300 truncate uppercase tracking-widest">{project.github?.owner}/{project.github?.repo}</span>
                                       </div>
-                                      <button onClick={() => setGithubTree([])} className="text-slate-500 hover:text-white" title="Change Repository"><RefreshCw size={12}/></button>
+                                      <div className="flex items-center gap-2">
+                                          <button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); setGithubTree([]); }} className="text-slate-500 hover:text-red-400" title="Disconnect GitHub"><LogIn size={12} className="rotate-180"/></button>
+                                          <button onClick={() => setGithubTree([])} className="text-slate-500 hover:text-white" title="Change Repository"><RefreshCw size={12}/></button>
+                                      </div>
                                   </div>
                                   <div className="flex-1 overflow-y-auto scrollbar-hide py-2">
                                       {githubTree.map(node => (
@@ -905,6 +930,9 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                                           ))
                                       )}
                                   </div>
+                                  <div className="p-3 bg-slate-950 border-t border-slate-800 text-center">
+                                      <button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); }} className="text-[9px] font-black text-slate-500 uppercase hover:text-red-400">Logout GitHub</button>
+                                  </div>
                               </div>
                           )}
                       </div>
@@ -922,6 +950,47 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               <AIChatPanel isOpen={true} onClose={() => setIsRightOpen(false)} messages={chatMessages} onSendMessage={handleSendMessage} isThinking={isChatThinking} currentInput={chatInput} onInputChange={setChatInput} />
           </div>
       </div>
+
+      {showManualToken && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+              <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up">
+                  <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-bold text-white flex items-center gap-2"><Key className="text-indigo-400" size={18}/> Manual Token Fallback</h3>
+                      <button onClick={() => setShowManualToken(false)} className="text-slate-500 hover:text-white"><X size={20}/></button>
+                  </div>
+                  <div className="space-y-4">
+                      <div className="p-3 bg-amber-900/20 border border-amber-500/30 rounded-xl flex items-start gap-3">
+                          <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16}/>
+                          <div className="space-y-2">
+                             <p className="text-[10px] text-amber-200 leading-relaxed font-bold">CONFLICT DETECTED:</p>
+                             <p className="text-[10px] text-amber-200 leading-relaxed">
+                                {githubLinkingError || "OAuth linking failed because your GitHub is already linked to another account."}
+                             </p>
+                             <p className="text-[10px] text-amber-200 leading-relaxed italic">
+                                Use a Personal Access Token (PAT) to bypass this conflict.
+                             </p>
+                          </div>
+                      </div>
+                      <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">GitHub Access Token</label>
+                          <input 
+                            type="password" 
+                            value={manualToken}
+                            onChange={e => setManualToken(e.target.value)}
+                            placeholder="ghp_..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-indigo-200 outline-none focus:border-indigo-500 font-mono"
+                          />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                          <button onClick={handleSetManualToken} disabled={!manualToken.trim()} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg disabled:opacity-50 transition-all active:scale-95">Save & Connect</button>
+                          <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer" className="text-[10px] text-slate-500 hover:text-indigo-400 flex items-center justify-center gap-1 mt-1 transition-colors">
+                              How to generate a token? <ExternalLink size={10}/>
+                          </a>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
