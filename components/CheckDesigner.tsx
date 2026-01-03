@@ -68,7 +68,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasHydratedFromTemplate = useRef(false);
 
-  // Helper to convert remote image to data URL to fix CORS issues in PDF and Shared View
   const convertRemoteToDataUrl = async (url: string): Promise<string> => {
       if (!url || !url.startsWith('http')) return url;
       try {
@@ -82,7 +81,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           });
       } catch (e) {
           console.warn("Conversion failed for", url, e);
-          return url; // Fallback to original URL
+          return url;
       }
   };
 
@@ -144,7 +143,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     return () => window.removeEventListener('resize', handleAutoZoom);
   }, []);
 
-  // RESTORE: Auto-generate description of the amount with professional formatting
   useEffect(() => {
     if (isReadOnly || isLoadingCheck) return;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -198,7 +196,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               Format as 'WORDS AND CENTS/100'. 
               Example for 100: 'ONE HUNDRED AND 00/100'. 
               Example for 123.45: 'ONE HUNDRED TWENTY THREE AND 45/100'. 
-              Include the text '${isCoins ? 'COINS' : 'DOLLARS'}' at the end if you want, but the requirement is the numerical/word conversion. 
               Respond with the text ONLY.`
           });
           const text = response.text?.trim().toUpperCase() || '';
@@ -450,23 +447,26 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       
                       <div className="flex justify-between items-start relative z-10">
                           <div className="space-y-1">
-                              <h2 className="text-sm font-bold uppercase tracking-wider leading-[1.6]">{check.senderName}</h2>
-                              <p className="text-[9px] text-slate-500 leading-[1.6] max-w-[240px] whitespace-pre-wrap pb-4">{check.senderAddress}</p>
+                              <h2 className="text-sm font-bold uppercase tracking-wider leading-relaxed">{check.senderName}</h2>
+                              <p className="text-[9px] text-slate-500 leading-normal max-w-[240px] whitespace-pre-wrap pb-4">{check.senderAddress}</p>
                           </div>
-                          <div className="text-right">
-                              <h2 className="text-xs font-black uppercase text-slate-800 leading-normal">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
-                              <p className="text-lg font-mono font-bold mt-1 leading-normal">{check.checkNumber}</p>
+                          <div className="text-right flex flex-col items-end">
+                              <h2 className="text-xs font-black uppercase text-slate-800 leading-normal mb-1">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
+                              <div className="flex items-center gap-4 border-b border-black pb-0.5 mb-1">
+                                  <div className="flex items-center gap-1">
+                                      <span className="text-[8px] font-bold">DATE</span>
+                                      <span className="text-xs font-mono font-bold leading-none">{check.date}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                      <span className="text-[8px] font-bold">NO.</span>
+                                      <span className="text-sm font-mono font-black leading-none">{check.checkNumber}</span>
+                                  </div>
+                              </div>
                           </div>
                       </div>
 
-                      <div className="flex justify-end mt-0 relative z-10">
-                          <div className="border-b border-black w-32 flex justify-between items-end pb-1 mb-1">
-                              <span className="text-[9px] font-bold">DATE</span>
-                              <span className="text-sm font-mono leading-normal">{check.date}</span>
-                          </div>
-                      </div>
-
-                      <div className="mt-4 flex items-center gap-4 relative z-10">
+                      {/* Main Body - Moved up slightly by reducing top margin */}
+                      <div className="mt-3 flex items-center gap-4 relative z-10">
                           <span className="text-xs font-bold whitespace-nowrap uppercase">Pay to the Order of</span>
                           <div className="flex-1 border-b border-black text-lg font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-1 leading-relaxed">{check.payee || '____________________'}</div>
                           <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50 shrink-0">
@@ -477,28 +477,30 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                       </div>
 
-                      <div className="mt-6 flex items-center gap-4 relative z-10 overflow-hidden">
+                      <div className="mt-4 flex items-center gap-4 relative z-10 overflow-hidden">
                           <div className="flex-1 max-w-[460px] border-b border-black text-[13px] font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-1.5 leading-[1.6]">
                             {isUpdatingWords ? 'PROCESSING AMOUNT...' : (check.amountWords || '____________________________________________________________________')}
                           </div>
                           <span className="text-xs font-bold shrink-0">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                       </div>
 
-                      <div className="mt-4 flex items-center gap-2 relative z-10">
+                      <div className="mt-3 flex items-center gap-2 relative z-10">
                           <span className="text-[10px] font-bold">FOR</span>
                           <div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate leading-relaxed pb-1.5">{check.memo || '____________________'}</div>
                       </div>
 
-                      {/* Signature Block - Anchored Strictly to Bottom Right */}
-                      <div className="absolute bottom-10 right-8 w-48 z-20 flex flex-col items-center">
-                          <div className="border-b border-black w-full min-h-[64px] flex items-end justify-center overflow-hidden pb-1">
-                              {renderSignature()}
+                      {/* Bottom row: MICR line and Signature side-by-side on the same level */}
+                      <div className="absolute bottom-4 left-0 right-0 px-8 flex items-end justify-between z-30">
+                          <div className="font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 px-1 leading-none pb-1">
+                              ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
                           </div>
-                          <span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter w-full">Authorized Signature</span>
-                      </div>
-                      
-                      <div className="absolute bottom-2 left-6 font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 inline-block px-1 z-30 leading-normal">
-                          ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
+                          
+                          <div className="w-48 flex flex-col items-center">
+                              <div className="border-b border-black w-full min-h-[60px] flex items-end justify-center overflow-hidden pb-1">
+                                  {renderSignature()}
+                              </div>
+                              <span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter w-full">Authorized Signature</span>
+                          </div>
                       </div>
                   </div>
               </div>
@@ -595,7 +597,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl p-6 shadow-2xl animate-fade-in-up">
                   <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-bold text-white flex items-center gap-2"><PenTool size={20} className="text-indigo-400"/> Authorized Signature</h3>
+                      <h3 className="text-lg font-bold text-white flex items-center gap-2"><PenTool size={20} className="text-indigo-400"/> Draw Official Signature</h3>
                       <button onClick={() => setShowSignPad(false)} className="p-2 text-slate-500 hover:text-white"><X/></button>
                   </div>
                   <div className="h-[300px] border-2 border-dashed border-slate-800 rounded-2xl overflow-hidden mb-6 bg-white">
