@@ -281,6 +281,22 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (!checkRef.current) return;
     setIsExporting(true);
     try {
+        // Robust asset handling: Force any remote assets into base64 before capture
+        const sigUrl = convertedAssets.sig || check.signatureUrl || check.signature;
+        const wmUrl = convertedAssets.wm || check.watermarkUrl;
+        
+        if (sigUrl && sigUrl.startsWith('http') && !convertedAssets.sig) {
+            const b64 = await convertRemoteToDataUrl(sigUrl);
+            setConvertedAssets(prev => ({ ...prev, sig: b64 }));
+        }
+        if (wmUrl && wmUrl.startsWith('http') && !convertedAssets.wm) {
+            const b64 = await convertRemoteToDataUrl(wmUrl);
+            setConvertedAssets(prev => ({ ...prev, wm: b64 }));
+        }
+
+        // Slight delay to ensure DOM update
+        await new Promise(r => setTimeout(r, 300));
+
         const canvas = await html2canvas(checkRef.current, { 
             scale: 4, 
             useCORS: true, 
@@ -297,7 +313,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
         pdf.save(`check_${check.checkNumber}.pdf`);
     } catch(e) {
-        alert("PDF Generation failed. Try again.");
+        alert("PDF Generation failed. Ensure images are loaded and try again.");
     } finally { 
         setIsExporting(false); 
     }
@@ -309,7 +325,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           return <span className="text-slate-200 font-serif text-[10px]">AUTHORIZED SIGNATURE</span>;
       }
       
-      // Removed crossOrigin to avoid guest load issues if Storage CORS is not set.
+      // Removed crossOrigin for read-only view fix. data URIs (convertedAssets) handle PDF needs.
       return (
           <img 
               key={url}
@@ -325,7 +341,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       const url = convertedAssets.wm || check.watermarkUrl;
       if (!url || imageError['wm']) return null;
       
-      // Removed crossOrigin for guest access.
+      // Removed crossOrigin for standard rendering.
       return (
           <div className="absolute inset-0 opacity-[0.35] pointer-events-none z-0">
             <img 
@@ -451,11 +467,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <div className="text-right flex flex-col items-end">
                               <h2 className="text-xs font-black uppercase text-slate-800 leading-normal mb-2">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
                               <div className="flex items-center gap-4">
-                                  <div className="flex items-center gap-1 border-b border-black pb-1">
+                                  <div className="flex flex-col items-end border-b border-black pb-1">
                                       <span className="text-[8px] font-bold text-slate-400">DATE</span>
                                       <span className="text-xs font-mono font-bold leading-none">{check.date}</span>
                                   </div>
-                                  <div className="flex items-center gap-1 border-b border-black pb-1">
+                                  <div className="flex flex-col items-end border-b border-black pb-1">
                                       <span className="text-[8px] font-bold text-slate-400">NO.</span>
                                       <span className="text-sm font-mono font-black leading-none">{check.checkNumber}</span>
                                   </div>
