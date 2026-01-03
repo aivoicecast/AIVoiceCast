@@ -402,8 +402,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     try {
         if (activeTab === 'drive' && driveToken && driveRootId) {
              const driveId = fileToSave.path?.startsWith('drive://') ? fileToSave.path.replace('drive://', '') : undefined;
-             // Ensure the ID is valid (not 'welcome' or empty)
-             const validId = (driveId && driveId.length > 20) ? driveId : undefined;
+             // Ensure the ID is valid (not 'welcome', empty, or a local blob URL)
+             const validId = (driveId && driveId.length > 20 && !driveId.includes('blob:')) ? driveId : undefined;
              await saveToDrive(driveToken, driveRootId, fileToSave.name, fileToSave.content, validId);
         } else if (activeTab === 'cloud' && currentUser) {
              await saveProjectToCloud(`projects/${currentUser.uid}`, fileToSave.name, fileToSave.content);
@@ -462,6 +462,27 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
 
       updateSlotFile(newFile, focusedSlot);
       setSaveStatus('modified');
+  };
+
+  const handleCreateNewFolder = async () => {
+      if (activeTab !== 'drive' || !driveToken) {
+          alert("New folders are currently supported for Google Drive backend.");
+          return;
+      }
+      
+      const folderName = prompt("Enter folder name:", "New Folder");
+      if (!folderName) return;
+
+      setIsExplorerLoading(true);
+      try {
+          const rootId = driveRootId || await ensureCodeStudioFolder(driveToken);
+          await createDriveFolder(driveToken, folderName, rootId);
+          await refreshExplorer();
+      } catch (e: any) {
+          alert("Failed to create folder: " + e.message);
+      } finally {
+          setIsExplorerLoading(false);
+      }
   };
 
   const handleConnectDrive = async () => {
@@ -601,12 +622,15 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               if (activeTab === 'drive' && driveToken) {
                   const files = await listDriveFiles(driveToken, node.id);
                   setDriveItems(prev => {
+                      // 1. Update the parent node to be marked as loaded
                       const next = prev.map(item => item.id === node.id ? { ...item, isLoaded: true } : item);
-                      const existingIds = new Set(next.map(i => i.id));
-                      const newItems = files
-                        .filter(f => !existingIds.has(f.id))
-                        .map(f => ({ ...f, parentId: node.id, isLoaded: false }));
-                      return [...next, ...newItems];
+                      
+                      // 2. Filter out any existing children of this parent to prevent doubling
+                      const filteredNext = next.filter(item => item.parentId !== node.id);
+                      
+                      // 3. Append the fresh items
+                      const newItems = files.map(f => ({ ...f, parentId: node.id, isLoaded: false }));
+                      return [...filteredNext, ...newItems];
                   });
               } else if (activeTab === 'github' && project.github) {
                   const { owner, repo, branch } = project.github;
@@ -880,13 +904,16 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               </div>
               
               <div className="flex-1 flex flex-col overflow-hidden">
-                  <div className="p-3 border-b border-slate-800 flex gap-2 shrink-0 bg-slate-900/50">
+                  <div className="p-3 border-b border-slate-800 flex gap-1.5 shrink-0 bg-slate-900/50">
                       <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors" title="Refresh Explorer">
                           {isExplorerLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}
                       </button>
-                      <button onClick={handleCreateNewFile} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95">
+                      <button onClick={handleCreateNewFile} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-1.5 shadow-lg transition-all active:scale-95">
                           <FilePlus size={14}/>
                           New File
+                      </button>
+                      <button onClick={handleCreateNewFolder} className="p-2 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg border border-slate-700 transition-colors" title="New Folder">
+                          <FolderPlus size={16}/>
                       </button>
                   </div>
 
