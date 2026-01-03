@@ -71,7 +71,6 @@ export async function ensureCodeStudioFolder(accessToken: string): Promise<strin
 
 /**
  * Saves a file to Google Drive. Updates if exists, creates if not.
- * Fix: Added missing saveToDrive function required by CodeStudio.tsx.
  */
 export async function saveToDrive(accessToken: string, folderId: string, filename: string, content: string): Promise<string> {
   const query = `'${folderId}' in parents and name='${filename}' and trashed=false`;
@@ -157,12 +156,25 @@ export async function listDriveFiles(accessToken: string, folderId: string): Pro
   return data.files || [];
 }
 
+/**
+ * Reads a Drive file using an access token.
+ */
 export async function readDriveFile(accessToken: string, fileId: string): Promise<string> {
   const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${accessToken}` }
   });
-  if (!res.ok) throw new Error("Failed to read Drive file");
+  if (!res.ok) throw new Error("Failed to read Drive file. You may not have access.");
   return await res.text();
+}
+
+/**
+ * Reads a publicly shared Drive file using the application's API key.
+ * This bypasses the 'drive.file' scope restriction for recipients.
+ */
+export async function readPublicDriveFile(apiKey: string, fileId: string): Promise<string> {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${apiKey}`);
+    if (!res.ok) throw new Error("Failed to read public Drive file. Ensure file is shared correctly.");
+    return await res.text();
 }
 
 export async function uploadToDrive(accessToken: string, folderId: string, filename: string, blob: Blob): Promise<string> {

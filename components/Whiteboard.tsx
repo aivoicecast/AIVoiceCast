@@ -7,7 +7,7 @@ import { WhiteboardElement, ToolType, LineStyle, BrushType } from '../types';
 import { GoogleGenAI } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
-import { ensureFolder, uploadToDrive, readDriveFile, makeFilePubliclyViewable, getDriveFileSharingLink } from '../services/googleDriveService';
+import { ensureFolder, uploadToDrive, readDriveFile, readPublicDriveFile, makeFilePubliclyViewable, getDriveFileSharingLink } from '../services/googleDriveService';
 import { ShareModal } from './ShareModal';
 
 interface WhiteboardProps {
@@ -105,16 +105,32 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const loadFromDrive = async (fileId: string) => {
       setIsLoading(true);
       try {
-          const token = getDriveToken() || await connectGoogleDrive();
-          const content = await readDriveFile(token, fileId);
-          const parsed = JSON.parse(content);
-          if (Array.isArray(parsed)) {
-              setElements(parsed);
-              if (onDataChange) onDataChange(content);
+          let content = '';
+          const token = getDriveToken();
+          
+          if (token) {
+              try {
+                  content = await readDriveFile(token, fileId);
+              } catch (e) {
+                  // If token fails (e.g. scope restriction for another user's file), fallback to public read
+                  console.warn("Private read failed, attempting public read...");
+                  content = await readPublicDriveFile(process.env.API_KEY!, fileId);
+              }
+          } else {
+              // No token, assume we are a recipient viewing a public link
+              content = await readPublicDriveFile(process.env.API_KEY!, fileId);
+          }
+
+          if (content) {
+              const parsed = JSON.parse(content);
+              if (Array.isArray(parsed)) {
+                  setElements(parsed);
+                  if (onDataChange) onDataChange(content);
+              }
           }
       } catch (e: any) {
           console.error("Failed to load from Drive", e);
-          alert("Could not load whiteboard from Drive. Ensure you have access.");
+          alert("Could not load whiteboard. Ensure the shared link is public and valid.");
       } finally {
           setIsLoading(false);
       }
@@ -193,10 +209,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           const fileName = `Whiteboard_${new Date().toISOString().slice(0,10)}_${generateSecureId().substring(0,4)}.draw`;
           const fileId = await uploadToDrive(token, boardsFolderId, fileName, new Blob([stateJson], { type: 'application/json' }));
           
-          // Make public so others can view
+          // CRITICAL: Set public permissions so anyone can view via our App-Level fallback
           await makeFilePubliclyViewable(token, fileId);
           
-          const url = `${window.location.origin}?view=whiteboard&driveId=${fileId}`;
+          const url = `${window.location.origin}?view=whiteboard&driveId=${fileId}&mode=view`;
           setShareUrl(url);
           setShowShareModal(true);
       } catch (e: any) {
@@ -391,7 +407,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             {isLoading && (
                 <div className="absolute inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
                     <Loader2 size={32} className="animate-spin text-indigo-500"/>
-                    <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Loading Canvas...</span>
+                    <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Syncing Canvas...</span>
                 </div>
             )}
             <canvas 
