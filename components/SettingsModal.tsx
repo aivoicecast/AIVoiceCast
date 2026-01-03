@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile } from '../types';
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon } from 'lucide-react';
+/* Added Zap and Crown to fix missing imports */
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown } from 'lucide-react';
 import { logUserActivity, getBillingHistory, createStripePortalSession, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut } from '../services/authService';
 import { clearAudioCache } from '../services/tts';
@@ -20,28 +21,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen, onClose, user, onUpdateProfile, onUpgradeClick 
 }) => {
   const [activeTab, setActiveTab] = useState<'general' | 'interests' | 'preferences' | 'banking' | 'billing'>('general');
-  const [isProcessingPortal, setIsProcessingPortal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [displayName, setDisplayName] = useState(user.displayName);
   const [defaultRepo, setDefaultRepo] = useState(user.defaultRepoUrl || '');
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [emailNotifs, setEmailNotifs] = useState(true);
-  const [publicProfile, setPublicProfile] = useState(true);
   const [aiProvider, setAiProvider] = useState<'gemini' | 'openai'>(user.preferredAiProvider || 'gemini');
-  const [error, setError] = useState<string | null>(null);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
   
   // Banking Profile State
   const [senderAddress, setSenderAddress] = useState(user.senderAddress || '');
-  const [showSignPad, setShowSignPad] = useState(false);
   const [signaturePreview, setSignaturePreview] = useState(user.savedSignatureUrl || '');
   const [nextCheckNumber, setNextCheckNumber] = useState(user.nextCheckNumber || 1001);
-  const [isSavingBanking, setIsSavingBanking] = useState(false);
+  const [showSignPad, setShowSignPad] = useState(false);
   
-  // Interests State
-  const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
-  
-  // Billing State
   const [billingHistory, setBillingHistory] = useState<any[]>([]);
-  const [showPolicy, setShowPolicy] = useState(false);
+  const [isProcessingPortal, setIsProcessingPortal] = useState(false);
+
+  /* Added missing helper variables and functions */
+  const currentTier = user.subscriptionTier || 'free';
+  const isPaid = currentTier === 'pro';
+
+  const handleClearCache = () => {
+    if (confirm("Wipe local audio fragments? This can resolve playback issues.")) {
+      clearAudioCache();
+      alert("Neural cache purged.");
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    setIsProcessingPortal(true);
+    try {
+      const url = await createStripePortalSession(user.uid);
+      window.location.href = url;
+    } catch (e) {
+      alert("Could not load billing portal.");
+    } finally {
+      setIsProcessingPortal(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (confirm("Sign out of AIVoiceCast?")) {
+      await signOut();
+      onClose();
+    }
+  };
 
   useEffect(() => {
       if (activeTab === 'billing' && user.subscriptionTier === 'pro') {
@@ -57,48 +80,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setSignaturePreview(user.savedSignatureUrl || '');
           setNextCheckNumber(user.nextCheckNumber || 1001);
           setDisplayName(user.displayName);
+          setDefaultRepo(user.defaultRepoUrl || '');
       }
   }, [isOpen, user]);
 
-  if (!isOpen) return null;
-
-  const currentTier = user.subscriptionTier || 'free';
-  const isPaid = currentTier === 'pro';
-
-  const handleManageSubscription = async () => {
-    setIsProcessingPortal(true);
-    setError(null);
-    try {
-        const url = await createStripePortalSession(user.uid);
-        window.location.assign(url);
-    } catch (e: any) {
-        console.error(e);
-        setError("Failed to open portal: " + (e.message || "Unknown error"));
-        setIsProcessingPortal(false);
-    }
-  };
-
-  const handleSaveProfile = async () => {
+  const handleSaveAll = async () => {
+      setIsSaving(true);
       try {
-          await updateUserProfile(user.uid, { 
-              displayName: displayName, 
-              defaultRepoUrl: defaultRepo,
-              interests: selectedInterests,
-              preferredAiProvider: aiProvider
-          });
-
-          const updatedProfile = { ...user, displayName, defaultRepoUrl: defaultRepo, interests: selectedInterests, preferredAiProvider: aiProvider };
-          if (onUpdateProfile) onUpdateProfile(updatedProfile);
-          setIsEditingName(false);
-          alert("Profile updated!");
-      } catch(e: any) {
-          alert("Failed to save settings: " + e.message);
-      }
-  };
-
-  const handleSaveBanking = async () => {
-      setIsSavingBanking(true);
-      try {
+          // Handle Signature Upload if it's a new local drawing
           let finalSigUrl = signaturePreview;
           if (signaturePreview.startsWith('data:')) {
               const res = await fetch(signaturePreview);
@@ -106,42 +95,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               finalSigUrl = await uploadFileToStorage(`users/${user.uid}/signature_profile.png`, blob);
           }
 
-          await updateUserProfile(user.uid, { 
-              senderAddress, 
+          const updateData: Partial<UserProfile> = {
+              displayName,
+              defaultRepoUrl: defaultRepo,
+              interests: selectedInterests,
+              preferredAiProvider: aiProvider,
+              senderAddress,
               savedSignatureUrl: finalSigUrl,
-              nextCheckNumber: nextCheckNumber
-          });
+              nextCheckNumber
+          };
 
-          const updatedProfile = { ...user, senderAddress, savedSignatureUrl: finalSigUrl, nextCheckNumber: nextCheckNumber };
+          await updateUserProfile(user.uid, updateData);
+
+          const updatedProfile = { ...user, ...updateData, savedSignatureUrl: finalSigUrl };
           if (onUpdateProfile) onUpdateProfile(updatedProfile);
-          setSignaturePreview(finalSigUrl);
-          alert("Banking profile saved!");
+          
+          setIsSaving(false);
+          onClose();
+          // Optional: Show a subtle toast or just close
       } catch(e: any) {
-          alert("Save failed: " + e.message);
-      } finally {
-          setIsSavingBanking(false);
+          alert("Failed to save settings: " + e.message);
+          setIsSaving(false);
       }
   };
 
   const toggleInterest = (topic: string) => {
-      if (selectedInterests.includes(topic)) {
-          setSelectedInterests(prev => prev.filter(t => t !== topic));
-      } else {
-          setSelectedInterests(prev => [...prev, topic]);
-      }
+      setSelectedInterests(prev => 
+          prev.includes(topic) ? prev.filter(t => t !== topic) : [...prev, topic]
+      );
   };
 
-  const handleClearCache = () => {
-      if(confirm("Clear all downloaded audio and local settings?")) {
-          clearAudioCache();
-          alert("Local cache cleared.");
-      }
-  };
-
-  const handleLogout = async () => {
-      await signOut();
-      onClose();
-  };
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
@@ -157,7 +141,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        <div className="flex border-b border-slate-800 bg-slate-900/50 shrink-0 overflow-x-auto">
+        <div className="flex border-b border-slate-800 bg-slate-900/50 shrink-0 overflow-x-auto no-scrollbar">
             <button onClick={() => setActiveTab('general')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'general' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>General</button>
             <button onClick={() => setActiveTab('interests')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'interests' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Interests</button>
             <button onClick={() => setActiveTab('banking')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'banking' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Check Profile</button>
@@ -165,29 +149,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button onClick={() => setActiveTab('billing')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'billing' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Billing</button>
         </div>
 
-        <div className="p-6 overflow-y-auto flex-1 bg-slate-900">
+        <div className="p-6 overflow-y-auto flex-1 bg-slate-900 scrollbar-thin scrollbar-thumb-slate-800">
             
             {activeTab === 'general' && (
-                <div className="space-y-8">
-                    <div className="flex items-start gap-6">
-                        <div className="relative group">
+                <div className="space-y-8 animate-fade-in">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+                        <div className="relative">
                             {user.photoURL ? (
-                                <img src={user.photoURL} alt={user.displayName} className="w-20 h-20 rounded-full border-2 border-slate-700 object-cover" />
+                                <img src={user.photoURL} alt={user.displayName} className="w-24 h-24 rounded-full border-4 border-slate-800 object-cover shadow-xl" />
                             ) : (
-                                <div className="w-20 h-20 rounded-full bg-slate-800 flex items-center justify-center text-slate-500"><User size={32} /></div>
+                                <div className="w-24 h-24 rounded-full bg-slate-800 flex items-center justify-center text-slate-500 border-4 border-slate-800 shadow-xl"><User size={40} /></div>
                             )}
+                            <div className="absolute -bottom-1 -right-1 p-2 bg-indigo-600 rounded-full border-4 border-slate-900 text-white shadow-lg"><Globe size={14}/></div>
                         </div>
-                        <div className="flex-1 space-y-4">
+                        <div className="flex-1 space-y-4 w-full">
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Display Name</label>
-                                <div className="flex gap-2">
-                                    <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} disabled={!isEditingName} className={`flex-1 bg-slate-950 border ${isEditingName ? 'border-indigo-500' : 'border-slate-800'} rounded-lg px-3 py-2 text-white text-sm focus:outline-none`} />
-                                    {isEditingName ? <button onClick={handleSaveProfile} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-500"><Save size={16} /></button> : <button onClick={() => setIsEditingName(true)} className="p-2 bg-slate-800 text-slate-400 rounded-lg hover:text-white"><Edit2 size={16} /></button>}
-                                </div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Profile Display Name</label>
+                                <input 
+                                    type="text" 
+                                    value={displayName} 
+                                    onChange={(e) => setDisplayName(e.target.value)} 
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
+                                />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1"><Github size={12}/> Default Git Repository</label>
-                                <input type="text" value={defaultRepo} onChange={(e) => setDefaultRepo(e.target.value)} disabled={!isEditingName} placeholder="owner/repo" className={`w-full bg-slate-950 border ${isEditingName ? 'border-indigo-500' : 'border-slate-800'} rounded-lg px-3 py-2 text-white text-sm focus:outline-none`} />
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Github size={12}/> Default GitHub Repository</label>
+                                <input 
+                                    type="text" 
+                                    value={defaultRepo} 
+                                    onChange={(e) => setDefaultRepo(e.target.value)} 
+                                    placeholder="owner/repo" 
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
+                                />
+                                <p className="text-[10px] text-slate-500 mt-1 px-1">Sets the primary target for Code Studio synchronization.</p>
                             </div>
                         </div>
                     </div>
@@ -197,14 +191,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {activeTab === 'banking' && (
                 <div className="space-y-8 animate-fade-in">
                     <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-start gap-4">
-                        <div className="p-2 bg-indigo-600 rounded-lg text-white"><PenTool size={20}/></div>
+                        <div className="p-2 bg-indigo-600 rounded-lg text-white shadow-lg shadow-indigo-900/20"><PenTool size={20}/></div>
                         <div>
                             <h3 className="text-sm font-bold text-white">Neural Check Profile</h3>
-                            <p className="text-xs text-slate-400">Save your professional details once to generate checks in seconds.</p>
+                            <p className="text-xs text-slate-400">Save your professional details once to generate verified checks in seconds.</p>
                         </div>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                         <div>
                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><MapPin size={12} className="text-indigo-400"/> Business/Sender Address</label>
                             <textarea 
@@ -212,25 +206,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 onChange={(e) => setSenderAddress(e.target.value)}
                                 placeholder="123 Silicon Way, San Jose, CA 95134"
                                 rows={3}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none leading-relaxed"
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none leading-relaxed transition-all shadow-inner"
                             />
                         </div>
 
-                        <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><HashIcon size={12} className="text-indigo-400"/> Next Check Number</label>
-                            <input 
-                                type="number"
-                                value={nextCheckNumber}
-                                onChange={(e) => setNextCheckNumber(parseInt(e.target.value) || 0)}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                            />
-                            <p className="text-[10px] text-slate-500 mt-1">This will auto-increment each time you publish a check.</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><HashIcon size={12} className="text-indigo-400"/> Next Check Number</label>
+                                <input 
+                                    type="number"
+                                    value={nextCheckNumber}
+                                    onChange={(e) => setNextCheckNumber(parseInt(e.target.value) || 0)}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-inner"
+                                />
+                            </div>
                         </div>
 
                         <div>
                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><PenTool size={12} className="text-indigo-400"/> Official Signature</label>
                             {signaturePreview ? (
-                                <div className="relative w-full aspect-[3/1] bg-white rounded-xl border border-slate-700 overflow-hidden group">
+                                <div className="relative w-full aspect-[3/1] bg-white rounded-xl border border-slate-700 overflow-hidden group shadow-lg">
                                     <img src={signaturePreview} className="w-full h-full object-contain p-4" alt="Saved Signature" />
                                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
                                         <button onClick={() => setShowSignPad(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold shadow-lg">Change Signature</button>
@@ -240,43 +235,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             ) : (
                                 <button 
                                     onClick={() => setShowSignPad(true)}
-                                    className="w-full aspect-[3/1] border-2 border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-600 hover:border-indigo-500 hover:text-indigo-400 transition-all bg-slate-950/50"
+                                    className="w-full aspect-[3/1] border-2 border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-600 hover:border-indigo-500 hover:text-indigo-400 transition-all bg-slate-950/50 group"
                                 >
-                                    <PenTool size={32} className="opacity-20"/>
-                                    <span className="text-xs font-bold uppercase">Register Official Signature</span>
+                                    <div className="p-3 bg-slate-900 rounded-full group-hover:bg-indigo-900/20 transition-colors">
+                                        <PenTool size={32} className="opacity-20"/>
+                                    </div>
+                                    <span className="text-[10px] font-bold uppercase tracking-widest">Register Neural Signature</span>
                                 </button>
                             )}
                         </div>
                     </div>
-
-                    <button 
-                        onClick={handleSaveBanking}
-                        disabled={isSavingBanking}
-                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-95"
-                    >
-                        {isSavingBanking ? <Loader2 size={18} className="animate-spin"/> : <CheckCircle size={18}/>}
-                        <span>Save Check Profile</span>
-                    </button>
                 </div>
             )}
 
             {activeTab === 'interests' && (
-                <div className="space-y-6">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2"><Heart className="text-pink-500" /> Your Interests</h3>
-                            <p className="text-sm text-slate-400">Select topics you love to personalize your feed.</p>
-                        </div>
-                        <button onClick={handleSaveProfile} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold rounded-lg shadow-lg flex items-center gap-2"><Save size={16} /> Save</button>
+                <div className="space-y-6 animate-fade-in">
+                    <div>
+                        <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2"><Heart className="text-pink-500" /> Your Interests</h3>
+                        <p className="text-sm text-slate-400">Select topics you love to personalize your feed and recommendations.</p>
                     </div>
                     <div className="space-y-6">
                         {Object.keys(TOPIC_CATEGORIES).map(category => (
-                            <div key={category} className="bg-slate-800/30 border border-slate-800 rounded-xl p-4">
-                                <h4 className="text-sm font-bold text-slate-300 mb-3 flex items-center gap-2"><HashIcon size={14} className="text-indigo-400" /> {category}</h4>
+                            <div key={category} className="bg-slate-800/30 border border-slate-800 rounded-2xl p-5">
+                                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-slate-800 pb-2"><HashIcon size={12} className="text-indigo-400" /> {category}</h4>
                                 <div className="flex flex-wrap gap-2">
-                                    {TOPIC_CATEGORIES[category].map(tag => (
-                                        <button key={tag} onClick={() => toggleInterest(tag)} className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${selectedInterests.includes(tag) ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'}`}>{tag}</button>
-                                    ))}
+                                    {TOPIC_CATEGORIES[category].map(tag => {
+                                        const isSelected = selectedInterests.includes(tag);
+                                        return (
+                                            <button 
+                                                key={tag} 
+                                                onClick={() => toggleInterest(tag)} 
+                                                className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95 ${isSelected ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/20' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'}`}
+                                            >
+                                                {tag}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         ))}
@@ -285,32 +279,124 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
 
             {activeTab === 'preferences' && (
-                <div className="space-y-6">
+                <div className="space-y-8 animate-fade-in">
                     <div className="space-y-4">
-                        <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2"><Cpu size={16}/> AI Model API</h4>
-                        <div className="bg-slate-800/30 border border-slate-700 rounded-xl p-4 space-y-4">
-                            <label className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${aiProvider === 'gemini' ? 'bg-indigo-900/20 border-indigo-500' : 'bg-slate-900/50 border-slate-700'}`}>
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Cpu size={16}/> Preferred AI Engine</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'gemini' ? 'bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-900 border-slate-800 hover:bg-slate-800'}`}>
                                 <div className="flex items-center gap-3">
-                                    <input type="radio" checked={aiProvider === 'gemini'} onChange={() => setAiProvider('gemini')} className="accent-indigo-500"/>
-                                    <div><p className="text-sm font-bold text-white">Google Gemini</p><p className="text-xs text-slate-500">Fast, reliable, multimodal.</p></div>
+                                    <input type="radio" name="aiProvider" checked={aiProvider === 'gemini'} onChange={() => setAiProvider('gemini')} className="accent-indigo-500 w-4 h-4"/>
+                                    <div><p className="text-sm font-bold text-white">Google Gemini</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Native Platform Engine</p></div>
                                 </div>
+                                <Sparkles size={20} className={aiProvider === 'gemini' ? 'text-indigo-400' : 'text-slate-700'}/>
+                            </label>
+                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'openai' ? 'bg-emerald-900/20 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-900 border-slate-800 hover:bg-slate-800'}`}>
+                                <div className="flex items-center gap-3">
+                                    <input type="radio" name="aiProvider" checked={aiProvider === 'openai'} onChange={() => setAiProvider('openai')} className="accent-emerald-500 w-4 h-4"/>
+                                    <div><p className="text-sm font-bold text-white">OpenAI GPT</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Requires Pro &sk-...</p></div>
+                                </div>
+                                <Zap size={20} className={aiProvider === 'openai' ? 'text-emerald-400' : 'text-slate-700'}/>
                             </label>
                         </div>
                     </div>
+
+                    <div className="p-6 bg-slate-950 border border-slate-800 rounded-2xl space-y-4 shadow-inner">
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-bold text-slate-300">Application Cache</h4>
+                            <button onClick={handleClearCache} className="text-xs font-bold text-red-400 hover:text-red-300 transition-colors uppercase tracking-widest">Wipe Cache</button>
+                        </div>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                            Clears local neural audio fragments and temporary session data. This can help resolve playback issues or free up disk space.
+                        </p>
+                    </div>
                 </div>
             )}
+
+            {activeTab === 'billing' && (
+                <div className="space-y-8 animate-fade-in">
+                    <div className={`p-6 rounded-[2.5rem] border ${isPaid ? 'bg-emerald-900/10 border-emerald-500/30' : 'bg-slate-800 border-slate-700'} flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl`}>
+                        <div className="flex items-center gap-4">
+                            <div className={`p-4 rounded-3xl ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-slate-600'}`}>
+                                {isPaid ? <Crown size={32} fill="currentColor"/> : <CreditCard size={32}/>}
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold text-white uppercase tracking-tighter">{currentTier} Membership</h3>
+                                <p className="text-xs text-slate-400 mt-0.5">Status: <span className={isPaid ? 'text-emerald-400 font-bold' : 'text-slate-500'}>{user.subscriptionStatus || 'Active'}</span></p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={isPaid ? handleManageSubscription : onUpgradeClick}
+                            disabled={isProcessingPortal}
+                            className={`px-8 py-3 rounded-xl font-black text-xs uppercase tracking-[0.2em] shadow-lg transition-all active:scale-95 flex items-center gap-2 ${isPaid ? 'bg-white text-slate-900 hover:bg-slate-100' : 'bg-indigo-600 text-white hover:bg-indigo-500'}`}
+                        >
+                            {isProcessingPortal ? <Loader2 size={16} className="animate-spin"/> : <CreditCard size={16}/>}
+                            {isPaid ? 'Manage Billing' : 'Upgrade to Pro'}
+                        </button>
+                    </div>
+
+                    {isPaid && billingHistory.length > 0 && (
+                        <div className="space-y-4">
+                            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Payment History</h4>
+                            <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800 shadow-inner">
+                                {billingHistory.map((inv, i) => (
+                                    <div key={i} className="px-6 py-4 flex items-center justify-between hover:bg-slate-900 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-slate-900 rounded-lg border border-slate-800 text-slate-500"><FileText size={14}/></div>
+                                            <div>
+                                                <p className="text-xs font-bold text-slate-300">Monthly Pro Renewal</p>
+                                                <p className="text-[10px] text-slate-500">{inv.date}</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-xs font-bold text-white">${inv.amount}</p>
+                                            <p className="text-[9px] text-emerald-500 font-black uppercase tracking-tighter">Paid</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+
+        {/* Global Footer with Save Button */}
+        <div className="p-5 border-t border-slate-800 bg-slate-950 flex items-center justify-between shrink-0 shadow-2xl">
+             <button 
+                onClick={handleLogout}
+                className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-red-400 transition-all uppercase tracking-widest px-3 py-2 rounded-lg hover:bg-red-950/20"
+             >
+                <LogOut size={16} /> Sign Out
+             </button>
+             
+             <div className="flex items-center gap-3">
+                <button 
+                    onClick={onClose} 
+                    className="px-6 py-2.5 text-xs font-bold text-slate-400 hover:text-white transition-colors"
+                >
+                    Cancel
+                </button>
+                <button 
+                    onClick={handleSaveAll} 
+                    disabled={isSaving}
+                    className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-black uppercase tracking-[0.2em] rounded-xl shadow-xl shadow-indigo-900/20 flex items-center gap-2 transition-all active:scale-[0.98]"
+                >
+                    {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                    <span>Save Changes</span>
+                </button>
+             </div>
         </div>
       </div>
 
       {showSignPad && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl p-6 shadow-2xl animate-fade-in-up">
                   <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-bold text-white flex items-center gap-2"><PenTool size={20} className="text-indigo-400"/> Draw Official Signature</h3>
                       <button onClick={() => setShowSignPad(false)} className="p-2 text-slate-500 hover:text-white"><X/></button>
                   </div>
                   <div className="h-[300px] border-2 border-dashed border-slate-800 rounded-2xl overflow-hidden mb-6 bg-white">
-                      <Whiteboard disableAI backgroundColor="transparent" initialColor="#000000" onDataChange={() => {}} onSessionStart={() => {}} />
+                      <Whiteboard isReadOnly={false} backgroundColor="transparent" initialColor="#000000" />
                   </div>
                   <div className="flex justify-end gap-2">
                       <button onClick={() => setShowSignPad(false)} className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold">Cancel</button>
@@ -320,9 +406,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             if (canvas) setSignaturePreview(canvas.toDataURL('image/png'));
                             setShowSignPad(false);
                         }} 
-                        className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg"
+                        className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-indigo-900/20"
                       >
-                        Confirm
+                        Capture & Confirm
                       </button>
                   </div>
               </div>
@@ -331,3 +417,5 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     </div>
   );
 };
+
+export default SettingsModal;
