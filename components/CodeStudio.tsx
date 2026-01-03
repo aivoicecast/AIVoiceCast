@@ -246,7 +246,6 @@ interface SlotProps {
     broadcastCursor: (line: number, col: number) => void;
 }
 
-/* Fix: Wrapped Slot with React.FC to handle React-reserved 'key' prop implicitly */
 const Slot: React.FC<SlotProps> = ({ 
     idx, activeSlots, focusedSlot, setFocusedSlot, slotViewModes, toggleSlotViewMode,
     isFormattingSlots, terminalOutputs, setTerminalOutputs, isTerminalOpen, setIsTerminalOpen,
@@ -441,7 +440,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     }
   };
 
-  /* Fix: Added missing toggleSlotViewMode handler */
   const toggleSlotViewMode = (idx: number) => {
       setSlotViewModes(prev => ({
           ...prev,
@@ -449,12 +447,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       }));
   };
 
-  /* Fix: Added missing handleSetLayout handler */
   const handleSetLayout = (mode: LayoutMode) => {
       setLayoutMode(mode);
   };
 
-  /* Fix: Added missing handleConnectDrive handler */
   const handleConnectDrive = async () => {
       try {
           const token = await connectGoogleDrive();
@@ -465,7 +461,18 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       }
   };
 
-  /* Fix: Added missing handleAutoLoadDefaultRepo handler */
+  const handleGithubLogin = async () => {
+      try {
+          const token = await signInWithGitHub();
+          if (token) {
+              setGithubToken(token);
+              await refreshExplorer();
+          }
+      } catch (e) {
+          console.error("GitHub Login Failed", e);
+      }
+  };
+
   const handleAutoLoadDefaultRepo = async (token: string, repoFullName: string) => {
       const [owner, repo] = repoFullName.split('/');
       setIsGithubLoading(true);
@@ -486,6 +493,30 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           }));
       } catch (e: any) {
           alert("Failed to load repo: " + e.message);
+      } finally {
+          setIsGithubLoading(false);
+      }
+  };
+
+  const handleSelectRepo = async (repo: any) => {
+      if (!githubToken) return;
+      setIsGithubLoading(true);
+      try {
+          const { files } = await fetchRepoContents(githubToken, repo.owner.login, repo.name, repo.default_branch);
+          const tree = files.map(f => ({
+              id: f.path || f.name,
+              name: f.name.split('/').pop() || f.name,
+              type: f.isDirectory ? 'folder' : 'file',
+              isLoaded: f.childrenFetched,
+              data: f
+          }));
+          setGithubTree(tree);
+          setProject(prev => ({
+              ...prev,
+              github: { owner: repo.owner.login, repo: repo.name, branch: repo.default_branch, sha: '' }
+          }));
+      } catch (e: any) {
+          alert("Failed to load repository tree: " + e.message);
       } finally {
           setIsGithubLoading(false);
       }
@@ -524,17 +555,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           fileName: activeFile?.path || 'none', line, column: col, color: myColor, updatedAt: Date.now()
       });
   }, [isLive, project.id, activeFile?.path, clientId, currentUser, myColor]);
-
-  const handleTakeControl = async () => {
-      if (project.id === 'init') return;
-      await claimCodeProjectLock(project.id, clientId);
-      if (activeFile?.path) await updateProjectActiveFile(project.id, activeFile.path);
-  };
-
-  const handleRelinquishControl = async () => {
-      if (project.id === 'init') return;
-      await claimCodeProjectLock(project.id, '');
-  };
 
   const handleSmartSave = async (targetFileOverride?: CodeFile) => {
     const fileToSave = targetFileOverride || activeFile;
@@ -575,7 +595,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           } else if (activeTab === 'github' && githubToken) {
               if (project.github && githubTree.length === 0) {
                    await handleAutoLoadDefaultRepo(githubToken, `${project.github.owner}/${project.github.repo}`);
-              } else if (githubRepos.length === 0) {
+              } else {
                   const repos = await fetchUserRepos(githubToken);
                   setGithubRepos(repos);
               }
@@ -771,6 +791,11 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     return root;
   }, [cloudItems]);
 
+  const filteredRepos = useMemo(() => {
+      if (!githubSearchQuery.trim()) return githubRepos;
+      return githubRepos.filter(r => r.full_name.toLowerCase().includes(githubSearchQuery.toLowerCase()));
+  }, [githubRepos, githubSearchQuery]);
+
   return (
     <div className="flex flex-col h-full bg-slate-950 text-slate-100 overflow-hidden">
       <header className="h-14 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-4 shrink-0 z-20">
@@ -801,8 +826,89 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                       <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors" title="Refresh Explorer">{isExplorerLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}</button>
                       <button onClick={handleCreateNewFile} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-1.5 shadow-lg transition-all active:scale-95"><FilePlus size={14}/> New File</button>
                   </div>
+                  
                   {activeTab === 'drive' && (driveToken ? <div className="flex-1 overflow-y-auto scrollbar-hide py-2">{driveTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path?.replace('drive://','')} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}</div> : <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4"><button onClick={handleConnectDrive} className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg">Connect G-Drive</button></div>)}
+                  
                   {activeTab === 'cloud' && (currentUser ? <div className="flex-1 overflow-y-auto scrollbar-hide py-2">{cloudTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}</div> : <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4"><p className="text-xs text-slate-400">Sign in for Private Cloud.</p></div>)}
+
+                  {activeTab === 'github' && (
+                      <div className="flex-1 flex flex-col overflow-hidden">
+                          {!githubToken ? (
+                              <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4">
+                                  <button onClick={handleGithubLogin} className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-2">
+                                      <Github size={14}/> Connect GitHub
+                                  </button>
+                                  <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest leading-relaxed">Required for Private Repos</p>
+                              </div>
+                          ) : isGithubLoading ? (
+                              <div className="flex-1 flex flex-col items-center justify-center text-indigo-400 gap-4">
+                                  <Loader2 className="animate-spin" size={32}/>
+                                  <span className="text-[10px] font-black uppercase tracking-widest">Fetching Repos...</span>
+                              </div>
+                          ) : githubTree.length > 0 ? (
+                              <div className="flex-1 flex flex-col overflow-hidden">
+                                  <div className="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+                                      <div className="flex items-center gap-2 overflow-hidden">
+                                          <Github size={12} className="text-slate-500"/>
+                                          <span className="text-[10px] font-bold text-indigo-300 truncate uppercase tracking-widest">{project.github?.owner}/{project.github?.repo}</span>
+                                      </div>
+                                      <button onClick={() => setGithubTree([])} className="text-slate-500 hover:text-white" title="Change Repository"><RefreshCw size={12}/></button>
+                                  </div>
+                                  <div className="flex-1 overflow-y-auto scrollbar-hide py-2">
+                                      {githubTree.map(node => (
+                                          <FileTreeItem 
+                                              key={node.id} 
+                                              node={node} 
+                                              depth={0} 
+                                              activeId={activeFile?.path} 
+                                              onSelect={handleExplorerSelect} 
+                                              onToggle={toggleFolder} 
+                                              onShare={()=>{}} 
+                                              expandedIds={expandedIds} 
+                                              loadingIds={loadingIds}
+                                          />
+                                      ))}
+                                  </div>
+                              </div>
+                          ) : (
+                              <div className="flex-1 flex flex-col overflow-hidden">
+                                  <div className="p-3">
+                                      <div className="relative">
+                                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" size={14}/>
+                                          <input 
+                                              type="text" 
+                                              value={githubSearchQuery} 
+                                              onChange={e => setGithubSearchQuery(e.target.value)} 
+                                              placeholder="Search repositories..." 
+                                              className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                                          />
+                                      </div>
+                                  </div>
+                                  <div className="flex-1 overflow-y-auto scrollbar-hide">
+                                      {filteredRepos.length === 0 ? (
+                                          <div className="p-8 text-center text-slate-600 text-xs italic">No repositories found.</div>
+                                      ) : (
+                                          filteredRepos.map(repo => (
+                                              <button 
+                                                  key={repo.id} 
+                                                  onClick={() => handleSelectRepo(repo)}
+                                                  className="w-full text-left p-3 border-b border-slate-800 hover:bg-slate-800 transition-colors group"
+                                              >
+                                                  <div className="flex items-center justify-between mb-1">
+                                                      <span className="text-xs font-bold text-slate-300 group-hover:text-white truncate">{repo.name}</span>
+                                                      <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${repo.private ? 'bg-amber-900/20 text-amber-500 border-amber-900/50' : 'bg-emerald-900/20 text-emerald-500 border-emerald-900/50'}`}>
+                                                          {repo.private ? 'Private' : 'Public'}
+                                                      </span>
+                                                  </div>
+                                                  <p className="text-[10px] text-slate-500 line-clamp-1">{repo.description || 'No description provided.'}</p>
+                                              </button>
+                                          ))
+                                      )}
+                                  </div>
+                              </div>
+                          )}
+                      </div>
+                  )}
               </div>
           </div>
           <div onMouseDown={() => setIsDraggingLeft(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 z-30 shrink-0 bg-slate-800/20"></div>
