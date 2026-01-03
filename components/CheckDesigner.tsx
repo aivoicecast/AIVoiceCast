@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
@@ -83,7 +82,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           });
       } catch (e) {
           console.warn("CORS Conversion failed for", url, e);
-          return url; // Fallback to original
+          return url; 
       }
   };
 
@@ -95,9 +94,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   const sig = data.signatureUrl || data.signature || '';
                   const wm = data.watermarkUrl || '';
                   
-                  // For shared view, try converting to base64 in background for PDF compatibility
-                  convertRemoteToDataUrl(sig).then(base64 => setConvertedAssets(prev => ({ ...prev, sig: base64 })));
-                  convertRemoteToDataUrl(wm).then(base64 => setConvertedAssets(prev => ({ ...prev, wm: base64 })));
+                  // For shared view, convert remote images to base64 immediately
+                  if (sig.startsWith('http')) {
+                      convertRemoteToDataUrl(sig).then(b64 => setConvertedAssets(prev => ({ ...prev, sig: b64 })));
+                  }
+                  if (wm.startsWith('http')) {
+                      convertRemoteToDataUrl(wm).then(b64 => setConvertedAssets(prev => ({ ...prev, wm: b64 })));
+                  }
 
                   const normalizedCheck = {
                       ...DEFAULT_CHECK,
@@ -174,13 +177,15 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               contents: { parts: [{ text: `A professional minimalist high-contrast watermark etching for a bank check. Subject: ${check.memo}. Subtle grayscale, clean.` }] },
               config: { imageConfig: { aspectRatio: "16:9" } }
           });
-          for (const part of response.candidates[0].content.parts) {
-              if (part.inlineData) { 
-                  const dataUrl = `data:image/png;base64,${part.inlineData.data}`;
-                  setCheck(prev => ({ ...prev, watermarkUrl: dataUrl })); 
-                  setConvertedAssets(prev => ({ ...prev, wm: dataUrl }));
-                  break; 
-              }
+          if (response.candidates?.[0]?.content?.parts) {
+            for (const part of response.candidates[0].content.parts) {
+                if (part.inlineData) { 
+                    const dataUrl = `data:image/png;base64,${part.inlineData.data}`;
+                    setCheck(prev => ({ ...prev, watermarkUrl: dataUrl })); 
+                    setConvertedAssets(prev => ({ ...prev, wm: dataUrl }));
+                    break; 
+                }
+            }
           }
       } catch (e) { alert("Art failed."); } finally { setIsGeneratingArt(false); }
   };
@@ -281,21 +286,28 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (!checkRef.current) return;
     setIsExporting(true);
     try {
-        // Robust asset handling: Force any remote assets into base64 before capture
-        const sigUrl = convertedAssets.sig || check.signatureUrl || check.signature;
-        const wmUrl = convertedAssets.wm || check.watermarkUrl;
+        // CRITICAL FIX: Remote images (from Storage) block PDF capture due to CORS.
+        // We must ensure they are converted to Base64 locally before letting html2canvas touch them.
+        const sigUrl = check.signatureUrl || check.signature;
+        const wmUrl = check.watermarkUrl;
         
-        if (sigUrl && sigUrl.startsWith('http') && !convertedAssets.sig) {
-            const b64 = await convertRemoteToDataUrl(sigUrl);
-            setConvertedAssets(prev => ({ ...prev, sig: b64 }));
+        let newAssets: Record<string, string> = { ...convertedAssets };
+        let needsUpdate = false;
+
+        if (sigUrl && sigUrl.startsWith('http') && !newAssets.sig) {
+            newAssets.sig = await convertRemoteToDataUrl(sigUrl);
+            needsUpdate = true;
         }
-        if (wmUrl && wmUrl.startsWith('http') && !convertedAssets.wm) {
-            const b64 = await convertRemoteToDataUrl(wmUrl);
-            setConvertedAssets(prev => ({ ...prev, wm: b64 }));
+        if (wmUrl && wmUrl.startsWith('http') && !newAssets.wm) {
+            newAssets.wm = await convertRemoteToDataUrl(wmUrl);
+            needsUpdate = true;
         }
 
-        // Slight delay to ensure DOM update
-        await new Promise(r => setTimeout(r, 300));
+        if (needsUpdate) {
+            setConvertedAssets(newAssets);
+            // Wait for DOM repaint with local base64 images
+            await new Promise(r => setTimeout(r, 400));
+        }
 
         const canvas = await html2canvas(checkRef.current, { 
             scale: 4, 
@@ -303,7 +315,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             backgroundColor: '#ffffff',
             logging: false,
             allowTaint: true,
-            imageTimeout: 15000,
+            imageTimeout: 20000,
             onclone: (clonedDoc) => {
                 const el = clonedDoc.querySelector('.check-preview-container');
                 if (el) (el as HTMLElement).style.transform = 'none';
@@ -313,7 +325,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
         pdf.save(`check_${check.checkNumber}.pdf`);
     } catch(e) {
-        alert("PDF Generation failed. Ensure images are loaded and try again.");
+        alert("PDF Generation failed. Please try again in a moment.");
     } finally { 
         setIsExporting(false); 
     }
@@ -325,7 +337,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           return <span className="text-slate-200 font-serif text-[10px]">AUTHORIZED SIGNATURE</span>;
       }
       
-      // Removed crossOrigin for read-only view fix. data URIs (convertedAssets) handle PDF needs.
       return (
           <img 
               key={url}
@@ -341,7 +352,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       const url = convertedAssets.wm || check.watermarkUrl;
       if (!url || imageError['wm']) return null;
       
-      // Removed crossOrigin for standard rendering.
       return (
           <div className="absolute inset-0 opacity-[0.35] pointer-events-none z-0">
             <img 
