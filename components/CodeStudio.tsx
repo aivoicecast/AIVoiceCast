@@ -326,35 +326,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const pid = params.get('id');
-    const ghCode = params.get('code');
-
-    // Handle GitHub OAuth Callback
-    if (ghCode && activeTab === 'github') {
-        const handleOAuth = async () => {
-            setIsGithubLoading(true);
-            try {
-                // Save OAuth code as temporary token
-                localStorage.setItem('github_token', ghCode);
-                setGithubToken(ghCode);
-                
-                const newUrl = new URL(window.location.href);
-                newUrl.searchParams.delete('code');
-                window.history.replaceState({}, '', newUrl.toString());
-
-                // Auto-trigger repository fetch and lazy load default if present
-                const repos = await fetchUserRepos(ghCode);
-                setGithubRepos(repos);
-                if (userProfile?.defaultRepoUrl) {
-                    await handleAutoLoadDefaultRepo(ghCode, userProfile.defaultRepoUrl);
-                }
-            } catch (e) {
-                console.error("GitHub Auth failed", e);
-            } finally {
-                setIsGithubLoading(false);
-            }
-        };
-        handleOAuth();
-    }
 
     if (pid && pid !== 'init') {
         setIsLive(true);
@@ -376,7 +347,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
         });
         return () => unsubscribe();
     }
-  }, [clientId, activeTab, userProfile]);
+  }, [clientId]);
 
   const broadcastCursor = useCallback((line: number, col: number) => {
       if (!isLive || project.id === 'init') return;
@@ -461,10 +432,19 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const handleConnectGithub = async () => {
       setIsGithubLoading(true);
       try {
-          // Removes any manual PAT prompt and uses standard OAuth redirect
-          signInWithGitHub();
+          // Uses standard OAuth popup result
+          const token = await signInWithGitHub();
+          if (token) {
+              setGithubToken(token);
+              const repos = await fetchUserRepos(token);
+              setGithubRepos(repos);
+              if (userProfile?.defaultRepoUrl) {
+                  await handleAutoLoadDefaultRepo(token, userProfile.defaultRepoUrl);
+              }
+          }
       } catch (e: any) {
-          alert("GitHub connect failed: " + e.message);
+          console.error("GitHub connect failed", e);
+      } finally {
           setIsGithubLoading(false);
       }
   };
@@ -488,7 +468,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           setProject(newProject);
           const tree: TreeNode[] = files.map(f => ({ id: f.path || f.name, name: f.name.split('/').pop() || f.name, type: f.isDirectory ? 'folder' : 'file', isLoaded: f.childrenFetched, data: f }));
           setGithubTree(tree);
-          // Auto-expand first level (lazy loading handled by FileTreeItem component)
       } catch (e) {
           console.error("Auto-load default repo failed", e);
       } finally {

@@ -1,13 +1,12 @@
 
 import { 
     GoogleAuthProvider, 
+    GithubAuthProvider,
     signInWithPopup, 
     signOut as firebaseSignOut,
     User
 } from 'firebase/auth';
 import { auth } from './firebaseConfig';
-
-const GITHUB_CLIENT_ID = 'Ov23liwzhjDQN6DGl6Cx';
 
 /**
  * Standard Google OAuth via Firebase
@@ -20,7 +19,6 @@ export async function signInWithGoogle(): Promise<User | null> {
     provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
     provider.addScope('https://www.googleapis.com/auth/userinfo.email');
     
-    // Hint for custom domains
     provider.setCustomParameters({
         prompt: 'select_account'
     });
@@ -45,37 +43,53 @@ export async function signInWithGoogle(): Promise<User | null> {
 
         return result.user;
     } catch (error: any) {
-        console.error("Firebase Auth Error:", error);
-        if (error.code === 'auth/unauthorized-domain') {
-            alert("This domain is not authorized in the Firebase Console. Add 'dev.aivoicecast.com' to Authorized Domains.");
-        } else if (error.code === 'auth/web-storage-unsupported') {
-            alert("Your browser is blocking storage required for login. Please disable private mode or allow third-party cookies.");
-        } else if (error.message?.includes('missing initial state')) {
-            alert("Login state lost. This often happens in Incognito or Brave. Please try a standard browser window or allow cookies for this site.");
-        }
+        handleAuthError(error);
         throw error;
     }
 }
 
 /**
- * Initiates GitHub OAuth Flow
+ * Initiates GitHub OAuth Flow using Firebase SDK
+ * This method handles state and initial_state missing errors automatically.
  */
-export function signInWithGitHub(): void {
-    const scope = 'repo,user';
-    const state = Math.random().toString(36).substring(7);
-    localStorage.setItem('gh_auth_state', state);
+export async function signInWithGitHub(): Promise<string | null> {
+    if (!auth) return null;
 
-    // Omit redirect_uri to let GitHub use the default.
-    const url = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&state=${state}`;
-    window.location.assign(url);
+    const provider = new GithubAuthProvider();
+    // Request scopes needed for Code Studio
+    provider.addScope('repo');
+    provider.addScope('user');
+
+    try {
+        const result = await signInWithPopup(auth, provider);
+        const credential = GithubAuthProvider.credentialFromResult(result);
+        const token = credential?.accessToken;
+
+        if (token) {
+            localStorage.setItem('github_token', token);
+            return token;
+        }
+        return null;
+    } catch (error: any) {
+        handleAuthError(error);
+        throw error;
+    }
 }
 
 /**
- * Exchanges OAuth Code for Access Token
+ * Common Error Handler for Auth Flows
  */
-export async function exchangeGitHubCode(code: string): Promise<string> {
-    console.log("Acquired GitHub authorization code:", code);
-    return code; 
+function handleAuthError(error: any) {
+    console.error("Firebase Auth Error:", error);
+    if (error.code === 'auth/unauthorized-domain') {
+        alert("This domain is not authorized in the Firebase Console. Add 'dev.aivoicecast.com' to Authorized Domains.");
+    } else if (error.code === 'auth/web-storage-unsupported') {
+        alert("Your browser is blocking storage required for login. Please disable private mode or allow third-party cookies.");
+    } else if (error.code === 'auth/popup-blocked') {
+        alert("Login popup was blocked by your browser. Please allow popups for this site.");
+    } else if (error.message?.includes('missing initial state') || error.code === 'auth/internal-error') {
+        alert("Auth connection issue. Please ensure your browser allows third-party cookies and try again.");
+    }
 }
 
 export function getDriveToken(): string | null {
