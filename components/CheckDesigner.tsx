@@ -67,15 +67,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const hasHydratedFromTemplate = useRef(false);
 
   /**
-   * CRITICAL: Converts a remote URL to a local Data URL (Base64)
-   * Uses a cache-buster timestamp to ensure we get a fresh response with CORS headers.
+   * CRITICAL: Converts a remote URL to a local Data URL (Base64).
+   * We use a forced cache-buster ?cors_bust=... to ensure we get a fresh CORS-enabled
+   * response that hasn't been cached without CORS headers by the browser.
    */
   const convertRemoteToDataUrl = async (url: string): Promise<string> => {
       if (!url || !url.startsWith('http')) return url;
       try {
-          const cacheBuster = url.includes('?') ? `&t_force=${Date.now()}` : `?t_force=${Date.now()}`;
-          const res = await fetch(url + cacheBuster, { 
+          const bust = url.includes('?') ? `&cb=${Date.now()}` : `?cb=${Date.now()}`;
+          const res = await fetch(url + bust, { 
               mode: 'cors',
+              credentials: 'omit', // Crucial for public storage assets
               headers: { 'Cache-Control': 'no-cache' }
           });
           if (!res.ok) throw new Error("Fetch failed");
@@ -270,6 +272,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         let newAssets: Record<string, string> = { ...convertedAssets };
         let needsUpdate = false;
 
+        // Force convert if still remote to ensure canvas is never tainted
         if (sigUrl && sigUrl.startsWith('http') && !newAssets.sig) {
             newAssets.sig = await convertRemoteToDataUrl(sigUrl);
             needsUpdate = true;
@@ -281,8 +284,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
         if (needsUpdate) {
             setConvertedAssets(newAssets);
-            // Increased delay to ensure the browser repaints DOM with local Base64
-            await new Promise(r => setTimeout(r, 800));
+            // Block for 1 second to ensure the browser repaints the DOM with the local safe Base64 pixels
+            await new Promise(r => setTimeout(r, 1000));
         }
 
         const canvas = await html2canvas(checkRef.current, { 
@@ -290,19 +293,20 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             useCORS: true, 
             backgroundColor: '#ffffff',
             logging: false,
-            allowTaint: false,
-            imageTimeout: 30000,
+            allowTaint: false, // Ensure we fail rather than getting a blank image
+            imageTimeout: 60000,
             onclone: (clonedDoc) => {
                 const el = clonedDoc.querySelector('.check-preview-container');
                 if (el) (el as HTMLElement).style.transform = 'none';
             }
         });
+        
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
         pdf.save(`check_${check.checkNumber}.pdf`);
     } catch(e) {
         console.error("PDF Export error", e);
-        alert("PDF Generation failed. Please refresh and try again.");
+        alert("Verification failed. Please wait for images to load and try again.");
     } finally { setIsExporting(false); }
   };
 
@@ -315,9 +319,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       const isBase64 = url.startsWith('data:');
       return (
           <img 
-              key={isBase64 ? 'sig-local' : 'sig-remote'} // Force re-mount when type changes
+              key={isBase64 ? 'sig-safe' : 'sig-remote'} 
               src={url} 
-              crossOrigin={!isBase64 ? "anonymous" : undefined}
+              crossOrigin="anonymous" // Essential for html2canvas
               className="max-h-16 w-auto object-contain mb-1" 
               alt="Authorized Signature"
               onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
@@ -333,9 +337,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       return (
           <div className="absolute inset-0 opacity-[0.35] pointer-events-none z-0">
             <img 
-                key={isBase64 ? 'wm-local' : 'wm-remote'} 
+                key={isBase64 ? 'wm-safe' : 'wm-remote'} 
                 src={url} 
-                crossOrigin={!isBase64 ? "anonymous" : undefined}
+                crossOrigin="anonymous" 
                 className="w-full h-full object-cover grayscale" 
                 alt="Security Watermark"
                 onError={() => setImageError(prev => ({ ...prev, 'wm': true }))}
