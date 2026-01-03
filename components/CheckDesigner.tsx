@@ -68,10 +68,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasHydratedFromTemplate = useRef(false);
 
+  // Proactive asset conversion to bypass CORS in shared viewer and PDF export
   const convertRemoteToDataUrl = async (url: string): Promise<string> => {
       if (!url || !url.startsWith('http')) return url;
       try {
           const res = await fetch(url, { mode: 'cors' });
+          if (!res.ok) throw new Error("Fetch failed");
           const blob = await res.blob();
           return new Promise((resolve, reject) => {
               const reader = new FileReader();
@@ -80,8 +82,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               reader.readAsDataURL(blob);
           });
       } catch (e) {
-          console.warn("Conversion failed for", url, e);
-          return url;
+          console.warn("CORS Conversion failed for", url, e);
+          return url; // Fallback
       }
   };
 
@@ -93,6 +95,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   const sig = data.signatureUrl || data.signature || '';
                   const wm = data.watermarkUrl || '';
                   
+                  // Proactively convert assets to data URLs to ensure shared link renders correctly
                   const [base64Sig, base64Wm] = await Promise.all([
                       convertRemoteToDataUrl(sig),
                       convertRemoteToDataUrl(wm)
@@ -143,6 +146,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     return () => window.removeEventListener('resize', handleAutoZoom);
   }, []);
 
+  // RESTORE: Auto-generate description of the amount with professional formatting
   useEffect(() => {
     if (isReadOnly || isLoadingCheck) return;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -152,7 +156,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (amountToSpell !== undefined && amountToSpell > 0) {
         debounceTimerRef.current = setTimeout(() => {
             handleGenerateAmountWords(amountToSpell as number, check.isCoinCheck);
-        }, 1000); 
+        }, 1200); 
     } else {
         setCheck(prev => ({ ...prev, amountWords: '' }));
     }
@@ -172,7 +176,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash-image',
-              contents: { parts: [{ text: `A professional high-contrast watermark etching for a bank check. Subject: ${check.memo}. Minimalist, grayscale.` }] },
+              contents: { parts: [{ text: `A professional minimalist high-contrast watermark etching for a bank check. Subject: ${check.memo}. Subtle grayscale, clean.` }] },
               config: { imageConfig: { aspectRatio: "16:9" } }
           });
           for (const part of response.candidates[0].content.parts) {
@@ -192,11 +196,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-3-flash-preview',
-              contents: `Convert the amount ${val} to official bank check words. 
-              Format as 'WORDS AND CENTS/100'. 
-              Example for 100: 'ONE HUNDRED AND 00/100'. 
-              Example for 123.45: 'ONE HUNDRED TWENTY THREE AND 45/100'. 
-              Respond with the text ONLY.`
+              contents: `Convert the exact amount ${val} to professional bank check words. 
+              MANDATORY FORMAT: 'WORDS AND CENTS/100'. 
+              Example 100: 'ONE HUNDRED AND 00/100'. 
+              Example 123.45: 'ONE HUNDRED TWENTY THREE AND 45/100'. 
+              Respond with the text ONLY. NO DOLLAR SIGN.`
           });
           const text = response.text?.trim().toUpperCase() || '';
           if (text) setCheck(prev => ({ ...prev, amountWords: text }));
@@ -454,18 +458,18 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                               <h2 className="text-xs font-black uppercase text-slate-800 leading-normal mb-1">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
                               <div className="flex items-center gap-4 border-b border-black pb-0.5 mb-1">
                                   <div className="flex items-center gap-1">
-                                      <span className="text-[8px] font-bold">DATE</span>
+                                      <span className="text-[8px] font-bold text-slate-400">DATE</span>
                                       <span className="text-xs font-mono font-bold leading-none">{check.date}</span>
                                   </div>
                                   <div className="flex items-center gap-1">
-                                      <span className="text-[8px] font-bold">NO.</span>
+                                      <span className="text-[8px] font-bold text-slate-400">NO.</span>
                                       <span className="text-sm font-mono font-black leading-none">{check.checkNumber}</span>
                                   </div>
                               </div>
                           </div>
                       </div>
 
-                      {/* Main Body - Moved up slightly by reducing top margin */}
+                      {/* Main Body - Positioned higher by reducing top margin */}
                       <div className="mt-3 flex items-center gap-4 relative z-10">
                           <span className="text-xs font-bold whitespace-nowrap uppercase">Pay to the Order of</span>
                           <div className="flex-1 border-b border-black text-lg font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-1 leading-relaxed">{check.payee || '____________________'}</div>
@@ -489,7 +493,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate leading-relaxed pb-1.5">{check.memo || '____________________'}</div>
                       </div>
 
-                      {/* Bottom row: MICR line and Signature side-by-side on the same level */}
+                      {/* Unified Footer Row: MICR and Signature side-by-side to prevent word overlap */}
                       <div className="absolute bottom-4 left-0 right-0 px-8 flex items-end justify-between z-30">
                           <div className="font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 px-1 leading-none pb-1">
                               ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
