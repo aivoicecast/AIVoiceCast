@@ -68,28 +68,27 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
   /**
    * CRITICAL: Converts a remote URL to a local Data URL (Base64).
-   * We use a forced cache-buster ?cors_bust=... to ensure we get a fresh CORS-enabled
-   * response that hasn't been cached without CORS headers by the browser.
+   * This is required because html2canvas/jsPDF cannot read pixels from remote 
+   * domains without valid CORS headers and a clean cache.
    */
   const convertRemoteToDataUrl = async (url: string): Promise<string> => {
       if (!url || !url.startsWith('http')) return url;
       try {
-          const bust = url.includes('?') ? `&cb=${Date.now()}` : `?cb=${Date.now()}`;
+          // Use a cache-buster to ensure we get fresh CORS headers from the server
+          const bust = url.includes('?') ? `&cb_pdf=${Date.now()}` : `?cb_pdf=${Date.now()}`;
           const res = await fetch(url + bust, { 
               mode: 'cors',
-              credentials: 'omit', // Crucial for public storage assets
-              headers: { 'Cache-Control': 'no-cache' }
+              credentials: 'omit'
           });
           if (!res.ok) throw new Error("Fetch failed");
           const blob = await res.blob();
-          return new Promise((resolve, reject) => {
+          return new Promise((resolve) => {
               const reader = new FileReader();
               reader.onloadend = () => resolve(reader.result as string);
-              reader.onerror = reject;
               reader.readAsDataURL(blob);
           });
       } catch (e) {
-          console.warn("CORS Conversion failed for", url, e);
+          console.warn("PDF Asset conversion failed for", url, e);
           return url; 
       }
   };
@@ -99,23 +98,24 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           setIsLoadingCheck(true);
           getCheckById(checkIdFromUrl).then(async (data) => {
               if (data) {
-                  const sig = data.signatureUrl || data.signature || '';
-                  const wm = data.watermarkUrl || '';
+                  const sigUrl = data.signatureUrl || data.signature || '';
+                  const wmUrl = data.watermarkUrl || '';
                   
-                  // Proactively convert for the shared viewer to ensure PDF works immediately
-                  if (sig.startsWith('http')) {
-                      convertRemoteToDataUrl(sig).then(b64 => setConvertedAssets(prev => ({ ...prev, sig: b64 })));
-                  }
-                  if (wm.startsWith('http')) {
-                      convertRemoteToDataUrl(wm).then(b64 => setConvertedAssets(prev => ({ ...prev, wm: b64 })));
-                  }
+                  // In Shared View, we BLOCK and PRE-CONVERT assets to Base64 
+                  // before showing the UI. This ensures the PDF generator always has local pixels.
+                  const [sigB64, wmB64] = await Promise.all([
+                      convertRemoteToDataUrl(sigUrl),
+                      convertRemoteToDataUrl(wmUrl)
+                  ]);
 
+                  setConvertedAssets({ sig: sigB64, wm: wmB64 });
+                  
                   const normalizedCheck = {
                       ...DEFAULT_CHECK,
                       ...data,
-                      signature: sig,
-                      signatureUrl: sig,
-                      watermarkUrl: wm 
+                      signature: sigUrl,
+                      signatureUrl: sigUrl,
+                      watermarkUrl: wmUrl 
                   };
                   setCheck(normalizedCheck);
                   setShareLink(`${window.location.origin}?view=check_viewer&id=${data.id}`);
@@ -272,7 +272,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         let newAssets: Record<string, string> = { ...convertedAssets };
         let needsUpdate = false;
 
-        // Force convert if still remote to ensure canvas is never tainted
+        // Ensure assets are local before snapshot
         if (sigUrl && sigUrl.startsWith('http') && !newAssets.sig) {
             newAssets.sig = await convertRemoteToDataUrl(sigUrl);
             needsUpdate = true;
@@ -284,8 +284,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
         if (needsUpdate) {
             setConvertedAssets(newAssets);
-            // Block for 1 second to ensure the browser repaints the DOM with the local safe Base64 pixels
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 800));
         }
 
         const canvas = await html2canvas(checkRef.current, { 
@@ -293,7 +292,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             useCORS: true, 
             backgroundColor: '#ffffff',
             logging: false,
-            allowTaint: false, // Ensure we fail rather than getting a blank image
+            allowTaint: false,
             imageTimeout: 60000,
             onclone: (clonedDoc) => {
                 const el = clonedDoc.querySelector('.check-preview-container');
@@ -306,7 +305,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         pdf.save(`check_${check.checkNumber}.pdf`);
     } catch(e) {
         console.error("PDF Export error", e);
-        alert("Verification failed. Please wait for images to load and try again.");
+        alert("Failed to generate PDF. If the signature is missing, please ensure you have signed the check and wait for it to load.");
     } finally { setIsExporting(false); }
   };
 
@@ -316,12 +315,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           return <span className="text-slate-200 font-serif text-[10px]">AUTHORIZED SIGNATURE</span>;
       }
       
-      const isBase64 = url.startsWith('data:');
+      const isRemote = url.startsWith('http');
       return (
           <img 
-              key={isBase64 ? 'sig-safe' : 'sig-remote'} 
+              key={url} 
               src={url} 
-              crossOrigin="anonymous" // Essential for html2canvas
+              crossOrigin={isRemote ? "anonymous" : undefined}
               className="max-h-16 w-auto object-contain mb-1" 
               alt="Authorized Signature"
               onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
@@ -333,13 +332,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       const url = convertedAssets.wm || check.watermarkUrl;
       if (!url || imageError['wm']) return null;
       
-      const isBase64 = url.startsWith('data:');
+      const isRemote = url.startsWith('http');
       return (
           <div className="absolute inset-0 opacity-[0.35] pointer-events-none z-0">
             <img 
-                key={isBase64 ? 'wm-safe' : 'wm-remote'} 
+                key={url} 
                 src={url} 
-                crossOrigin="anonymous" 
+                crossOrigin={isRemote ? "anonymous" : undefined}
                 className="w-full h-full object-cover grayscale" 
                 alt="Security Watermark"
                 onError={() => setImageError(prev => ({ ...prev, 'wm': true }))}
