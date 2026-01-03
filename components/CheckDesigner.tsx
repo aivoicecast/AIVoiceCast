@@ -68,7 +68,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           setIsLoadingCheck(true);
           getCheckById(checkIdFromUrl).then(data => {
               if (data) {
-                  // Robust normalization: Ensure both fields are checked and cleaned
+                  // Ensure both fields are checked to recover signatures from various versions
                   const sig = data.signatureUrl || data.signature || '';
                   const normalizedCheck = {
                       ...DEFAULT_CHECK,
@@ -226,14 +226,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (!checkRef.current) return;
     setIsExporting(true);
     try {
-        // For PDF generation, we NEED CORS. If the images failed CORS previously, 
-        // they might fail here too. But displayed images in renderSignature won't have crossOrigin.
         const canvas = await html2canvas(checkRef.current, { 
             scale: 4, 
             useCORS: true, 
             backgroundColor: '#ffffff',
             logging: false,
-            allowTaint: true // Allow tainted canvas if CORS fails, better than nothing
+            allowTaint: true
         });
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
@@ -251,19 +249,15 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           return <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>;
       }
 
-      // CRITICAL FIX: Do NOT use crossOrigin="anonymous" for display purposes.
-      // This is the most common cause of "broken image" icons if the server (Firebase) 
-      // doesn't have the exact CORS headers configured for that specific domain.
+      // DO NOT use crossOrigin="anonymous" for display. 
+      // It causes failure if the cloud bucket CORS isn't configured for the viewing domain.
       return (
           <img 
               key={url}
               src={url} 
               className="max-h-12 w-auto object-contain" 
               alt="Authorized Signature"
-              onError={(e) => {
-                  console.error("Signature failed to load:", url);
-                  setImageError(prev => ({ ...prev, 'sig': true }));
-              }}
+              onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
           />
       );
   };
@@ -377,7 +371,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                             key={qrCodeUrl} 
                             src={qrCodeUrl} 
                             className="w-14 h-14 border border-slate-100 p-0.5 rounded shadow-sm bg-white" 
-                            crossOrigin="anonymous" 
                             alt="Verification QR"
                         />
                       </div>
@@ -390,23 +383,42 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <p className="text-lg font-mono font-bold">{check.checkNumber}</p>
                       </div>
 
-                      <div className="flex justify-end mt-2 relative z-10"><div className="border-b border-black w-32 flex justify-between items-end pb-1"><span className="text-[9px] font-bold">DATE</span><span className="text-sm font-mono">{check.date}</span></div></div>
+                      <div className="flex justify-end mt-2 relative z-10">
+                          <div className="border-b border-black w-32 flex justify-between items-end pb-1">
+                              <span className="text-[9px] font-bold">DATE</span>
+                              <span className="text-sm font-mono">{check.date}</span>
+                          </div>
+                      </div>
 
+                      {/* Payee Line */}
                       <div className="mt-4 flex items-center gap-4 relative z-10">
                           <span className="text-xs font-bold whitespace-nowrap uppercase">Pay to the Order of</span>
                           <div className="flex-1 border-b border-black text-lg font-serif italic px-2">{check.payee || '____________________'}</div>
-                          <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50"><span className="text-sm font-bold">$</span><span className="flex-1 text-right font-mono text-lg font-bold">{check.isCoinCheck ? (check.coinAmount || 0).toFixed(2) : (check.amount || 0).toFixed(2)}</span></div>
+                          <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50">
+                              <span className="text-sm font-bold">$</span>
+                              <span className="flex-1 text-right font-mono text-lg font-bold">
+                                  {check.isCoinCheck ? (check.coinAmount || 0).toFixed(2) : (check.amount || 0).toFixed(2)}
+                              </span>
+                          </div>
                       </div>
 
+                      {/* Amount Words Line */}
                       <div className="mt-4 flex items-center gap-4 relative z-10">
                           <div className="flex-1 border-b border-black text-sm font-serif italic px-2">{check.amountWords || '____________________________________________________________________'}</div>
                           <span className="text-xs font-bold">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                       </div>
 
-                      <div className="mt-4 relative z-10"><p className="text-xs font-bold uppercase">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</p></div>
+                      <div className="mt-4 relative z-10">
+                          <p className="text-xs font-bold uppercase tracking-wide">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</p>
+                      </div>
 
                       <div className="mt-auto flex items-end justify-between relative z-10">
-                          <div className="flex-1 flex flex-col gap-2"><div className="flex items-center gap-2"><span className="text-[10px] font-bold">FOR</span><div className="w-48 border-b border-black text-sm font-serif italic px-1 truncate">{check.memo || '____________________'}</div></div></div>
+                          <div className="flex-1 flex flex-col gap-2">
+                              <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-bold">FOR</span>
+                                  <div className="w-48 border-b border-black text-sm font-serif italic px-1 truncate">{check.memo || '____________________'}</div>
+                              </div>
+                          </div>
                           <div className="w-48 relative ml-4 z-20">
                               <div className="border-b border-black h-12 flex items-end justify-center pb-1 overflow-hidden">
                                   {renderSignature()}
@@ -414,7 +426,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                               <span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter">Authorized Signature</span>
                           </div>
                       </div>
-                      <div className="absolute bottom-6 left-8 font-mono text-xl tracking-widest text-slate-800 whitespace-nowrap bg-white/70 inline-block px-1 z-30">⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}</div>
+                      
+                      {/* MICR Line - Moved to bottom-left to avoid overlap */}
+                      <div className="absolute bottom-2 left-6 font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 inline-block px-1 z-30">
+                          ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
+                      </div>
                   </div>
               </div>
 
