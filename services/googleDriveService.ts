@@ -69,6 +69,43 @@ export async function ensureCodeStudioFolder(accessToken: string): Promise<strin
   return ensureFolder(accessToken, 'CodeStudio');
 }
 
+/**
+ * Saves a file to Google Drive. Updates if exists, creates if not.
+ * Fix: Added missing saveToDrive function required by CodeStudio.tsx.
+ */
+export async function saveToDrive(accessToken: string, folderId: string, filename: string, content: string): Promise<string> {
+  const query = `'${folderId}' in parents and name='${filename}' and trashed=false`;
+  const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id)`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const searchData = await searchRes.json();
+  const existingFileId = searchData.files?.[0]?.id;
+
+  const metadata: any = { name: filename, mimeType: 'text/plain' };
+  if (!existingFileId) metadata.parents = [folderId];
+
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', new Blob([content], { type: 'text/plain' }));
+
+  const url = existingFileId 
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`
+    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+
+  const res = await fetch(url, {
+    method: existingFileId ? 'PATCH' : 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(`Drive save failed (${res.status}): ${errData.error?.message || res.statusText}`);
+  }
+  const data = await res.json();
+  return data.id;
+}
+
 export async function saveAppStateToDrive(accessToken: string, folderId: string, state: any): Promise<void> {
     const query = `'${folderId}' in parents and name='${APP_STATE_FILE}' and trashed=false`;
     const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id)`, {
@@ -124,6 +161,7 @@ export async function readDriveFile(accessToken: string, fileId: string): Promis
   const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${accessToken}` }
   });
+  if (!res.ok) throw new Error("Failed to read Drive file");
   return await res.text();
 }
 
@@ -142,35 +180,6 @@ export async function uploadToDrive(accessToken: string, folderId: string, filen
         const err = await res.json().catch(() => ({}));
         throw new Error(`Drive upload failed (${res.status}): ${err.error?.message || res.statusText}`);
     }
-    const data = await res.json();
-    return data.id;
-}
-
-export async function saveToDrive(accessToken: string, folderId: string, filename: string, content: string, mimeType: string = 'text/plain'): Promise<string> {
-    const query = `'${folderId}' in parents and name='${filename}' and trashed=false`;
-    const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id)`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    const searchData = await searchRes.json();
-    const existingFileId = searchData.files?.[0]?.id;
-
-    const metadata: any = { name: filename };
-    if (!existingFileId) metadata.parents = [folderId];
-
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', new Blob([content], { type: mimeType }));
-
-    const url = existingFileId 
-        ? `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart&fields=id`
-        : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id`;
-
-    const res = await fetch(url, {
-        method: existingFileId ? 'PATCH' : 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-        body: form
-    });
-    if (!res.ok) throw new Error(`Drive save failed: ${res.statusText}`);
     const data = await res.json();
     return data.id;
 }

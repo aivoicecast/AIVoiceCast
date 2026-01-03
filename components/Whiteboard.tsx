@@ -1,18 +1,19 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check } from 'lucide-react';
+import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { saveWhiteboardSession, subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements } from '../services/firestoreService';
 import { WhiteboardElement, ToolType, LineStyle, BrushType } from '../types';
 import { GoogleGenAI } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
-import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
+import { ensureFolder, uploadToDrive, readDriveFile, makeFilePubliclyViewable, getDriveFileSharingLink } from '../services/googleDriveService';
 import { ShareModal } from './ShareModal';
 
 interface WhiteboardProps {
   onBack?: () => void;
   sessionId?: string;
+  driveId?: string; // Support loading from Google Drive
   accessKey?: string;
   onSessionStart?: (id: string) => void;
   initialData?: string; 
@@ -26,7 +27,7 @@ interface WhiteboardProps {
 const LINE_STYLES: { label: string; value: LineStyle; dash: number[] }[] = [
     { label: 'Solid', value: 'solid', dash: [] },
     { label: 'Dashed', value: 'dashed', dash: [15, 10] },
-    { label: 'Dotted', value: 'dotted', dash: [3, 8] },
+    { label: 'Dotted', value: 'dotted', dash: [2, 6] },
     { label: 'Dash-Dot', value: 'dash-dot', dash: [15, 5, 2, 5] },
     { label: 'Long Dash', value: 'long-dash', dash: [30, 10] }
 ];
@@ -43,6 +44,7 @@ const BRUSH_TYPES: { label: string; value: BrushType; icon: any }[] = [
 export const Whiteboard: React.FC<WhiteboardProps> = ({ 
   onBack, 
   sessionId: propSessionId, 
+  driveId: propDriveId,
   accessKey, 
   onSessionStart,
   initialData, 
@@ -56,19 +58,19 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [elements, setElements] = useState<WhiteboardElement[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentElement, setCurrentElement] = useState<WhiteboardElement | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
   const [tool, setTool] = useState<ToolType>('pen');
   const [color, setColor] = useState(initialColor);
   const [lineWidth, setLineWidth] = useState(6);
   const [lineStyle, setLineStyle] = useState<LineStyle>('solid');
-  const [brushType, setBrushType] = useState<BrushType>('writing-brush');
+  const [brushType, setBrushType] = useState<BrushType>('standard');
   const [borderRadius, setBorderRadius] = useState(0); 
   const [fontSize, setFontSize] = useState(24);
   const [showStyleMenu, setShowStyleMenu] = useState(false);
   
   // Sharing & Cloud State
   const [sessionId, setSessionId] = useState<string>(propSessionId || '');
-  const [isSharedSession, setIsSharedSession] = useState(!!propSessionId);
   const [isReadOnly, setIsReadOnly] = useState(propReadOnly);
   const [isSavingToDrive, setIsSavingToDrive] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -83,17 +85,40 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
   const isDarkBackground = backgroundColor !== 'transparent' && backgroundColor !== '#ffffff';
 
+  // Load from Drive or Firestore
   useEffect(() => {
-    if (propSessionId) {
-        setIsSharedSession(true);
-        setSessionId(propSessionId);
-        const unsubscribe = subscribeToWhiteboard(propSessionId, (remoteElements: any) => {
+    const params = new URLSearchParams(window.location.search);
+    const driveId = propDriveId || params.get('driveId');
+    const sid = propSessionId || params.get('id');
+
+    if (driveId) {
+        loadFromDrive(driveId);
+    } else if (sid) {
+        setSessionId(sid);
+        const unsubscribe = subscribeToWhiteboard(sid, (remoteElements: any) => {
             if (Array.isArray(remoteElements)) setElements(remoteElements);
         });
-        setIsReadOnly(propReadOnly);
         return () => unsubscribe();
     }
-  }, [propSessionId, propReadOnly]);
+  }, [propSessionId, propDriveId]);
+
+  const loadFromDrive = async (fileId: string) => {
+      setIsLoading(true);
+      try {
+          const token = getDriveToken() || await connectGoogleDrive();
+          const content = await readDriveFile(token, fileId);
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed)) {
+              setElements(parsed);
+              if (onDataChange) onDataChange(content);
+          }
+      } catch (e: any) {
+          console.error("Failed to load from Drive", e);
+          alert("Could not load whiteboard from Drive. Ensure you have access.");
+      } finally {
+          setIsLoading(false);
+      }
+  };
 
   useEffect(() => {
     if (tool === 'arrow') { setStartArrow(false); setEndArrow(true); } 
@@ -142,46 +167,53 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           setElements(next);
           if (onDataChange) onDataChange(JSON.stringify(next));
           
-          if (!sessionId) {
-              const newId = generateSecureId();
-              setSessionId(newId);
-              setIsSharedSession(true);
-              if (onSessionStart) onSessionStart(newId);
-              await saveWhiteboardSession(newId, next);
-          } else {
+          if (sessionId && !sessionId.startsWith('local-')) {
               await updateWhiteboardElement(sessionId, finalized);
+          } else if (!sessionId) {
+              // Create local session tracking
+              const newId = `local-${generateSecureId().substring(0,8)}`;
+              setSessionId(newId);
           }
           setCurrentElement(null);
           setIsDrawing(false);
       }
   };
 
-  const handleSaveToDrive = async () => {
-      if (!canvasRef.current) return;
+  const handleShare = async () => {
+      if (!auth.currentUser) return alert("Please sign in to share whiteboards via Google Drive.");
+      
       setIsSavingToDrive(true);
       try {
           const token = getDriveToken() || await connectGoogleDrive();
-          const folderId = await ensureCodeStudioFolder(token);
+          const studioFolderId = await ensureFolder(token, 'CodeStudio');
+          const boardsFolderId = await ensureFolder(token, 'Whiteboards', studioFolderId);
           
-          // Generate PNG blob
-          const blob = await new Promise<Blob>((resolve) => canvasRef.current!.toBlob(b => resolve(b!), 'image/png'));
-          const fileName = `Drawing_${new Date().toISOString().slice(0,10)}_${generateSecureId().substring(0,6)}.png`;
+          // Save JSON state for re-rendering
+          const stateJson = JSON.stringify(elements);
+          const fileName = `Whiteboard_${new Date().toISOString().slice(0,10)}_${generateSecureId().substring(0,4)}.draw`;
+          const fileId = await uploadToDrive(token, boardsFolderId, fileName, new Blob([stateJson], { type: 'application/json' }));
           
-          await uploadToDrive(token, folderId, fileName, blob);
-          alert(`Saved to Google Drive as ${fileName}`);
+          // Make public so others can view
+          await makeFilePubliclyViewable(token, fileId);
+          
+          const url = `${window.location.origin}?view=whiteboard&driveId=${fileId}`;
+          setShareUrl(url);
+          setShowShareModal(true);
       } catch (e: any) {
-          alert("Drive Save failed: " + e.message);
+          alert("Sharing failed: " + e.message);
       } finally {
           setIsSavingToDrive(false);
       }
   };
 
-  const handleShare = () => {
-      const id = sessionId || generateSecureId();
-      if (!sessionId) setSessionId(id);
-      const url = `${window.location.origin}?view=whiteboard&id=${id}`;
-      setShareUrl(url);
-      setShowShareModal(true);
+  const handleExportPNG = async () => {
+    if (!canvasRef.current) return;
+    const blob = await new Promise<Blob>((resolve) => canvasRef.current!.toBlob(b => resolve(b!), 'image/png'));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `whiteboard_${Date.now()}.png`;
+    a.click();
   };
 
   useEffect(() => {
@@ -202,9 +234,34 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       };
 
       const renderElement = (el: WhiteboardElement) => {
-          ctx.save(); ctx.beginPath(); ctx.strokeStyle = el.color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          ctx.save(); 
+          ctx.beginPath(); 
+          ctx.strokeStyle = el.color; 
+          ctx.lineCap = 'round'; 
+          ctx.lineJoin = 'round';
+          
           const lStyle = el.lineStyle || 'solid';
-          if (lStyle === 'dashed') ctx.setLineDash([15, 10]); else if (lStyle === 'dotted') ctx.setLineDash([3, 8]); else ctx.setLineDash([]);
+          const styleConfig = LINE_STYLES.find(s => s.value === lStyle);
+          ctx.setLineDash(styleConfig?.dash || []);
+
+          // Apply Brush Types
+          const bType = el.brushType || 'standard';
+          if (bType === 'airbrush') {
+              ctx.shadowBlur = (el.strokeWidth * 1.5) / scale;
+              ctx.shadowColor = el.color;
+              ctx.globalAlpha = 0.5;
+          } else if (bType === 'pencil') {
+              ctx.globalAlpha = 0.6;
+          } else if (bType === 'marker') {
+              ctx.lineCap = 'square';
+              ctx.globalAlpha = 0.8;
+          } else if (bType === 'writing-brush') {
+              ctx.shadowBlur = el.strokeWidth / 4 / scale;
+              ctx.shadowColor = el.color;
+          } else if (bType === 'calligraphy-pen') {
+              ctx.lineCap = 'butt';
+          }
+
           if (el.type === 'pen' || el.type === 'eraser') {
               if (el.points?.length) {
                   ctx.lineWidth = el.strokeWidth / scale;
@@ -212,7 +269,16 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                   el.points.forEach(p => ctx.lineTo(p.x, p.y));
                   ctx.stroke();
               }
-          } else if (el.type === 'rect') { ctx.lineWidth = el.strokeWidth / scale; ctx.strokeRect(el.x, el.y, el.width || 0, el.height || 0); }
+          } else if (el.type === 'rect') { 
+              ctx.lineWidth = el.strokeWidth / scale;
+              const radius = el.borderRadius || 0;
+              if (ctx.roundRect) {
+                  ctx.roundRect(el.x, el.y, el.width || 0, el.height || 0, radius / scale);
+                  ctx.stroke();
+              } else {
+                  ctx.strokeRect(el.x, el.y, el.width || 0, el.height || 0);
+              }
+          }
           else if (el.type === 'circle') { ctx.lineWidth = el.strokeWidth / scale; ctx.ellipse(el.x + (el.width||0)/2, el.y + (el.height||0)/2, Math.abs((el.width||0)/2), Math.abs((el.height||0)/2), 0, 0, 2*Math.PI); ctx.stroke(); }
           else if (el.type === 'line' || el.type === 'arrow') { 
               ctx.lineWidth = el.strokeWidth / scale; const x1 = el.x; const y1 = el.y; const x2 = el.endX || el.x; const y2 = el.endY || el.y;
@@ -235,8 +301,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             <div className="flex items-center gap-2">
                 {onBack && <button onClick={onBack} className={`p-2 rounded-lg ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-2`}><ArrowLeft size={20}/></button>}
                 <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1 mr-2`}>
-                    <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><PenTool size={16}/></button>
-                    <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><Eraser size={16}/></button>
+                    <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Pen"><PenTool size={16}/></button>
+                    <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Eraser"><Eraser size={16}/></button>
                 </div>
                 <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1`}>
                     <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><Square size={16}/></button>
@@ -244,26 +310,90 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                     <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><Minus size={16}/></button>
                     <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`}><ArrowRight size={16}/></button>
                 </div>
+                
+                <div className="relative">
+                    <button onClick={() => setShowStyleMenu(!showStyleMenu)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${isDarkBackground ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+                        <Sliders size={16}/>
+                        <span className="text-xs font-bold uppercase">Styles</span>
+                        <ChevronDown size={14}/>
+                    </button>
+                    
+                    {showStyleMenu && (
+                        <>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowStyleMenu(false)}></div>
+                            <div className={`absolute top-full left-0 mt-2 w-64 ${isDarkBackground ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-2xl'} border rounded-xl z-50 p-4 space-y-4 animate-fade-in-up`}>
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Brush Type</label>
+                                    <div className="grid grid-cols-3 gap-1">
+                                        {BRUSH_TYPES.map(b => (
+                                            <button key={b.value} onClick={() => setBrushType(b.value)} className={`p-2 rounded-lg flex flex-col items-center gap-1 transition-all ${brushType === b.value ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600')}`}>
+                                                <b.icon size={16}/>
+                                                <span className="text-[8px] uppercase font-bold truncate w-full text-center">{b.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Line Style</label>
+                                    <div className="grid grid-cols-2 gap-1">
+                                        {LINE_STYLES.map(s => (
+                                            <button key={s.value} onClick={() => setLineStyle(s.value)} className={`px-2 py-1.5 rounded-lg text-[9px] font-bold transition-all border ${lineStyle === s.value ? 'bg-indigo-600 border-indigo-500 text-white' : (isDarkBackground ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100')}`}>
+                                                {s.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Thickness</label>
+                                        <span className="text-[10px] font-mono text-indigo-400">{lineWidth}px</span>
+                                    </div>
+                                    <input type="range" min="1" max="50" value={lineWidth} onChange={(e) => setLineWidth(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+                                </div>
+
+                                {tool === 'rect' && (
+                                    <div>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Round Corners</label>
+                                            <span className="text-[10px] font-mono text-indigo-400">{borderRadius}px</span>
+                                        </div>
+                                        <input type="range" min="0" max="100" value={borderRadius} onChange={(e) => setBorderRadius(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
+                                    </div>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </div>
+
                 <div className={`flex gap-1 px-2 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg py-1 items-center ml-2`}>
-                    {['#000000', '#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-indigo-500' : ''}`} style={{ backgroundColor: c }} />)}
+                    {['#000000', '#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-indigo-500' : ''}`} style={{ backgroundColor: c }} />)}
                 </div>
             </div>
 
             <div className="flex items-center gap-2">
-                <button onClick={handleSaveToDrive} disabled={isSavingToDrive} className={`flex items-center gap-2 px-3 py-1.5 ${isDarkBackground ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'} text-xs font-bold rounded-lg border shadow-sm`}>
-                    {isSavingToDrive ? <Loader2 size={14} className="animate-spin"/> : <HardDrive size={14}/>}
-                    <span>Sync Drive</span>
+                <button onClick={handleExportPNG} className={`flex items-center gap-2 px-3 py-1.5 ${isDarkBackground ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'} text-xs font-bold rounded-lg border shadow-sm`}>
+                    <Download size={14}/>
+                    <span className="hidden sm:inline">PNG</span>
                 </button>
-                <button onClick={handleShare} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-500/20">
-                    <Share2 size={14}/>
-                    <span>Share URI</span>
+                <button onClick={handleShare} disabled={isSavingToDrive} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-500/20 disabled:opacity-50">
+                    {isSavingToDrive ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
+                    <span className="hidden sm:inline">Share URI</span>
                 </button>
                 <div className={`w-px h-6 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} mx-1`}></div>
-                <button onClick={() => setElements(prev => prev.slice(0, -1))} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`}><Undo size={16} /></button>
-                <button onClick={() => setElements([])} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`}><Trash2 size={16} /></button>
+                <button onClick={() => setElements(prev => prev.slice(0, -1))} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Undo"><Undo size={16} /></button>
+                <button onClick={() => setElements([])} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`} title="Clear Canvas"><Trash2 size={16} /></button>
             </div>
         </div>
+        
         <div className={`flex-1 relative overflow-hidden ${isDarkBackground ? 'bg-slate-950' : 'bg-white'} touch-none`}>
+            {isLoading && (
+                <div className="absolute inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+                    <Loader2 size={32} className="animate-spin text-indigo-500"/>
+                    <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Loading Canvas...</span>
+                </div>
+            )}
             <canvas 
                 ref={canvasRef} 
                 onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
