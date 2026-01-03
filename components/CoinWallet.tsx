@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History } from 'lucide-react';
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
@@ -721,6 +720,11 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                             </div>
                         </div>
 
+                        <div className="bg-slate-950/50 p-4 rounded-xl border border-indigo-500/20 flex items-center gap-3">
+                            <WifiOff size={16} className="text-indigo-400"/>
+                            <p className="text-[10px] text-indigo-200">Invoice URI works without internet access.</p>
+                        </div>
+
                         <button 
                             onClick={() => {
                                 if (isDonationMode && parseInt(minAmount) < 1) {
@@ -785,7 +789,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl flex flex-col items-center text-center">
                   <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mb-6 border border-emerald-500/20 shadow-xl shadow-emerald-500/20"><ShieldCheck size={32}/></div>
                   <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter italic">Payment Token Ready</h3>
-                  <p className="text-sm text-slate-400 mb-8 max-w-xs">Scan or share this secure bearer token to finalize the transfer.</p>
+                  <p className="text-sm text-slate-400 mb-8 max-w-xs">Recipient must scan this within their app to claim. The transaction will clear once they are online.</p>
                   <div className="w-full bg-white p-6 rounded-3xl border-8 border-slate-800 mb-8 flex flex-col items-center">
                       <img src={qrImageUrl(buildTokenUri(generatedToken!))} className="w-48 h-48" alt="Payment Token QR"/>
                       <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Bearer Token (Scan to Claim)</p>
@@ -817,9 +821,11 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                           </div>
                           <div className="p-6 bg-slate-950 rounded-2xl border border-slate-800">
                               <div className="flex justify-between items-center mb-4"><span className="text-xs text-slate-500 font-bold uppercase tracking-widest">Amount</span><span className="text-3xl font-black text-white">{verifiedToken.amount} VC</span></div>
-                              <div className="flex justify-between items-center text-xs"><span className="text-slate-500 font-bold uppercase tracking-widest">Recipient</span><span className="text-indigo-400 font-bold">{verifiedToken.recipientId === 'any' ? 'Bearer (Anyone)' : 'Restricted to You'}</span></div>
+                              <div className="flex justify-between items-center text-xs"><span className="text-slate-500 font-bold uppercase tracking-widest">Status</span><span className="text-indigo-400 font-bold flex items-center gap-1">{navigator.onLine ? <Globe size={12}/> : <WifiOff size={12}/>} {navigator.onLine ? 'Online (Instant)' : 'Offline (Queued)'}</span></div>
                           </div>
-                          <button onClick={handleClaimVerifiedToken} disabled={isClaiming} className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2">{isClaiming ? <Loader2 size={20} className="animate-spin"/> : 'Sync to Ledger'}</button>
+                          <button onClick={handleClaimVerifiedToken} disabled={isClaiming} className={`w-full py-4 ${navigator.onLine ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-800 hover:bg-slate-700'} text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2`}>
+                              {isClaiming ? <Loader2 size={20} className="animate-spin"/> : navigator.onLine ? 'Sync to Ledger' : 'Queue for Sync'}
+                          </button>
                       </div>
                   )}
               </div>
