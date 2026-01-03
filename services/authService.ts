@@ -50,13 +50,11 @@ export async function signInWithGoogle(): Promise<User | null> {
 
 /**
  * Initiates GitHub OAuth Flow using Firebase SDK
- * This method handles state and initial_state missing errors automatically.
  */
 export async function signInWithGitHub(): Promise<string | null> {
     if (!auth) return null;
 
     const provider = new GithubAuthProvider();
-    // Request scopes needed for Code Studio
     provider.addScope('repo');
     provider.addScope('user');
 
@@ -71,7 +69,8 @@ export async function signInWithGitHub(): Promise<string | null> {
         }
         return null;
     } catch (error: any) {
-        handleAuthError(error);
+        // Log details but throw so CodeStudio can show the specific error code
+        console.error("Firebase GitHub Auth Exception:", error);
         throw error;
     }
 }
@@ -82,13 +81,11 @@ export async function signInWithGitHub(): Promise<string | null> {
 function handleAuthError(error: any) {
     console.error("Firebase Auth Error:", error);
     if (error.code === 'auth/unauthorized-domain') {
-        alert("This domain is not authorized in the Firebase Console. Add 'dev.aivoicecast.com' to Authorized Domains.");
-    } else if (error.code === 'auth/web-storage-unsupported') {
-        alert("Your browser is blocking storage required for login. Please disable private mode or allow third-party cookies.");
+        alert("Domain Not Authorized: Add this URL to 'Authorized Domains' in Firebase Console -> Auth -> Settings.");
     } else if (error.code === 'auth/popup-blocked') {
-        alert("Login popup was blocked by your browser. Please allow popups for this site.");
-    } else if (error.message?.includes('missing initial state') || error.code === 'auth/internal-error') {
-        alert("Auth connection issue. Please ensure your browser allows third-party cookies and try again.");
+        alert("Popup Blocked: Please allow popups for this site in your browser settings.");
+    } else if (error.code === 'auth/network-request-failed') {
+        alert("Network Error: Please check your connection or firewall (SSL/TLS issues detected).");
     }
 }
 

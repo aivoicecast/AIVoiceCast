@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp } from 'lucide-react';
@@ -37,8 +36,6 @@ interface CodeStudioProps {
   onStartLiveSession: (channel: Channel, context?: string) => void;
 }
 
-// Fix: Return type explicitly set to CodeFile['language'] to satisfy type checker when creating CodeFile objects.
-// Also added missing mappings and fixed 'cpp' -> 'c++' to match types.ts.
 function getLanguageFromExt(filename: string): CodeFile['language'] {
     if (!filename) return 'text';
     const ext = filename.split('.').pop()?.toLowerCase();
@@ -480,7 +477,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           }
       } catch (e: any) {
           console.error("GitHub connect failed", e);
-          alert("GitHub Connection Failed. Please ensure your browser allowed the login popup.");
+          const errorMsg = e.message || "Please ensure your browser allowed the login popup.";
+          alert(`GitHub Connection Failed: ${errorMsg}`);
       } finally {
           setIsGithubLoading(false);
       }
@@ -540,7 +538,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           let fileData: CodeFile | null = null;
           try {
               if (activeTab === 'drive' && driveToken) {
-                  // For PDF we might want the URL instead of text content
                   const isBinary = node.name.toLowerCase().endsWith('.pdf');
                   if (isBinary) {
                       fileData = { 
