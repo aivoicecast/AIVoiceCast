@@ -3,13 +3,13 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
   Trash2, Printer, CheckCircle, AlertTriangle, Send, Share2, DollarSign, Calendar, 
-  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette, Copy, ZoomIn, ZoomOut, Maximize2, PenTool, Upload, Camera, MapPin, HardDrive
+  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette, Copy, ZoomIn, ZoomOut, Maximize2, PenTool, Upload, Camera, MapPin, HardDrive, List
 } from 'lucide-react';
 import { BankingCheck, UserProfile } from '../types';
 import { GoogleGenAI } from "@google/genai";
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { getAllUsers, sendMessage, uploadFileToStorage, saveBankingCheck, claimCoinCheck, getCheckById, updateUserProfile } from '../services/firestoreService';
+import { getAllUsers, sendMessage, uploadFileToStorage, saveBankingCheck, claimCoinCheck, getCheckById, updateUserProfile, getUserChecks } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
 import { Whiteboard } from './Whiteboard';
 import { generateSecureId } from '../utils/idUtils';
@@ -57,12 +57,16 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [showSignPad, setShowSignPad] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
+  const [archiveChecks, setArchiveChecks] = useState<BankingCheck[]>([]);
+  const [loadingArchive, setLoadingArchive] = useState(false);
   const [zoom, setZoom] = useState(1.0);
   const [isLoadingCheck, setIsLoadingCheck] = useState(!!checkIdFromUrl);
   const [imageError, setImageError] = useState<Record<string, boolean>>({});
   
   const checkRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasHydratedFromTemplate = useRef(false);
 
   // Helper to convert remote image to data URL to fix CORS issues in PDF and Shared View
   const convertRemoteToDataUrl = async (url: string): Promise<string> => {
@@ -90,7 +94,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   const sig = data.signatureUrl || data.signature || '';
                   const wm = data.watermarkUrl || '';
                   
-                  // Neutralize CORS by converting to Base64 on load for shared view
                   const [base64Sig, base64Wm] = await Promise.all([
                       convertRemoteToDataUrl(sig),
                       convertRemoteToDataUrl(wm)
@@ -103,14 +106,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       ...data,
                       signature: sig,
                       signatureUrl: sig,
-                      watermarkUrl: wm // Ensure watermark persists in normalized state
+                      watermarkUrl: wm 
                   };
                   setCheck(normalizedCheck);
                   setShareLink(`${window.location.origin}?view=check_viewer&id=${data.id}`);
               }
               setIsLoadingCheck(false);
           }).catch(() => setIsLoadingCheck(false));
-      } else {
+      } else if (!hasHydratedFromTemplate.current) {
           let initial = { ...DEFAULT_CHECK, senderName: currentUser?.displayName || DEFAULT_CHECK.senderName };
           if (userProfile) {
               if (userProfile.senderAddress) initial.senderAddress = userProfile.senderAddress;
@@ -121,6 +124,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               if (userProfile.checkTemplate) {
                   initial = { ...initial, ...userProfile.checkTemplate };
               }
+              hasHydratedFromTemplate.current = true;
           }
           setCheck(initial);
       }
@@ -202,6 +206,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               senderAddress: check.senderAddress,
               senderName: check.senderName
           };
+          // Directly update the cloud profile.
+          // Note: hasHydratedFromTemplate ensures this update doesn't reset the local 'check' state in the useEffect.
           await updateUserProfile(currentUser.uid, { checkTemplate: template });
           alert("Template saved as default!");
       } catch(e: any) {
@@ -252,6 +258,20 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       }
   };
 
+  const loadArchive = async () => {
+      if (!currentUser) return;
+      setLoadingArchive(true);
+      setShowArchive(true);
+      try {
+          const data = await getUserChecks(currentUser.uid);
+          setArchiveChecks(data);
+      } catch (e) {
+          console.error(e);
+      } finally {
+          setLoadingArchive(false);
+      }
+  };
+
   const handleDownloadPDF = async () => {
     if (!checkRef.current) return;
     setIsExporting(true);
@@ -275,7 +295,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   };
 
   const renderSignature = () => {
-      // Use converted asset (Base64) if available to avoid CORS issues
       const url = convertedAssets.sig || check.signatureUrl || check.signature;
       if (!url || typeof url !== 'string' || url.length < 10 || imageError['sig']) {
           return <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>;
@@ -294,7 +313,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   };
 
   const renderWatermark = () => {
-      // Use converted asset (Base64) if available
       const url = convertedAssets.wm || check.watermarkUrl;
       if (!url || imageError['wm']) return null;
       const isRemote = url.startsWith('http');
@@ -315,10 +333,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   if (isLoadingCheck) return <div className="h-screen bg-slate-950 flex items-center justify-center animate-pulse"><Loader2 className="animate-spin text-indigo-500" size={40} /></div>;
 
   return (
-    <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
+    <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
-              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400"><ArrowLeft size={20} /></button>
+              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
+                  <ArrowLeft size={20} />
+              </button>
               <h1 className="text-lg font-bold text-white flex items-center gap-2">
                   <Wallet className="text-indigo-400" />
                   {isReadOnly ? 'Neural Check Viewer' : 'Neural Check Lab'}
@@ -327,6 +347,10 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           <div className="flex items-center gap-3">
               {!isReadOnly && (
                 <>
+                  <button onClick={loadArchive} className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">
+                      <List size={14}/>
+                      <span className="hidden sm:inline">My Archive</span>
+                  </button>
                   <button onClick={handleSaveAsTemplate} disabled={isSavingTemplate} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">
                       {isSavingTemplate ? <Loader2 size={14} className="animate-spin"/> : <HardDrive size={14}/>}
                       <span className="hidden sm:inline">Save Default</span>
@@ -344,7 +368,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           </div>
       </header>
 
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
           {!isReadOnly && (
             <div className="w-full lg:w-[400px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-6 scrollbar-thin">
                 <div className="space-y-4">
@@ -429,7 +453,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                       </div>
 
-                      {/* Payee Line */}
                       <div className="mt-4 flex items-center gap-4 relative z-10">
                           <span className="text-xs font-bold whitespace-nowrap uppercase">Pay to the Order of</span>
                           <div className="flex-1 border-b border-black text-lg font-serif italic px-2 truncate min-w-0">{check.payee || '____________________'}</div>
@@ -441,7 +464,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                       </div>
 
-                      {/* Amount Words Line */}
                       <div className="mt-4 flex items-center gap-4 relative z-10 overflow-hidden">
                           <div className="flex-1 max-w-[460px] border-b border-black text-xs md:text-sm font-serif italic px-2 overflow-hidden truncate whitespace-nowrap min-w-0">
                             {check.amountWords || '____________________________________________________________________'}
@@ -464,7 +486,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           </div>
                       </div>
                       
-                      {/* MICR Line - Absolute Bottom Left */}
                       <div className="absolute bottom-2 left-6 font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 inline-block px-1 z-30">
                           ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
                       </div>
@@ -493,6 +514,70 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
               )}
           </div>
+          
+          {/* ARCHIVE SLIDE-OVER */}
+          {showArchive && (
+              <div className="absolute inset-0 z-40 flex justify-end">
+                  <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowArchive(false)}></div>
+                  <div className="relative w-full max-w-md bg-slate-900 border-l border-slate-800 h-full flex flex-col shadow-2xl animate-fade-in-right">
+                      <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                          <h2 className="text-lg font-bold text-white flex items-center gap-2"><List className="text-indigo-400"/> Recent Checks</h2>
+                          <button onClick={() => setShowArchive(false)} className="text-slate-500 hover:text-white"><X/></button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-800">
+                          {loadingArchive ? (
+                              <div className="flex flex-col items-center justify-center h-40 gap-3 text-slate-500">
+                                  <Loader2 size={24} className="animate-spin"/>
+                                  <span className="text-xs font-bold uppercase tracking-widest">Scanning Ledger...</span>
+                              </div>
+                          ) : archiveChecks.length === 0 ? (
+                              <div className="text-center py-20 text-slate-600 italic text-sm">No published checks found in your account.</div>
+                          ) : (
+                              archiveChecks.map(ac => (
+                                  <div key={ac.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4 hover:border-indigo-500/50 transition-all group">
+                                      <div className="flex justify-between items-start mb-2">
+                                          <div>
+                                              <p className="text-[10px] font-bold text-indigo-400 uppercase">Check #{ac.checkNumber}</p>
+                                              <h4 className="font-bold text-white text-sm line-clamp-1">{ac.payee || 'Unnamed Payee'}</h4>
+                                          </div>
+                                          <div className="text-right">
+                                              <p className="text-sm font-black text-white">${(ac.amount || ac.coinAmount || 0).toFixed(2)}</p>
+                                              <p className="text-[9px] text-slate-500">{ac.date}</p>
+                                          </div>
+                                      </div>
+                                      <p className="text-xs text-slate-500 italic mb-4 line-clamp-1">"{ac.memo}"</p>
+                                      <div className="flex gap-2">
+                                          <button 
+                                            onClick={() => {
+                                                const url = new URL(window.location.origin);
+                                                url.searchParams.set('view', 'check_viewer');
+                                                url.searchParams.set('id', ac.id);
+                                                window.history.pushState({}, '', url.toString());
+                                                window.location.reload();
+                                            }}
+                                            className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold uppercase transition-all"
+                                          >
+                                              Open URI
+                                          </button>
+                                          <button 
+                                            onClick={() => {
+                                                setCheck({...ac, id: '', checkNumber: (parseInt(ac.checkNumber) + 1).toString(), date: new Date().toISOString().split('T')[0]});
+                                                setShareLink(null);
+                                                setShowArchive(false);
+                                            }}
+                                            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-bold uppercase transition-all"
+                                            title="Clone to Draft"
+                                          >
+                                              Clone
+                                          </button>
+                                      </div>
+                                  </div>
+                              ))
+                          )}
+                      </div>
+                  </div>
+              </div>
+          )}
       </div>
 
       {showSignPad && (
@@ -511,7 +596,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                         onClick={() => {
                             const canvas = document.querySelector('.fixed canvas') as HTMLCanvasElement;
                             if (canvas) {
-                                // Clear error flag when fresh signature provided
                                 setImageError(prev => ({ ...prev, 'sig': false }));
                                 const dataUrl = canvas.toDataURL('image/png');
                                 setCheck(prev => ({ ...prev, signatureUrl: dataUrl, signature: dataUrl }));

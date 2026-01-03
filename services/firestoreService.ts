@@ -161,6 +161,18 @@ export async function getCheckById(id: string): Promise<BankingCheck | null> {
     } catch(e) { return null; }
 }
 
+export async function getUserChecks(uid: string): Promise<BankingCheck[]> {
+    if (!db) return [];
+    try {
+        const q = query(collection(db, CHECKS_COLLECTION), where('ownerId', '==', uid), orderBy('date', 'desc'), limit(50));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ ...d.data(), id: d.id } as BankingCheck));
+    } catch(e) { 
+        console.error("Failed to fetch checks", e);
+        return []; 
+    }
+}
+
 export async function saveShippingLabel(label: ShippingLabel): Promise<string> {
     if (!db) return label.id || 'local';
     const id = label.id || generateSecureId();
