@@ -282,7 +282,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             allowTaint: true,
             imageTimeout: 15000,
             onclone: (clonedDoc) => {
-                // Ensure all text elements are fully visible in the clone before rendering
                 const el = clonedDoc.querySelector('.check-preview-container');
                 if (el) (el as HTMLElement).style.transform = 'none';
             }
@@ -440,56 +439,56 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       
                       <div className="flex justify-between items-start relative z-10">
                           <div className="space-y-1">
-                              <h2 className="text-sm font-bold uppercase tracking-wider">{check.senderName}</h2>
-                              <p className="text-[9px] text-slate-500 leading-tight max-w-[190px] truncate whitespace-pre-wrap">{check.senderAddress}</p>
+                              <h2 className="text-sm font-bold uppercase tracking-wider leading-relaxed">{check.senderName}</h2>
+                              <p className="text-[9px] text-slate-500 leading-normal max-w-[190px] truncate whitespace-pre-wrap">{check.senderAddress}</p>
                           </div>
                           <div className="text-right">
-                              <h2 className="text-xs font-black uppercase text-slate-800 leading-none">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
-                              <p className="text-lg font-mono font-bold mt-1">{check.checkNumber}</p>
+                              <h2 className="text-xs font-black uppercase text-slate-800 leading-normal">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
+                              <p className="text-lg font-mono font-bold mt-1 leading-normal">{check.checkNumber}</p>
                           </div>
                       </div>
 
                       <div className="flex justify-end mt-2 relative z-10">
-                          <div className="border-b border-black w-32 flex justify-between items-end pb-0.5">
+                          <div className="border-b border-black w-32 flex justify-between items-end pb-1 mb-1">
                               <span className="text-[9px] font-bold">DATE</span>
-                              <span className="text-sm font-mono leading-none">{check.date}</span>
+                              <span className="text-sm font-mono leading-normal">{check.date}</span>
                           </div>
                       </div>
 
                       <div className="mt-4 flex items-center gap-4 relative z-10">
                           <span className="text-xs font-bold whitespace-nowrap uppercase">Pay to the Order of</span>
-                          <div className="flex-1 border-b border-black text-lg font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-0.5 leading-none">{check.payee || '____________________'}</div>
+                          <div className="flex-1 border-b border-black text-lg font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-1 leading-relaxed">{check.payee || '____________________'}</div>
                           <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50 shrink-0">
                               <span className="text-sm font-bold">$</span>
-                              <span className="flex-1 text-right font-mono text-lg font-bold leading-none">
+                              <span className="flex-1 text-right font-mono text-lg font-bold leading-normal">
                                   {check.isCoinCheck ? (check.coinAmount || 0).toFixed(2) : (check.amount || 0).toFixed(2)}
                               </span>
                           </div>
                       </div>
 
                       <div className="mt-6 flex items-center gap-4 relative z-10 overflow-hidden">
-                          <div className="flex-1 max-w-[460px] border-b border-black text-xs md:text-sm font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-0.5 leading-tight">
+                          <div className="flex-1 max-w-[460px] border-b border-black text-xs md:text-sm font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-1 leading-relaxed">
                             {check.amountWords || '____________________________________________________________________'}
                           </div>
-                          <span className="text-xs font-bold shrink-0">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
+                          <span className="text-xs font-bold shrink-0">DOLLARS</span>
                       </div>
 
-                      <div className="mt-auto flex items-end justify-between relative z-10 pb-0">
+                      <div className="mt-auto flex items-end justify-between relative z-10 pb-1">
                           <div className="flex-1 flex flex-col gap-2">
                               <div className="flex items-center gap-2 mb-2">
                                   <span className="text-[10px] font-bold">FOR</span>
-                                  <div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate leading-none pb-0.5">{check.memo || '____________________'}</div>
+                                  <div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate leading-relaxed pb-1">{check.memo || '____________________'}</div>
                               </div>
                           </div>
                           <div className="w-48 relative ml-4 z-20 flex flex-col items-center">
-                              <div className="border-b border-black w-full min-h-[48px] flex items-end justify-center overflow-hidden">
+                              <div className="border-b border-black w-full min-h-[48px] flex items-end justify-center overflow-hidden pb-1">
                                   {renderSignature()}
                               </div>
                               <span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter w-full">Authorized Signature</span>
                           </div>
                       </div>
                       
-                      <div className="absolute bottom-2 left-6 font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 inline-block px-1 z-30 leading-none">
+                      <div className="absolute bottom-2 left-6 font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 inline-block px-1 z-30 leading-normal">
                           ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
                       </div>
                   </div>
