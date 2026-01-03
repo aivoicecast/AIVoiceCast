@@ -206,8 +206,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               senderAddress: check.senderAddress,
               senderName: check.senderName
           };
-          // Directly update the cloud profile.
-          // Note: hasHydratedFromTemplate ensures this update doesn't reset the local 'check' state in the useEffect.
           await updateUserProfile(currentUser.uid, { checkTemplate: template });
           alert("Template saved as default!");
       } catch(e: any) {
@@ -282,7 +280,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             backgroundColor: '#ffffff',
             logging: false,
             allowTaint: true,
-            imageTimeout: 15000
+            imageTimeout: 15000,
+            onclone: (clonedDoc) => {
+                // Ensure all text elements are fully visible in the clone before rendering
+                const el = clonedDoc.querySelector('.check-preview-container');
+                if (el) (el as HTMLElement).style.transform = 'none';
+            }
         });
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
@@ -304,7 +307,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           <img 
               key={url}
               src={url} 
-              className="max-h-12 w-auto object-contain" 
+              className="max-h-12 w-auto object-contain mb-1" 
               alt="Authorized Signature"
               crossOrigin={isRemote ? "anonymous" : undefined}
               onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
@@ -421,7 +424,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
               )}
               
-              <div style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }} className="transition-transform duration-300 mt-12">
+              <div style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }} className="transition-transform duration-300 mt-12 check-preview-container">
                   <div ref={checkRef} className="w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border border-slate-300 rounded-lg relative overflow-hidden p-8">
                       {renderWatermark()}
                       
@@ -447,46 +450,46 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
 
                       <div className="flex justify-end mt-2 relative z-10">
-                          <div className="border-b border-black w-32 flex justify-between items-end pb-1">
+                          <div className="border-b border-black w-32 flex justify-between items-end pb-0.5">
                               <span className="text-[9px] font-bold">DATE</span>
-                              <span className="text-sm font-mono">{check.date}</span>
+                              <span className="text-sm font-mono leading-none">{check.date}</span>
                           </div>
                       </div>
 
                       <div className="mt-4 flex items-center gap-4 relative z-10">
                           <span className="text-xs font-bold whitespace-nowrap uppercase">Pay to the Order of</span>
-                          <div className="flex-1 border-b border-black text-lg font-serif italic px-2 truncate min-w-0">{check.payee || '____________________'}</div>
+                          <div className="flex-1 border-b border-black text-lg font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-0.5 leading-none">{check.payee || '____________________'}</div>
                           <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50 shrink-0">
                               <span className="text-sm font-bold">$</span>
-                              <span className="flex-1 text-right font-mono text-lg font-bold">
+                              <span className="flex-1 text-right font-mono text-lg font-bold leading-none">
                                   {check.isCoinCheck ? (check.coinAmount || 0).toFixed(2) : (check.amount || 0).toFixed(2)}
                               </span>
                           </div>
                       </div>
 
-                      <div className="mt-4 flex items-center gap-4 relative z-10 overflow-hidden">
-                          <div className="flex-1 max-w-[460px] border-b border-black text-xs md:text-sm font-serif italic px-2 overflow-hidden truncate whitespace-nowrap min-w-0">
+                      <div className="mt-6 flex items-center gap-4 relative z-10 overflow-hidden">
+                          <div className="flex-1 max-w-[460px] border-b border-black text-xs md:text-sm font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-0.5 leading-tight">
                             {check.amountWords || '____________________________________________________________________'}
                           </div>
                           <span className="text-xs font-bold shrink-0">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                       </div>
 
-                      <div className="mt-auto flex items-end justify-between relative z-10 pb-4">
+                      <div className="mt-auto flex items-end justify-between relative z-10 pb-0">
                           <div className="flex-1 flex flex-col gap-2">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 mb-2">
                                   <span className="text-[10px] font-bold">FOR</span>
-                                  <div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate">{check.memo || '____________________'}</div>
+                                  <div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate leading-none pb-0.5">{check.memo || '____________________'}</div>
                               </div>
                           </div>
-                          <div className="w-48 relative ml-4 z-20">
-                              <div className="border-b border-black h-12 flex items-end justify-center pb-1 overflow-hidden">
+                          <div className="w-48 relative ml-4 z-20 flex flex-col items-center">
+                              <div className="border-b border-black w-full min-h-[48px] flex items-end justify-center overflow-hidden">
                                   {renderSignature()}
                               </div>
-                              <span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter">Authorized Signature</span>
+                              <span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter w-full">Authorized Signature</span>
                           </div>
                       </div>
                       
-                      <div className="absolute bottom-2 left-6 font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 inline-block px-1 z-30">
+                      <div className="absolute bottom-2 left-6 font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 inline-block px-1 z-30 leading-none">
                           ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
                       </div>
                   </div>
