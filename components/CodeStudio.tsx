@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash, ExternalLink } from 'lucide-react';
@@ -727,11 +726,21 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       setIsRunning(prev => ({ ...prev, [slotIdx]: true }));
       setIsTerminalOpen(prev => ({ ...prev, [slotIdx]: true }));
       const updateTerminal = (msg: string, isError = false) => { setTerminalOutputs(prev => ({ ...prev, [slotIdx]: [...(prev[slotIdx] || []), `${isError ? '[ERROR] ' : ''}${msg}`] })); };
-      updateTerminal(`>>> Starting Remote GCE Execution: ${file.name}`);
+      updateTerminal(`>>> Starting Neural Execution: ${file.name}`);
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const prompt = `Act as a remote C++ / Multi-language execution engine. Execute: File: ${file.name}, Lang: ${file.language}, Code: ${file.content}. Respond ONLY with JSON: { "stdout": "string", "stderr": "string", "exitCode": number }`;
-          const resp = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt, config: { responseMimeType: 'application/json' } });
+          const prompt = `Act as a high-speed remote C++ / Multi-language execution engine. Execute: File: ${file.name}, Lang: ${file.language}, Code: ${file.content}. Respond ONLY with JSON: { "stdout": "string", "stderr": "string", "exitCode": number }`;
+          
+          // Using gemini-3-flash-preview for low-latency simulation
+          const resp = await ai.models.generateContent({ 
+              model: 'gemini-3-flash-preview', 
+              contents: prompt, 
+              config: { 
+                  responseMimeType: 'application/json',
+                  thinkingConfig: { thinkingBudget: 0 } // Priority: Speed
+              } 
+          });
+          
           const result = JSON.parse(resp.text || '{"stdout": "", "stderr": "Internal Error", "exitCode": 1}');
           if (result.stderr) updateTerminal(result.stderr, true);
           if (result.stdout) updateTerminal(result.stdout);
