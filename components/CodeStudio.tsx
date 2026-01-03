@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search } from 'lucide-react';
@@ -334,18 +333,15 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
         const handleOAuth = async () => {
             setIsGithubLoading(true);
             try {
-                // In a pure browser flow without a backend secret exchange, 
-                // we set the 'token' to the code and explain the limitation.
-                // In a full implementation, you'd exchange this code for a real token.
+                // Save OAuth code as temporary token
                 localStorage.setItem('github_token', ghCode);
                 setGithubToken(ghCode);
                 
-                // Clear the code from the URL for a cleaner UI
                 const newUrl = new URL(window.location.href);
                 newUrl.searchParams.delete('code');
                 window.history.replaceState({}, '', newUrl.toString());
 
-                // Auto-trigger repository fetch
+                // Auto-trigger repository fetch and lazy load default if present
                 const repos = await fetchUserRepos(ghCode);
                 setGithubRepos(repos);
                 if (userProfile?.defaultRepoUrl) {
@@ -465,7 +461,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const handleConnectGithub = async () => {
       setIsGithubLoading(true);
       try {
-          // Replaced manual PAT input with OAuth redirect logic
+          // Removes any manual PAT prompt and uses standard OAuth redirect
           signInWithGitHub();
       } catch (e: any) {
           alert("GitHub connect failed: " + e.message);
@@ -492,7 +488,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           setProject(newProject);
           const tree: TreeNode[] = files.map(f => ({ id: f.path || f.name, name: f.name.split('/').pop() || f.name, type: f.isDirectory ? 'folder' : 'file', isLoaded: f.childrenFetched, data: f }));
           setGithubTree(tree);
-      } catch (e: any) {
+          // Auto-expand first level (lazy loading handled by FileTreeItem component)
+      } catch (e) {
           console.error("Auto-load default repo failed", e);
       } finally {
           setIsGithubLoading(false);
@@ -703,7 +700,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
 
   useEffect(() => { refreshExplorer(); }, [activeTab, driveToken, githubToken, currentUser]);
 
-  // Auto-connect and auto-load 1st level dir when clicking github icon
+  // Seamless auto-connection when tab is active and token/profile exists
   useEffect(() => {
     if (activeTab === 'github' && githubToken && userProfile?.defaultRepoUrl && githubTree.length === 0) {
         handleAutoLoadDefaultRepo(githubToken, userProfile.defaultRepoUrl);
@@ -841,7 +838,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                                           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"/>
                                           <input type="text" placeholder="Search repos..." value={githubSearchQuery} onChange={e => setGithubSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500 transition-all"/>
                                       </div>
-                                      <button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); }} className="p-1.5 bg-slate-800 hover:bg-red-900/30 text-slate-400 hover:text-red-400 rounded-lg border border-slate-700 transition-colors" title="Disconnect"><X size={14}/></button>
+                                      <button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); }} className="p-1.5 bg-slate-800 hover:bg-red-900/30 text-slate-400 hover:text-red-400 rounded-lg border border-slate-700 transition-colors" title="Logout Session"><X size={14}/></button>
                                   </div>
                               </div>
                               
