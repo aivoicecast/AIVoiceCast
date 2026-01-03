@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ArrowLeft, Zap, Heart, Users, BrainCircuit, Rocket } from 'lucide-react';
+import { ArrowLeft, Zap, Heart, Users, BrainCircuit, Rocket, Code, Palette, Wallet, Truck, Box } from 'lucide-react';
 
 interface MissionManifestoProps {
   onBack: () => void;
@@ -23,13 +23,13 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
           {/* Hero Section */}
           <section className="text-center space-y-8 animate-fade-in-up">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-900/30 border border-indigo-500/30 text-indigo-300 text-sm font-bold uppercase tracking-wider mb-4">
-              <SparkleIcon /> AIVoiceCast Platform
+              <SparkleIcon /> AIVoiceCast Platform v4.2.0
             </div>
             <h2 className="text-5xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-200 to-slate-400 leading-tight">
-              Grow. Share.<br />Live.
+              A Shared Network of<br />Neural Intelligence.
             </h2>
             <p className="text-xl md:text-2xl text-slate-400 max-w-2xl mx-auto leading-relaxed">
-              We are evolving from a podcast tool into an <span className="text-white font-bold">AI-Human Community</span>. Our goal is to empower humanity in the AI era.
+              Evolving from a simple podcast tool into a comprehensive <span className="text-white font-bold">Knowledge Operating System</span>. We empower creators to build, learn, and transact in the AI era.
             </p>
           </section>
 
@@ -39,9 +39,9 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
               <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-indigo-500/20">
                 <Zap className="text-indigo-400 w-8 h-8" />
               </div>
-              <h3 className="text-2xl font-bold text-white mb-4">5X Productivity</h3>
-              <p className="text-slate-400 leading-relaxed">
-                Use AI not to replace yourself, but to amplify your capabilities. Less time on repetitive work for money. More time on high-value creation.
+              <h3 className="text-2xl font-bold text-white mb-4">Augmented Growth</h3>
+              <p className="text-slate-400 leading-relaxed text-sm">
+                Move 5x faster by delegating repetitive tasks to the Neural Prism. Focus your human intelligence on high-level strategy and creative synthesis.
               </p>
             </div>
 
@@ -49,9 +49,9 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
               <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-emerald-500/20">
                 <Heart className="text-emerald-400 w-8 h-8" />
               </div>
-              <h3 className="text-2xl font-bold text-white mb-4">Joy of Living</h3>
-              <p className="text-slate-400 leading-relaxed">
-                The ultimate goal of productivity is freedom. Freedom to learn, to connect, and to work on what brings true joy and fulfillment to your life.
+              <h3 className="text-2xl font-bold text-white mb-4">Open Knowledge</h3>
+              <p className="text-slate-400 leading-relaxed text-sm">
+                Break the silos of information. Share your learning paths, code repositories, and technical specifications with a global community of peers.
               </p>
             </div>
 
@@ -59,47 +59,74 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
               <div className="w-14 h-14 bg-pink-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-pink-500/20">
                 <Users className="text-pink-400 w-8 h-8" />
               </div>
-              <h3 className="text-2xl font-bold text-white mb-4">Symbiosis</h3>
-              <p className="text-slate-400 leading-relaxed">
-                A community where humans and AI mentors coexist. Learn from an AI tutor today, mentor a human peer tomorrow.
+              <h3 className="text-2xl font-bold text-white mb-4">Peer Economy</h3>
+              <p className="text-slate-400 leading-relaxed text-sm">
+                A sustainable ecosystem powered by VoiceCoin. Mentor others, contribute quality content, and earn rewards validated by cryptographic identity.
               </p>
             </div>
           </section>
 
-          {/* Feature Highlight */}
-          <section className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-10 border border-slate-700 relative overflow-hidden">
-            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-indigo-500/20 blur-[100px] rounded-full pointer-events-none"></div>
+          {/* Feature Hub Highlight */}
+          <section className="bg-slate-900 border border-slate-800 rounded-[3rem] p-12 relative overflow-hidden shadow-2xl">
+            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-indigo-500/10 blur-[100px] rounded-full pointer-events-none"></div>
             
-            <div className="relative z-10 flex flex-col md:flex-row items-center gap-10">
-              <div className="flex-1 space-y-6">
-                <h3 className="text-3xl font-bold text-white">Competitive in the AI era</h3>
-                <ul className="space-y-4">
-                  <li className="flex items-start gap-3">
-                    <BrainCircuit className="text-indigo-400 shrink-0 mt-1" />
-                    <span className="text-slate-300">Create custom podcast channels to prep for interviews (e.g., "Google Interview Prep").</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Rocket className="text-indigo-400 shrink-0 mt-1" />
-                    <span className="text-slate-300">Convert meeting recordings into formal Design Docs instantly.</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <Users className="text-indigo-400 shrink-0 mt-1" />
-                    <span className="text-slate-300">Find mentors, join study groups, and share knowledge maps.</span>
-                  </li>
-                </ul>
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+              <div className="space-y-8">
+                <h3 className="text-3xl font-black text-white italic uppercase tracking-tighter">The Application Suite</h3>
+                <div className="grid grid-cols-1 gap-6">
+                  <div className="flex gap-4">
+                    <div className="p-3 bg-blue-500/20 rounded-xl text-blue-400 shrink-0 h-fit"><Code size={20}/></div>
+                    <div>
+                      <h4 className="font-bold text-white text-sm">Code Studio</h4>
+                      <p className="text-xs text-slate-500 mt-1">Multi-backend IDE with Google Drive and GitHub integration. Peer-to-peer live coding sessions.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="p-3 bg-pink-500/20 rounded-xl text-pink-400 shrink-0 h-fit"><Palette size={20}/></div>
+                    <div>
+                      <h4 className="font-bold text-white text-sm">Creative Labs</h4>
+                      <p className="text-xs text-slate-500 mt-1">Neural Icon Lab and Card Workshop for high-fidelity generative asset creation.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="p-3 bg-amber-500/20 rounded-xl text-amber-400 shrink-0 h-fit"><Wallet size={20}/></div>
+                    <div>
+                      <h4 className="font-bold text-white text-sm">VoiceCoin Protocol</h4>
+                      <p className="text-xs text-slate-500 mt-1">Decentralized financial layer for secure peer-to-peer transactions and identity management.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="p-3 bg-emerald-500/20 rounded-xl text-emerald-400 shrink-0 h-fit"><Truck size={20}/></div>
+                    <div>
+                      <h4 className="font-bold text-white text-sm">Shipping & Logistics</h4>
+                      <p className="text-xs text-slate-500 mt-1">Neural-assisted shipping labels and professional document design suite.</p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="w-full md:w-1/3 aspect-square bg-slate-950 rounded-2xl border border-slate-700 flex items-center justify-center">
-                 <span className="text-6xl">🚀</span>
+              <div className="hidden lg:flex justify-center">
+                 <div className="relative">
+                    <div className="w-64 h-64 bg-indigo-600/5 border border-indigo-500/20 rounded-[4rem] rotate-12 flex items-center justify-center animate-pulse">
+                        <Box size={100} className="text-indigo-500/20" />
+                    </div>
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-slate-900 border border-slate-700 rounded-[3rem] -rotate-12 flex flex-col items-center justify-center shadow-2xl">
+                         <BrainCircuit size={64} className="text-indigo-400 mb-4" />
+                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Neural OS Core</span>
+                    </div>
+                 </div>
               </div>
             </div>
           </section>
 
           {/* Footer Quote */}
           <div className="text-center pt-12 border-t border-slate-900">
-            <p className="text-2xl font-serif italic text-slate-500">
-              "The future belongs to those who learn fast, share openly, and build with joy."
+            <p className="text-2xl font-serif italic text-slate-400">
+              "We don't build tools to replace the creator; we build an OS to amplify the human soul."
             </p>
-            <p className="mt-4 text-sm font-bold text-indigo-400 uppercase tracking-widest">- AIVoiceCast Community</p>
+            <div className="mt-8 flex flex-col items-center">
+                <div className="w-12 h-px bg-indigo-500 mb-4"></div>
+                <p className="text-sm font-bold text-white uppercase tracking-[0.4em]">AIVoiceCast Community</p>
+            </div>
           </div>
 
         </div>

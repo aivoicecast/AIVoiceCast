@@ -10,51 +10,50 @@ export const APP_COMPARISON_DOC: CommunityDiscussion = {
   transcript: [],
   createdAt: 1766016000000, 
   isManual: true,
-  title: "AIVoiceCast: OS Design & Financial Protocol",
+  title: "AIVoiceCast: The Knowledge OS Specification",
   designDoc: `
-# AIVoiceCast: System Architecture & VoiceCoin Protocol
+# AIVoiceCast: System Architecture & Neural OS Specification
 
-**Status:** Implementation Complete | **Author:** Lead Engineer | **Date:** Dec 19, 2025
+**Revision:** 4.2.0 | **Author:** Lead Architect | **Date:** Dec 20, 2025
 
-## 1. Overview
-AIVoiceCast has evolved into a full-featured "Knowledge OS." Beyond content consumption, it now implements a robust, decentralized-style financial layer called **VoiceCoin (VC)**, designed for peer-to-peer mentorship and contribution rewards.
+## 1. Philosophical Transition
+AIVoiceCast has evolved from a "Podcast Player" into a **Knowledge Operating System**. The core design philosophy shifts from *passive consumption* to *active creation and transaction*. 
 
-## 2. VoiceCoin Financial Infrastructure
+## 2. The Application Suite Architecture
+The platform now manages a modular suite of apps within a single \`ViewState\` lifecycle. Each module acts as a specialized terminal for neural synthesis.
 
-### A. Cryptographic Identity
-Every member can generate a **unique digital identity**.
-- **Engine:** Web Crypto API.
-- **Algorithm:** ECDSA P-256 (NIST P-256).
-- **Certificate:** Public keys are signed by the **AIVoiceCast Root Trust Key**, enabling offline verification between peers who have never met.
+| Domain | Application | Backend Storage | Engine |
+| :--- | :--- | :--- | :--- |
+| **Code** | Code Studio | Drive / GitHub / Cloud | Gemini 3 Pro |
+| **Design** | Whiteboard / Icon Lab | Firestore / Storage | Flash Image |
+| **Finance** | Coin Wallet / Check Lab | Web Crypto / Ledger | ECDSA P-256 |
+| **Utility** | Shipping Lab | Local / Google Drive | Flash Pro |
+| **Research** | Neural Lab | Firestore / IDB | Flash (API) |
 
-### B. The QR & URI Protocol
-We use a standardized URI format for seamless transfers:
-\`https://aivoicecast.com/?view=coin_wallet&pay={UID}&name={DISPLAY_NAME}\`
-- **Receive Mode:** Generates a QR code encoding this URI. 
-- **In-Store Logic:** A merchant/mentor displays their QR; the sender scans it, and the app auto-populates the recipient and triggers the transaction.
+## 3. VoiceCoin Financial Protocol (VCFP)
+v4.2.0 introduces the **VoiceCoin Protocol**, a decentralized-style ledger built atop Google Cloud.
 
-### C. Offline Resilience (The Ledger Sync)
-One of our most advanced features is the **Pending Claims Queue**.
-1. **Issuance:** A sender generates a cryptographically signed **Offline Payment Token** (Base64).
-2. **Transfer:** This token is sent via any medium (QR, NFC, Chat).
-3. **Queueing:** If the recipient is offline, the token is stored in **IndexedDB/LocalStorage** with a \`pending\` status.
-4. **Auto-Sync:** A background service monitors \`navigator.onLine\`. Once connectivity is restored, the system automatically "clears" all pending tokens to the Firestore Global Ledger.
+### A. Identity Management
+- **Local Keypair:** Every member generates a NIST P-256 keypair.
+- **Trust Authority:** The platform signs member public keys to generate a **Neural Passport**.
+- **Offline Signing:** Users can authorize payments offline using signed bearer tokens (Base64).
 
-## 3. Application Pillars
+### B. Transaction Lifecycle
+1. **Request:** Recipient generates a URI encoding their UID and amount range.
+2. **Authorize:** Sender scans URI, signs the amount with their private key.
+3. **Verification:** Recipient verifies the signature against the Sender's public certificate.
+4. **Sync:** Upon next internet heartbeat, the token is cleared to the global ledger.
 
-| Feature | Document Studio | VoiceCoin Wallet |
-| :--- | :--- | :--- |
-| **Primary Intent** | Knowledge capture | Decentralized Economy |
-| **Data Engine** | Markdown / PlantUML | ECDSA / Web Crypto |
-| **Persistence** | Firestore / Google Drive | Global Ledger / IndexedDB |
-| **AI Role** | Synthesizes transcripts | Validates signatures & amounts |
+## 4. Multi-Backend Persistence
+To ensure maximum user control, AIVoiceCast implements a tiered persistence model:
+- **Hot Data (IndexedDB):** Audio cache and ephemeral session states.
+- **Trusted Data (Firestore):** Identity certificates, ledger history, and community transcripts.
+- **User Sovereign Data (Google Drive):** Source code, published PDFs, and meeting recordings.
 
-## 4. Technical Constraints & Security
-- **Atomic Transactions:** All coin transfers use Firestore \`runTransaction\` to ensure balance integrity.
-- **Non-Repudiation:** Offline tokens include a \`nonce\` and \`timestamp\` signed by the sender's private key, preventing replay attacks and double-claiming.
-- **Trust Authority:** The platform acts as a lightweight Certificate Authority (CA) to sign member public keys.
+## 5. Neural Synthesis Pipeline
+The OS utilizes **Multimodal Context Mapping**. In the Code Studio or Whiteboard, the AI is not just a text assistant; it is a vision-capable peer. By analyzing screen frames alongside transcript context, the AI performs high-fidelity logic tasks like refactoring or architectural analysis in real-time.
 
-## 5. Conclusion
-AIVoiceCast v4.2.0 is now a self-sustaining ecosystem where high-quality learning is incentivized, and financial transactions are resilient to network outages.
+## 6. Conclusion
+The v4.2.0 architecture establishes AIVoiceCast as more than a community; it is a shared infrastructure for the next generation of knowledge work.
 `
 };
