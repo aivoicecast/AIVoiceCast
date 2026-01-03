@@ -3,6 +3,7 @@ import {
     GoogleAuthProvider, 
     GithubAuthProvider,
     signInWithPopup, 
+    linkWithPopup,
     signOut as firebaseSignOut,
     User
 } from 'firebase/auth';
@@ -50,6 +51,7 @@ export async function signInWithGoogle(): Promise<User | null> {
 
 /**
  * Initiates GitHub OAuth Flow using Firebase SDK
+ * Handles linking if the user is already signed in via another provider
  */
 export async function signInWithGitHub(): Promise<string | null> {
     if (!auth) return null;
@@ -59,7 +61,16 @@ export async function signInWithGitHub(): Promise<string | null> {
     provider.addScope('user');
 
     try {
-        const result = await signInWithPopup(auth, provider);
+        let result;
+        
+        // If user is already logged in (e.g. via Google), attempt to LINK the GitHub account
+        // instead of signing in as a new user. This prevents 'account-exists-with-different-credential' errors.
+        if (auth.currentUser) {
+            result = await linkWithPopup(auth.currentUser, provider);
+        } else {
+            result = await signInWithPopup(auth, provider);
+        }
+
         const credential = GithubAuthProvider.credentialFromResult(result);
         const token = credential?.accessToken;
 
@@ -69,8 +80,15 @@ export async function signInWithGitHub(): Promise<string | null> {
         }
         return null;
     } catch (error: any) {
-        // Log details but throw so CodeStudio can show the specific error code
         console.error("Firebase GitHub Auth Exception:", error);
+        
+        if (error.code === 'auth/account-exists-with-different-credential') {
+            alert("This GitHub email is already associated with another sign-in method (likely Google). \n\nFIX: Sign in with Google first, then return here to connect GitHub.");
+        } else if (error.code === 'auth/credential-already-in-use') {
+            alert("This GitHub account is already linked to a different user in our system.");
+        }
+        
+        handleAuthError(error);
         throw error;
     }
 }
