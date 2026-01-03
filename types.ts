@@ -77,6 +77,20 @@ export interface UserProfile {
   savedSignatureUrl?: string;
   checkTemplate?: Partial<BankingCheck>;
   nextCheckNumber?: number;
+  // Cryptographic Identity for VoiceCoin
+  publicKey?: string; // PEM or JWK string
+  certificate?: string; // Signed by AIVoiceCast Root
+}
+
+export interface OfflinePaymentToken {
+  senderId: string;
+  senderName: string;
+  recipientId: string;
+  amount: number;
+  timestamp: number;
+  nonce: string;
+  signature: string; // Signature of JSON.stringify({senderId, recipientId, amount, timestamp, nonce})
+  certificate: string; // Sender's cert to verify signature offline
 }
 
 export interface CoinTransaction {
@@ -86,9 +100,11 @@ export interface CoinTransaction {
   toId: string;
   toName: string;
   amount: number;
-  type: 'transfer' | 'grant' | 'check' | 'mentoring';
+  type: 'transfer' | 'grant' | 'check' | 'mentoring' | 'contribution' | 'offline';
   memo?: string;
   timestamp: number;
+  isVerified?: boolean;
+  offlineToken?: string; // Base64 encoded OfflinePaymentToken
 }
 
 export interface GeneratedIcon {

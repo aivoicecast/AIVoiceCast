@@ -1,10 +1,14 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight } from 'lucide-react';
-import { UserProfile, CoinTransaction } from '../types';
-import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile } from '../services/firestoreService';
+// Added Heart, Globe, WifiOff to imports
+import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff } from 'lucide-react';
+import { UserProfile, CoinTransaction, OfflinePaymentToken } from '../types';
+import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile, registerIdentity, claimOfflinePayment, DEFAULT_MONTHLY_GRANT } from '../services/firestoreService';
 import { auth, db, getDb } from '../services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
+import { generateMemberIdentity, requestIdentityCertificate, verifyCertificateOffline, verifySignature, signPayment, AIVOICECAST_TRUST_PUBLIC_KEY } from '../utils/cryptoUtils';
+// Added generateSecureId to imports
+import { generateSecureId } from '../utils/idUtils';
 
 interface CoinWalletProps {
   onBack: () => void;
@@ -20,6 +24,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   
   const [databaseInstance, setDatabaseInstance] = useState(db);
   
+  // Transfer States
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferMemo, setTransferMemo] = useState('');
@@ -27,6 +32,20 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
+
+  // Identity & Offline States
+  const [isCreatingIdentity, setIsCreatingIdentity] = useState(false);
+  const [showOfflineToken, setShowOfflineToken] = useState(false);
+  const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [showTokenInput, setShowTokenInput] = useState(false);
+  const [pastedToken, setPastedToken] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifiedToken, setVerifiedToken] = useState<OfflinePaymentToken | null>(null);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [isClaiming, setIsClaiming] = useState(false);
+
+  // Local storage for the private key (normally should be highly protected)
+  const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
   
   const filteredUsers = useMemo(() => {
     return allUsers.filter(u => 
@@ -130,6 +149,108 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       }
   };
 
+  const handleCreateIdentity = async () => {
+      if (!user) return;
+      setIsCreatingIdentity(true);
+      try {
+          const { publicKey, privateKey } = await generateMemberIdentity();
+          // Simulate AIVoiceCast signing the key
+          const certificate = await requestIdentityCertificate(publicKey);
+          
+          await registerIdentity(user.uid, publicKey, certificate);
+          // Store private key in session (or persistent local storage for "offline mode")
+          setPrivateKey(privateKey);
+          
+          await handleRefresh();
+          alert("Cryptographic Identity Created & Verified by AIVoiceCast!");
+      } catch (e) {
+          alert("Failed to create identity.");
+      } finally {
+          setIsCreatingIdentity(false);
+      }
+  };
+
+  const handleGenerateOfflineToken = async () => {
+      if (!user || !transferAmount || !privateKey || !user.certificate) return alert("Fill amount and ensure identity is active.");
+      const amount = parseInt(transferAmount);
+      if (amount <= 0 || amount > user.coinBalance) return alert("Invalid amount.");
+
+      try {
+          const nonce = generateSecureId().substring(0, 12);
+          const paymentBase = {
+              senderId: user.uid,
+              senderName: user.displayName,
+              recipientId: selectedUser?.uid || 'any', // If 'any', it's a bearer token
+              amount,
+              timestamp: Date.now(),
+              nonce
+          };
+
+          const signature = await signPayment(privateKey, paymentBase);
+          const token: OfflinePaymentToken = {
+              ...paymentBase,
+              signature,
+              certificate: user.certificate
+          };
+
+          const tokenStr = btoa(JSON.stringify(token));
+          setGeneratedToken(tokenStr);
+          setShowOfflineToken(true);
+      } catch (e) {
+          alert("Signing failed.");
+      }
+  };
+
+  const handleVerifyPastedToken = async () => {
+      if (!pastedToken.trim()) return;
+      setIsVerifying(true);
+      setVerificationError(null);
+      setVerifiedToken(null);
+      try {
+          const token: OfflinePaymentToken = JSON.parse(atob(pastedToken));
+          
+          // 1. Check AIVoiceCast Trust
+          const isCertValid = verifyCertificateOffline(token.certificate);
+          if (!isCertValid) throw new Error("Certificate not signed by AIVoiceCast Trust.");
+
+          // 2. Verify Sender Signature
+          const senderCert = JSON.parse(atob(token.certificate));
+          const isSigValid = await verifySignature(senderCert.publicKey, token.signature, {
+              senderId: token.senderId,
+              senderName: token.senderName,
+              recipientId: token.recipientId,
+              amount: token.amount,
+              timestamp: token.timestamp,
+              nonce: token.nonce
+          });
+
+          if (!isSigValid) throw new Error("Invalid transaction signature.");
+
+          setVerifiedToken(token);
+      } catch (e: any) {
+          setVerificationError(e.message || "Invalid token format.");
+      } finally {
+          setIsVerifying(false);
+      }
+  };
+
+  const handleClaimVerifiedToken = async () => {
+      if (!verifiedToken) return;
+      setIsClaiming(true);
+      try {
+          await claimOfflinePayment(verifiedToken);
+          alert("Offline payment cleared and added to your balance!");
+          setShowTokenInput(false);
+          setVerifiedToken(null);
+          setPastedToken('');
+          await handleRefresh();
+      } catch (e: any) {
+          alert("Claim failed: " + e.message);
+      } finally {
+          setIsClaiming(false);
+      }
+  };
+
   const handleTransfer = async () => {
       if (!selectedUser || !transferAmount || !user) return;
       const amount = parseInt(transferAmount);
@@ -168,49 +289,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       return (coins / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
 
-  if (!databaseInstance) return (
-      <div className="h-full flex flex-col items-center justify-center bg-slate-950 p-8 text-center animate-fade-in">
-          <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mb-6 border border-red-500/20">
-            <X className="text-red-500" size={40} />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-2 tracking-tight">Database Offline</h2>
-          <p className="text-slate-400 text-sm max-w-xs mx-auto mb-8 leading-relaxed">The Firebase instance could not be initialized. Please check your API keys in <code>private_keys.ts</code> or the developer console.</p>
-          <div className="flex gap-4">
-              <button onClick={onBack} className="px-6 py-3 bg-slate-800 text-white rounded-xl font-bold border border-slate-700">Go Back</button>
-              <button onClick={() => { const d = getDb(); if(d) setDatabaseInstance(d); else window.location.reload(); }} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg">Retry Initialization</button>
-          </div>
-      </div>
-  );
-
-  if (loading && !user) return (
-      <div className="h-full flex items-center justify-center bg-slate-950">
-          <div className="text-center space-y-6">
-              <div className="relative">
-                <Loader2 className="animate-spin text-indigo-500 mx-auto" size={48}/>
-                <Coins className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-amber-500/50" size={20}/>
-              </div>
-              <div className="space-y-1">
-                <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] animate-pulse">Syncing Ledger...</p>
-                <p className="text-slate-600 text-[9px] font-medium">Verifying block integrity</p>
-              </div>
-          </div>
-      </div>
-  );
-
-  if (!user) return (
-      <div className="h-full flex flex-col items-center justify-center bg-slate-950 text-center p-8">
-          <div className="w-20 h-20 bg-amber-500/10 rounded-3xl flex items-center justify-center mb-6 border border-amber-500/20">
-            <AlertTriangle className="text-amber-500" size={40} />
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-2 tracking-tight">Wallet Disconnected</h2>
-          <p className="text-slate-400 text-sm max-w-xs mx-auto mb-8 leading-relaxed">We couldn't synchronize your local profile with the cloud ledger. This usually means a connection timeout or an incomplete login session.</p>
-          <div className="flex gap-4">
-            <button onClick={onBack} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition-all border border-slate-700">Go Back</button>
-            <button onClick={() => initWallet(true)} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20">Retry Connection</button>
-          </div>
-      </div>
-  );
-
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden animate-fade-in">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
@@ -223,12 +301,20 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                   Voice Wallet
               </h1>
           </div>
-          <button onClick={handleRefresh} disabled={isRefreshing} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
-              <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''}/>
-          </button>
+          <div className="flex items-center gap-2">
+              <button onClick={() => setShowTokenInput(true)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg text-xs font-bold border border-slate-700 transition-all flex items-center gap-2">
+                  <Upload size={14}/>
+                  Import Offline Token
+              </button>
+              <button onClick={handleRefresh} disabled={isRefreshing} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
+                  <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''}/>
+              </button>
+          </div>
       </header>
 
       <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 max-w-4xl mx-auto w-full scrollbar-thin scrollbar-thumb-slate-800">
+          
+          {/* Main Card */}
           <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-32 bg-white/10 blur-[80px] rounded-full group-hover:bg-white/20 transition-all"></div>
               <div className="relative z-10">
@@ -266,24 +352,61 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               </div>
           </div>
 
+          {/* Identity Verification Section */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-xl">
+              <div className={`p-5 rounded-[2rem] border-2 transition-all ${user.certificate ? 'bg-emerald-950/20 border-emerald-500/50 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+                  {user.certificate ? <ShieldCheck size={40} /> : <Shield size={40} />}
+              </div>
+              <div className="flex-1 text-center md:text-left">
+                  <h3 className="text-lg font-bold text-white mb-1 flex items-center justify-center md:justify-start gap-2">
+                      Identity Protocol
+                      {user.certificate && <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest font-black">Trusted</span>}
+                  </h3>
+                  <p className="text-sm text-slate-400 leading-relaxed">
+                      {user.certificate 
+                        ? "Your decentralized identity is verified by AIVoiceCast Trust Authority. You can now issue verified offline payment tokens." 
+                        : "Initialize your cryptographic identity to support verified offline payments and peer-to-peer trust."}
+                  </p>
+                  {user.certificate && (
+                      <div className="mt-3 p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between group">
+                          <div className="min-w-0">
+                              <p className="text-[10px] text-slate-600 font-bold uppercase mb-1">Public Key Hash</p>
+                              <p className="text-xs font-mono text-indigo-400 truncate">{user.publicKey}</p>
+                          </div>
+                          <button className="p-2 text-slate-600 hover:text-white"><Copy size={14}/></button>
+                      </div>
+                  )}
+              </div>
+              {!user.certificate && (
+                <button 
+                    onClick={handleCreateIdentity}
+                    disabled={isCreatingIdentity}
+                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 whitespace-nowrap active:scale-95"
+                >
+                    {isCreatingIdentity ? <Loader2 size={18} className="animate-spin"/> : <Key size={18}/>}
+                    Sign Identity
+                </button>
+              )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-start gap-4">
                   <div className="p-2.5 bg-indigo-900/30 rounded-xl text-indigo-400"><Info size={20}/></div>
                   <div>
-                      <h4 className="text-sm font-bold text-white mb-1">Standard Allowance</h4>
-                      <p className="text-xs text-slate-500 leading-relaxed">Basic members receive 100 free coins every 30 days to support peer learning.</p>
+                      <h4 className="text-sm font-bold text-white mb-1">Monthly Allowance</h4>
+                      <p className="text-xs text-slate-500 leading-relaxed">All members receive {DEFAULT_MONTHLY_GRANT.toLocaleString()} free VoiceCoins monthly to power the shared network of learning.</p>
                   </div>
               </div>
-              <div className="bg-slate-900 border border-indigo-500/20 p-5 rounded-2xl flex items-start gap-4 relative overflow-hidden">
-                  {user.subscriptionTier === 'pro' && <div className="absolute top-2 right-2"><Crown size={12} className="text-amber-400 fill-amber-400"/></div>}
-                  <div className="p-2.5 bg-amber-900/30 rounded-xl text-amber-400"><Zap size={20}/></div>
+              <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-start gap-4">
+                  <div className="p-2.5 bg-emerald-900/30 rounded-xl text-emerald-400"><Heart size={20}/></div>
                   <div>
-                      <h4 className="text-sm font-bold text-white mb-1">Pro Member Benefit</h4>
-                      <p className="text-xs text-slate-500 leading-relaxed">Pro members receive 2,900 coins monthly. Upgrade to fuel high-intensity mentoring.</p>
+                      <h4 className="text-sm font-bold text-white mb-1">Contribution Rewards</h4>
+                      <p className="text-xs text-slate-500 leading-relaxed">Earn 1000 coins for every "Like" your podcasts, blogs, or documents receive from the community.</p>
                   </div>
               </div>
           </div>
 
+          {/* Ledger Section */}
           <div className="space-y-4">
               <div className="flex items-center justify-between px-2">
                   <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Clock size={16}/> Transaction Ledger</h3>
@@ -291,23 +414,17 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               </div>
               
               <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden divide-y divide-slate-800 shadow-2xl">
-                  {isRefreshing && transactions.length === 0 ? (
-                      <div className="p-20 text-center text-slate-500 flex flex-col items-center gap-4">
-                          <Loader2 className="animate-spin text-indigo-500" size={32} />
-                          <p className="text-xs font-bold uppercase tracking-[0.2em] opacity-50">Syncing History...</p>
-                      </div>
-                  ) : transactions.length === 0 ? (
+                  {transactions.length === 0 ? (
                       <div className="p-20 text-center space-y-5">
                           <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto opacity-20">
                               <HardDrive size={32} className="text-slate-400" />
                           </div>
                           <p className="text-slate-500 italic text-sm">No ledger entries found on this account.</p>
-                          <button onClick={handleClaimGrant} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg text-xs font-bold transition-all">Claim Initial Grant</button>
                       </div>
                   ) : (
                       transactions.map(tx => {
                           const isIncoming = tx.toId === user.uid;
-                          const icon = tx.type === 'grant' ? <Sparkles size={16}/> : tx.type === 'check' ? <Smartphone size={16}/> : tx.type === 'mentoring' ? <User size={16}/> : <Send size={16}/>;
+                          const icon = tx.type === 'grant' ? <Sparkles size={16}/> : tx.type === 'check' ? <Smartphone size={16}/> : tx.type === 'contribution' ? <Heart size={16}/> : tx.type === 'offline' ? <ShieldCheck size={16}/> : <Send size={16}/>;
                           
                           return (
                               <div key={tx.id} className="p-5 flex items-center justify-between hover:bg-slate-800/40 transition-all group">
@@ -317,7 +434,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                       </div>
                                       <div>
                                           <p className="text-sm font-bold text-white flex items-center gap-2">
-                                              {tx.type === 'grant' ? 'Neural Grant' : isIncoming ? `From ${tx.fromName}` : `To ${tx.toName}`}
+                                              {tx.type === 'grant' ? 'Neural Grant' : tx.type === 'contribution' ? 'Contribution Award' : isIncoming ? `From ${tx.fromName}` : `To ${tx.toName}`}
                                               <span className="text-[9px] bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-slate-500 uppercase font-black tracking-tighter flex items-center gap-1.5">{icon} {tx.type}</span>
                                           </p>
                                           <p className="text-[10px] text-slate-500 mt-1 font-medium">{tx.memo || new Date(tx.timestamp).toLocaleString()}</p>
@@ -334,6 +451,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           </div>
       </div>
 
+      {/* Transfer Modal */}
       {showTransfer && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-md overflow-hidden flex flex-col shadow-2xl">
@@ -353,7 +471,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                     placeholder="Find member..." 
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-2xl pl-10 pr-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-10 pr-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                                   />
                               </div>
                               <div className="max-h-64 overflow-y-auto space-y-1 pr-1 scrollbar-thin scrollbar-thumb-slate-800">
@@ -399,38 +517,126 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                             className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-12 pr-6 py-5 text-4xl font-black text-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 transition-all placeholder-slate-800"
                                           />
                                       </div>
-                                      <div className="flex justify-between items-center mt-2 px-1">
-                                          <p className="text-[10px] text-slate-600 font-bold">Balance: {user.coinBalance} VC</p>
-                                          <button 
-                                            onClick={() => setTransferAmount(user.coinBalance.toString())}
-                                            className="text-[10px] text-indigo-400 hover:text-white font-bold uppercase tracking-wider"
-                                          >
-                                              Max Amount
-                                          </button>
-                                      </div>
-                                  </div>
-                                  <div>
-                                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2 px-1">Attachment Memo</label>
-                                      <input 
-                                        type="text" 
-                                        value={transferMemo}
-                                        onChange={e => setTransferMemo(e.target.value)}
-                                        placeholder="Add a message..."
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white focus:outline-none focus:border-indigo-500 transition-all"
-                                      />
                                   </div>
                               </div>
 
-                              <button 
-                                onClick={handleTransfer}
-                                disabled={isTransferring || !transferAmount || parseInt(transferAmount) <= 0}
-                                className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl shadow-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95"
-                              >
-                                  {isTransferring ? <Loader2 size={24} className="animate-spin mx-auto"/> : 'Execute Transfer'}
-                              </button>
+                              <div className="grid grid-cols-2 gap-3">
+                                  <button 
+                                    onClick={handleTransfer}
+                                    disabled={isTransferring || !transferAmount || parseInt(transferAmount) <= 0}
+                                    className="py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                                  >
+                                      <Globe size={18}/>
+                                      Online
+                                  </button>
+                                  <button 
+                                    onClick={handleGenerateOfflineToken}
+                                    disabled={!user.certificate || !privateKey || !transferAmount || parseInt(transferAmount) <= 0}
+                                    className="py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 border border-slate-700"
+                                    title={!user.certificate ? "Create Identity First" : "Sign Offline Token"}
+                                  >
+                                      <WifiOff size={18}/>
+                                      Offline
+                                  </button>
+                              </div>
                           </div>
                       )}
                   </div>
+              </div>
+          </div>
+      )}
+
+      {/* Offline Token Modal */}
+      {showOfflineToken && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
+              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl flex flex-col items-center text-center">
+                  <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mb-6 border border-emerald-500/20">
+                      <ShieldCheck size={32}/>
+                  </div>
+                  <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter italic">Verified Payment Ready</h3>
+                  <p className="text-sm text-slate-400 mb-8 max-w-xs">
+                      This token is cryptographically signed by your identity and trust-certified by AIVoiceCast. Send it to your recipient via any offline method.
+                  </p>
+                  
+                  <div className="w-full bg-slate-950 p-6 rounded-3xl border border-slate-800 mb-8 flex flex-col items-center">
+                      <div className="p-4 bg-white rounded-2xl mb-4">
+                          <QrCode size={160} className="text-slate-900"/>
+                      </div>
+                      <code className="text-[10px] font-mono text-indigo-400 break-all bg-slate-900 p-3 rounded-xl border border-slate-800 w-full mb-4">
+                          {generatedToken}
+                      </code>
+                      <div className="flex gap-2 w-full">
+                          <button onClick={() => { navigator.clipboard.writeText(generatedToken!); alert("Token copied!"); }} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2">
+                              <Copy size={14}/> Copy Token
+                          </button>
+                      </div>
+                  </div>
+
+                  <button onClick={() => setShowOfflineToken(false)} className="w-full py-4 bg-slate-800 text-slate-300 rounded-2xl font-bold transition-all hover:bg-slate-700">Dismiss</button>
+              </div>
+          </div>
+      )}
+
+      {/* Import Token Modal */}
+      {showTokenInput && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+              <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md p-8 shadow-2xl animate-fade-in-up">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-xl font-bold text-white flex items-center gap-2"><Download size={20} className="text-indigo-400"/> Verify Token</h3>
+                      <button onClick={() => { setShowTokenInput(false); setVerifiedToken(null); setPastedToken(''); }} className="p-1 hover:bg-slate-800 rounded-full text-slate-500"><X size={20}/></button>
+                  </div>
+                  
+                  {!verifiedToken ? (
+                      <div className="space-y-6">
+                          <p className="text-sm text-slate-400">Paste the VoiceCoin token string below to verify its authenticity offline.</p>
+                          <textarea 
+                            value={pastedToken}
+                            onChange={e => setPastedToken(e.target.value)}
+                            className="w-full h-32 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-indigo-300 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                            placeholder="Paste token string here..."
+                          />
+                          {verificationError && (
+                              <div className="p-3 bg-red-900/20 border border-red-900/50 rounded-xl flex items-center gap-2 text-red-400 text-xs">
+                                  <AlertTriangle size={14}/> {verificationError}
+                              </div>
+                          )}
+                          <button 
+                            onClick={handleVerifyPastedToken}
+                            disabled={isVerifying || !pastedToken.trim()}
+                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2"
+                          >
+                              {isVerifying ? <Loader2 size={18} className="animate-spin"/> : <ShieldCheck size={18}/>}
+                              Verify Cryptographic Authenticity
+                          </button>
+                      </div>
+                  ) : (
+                      <div className="space-y-6 animate-fade-in">
+                          <div className="bg-emerald-950/20 border border-emerald-500/30 p-6 rounded-3xl text-center">
+                              <CheckCircle size={48} className="text-emerald-400 mx-auto mb-3"/>
+                              <h4 className="text-lg font-bold text-white mb-1">Authentic Payment</h4>
+                              <p className="text-xs text-slate-400">Signed by {verifiedToken.senderName} and trusted by Authority.</p>
+                          </div>
+
+                          <div className="p-6 bg-slate-950 rounded-2xl border border-slate-800">
+                              <div className="flex justify-between items-center mb-4">
+                                  <span className="text-xs text-slate-500 font-bold uppercase tracking-widest">Amount</span>
+                                  <span className="text-3xl font-black text-white">{verifiedToken.amount} VC</span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs">
+                                  <span className="text-slate-500 font-bold uppercase tracking-widest">Recipient</span>
+                                  <span className="text-indigo-400 font-bold">{verifiedToken.recipientId === 'any' ? 'Bearer (Anyone)' : 'Restricted to You'}</span>
+                              </div>
+                          </div>
+
+                          <button 
+                            onClick={handleClaimVerifiedToken}
+                            disabled={isClaiming}
+                            className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2"
+                          >
+                              {isClaiming ? <Loader2 size={20} className="animate-spin"/> : 'Clear Payment to Ledger'}
+                          </button>
+                      </div>
+                  )}
               </div>
           </div>
       )}

@@ -11,7 +11,7 @@ import {
   GeneratedLecture, CommunityDiscussion, Booking, Invitation, RecordingSession, CodeProject, 
   CodeFile, CursorPosition, CloudItem, WhiteboardElement, Blog, BlogPost, JobPosting, 
   CareerApplication, Notebook, AgentMemory, GlobalStats, SubscriptionTier, Chapter, 
-  TranscriptItem, ChannelVisibility, GeneratedIcon, BankingCheck, ShippingLabel, CoinTransaction, TodoItem
+  TranscriptItem, ChannelVisibility, GeneratedIcon, BankingCheck, ShippingLabel, CoinTransaction, TodoItem, OfflinePaymentToken
 } from '../types';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { generateSecureId } from '../utils/idUtils';
@@ -45,6 +45,10 @@ export const ADMIN_EMAIL = ADMIN_EMAILS[0];
 const sanitizeData = (data: any) => { const cleaned = JSON.parse(JSON.stringify(data)); cleaned.adminOwnerEmail = ADMIN_EMAIL; return cleaned; };
 
 // --- Coins & Wallet ---
+
+// 1,000,000 Coin Monthly Grant
+export const DEFAULT_MONTHLY_GRANT = 1000000;
+
 export async function transferCoins(toId: string, toName: string, amount: number, memo?: string): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Database unavailable");
     const fromId = auth.currentUser.uid;
@@ -63,6 +67,44 @@ export async function transferCoins(toId: string, toName: string, amount: number
         transaction.update(fromRef, { coinBalance: increment(-amount) });
         transaction.update(toRef, { coinBalance: increment(amount) });
         transaction.set(txRef, sanitizeData(tx));
+    });
+}
+
+/**
+ * Processes an offline payment token once the recipient syncs.
+ */
+export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<void> {
+    if (!db || !auth?.currentUser) throw new Error("Auth required");
+    const txRef = doc(db, TRANSACTIONS_COLLECTION, `offline-${token.nonce}`);
+    const recipientRef = doc(db, USERS_COLLECTION, token.recipientId);
+    const senderRef = doc(db, USERS_COLLECTION, token.senderId);
+
+    await runTransaction(db, async (t) => {
+        const txSnap = await t.get(txRef);
+        if (txSnap.exists()) throw new Error("Payment already claimed.");
+
+        const senderSnap = await t.get(senderRef);
+        if (!senderSnap.exists()) throw new Error("Sender identity not found on cloud ledger.");
+        const senderData = senderSnap.data() as UserProfile;
+        if ((senderData.coinBalance || 0) < token.amount) throw new Error("Sender has insufficient funds on ledger.");
+
+        const tx: CoinTransaction = {
+            id: txRef.id,
+            fromId: token.senderId,
+            fromName: token.senderName,
+            toId: token.recipientId,
+            toName: auth.currentUser?.displayName || 'Recipient',
+            amount: token.amount,
+            type: 'offline',
+            memo: "Verified Offline Payment",
+            timestamp: token.timestamp,
+            isVerified: true,
+            offlineToken: btoa(JSON.stringify(token))
+        };
+
+        t.update(senderRef, { coinBalance: increment(-token.amount) });
+        t.update(recipientRef, { coinBalance: increment(token.amount) });
+        t.set(txRef, sanitizeData(tx));
     });
 }
 
@@ -88,7 +130,7 @@ export async function checkAndGrantMonthlyCoins(uid: string): Promise<number> {
         const now = Date.now();
         const lastGrant = data.lastCoinGrantAt || 0;
         if (now - lastGrant > 86400000 * 30) {
-            granted = data.subscriptionTier === 'pro' ? 2900 : 100;
+            granted = DEFAULT_MONTHLY_GRANT;
             const txRef = doc(collection(db, TRANSACTIONS_COLLECTION), generateSecureId());
             const tx: CoinTransaction = { id: txRef.id, fromId: 'system', fromName: 'AIVoiceCast', toId: uid, toName: data.displayName, amount: granted, type: 'grant', timestamp: now };
             t.update(ref, { coinBalance: increment(granted), lastCoinGrantAt: now });
@@ -96,6 +138,28 @@ export async function checkAndGrantMonthlyCoins(uid: string): Promise<number> {
         }
     });
     return granted;
+}
+
+/**
+ * Awards coins to a creator when their content is liked.
+ * Earning Rate: 1000 Coins per Like.
+ */
+export async function awardContributionBonus(ownerId: string, type: 'podcast' | 'blog' | 'doc', sourceId: string): Promise<void> {
+    if (!db || !ownerId) return;
+    const reward = 1000;
+    const userRef = doc(db, USERS_COLLECTION, ownerId);
+    const txRef = doc(collection(db, TRANSACTIONS_COLLECTION), generateSecureId());
+    
+    await runTransaction(db, async (t) => {
+        const tx: CoinTransaction = { 
+            id: txRef.id, fromId: 'system', fromName: 'Contribution Pool', 
+            toId: ownerId, toName: 'Creator', amount: reward, 
+            type: 'contribution', memo: `Reward for high quality ${type} engagement`, 
+            timestamp: Date.now() 
+        };
+        t.update(userRef, { coinBalance: increment(reward) });
+        t.set(txRef, sanitizeData(tx));
+    });
 }
 
 export async function claimCoinCheck(checkId: string): Promise<number> {
@@ -117,6 +181,12 @@ export async function claimCoinCheck(checkId: string): Promise<number> {
         t.set(txRef, sanitizeData(tx));
     });
     return amount;
+}
+
+// --- Identity Registration ---
+export async function registerIdentity(uid: string, publicKey: string, certificate: string): Promise<void> {
+    if (!db) return;
+    await updateDoc(doc(db, USERS_COLLECTION, uid), { publicKey, certificate });
 }
 
 // --- Universal Creators ---
@@ -164,14 +234,12 @@ export async function getCheckById(id: string): Promise<BankingCheck | null> {
 export async function getUserChecks(uid: string): Promise<BankingCheck[]> {
     if (!db) return [];
     try {
-        // Simple query by ownerId only to bypass composite index requirements
         const q = query(
             collection(db, CHECKS_COLLECTION), 
             where('ownerId', '==', uid)
         );
         const snap = await getDocs(q);
         const results = snap.docs.map(d => ({ ...d.data(), id: d.id } as BankingCheck));
-        // Sort client-side by date (descending)
         return results.sort((a, b) => b.date.localeCompare(a.date));
     } catch(e) { 
         console.error("Failed to fetch checks", e);
@@ -233,7 +301,6 @@ export async function createBlogPost(post: BlogPost): Promise<string> {
     return id;
 }
 
-// --- Shared Tasks (Migrated from Local) ---
 export async function saveTask(task: TodoItem): Promise<string> {
     if (!db || !auth?.currentUser) return task.id;
     const id = task.id || generateSecureId();
@@ -255,7 +322,7 @@ export async function syncUserProfile(user: any): Promise<void> {
   try {
       const snap = await getDoc(userRef);
       if (!snap.exists()) {
-        await setDoc(userRef, { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL, createdAt: Date.now(), lastLogin: Date.now(), subscriptionTier: 'free', apiUsageCount: 0, groups: [], coinBalance: 100, lastCoinGrantAt: Date.now(), adminOwnerEmail: ADMIN_EMAIL });
+        await setDoc(userRef, { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL, createdAt: Date.now(), lastLogin: Date.now(), subscriptionTier: 'free', apiUsageCount: 0, groups: [], coinBalance: DEFAULT_MONTHLY_GRANT, lastCoinGrantAt: Date.now(), adminOwnerEmail: ADMIN_EMAIL });
         await setDoc(doc(db, 'stats', 'global'), { uniqueUsers: increment(1) }, { merge: true });
       } else {
         await updateDoc(userRef, { lastLogin: Date.now(), photoURL: user.photoURL || snap.data()?.photoURL, displayName: user.displayName || snap.data()?.displayName });
@@ -351,9 +418,6 @@ export async function respondToInvitation(invitation: Invitation, accept: boolea
 }
 
 // --- Bookings ---
-/**
- * Manual merge of two queries to simulate 'or' behavior.
- */
 export async function getUserBookings(uid: string, email: string): Promise<Booking[]> {
     if (!db) return [];
     try {
@@ -451,6 +515,11 @@ export async function voteChannel(ch: Channel, type: 'like' | 'dislike') {
     const incrementVal = type === 'like' ? 1 : -1;
     await updateDoc(doc(db, CHANNELS_COLLECTION, ch.id), { likes: increment(incrementVal) });
     await setDoc(doc(db, CHANNEL_STATS_COLLECTION, ch.id), { likes: increment(incrementVal) }, { merge: true });
+
+    // Award creator for positive engagement
+    if (type === 'like' && ch.ownerId) {
+        awardContributionBonus(ch.ownerId, 'podcast', ch.id).catch(console.error);
+    }
 }
 
 export async function shareChannel(id: string) {
@@ -773,7 +842,7 @@ export async function deleteBlogPost(id: string) {
 
 export async function updateBlogSettings(id: string, data: Partial<Blog>) {
     if (!db) return;
-    await updateDoc(doc(db, BLOGS_COLLECTION, id), sanitizeData(data));
+    await updateDoc(doc(db, BLOGS_COLLECTION, id), { ...sanitizeData(data), ownerId: auth?.currentUser?.uid });
 }
 
 export async function addPostComment(postId: string, comment: Comment) {

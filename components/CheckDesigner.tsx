@@ -3,7 +3,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
   Trash2, Printer, CheckCircle, AlertTriangle, Send, Share2, DollarSign, Calendar, 
-  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette, Copy, ZoomIn, ZoomOut, Maximize2, PenTool, Upload, Camera, MapPin, HardDrive, List, FileText
+  Landmark, Info, Search, Edit3, RefreshCw, ShieldAlert, X, ChevronRight, ImageIcon, Link, Coins, Check as CheckIcon, Palette, Copy, ZoomIn, ZoomOut, Maximize2, PenTool, Upload, Camera, MapPin, HardDrive, List, FileText, Plus, ShieldCheck
 } from 'lucide-react';
 import { BankingCheck, UserProfile } from '../types';
 import { GoogleGenAI } from "@google/genai";
@@ -71,7 +71,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const convertRemoteToDataUrl = async (url: string): Promise<string> => {
       if (!url || !url.startsWith('http')) return url;
       try {
-          // Use a cache buster to ensure we get a fresh copy and bypass some CORS caching issues
           const bust = url.includes('?') ? `&cb_pdf=${Date.now()}` : `?cb_pdf=${Date.now()}`;
           const res = await fetch(url + bust, { mode: 'cors', credentials: 'omit' });
           if (!res.ok) throw new Error("Fetch failed");
@@ -177,7 +176,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash-image',
-              contents: { parts: [{ text: `A professional minimalist high-contrast watermark etching for a bank check. Subject: ${check.memo}. Subtle grayscale, clean.` }] },
+              contents: { parts: [{ text: `A professional minimalist high-contrast watermark etching for a bank check. Subject: ${check.memo}. Grayscale, watermark style, subtle.` }] },
               config: { imageConfig: { aspectRatio: "16:9" } }
           });
           if (response.candidates?.[0]?.content?.parts) {
@@ -199,15 +198,16 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-3-flash-preview',
-              contents: `Convert the exact amount ${val} to professional bank check words. 
-              MANDATORY FORMAT: 'WORDS AND CENTS/100'. 
-              Example 100: 'ONE HUNDRED AND 00/100'. 
-              Example 123.45: 'ONE HUNDRED TWENTY THREE AND 45/100'. 
-              Respond with the text ONLY. NO DOLLAR SIGN.`
+              contents: `Convert the exact amount ${val} to professional bank check words. MANDATORY: 'WORDS AND CENTS/100'. Respond with text ONLY.`
           });
           const text = response.text?.trim().toUpperCase() || '';
           if (text) setCheck(prev => ({ ...prev, amountWords: text }));
       } catch (e) { console.error(e); } finally { setIsUpdatingWords(false); }
+  };
+
+  const handleIncrementNumber = () => {
+      const current = parseInt(check.checkNumber) || 1000;
+      setCheck(prev => ({ ...prev, checkNumber: (current + 1).toString() }));
   };
 
   const handlePublishAndShareLink = async () => {
@@ -235,13 +235,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
           if (needsUpdate) {
               setConvertedAssets(newAssets);
-              // Wait for React to re-render with new assets
               await new Promise(r => setTimeout(r, 800));
           }
 
           // 1. Generate PDF locally (where images are visible)
           const canvas = await html2canvas(checkRef.current!, { 
-              scale: 4, 
+              scale: 3, 
               useCORS: true, 
               backgroundColor: '#ffffff',
               logging: false,
@@ -317,27 +316,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       }
   };
 
-  const loadArchive = async () => {
-      if (!currentUser) return;
-      setLoadingArchive(true);
-      setShowArchive(true);
-      try {
-          const data = await getUserChecks(currentUser.uid);
-          setArchiveChecks(data);
-      } catch (e) { console.error("Archive load failed", e); } finally { setLoadingArchive(false); }
-  };
-
-  const handleDeleteArchiveCheck = async (e: React.MouseEvent, id: string) => {
-      e.stopPropagation();
-      if (!confirm("Are you sure you want to delete this check from your archive?")) return;
-      try {
-          await deleteCheck(id);
-          setArchiveChecks(prev => prev.filter(c => c.id !== id));
-      } catch (err) {
-          alert("Failed to delete check.");
-      }
-  };
-
   const handleDownloadPDF = async () => {
     if (!checkRef.current) return;
     setIsExporting(true);
@@ -362,7 +340,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         }
 
         const canvas = await html2canvas(checkRef.current, { 
-            scale: 4, 
+            scale: 3, 
             useCORS: true, 
             backgroundColor: '#ffffff',
             logging: false,
@@ -389,12 +367,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           return <span className="text-slate-200 font-serif text-[10px]">AUTHORIZED SIGNATURE</span>;
       }
       
-      const isRemote = url.startsWith('http');
       return (
           <img 
               key={url} 
               src={url} 
-              crossOrigin={isRemote ? "anonymous" : undefined}
+              crossOrigin="anonymous"
               className="max-h-16 w-auto object-contain mb-1" 
               alt="Authorized Signature"
               onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
@@ -406,13 +383,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       const url = convertedAssets.wm || check.watermarkUrl;
       if (!url || imageError['wm']) return null;
       
-      const isRemote = url.startsWith('http');
       return (
-          <div className="absolute inset-0 opacity-[0.35] pointer-events-none z-0">
+          <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden" style={{ opacity: 0.35 }}>
             <img 
                 key={url} 
                 src={url} 
-                crossOrigin={isRemote ? "anonymous" : undefined}
+                crossOrigin="anonymous"
                 className="w-full h-full object-cover grayscale" 
                 alt="Security Watermark"
                 onError={() => setImageError(prev => ({ ...prev, 'wm': true }))}
@@ -433,7 +409,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           <div className="flex items-center gap-3">
               {!isReadOnly && (
                 <>
-                  <button onClick={loadArchive} className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all"><List size={14}/><span className="hidden sm:inline">My Archive</span></button>
+                  <button onClick={() => setShowArchive(true)} className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all"><List size={14}/><span className="hidden sm:inline">My Archive</span></button>
                   <button onClick={handlePublishAndShareLink} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">{isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}<span>{shareLink ? 'Share URI' : 'Publish to Drive'}</span></button>
                 </>
               )}
@@ -461,7 +437,10 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Landmark size={14}/> Bank & Account</h3>
                         <div className="flex items-center gap-1.5 text-indigo-400 bg-indigo-900/20 px-2 py-0.5 rounded border border-indigo-500/20">
                             <span className="text-[10px] font-bold">CHECK NO.</span>
-                            <span className="text-xs font-mono font-black">{check.checkNumber}</span>
+                            <div className="flex items-center gap-1">
+                                <span className="text-xs font-mono font-black">{check.checkNumber}</span>
+                                <button onClick={handleIncrementNumber} className="p-0.5 hover:bg-indigo-500 rounded text-indigo-300 hover:text-white transition-colors" title="Increment"><Plus size={12}/></button>
+                            </div>
                         </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -486,7 +465,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 <div className="p-4 bg-indigo-900/10 rounded-xl border border-indigo-500/20">
                     <p className="text-[10px] text-indigo-300 leading-relaxed font-medium">
                         <Sparkles size={10} className="inline mr-1 mb-1"/> 
-                        <strong>Automatic Sync:</strong> Sharing or publishing will automatically increment your check number and save these settings as your default template.
+                        <strong>Automatic Increment:</strong> Sharing or publishing will automatically increment your next check number and update your saved profile template.
                     </p>
                 </div>
             </div>
@@ -496,7 +475,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               {isReadOnly && (
                   <div className="absolute top-8 text-center max-w-md animate-fade-in mb-8">
                       <div className="bg-emerald-900/20 border border-emerald-500/30 px-6 py-4 rounded-3xl backdrop-blur-md">
-                          <p className="text-emerald-400 font-bold flex items-center justify-center gap-2 mb-1"><ShieldCheckIcon /> Authenticated Document</p>
+                          <p className="text-emerald-400 font-bold flex items-center justify-center gap-2 mb-1"><ShieldCheck size={16}/> Authenticated Document</p>
                           <p className="text-slate-400 text-xs leading-relaxed">Verified via AIVoiceCast Neural Prism secure ledger.</p>
                       </div>
                   </div>
@@ -563,7 +542,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                               archiveChecks.map(ac => (
                                   <div key={ac.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4 hover:border-indigo-500/50 transition-all group relative">
                                       <button 
-                                          onClick={(e) => handleDeleteArchiveCheck(e, ac.id)}
+                                          onClick={(e) => { e.stopPropagation(); if (confirm("Delete check?")) deleteCheck(ac.id).then(() => setArchiveChecks(p => p.filter(x => x.id !== ac.id))); }}
                                           className="absolute top-2 right-2 p-1.5 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
                                           title="Delete Check"
                                       >
@@ -582,8 +561,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                                   window.history.pushState({}, '', url.toString());
                                                   window.location.reload(); 
                                               }
-                                          }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold uppercase transition-all">View Static URI</button>
-                                          <button onClick={() => { setCheck({...ac, id: '', checkNumber: (userProfile?.nextCheckNumber || 1001).toString(), date: new Date().toISOString().split('T')[0]}); setShareLink(null); setShowArchive(false); }} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-bold uppercase transition-all" title="Clone to Draft">Clone</button>
+                                          }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold uppercase transition-all">View URI</button>
+                                          <button onClick={() => { setCheck({...ac, id: '', checkNumber: (userProfile?.nextCheckNumber || 1001).toString(), date: new Date().toISOString().split('T')[0]}); setShowArchive(false); }} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-bold uppercase transition-all" title="Clone to Draft">Clone</button>
                                       </div>
                                   </div>
                               ))
@@ -619,7 +598,3 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     </div>
   );
 };
-
-const ShieldCheckIcon = () => (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-);
