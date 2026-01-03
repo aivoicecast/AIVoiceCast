@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3 } from 'lucide-react';
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
@@ -6,7 +7,6 @@ import { auth, db, getDb } from '../services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { generateMemberIdentity, requestIdentityCertificate, verifyCertificateOffline, verifySignature, signPayment, AIVOICECAST_TRUST_PUBLIC_KEY } from '../utils/cryptoUtils';
 import { generateSecureId } from '../utils/idUtils';
-import { GoogleGenAI } from "@google/genai";
 
 interface CoinWalletProps {
   onBack: () => void;
@@ -118,6 +118,10 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
             memo: mmo || undefined 
         });
         
+        // Populate local state for the form
+        if (amt) setTransferAmount(amt);
+        if (mmo) setTransferMemo(mmo);
+        
         // Clean URL
         const newUrl = new URL(window.location.href);
         ['pay','name','amount','memo'].forEach(p => newUrl.searchParams.delete(p));
@@ -213,9 +217,18 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   };
 
   const handleGenerateOfflineToken = async () => {
-      if (!user || !transferAmount || !privateKey || !user.certificate) return alert("Fill amount and ensure identity is active.");
-      const amount = parseInt(transferAmount);
-      if (amount <= 0 || amount > user.coinBalance) return alert("Invalid amount.");
+      // Use local state or fallback to target parameter
+      const amountStr = transferAmount || publicPaymentTarget?.amount || '';
+      const amount = parseInt(amountStr);
+      const memo = transferMemo || publicPaymentTarget?.memo || '';
+
+      if (!user || !amountStr || !privateKey || !user.certificate) {
+          return alert("Please ensure you have created an Identity, entered an amount, and the recipient information is valid.");
+      }
+      
+      if (amount <= 0 || amount > user.coinBalance) {
+          return alert("Invalid amount or insufficient balance.");
+      }
 
       try {
           const nonce = generateSecureId().substring(0, 12);
@@ -225,7 +238,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               recipientId: publicPaymentTarget?.uid || 'any',
               amount,
               timestamp: Date.now(),
-              nonce
+              nonce,
+              memo
           };
 
           const signature = await signPayment(privateKey, paymentBase);
@@ -260,7 +274,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               recipientId: token.recipientId,
               amount: token.amount,
               timestamp: token.timestamp,
-              nonce: token.nonce
+              nonce: token.nonce,
+              memo: (token as any).memo // Include memo if it was signed
           });
           if (!isSigValid) throw new Error("Invalid signature.");
           setVerifiedToken(token);
@@ -298,14 +313,20 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   };
 
   const handleTransfer = async () => {
-      if (!publicPaymentTarget || !transferAmount || !user) return;
-      const amount = parseInt(transferAmount);
-      if (isNaN(amount) || amount <= 0) return alert("Enter valid amount.");
+      const amountStr = transferAmount || publicPaymentTarget?.amount || '';
+      const amount = parseInt(amountStr);
+      const memo = transferMemo || publicPaymentTarget?.memo || '';
+
+      if (!publicPaymentTarget || !amountStr || !user) {
+          return alert("Incomplete transfer details. Ensure recipient and amount are set.");
+      }
+      
+      if (isNaN(amount) || amount <= 0) return alert("Enter a valid positive amount.");
       if (amount > user.coinBalance) return alert("Insufficient balance.");
 
       setIsTransferring(true);
       try {
-          await transferCoins(publicPaymentTarget.uid, publicPaymentTarget.name, amount, transferMemo);
+          await transferCoins(publicPaymentTarget.uid, publicPaymentTarget.name, amount, memo);
           alert(`Sent ${amount} coins to ${publicPaymentTarget.name}!`);
           setPublicPaymentTarget(null);
           setTransferAmount('');
@@ -328,6 +349,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           
           if (payUid && payName) {
               setPublicPaymentTarget({ uid: payUid, name: payName, amount: amt || undefined, memo: mmo || undefined });
+              if (amt) setTransferAmount(amt);
+              if (mmo) setTransferMemo(mmo);
               setShowTransfer(false);
               setPastedPayUri('');
           } else {
@@ -354,24 +377,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const formatCurrency = (coins: number) => {
       return (coins / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
   };
-
-  const handleGenerateAmountWords = async (val: number, isCoins = false) => {
-      setIsUpdatingWords(true);
-      try {
-          // Fix: Create a new GoogleGenAI instance right before making an API call
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const response = await ai.models.generateContent({
-              model: 'gemini-3-flash-preview',
-              contents: `Convert the exact amount ${val} to professional bank check words. MANDATORY: 'WORDS AND CENTS/100'. Respond with text ONLY.`
-          });
-          // Fix: Access response.text directly (not as a function)
-          const text = response.text?.trim().toUpperCase() || '';
-          if (text) setCheck(prev => ({ ...prev, amountWords: text }));
-      } catch (e) { console.error(e); } finally { setIsUpdatingWords(false); }
-  };
-
-  const [check, setCheck] = useState({ amountWords: '' });
-  const [isUpdatingWords, setIsUpdatingWords] = useState(false);
 
   if (publicPaymentTarget) {
       const isAutoMode = !!publicPaymentTarget.amount;
@@ -401,7 +406,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                     <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500" size={24}/>
                                     <input 
                                         type="number" 
-                                        value={transferAmount || publicPaymentTarget.amount || ''}
+                                        value={transferAmount}
                                         onChange={e => setTransferAmount(e.target.value)}
                                         placeholder="0"
                                         readOnly={isAutoMode}
@@ -413,7 +418,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Reference/Reason</label>
                                 <input 
                                     type="text" 
-                                    value={transferMemo || publicPaymentTarget.memo || ''}
+                                    value={transferMemo}
                                     onChange={e => setTransferMemo(e.target.value)}
                                     placeholder="Add a reason..."
                                     readOnly={isAutoMode}
