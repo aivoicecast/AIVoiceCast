@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
@@ -48,7 +47,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [check, setCheck] = useState<BankingCheck>(DEFAULT_CHECK);
   const [convertedAssets, setConvertedAssets] = useState<Record<string, string>>({});
   
-  const [isParsing, setIsParsing] = useState(false);
   const [isUpdatingWords, setIsUpdatingWords] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
@@ -68,13 +66,18 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasHydratedFromTemplate = useRef(false);
 
-  // Proactive asset conversion to bypass CORS in designer mode and PDF export
+  /**
+   * CRITICAL: Converts a remote URL to a local Data URL (Base64)
+   * Uses a cache-buster timestamp to ensure we get a fresh response with CORS headers.
+   */
   const convertRemoteToDataUrl = async (url: string): Promise<string> => {
       if (!url || !url.startsWith('http')) return url;
       try {
-          // Append timestamp to bust browser cache that might lack CORS headers
-          const cacheBuster = url.includes('?') ? `&t=${Date.now()}` : `?t=${Date.now()}`;
-          const res = await fetch(url + cacheBuster, { mode: 'cors' });
+          const cacheBuster = url.includes('?') ? `&t_force=${Date.now()}` : `?t_force=${Date.now()}`;
+          const res = await fetch(url + cacheBuster, { 
+              mode: 'cors',
+              headers: { 'Cache-Control': 'no-cache' }
+          });
           if (!res.ok) throw new Error("Fetch failed");
           const blob = await res.blob();
           return new Promise((resolve, reject) => {
@@ -97,7 +100,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   const sig = data.signatureUrl || data.signature || '';
                   const wm = data.watermarkUrl || '';
                   
-                  // For shared view, convert remote images to base64 immediately
+                  // Proactively convert for the shared viewer to ensure PDF works immediately
                   if (sig.startsWith('http')) {
                       convertRemoteToDataUrl(sig).then(b64 => setConvertedAssets(prev => ({ ...prev, sig: b64 })));
                   }
@@ -124,6 +127,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               if (userProfile.savedSignatureUrl) {
                   initial.signatureUrl = userProfile.savedSignatureUrl;
                   initial.signature = userProfile.savedSignatureUrl;
+                  if (initial.signatureUrl.startsWith('http')) {
+                    convertRemoteToDataUrl(initial.signatureUrl).then(b64 => setConvertedAssets(prev => ({ ...prev, sig: b64 })));
+                  }
               }
               if (userProfile.checkTemplate) {
                   initial = { ...initial, ...userProfile.checkTemplate };
@@ -139,9 +145,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         if (window.innerWidth < 768) { 
             const containerWidth = window.innerWidth - 64;
             setZoom(Math.min(1.0, containerWidth / 600)); 
-        } else { 
-            setZoom(1.0); 
-        }
+        } else { setZoom(1.0); }
     };
     handleAutoZoom();
     window.addEventListener('resize', handleAutoZoom);
@@ -151,17 +155,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   useEffect(() => {
     if (isReadOnly || isLoadingCheck) return;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    
     const amountToSpell = check.isCoinCheck ? check.coinAmount : check.amount;
-    
     if (amountToSpell !== undefined && amountToSpell > 0) {
-        debounceTimerRef.current = setTimeout(() => {
-            handleGenerateAmountWords(amountToSpell as number, check.isCoinCheck);
-        }, 1200); 
+        debounceTimerRef.current = setTimeout(() => handleGenerateAmountWords(amountToSpell as number, check.isCoinCheck), 1200); 
     } else {
         setCheck(prev => ({ ...prev, amountWords: '' }));
     }
-    
     return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
   }, [check.amount, check.coinAmount, check.isCoinCheck, isReadOnly, isLoadingCheck]);
 
@@ -223,11 +222,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           };
           await updateUserProfile(currentUser.uid, { checkTemplate: template });
           alert("Template saved as default!");
-      } catch(e: any) {
-          alert("Save template failed: " + e.message);
-      } finally {
-          setIsSavingTemplate(false);
-      }
+      } catch(e: any) { alert("Save template failed: " + e.message); } finally { setIsSavingTemplate(false); }
   };
 
   const handlePublishAndShareLink = async () => {
@@ -236,39 +231,24 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       setIsSharing(true);
       try {
           const id = check.id || generateSecureId();
-          
           let finalWatermarkUrl = check.watermarkUrl || '';
           if (check.watermarkUrl?.startsWith('data:')) {
              const res = await fetch(check.watermarkUrl);
              const blob = await res.blob();
              finalWatermarkUrl = await uploadFileToStorage(`checks/${id}/watermark.png`, blob);
           }
-          
           let finalSignatureUrl = check.signatureUrl || check.signature || '';
           if (finalSignatureUrl.startsWith('data:')) {
               const res = await fetch(finalSignatureUrl);
               const blob = await res.blob();
               finalSignatureUrl = await uploadFileToStorage(`checks/${id}/signature.png`, blob);
           }
-          
-          const checkToSave = { 
-              ...check, 
-              id, 
-              ownerId: auth.currentUser.uid, 
-              watermarkUrl: finalWatermarkUrl, 
-              signatureUrl: finalSignatureUrl,
-              signature: finalSignatureUrl 
-          };
-          
+          const checkToSave = { ...check, id, ownerId: auth.currentUser.uid, watermarkUrl: finalWatermarkUrl, signatureUrl: finalSignatureUrl, signature: finalSignatureUrl };
           await saveBankingCheck(checkToSave as any);
           setCheck(checkToSave);
           setShareLink(`${window.location.origin}?view=check_viewer&id=${id}`);
           setShowShareModal(true);
-      } catch (e: any) { 
-          alert("Publish failed: " + e.message); 
-      } finally { 
-          setIsSharing(false); 
-      }
+      } catch (e: any) { alert("Publish failed: " + e.message); } finally { setIsSharing(false); }
   };
 
   const loadArchive = async () => {
@@ -278,22 +258,15 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       try {
           const data = await getUserChecks(currentUser.uid);
           setArchiveChecks(data);
-      } catch (e) {
-          console.error("Archive load failed", e);
-      } finally {
-          setLoadingArchive(false);
-      }
+      } catch (e) { console.error("Archive load failed", e); } finally { setLoadingArchive(false); }
   };
 
   const handleDownloadPDF = async () => {
     if (!checkRef.current) return;
     setIsExporting(true);
     try {
-        // CRITICAL FIX: Remote images (from Storage) block PDF capture due to CORS.
-        // We must ensure they are converted to Base64 locally before letting html2canvas touch them.
         const sigUrl = check.signatureUrl || check.signature;
         const wmUrl = check.watermarkUrl;
-        
         let newAssets: Record<string, string> = { ...convertedAssets };
         let needsUpdate = false;
 
@@ -308,8 +281,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
         if (needsUpdate) {
             setConvertedAssets(newAssets);
-            // Wait longer for DOM repaint with local base64 images
-            await new Promise(r => setTimeout(r, 600));
+            // Increased delay to ensure the browser repaints DOM with local Base64
+            await new Promise(r => setTimeout(r, 800));
         }
 
         const canvas = await html2canvas(checkRef.current, { 
@@ -317,8 +290,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             useCORS: true, 
             backgroundColor: '#ffffff',
             logging: false,
-            allowTaint: false, // Disallow tainted canvas to ensure we get a clean render or a fail
-            imageTimeout: 20000,
+            allowTaint: false,
+            imageTimeout: 30000,
             onclone: (clonedDoc) => {
                 const el = clonedDoc.querySelector('.check-preview-container');
                 if (el) (el as HTMLElement).style.transform = 'none';
@@ -329,10 +302,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         pdf.save(`check_${check.checkNumber}.pdf`);
     } catch(e) {
         console.error("PDF Export error", e);
-        alert("PDF Generation failed. Please try again or refresh the page.");
-    } finally { 
-        setIsExporting(false); 
-    }
+        alert("PDF Generation failed. Please refresh and try again.");
+    } finally { setIsExporting(false); }
   };
 
   const renderSignature = () => {
@@ -341,12 +312,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           return <span className="text-slate-200 font-serif text-[10px]">AUTHORIZED SIGNATURE</span>;
       }
       
-      const isRemote = url.startsWith('http');
+      const isBase64 = url.startsWith('data:');
       return (
           <img 
-              key={url}
+              key={isBase64 ? 'sig-local' : 'sig-remote'} // Force re-mount when type changes
               src={url} 
-              crossOrigin={isRemote ? "anonymous" : undefined}
+              crossOrigin={!isBase64 ? "anonymous" : undefined}
               className="max-h-16 w-auto object-contain mb-1" 
               alt="Authorized Signature"
               onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
@@ -358,13 +329,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       const url = convertedAssets.wm || check.watermarkUrl;
       if (!url || imageError['wm']) return null;
       
-      const isRemote = url.startsWith('http');
+      const isBase64 = url.startsWith('data:');
       return (
           <div className="absolute inset-0 opacity-[0.35] pointer-events-none z-0">
             <img 
-                key={url} 
+                key={isBase64 ? 'wm-local' : 'wm-remote'} 
                 src={url} 
-                crossOrigin={isRemote ? "anonymous" : undefined}
+                crossOrigin={!isBase64 ? "anonymous" : undefined}
                 className="w-full h-full object-cover grayscale" 
                 alt="Security Watermark"
                 onError={() => setImageError(prev => ({ ...prev, 'wm': true }))}
@@ -379,35 +350,18 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
-              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
-                  <ArrowLeft size={20} />
-              </button>
-              <h1 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Wallet className="text-indigo-400" />
-                  {isReadOnly ? 'Neural Check Viewer' : 'Neural Check Lab'}
-              </h1>
+              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
+              <h1 className="text-lg font-bold text-white flex items-center gap-2"><Wallet className="text-indigo-400" />{isReadOnly ? 'Neural Check Viewer' : 'Neural Check Lab'}</h1>
           </div>
           <div className="flex items-center gap-3">
               {!isReadOnly && (
                 <>
-                  <button onClick={loadArchive} className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">
-                      <List size={14}/>
-                      <span className="hidden sm:inline">My Archive</span>
-                  </button>
-                  <button onClick={handleSaveAsTemplate} disabled={isSavingTemplate} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">
-                      {isSavingTemplate ? <Loader2 size={14} className="animate-spin"/> : <HardDrive size={14}/>}
-                      <span className="hidden sm:inline">Save Default</span>
-                  </button>
-                  <button onClick={handlePublishAndShareLink} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">
-                      {isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
-                      <span>{shareLink ? 'Share URI' : 'Publish & Share'}</span>
-                  </button>
+                  <button onClick={loadArchive} className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all"><List size={14}/><span className="hidden sm:inline">My Archive</span></button>
+                  <button onClick={handleSaveAsTemplate} disabled={isSavingTemplate} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">{isSavingTemplate ? <Loader2 size={14} className="animate-spin"/> : <HardDrive size={14}/><span className="hidden sm:inline">Save Default</span>}</button>
+                  <button onClick={handlePublishAndShareLink} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">{isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}<span>{shareLink ? 'Share URI' : 'Publish & Share'}</span></button>
                 </>
               )}
-              <button onClick={handleDownloadPDF} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">
-                  {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />}
-                  <span>Download PDF</span>
-              </button>
+              <button onClick={handleDownloadPDF} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">{isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />}<span>Download PDF</span></button>
           </div>
       </header>
 
@@ -419,18 +373,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                     <input type="text" placeholder="Sender Name" value={check.senderName} onChange={e => setCheck({...check, senderName: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none"/>
                     <textarea placeholder="Sender Address" value={check.senderAddress} onChange={e => setCheck({...check, senderAddress: e.target.value})} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none resize-none"/>
                 </div>
-
                 <div className="space-y-4 bg-slate-800/20 p-4 rounded-xl border border-slate-800">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Landmark size={14}/> Bank & Account</h3>
                     <div className="grid grid-cols-2 gap-3">
-                        <div className="col-span-2">
-                            <input type="text" placeholder="Bank Name" value={check.bankName} onChange={e => setCheck({...check, bankName: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white"/>
-                        </div>
+                        <div className="col-span-2"><input type="text" placeholder="Bank Name" value={check.bankName} onChange={e => setCheck({...check, bankName: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white"/></div>
                         <div><input type="text" placeholder="Routing #" value={check.routingNumber} onChange={e => setCheck({...check, routingNumber: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono"/></div>
                         <div><input type="text" placeholder="Account #" value={check.accountNumber} onChange={e => setCheck({...check, accountNumber: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono"/></div>
                     </div>
                 </div>
-
                 <div className="space-y-4">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><User size={14} className="text-indigo-400"/> Transaction</h3>
                     <input type="text" placeholder="Pay to the order of..." value={check.payee} onChange={e => setCheck({...check, payee: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none ring-2 ring-indigo-500/20 focus:ring-indigo-500/50"/>
@@ -440,14 +390,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                     </div>
                     <input type="text" placeholder="Memo" value={check.memo} onChange={e => setCheck({...check, memo: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none"/>
                 </div>
-
                 <div className="grid grid-cols-2 gap-3">
-                    <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="py-3 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all">
-                        {isGeneratingArt ? <Loader2 size={14} className="animate-spin"/> : <Palette size={14}/>} AI Watermark
-                    </button>
-                    <button onClick={() => { setImageError({}); setShowSignPad(true); }} className="py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all">
-                        <PenTool size={14}/> Sign Check
-                    </button>
+                    <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="py-3 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all">{isGeneratingArt ? <Loader2 size={14} className="animate-spin"/> : <Palette size={14}/>} AI Watermark</button>
+                    <button onClick={() => { setImageError({}); setShowSignPad(true); }} className="py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all"><PenTool size={14}/> Sign Check</button>
                 </div>
             </div>
           )}
@@ -456,27 +401,15 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               {isReadOnly && (
                   <div className="absolute top-8 text-center max-w-md animate-fade-in mb-8">
                       <div className="bg-emerald-900/20 border border-emerald-500/30 px-6 py-4 rounded-3xl backdrop-blur-md">
-                          <p className="text-emerald-400 font-bold flex items-center justify-center gap-2 mb-1">
-                              <ShieldCheckIcon /> Authenticated Document
-                          </p>
+                          <p className="text-emerald-400 font-bold flex items-center justify-center gap-2 mb-1"><ShieldCheckIcon /> Authenticated Document</p>
                           <p className="text-slate-400 text-xs leading-relaxed">Verified via AIVoiceCast Neural Prism secure ledger.</p>
                       </div>
                   </div>
               )}
-              
               <div style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }} className="transition-transform duration-300 mt-12 check-preview-container">
                   <div ref={checkRef} className="w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border border-slate-300 rounded-lg relative overflow-hidden p-8 pb-10">
                       {renderWatermark()}
-                      
-                      <div className="absolute top-8 left-[210px] z-40 pointer-events-none">
-                        <img 
-                            key={qrCodeUrl} 
-                            src={qrCodeUrl} 
-                            className="w-14 h-14 border border-slate-100 p-0.5 rounded shadow-sm bg-white" 
-                            alt="Verification QR"
-                        />
-                      </div>
-                      
+                      <div className="absolute top-8 left-[210px] z-40 pointer-events-none"><img key={qrCodeUrl} src={qrCodeUrl} className="w-14 h-14 border border-slate-100 p-0.5 rounded shadow-sm bg-white" alt="Verification QR"/></div>
                       <div className="flex justify-between items-start relative z-10">
                           <div className="space-y-1">
                               <h2 className="text-sm font-bold uppercase tracking-wider leading-relaxed">{check.senderName}</h2>
@@ -485,52 +418,24 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <div className="text-right flex flex-col items-end">
                               <h2 className="text-xs font-black uppercase text-slate-800 leading-normal mb-2">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
                               <div className="flex items-center gap-4">
-                                  <div className="flex flex-col items-end border-b border-black pb-1">
-                                      <span className="text-[8px] font-bold text-slate-400">DATE</span>
-                                      <span className="text-xs font-mono font-bold leading-none">{check.date}</span>
-                                  </div>
-                                  <div className="flex flex-col items-end border-b border-black pb-1">
-                                      <span className="text-[8px] font-bold text-slate-400">NO.</span>
-                                      <span className="text-sm font-mono font-black leading-none">{check.checkNumber}</span>
-                                  </div>
+                                  <div className="flex flex-col items-end border-b border-black pb-1"><span className="text-[8px] font-bold text-slate-400">DATE</span><span className="text-xs font-mono font-bold leading-none">{check.date}</span></div>
+                                  <div className="flex flex-col items-end border-b border-black pb-1"><span className="text-[8px] font-bold text-slate-400">NO.</span><span className="text-sm font-mono font-black leading-none">{check.checkNumber}</span></div>
                               </div>
                           </div>
                       </div>
-
                       <div className="mt-2 flex items-center gap-4 relative z-10">
                           <span className="text-xs font-bold whitespace-nowrap uppercase">Pay to the Order of</span>
                           <div className="flex-1 border-b border-black text-lg font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-1 leading-relaxed">{check.payee || '____________________'}</div>
-                          <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50 shrink-0">
-                              <span className="text-sm font-bold">$</span>
-                              <span className="flex-1 text-right font-mono text-lg font-bold leading-normal">
-                                  {check.isCoinCheck ? (check.coinAmount || 0).toFixed(2) : (check.amount || 0).toFixed(2)}
-                              </span>
-                          </div>
+                          <div className="w-32 border-2 border-black p-1 flex items-center bg-slate-50/50 shrink-0"><span className="text-sm font-bold">$</span><span className="flex-1 text-right font-mono text-lg font-bold leading-normal">{check.isCoinCheck ? (check.coinAmount || 0).toFixed(2) : (check.amount || 0).toFixed(2)}</span></div>
                       </div>
-
                       <div className="mt-4 flex items-center gap-4 relative z-10 overflow-hidden">
-                          <div className="flex-1 max-w-[460px] border-b border-black text-[13px] font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-1.5 leading-[1.6]">
-                            {isUpdatingWords ? 'PROCESSING AMOUNT...' : (check.amountWords || '____________________________________________________________________')}
-                          </div>
+                          <div className="flex-1 max-w-[460px] border-b border-black text-[13px] font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-1.5 leading-[1.6]">{isUpdatingWords ? 'PROCESSING AMOUNT...' : (check.amountWords || '____________________________________________________________________')}</div>
                           <span className="text-xs font-bold shrink-0">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                       </div>
-
-                      <div className="mt-3 flex items-center gap-2 relative z-10">
-                          <span className="text-[10px] font-bold">FOR</span>
-                          <div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate leading-relaxed pb-1.5">{check.memo || '____________________'}</div>
-                      </div>
-
+                      <div className="mt-3 flex items-center gap-2 relative z-10"><span className="text-[10px] font-bold">FOR</span><div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate leading-relaxed pb-1.5">{check.memo || '____________________'}</div></div>
                       <div className="absolute bottom-4 left-0 right-0 px-8 flex items-end justify-between z-30">
-                          <div className="font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 px-1 leading-none pb-1">
-                              ⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}
-                          </div>
-                          
-                          <div className="w-48 flex flex-col items-center">
-                              <div className="border-b border-black w-full min-h-[60px] flex items-end justify-center overflow-hidden pb-1">
-                                  {renderSignature()}
-                              </div>
-                              <span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter w-full">Authorized Signature</span>
-                          </div>
+                          <div className="font-mono text-lg tracking-[0.2em] text-slate-800 whitespace-nowrap bg-white/70 px-1 leading-none pb-1">⑆ {check.routingNumber} ⑈ {check.accountNumber} ⑈ {check.checkNumber}</div>
+                          <div className="w-48 flex flex-col items-center"><div className="border-b border-black w-full min-h-[60px] flex items-end justify-center overflow-hidden pb-1">{renderSignature()}</div><span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter w-full">Authorized Signature</span></div>
                       </div>
                   </div>
               </div>
@@ -539,20 +444,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   <div className="mt-12 flex flex-col items-center gap-4">
                       <p className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">Shared Document Archive</p>
                       <div className="flex gap-3">
-                        <button onClick={handleDownloadPDF} disabled={isExporting} className="px-8 py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-slate-100 transition-all flex items-center gap-3 shadow-xl active:scale-95">
-                            {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
-                            Download Verified Copy
-                        </button>
-                        {currentUser && currentUser.uid === check.ownerId && (
-                            <button onClick={() => {
-                                const url = new URL(window.location.href);
-                                url.searchParams.set('mode', 'edit');
-                                url.searchParams.set('view', 'check_designer');
-                                window.location.assign(url.toString());
-                            }} className="px-8 py-3 bg-slate-800 text-white font-bold rounded-xl border border-slate-700 hover:bg-slate-700">
-                                Edit Original
-                            </button>
-                        )}
+                        <button onClick={handleDownloadPDF} disabled={isExporting} className="px-8 py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-slate-100 transition-all flex items-center gap-3 shadow-xl active:scale-95">{isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}Download Verified Copy</button>
+                        {currentUser && currentUser.uid === check.ownerId && (<button onClick={() => { const url = new URL(window.location.href); url.searchParams.set('mode', 'edit'); url.searchParams.set('view', 'check_designer'); window.location.assign(url.toString()); }} className="px-8 py-3 bg-slate-800 text-white font-bold rounded-xl border border-slate-700 hover:bg-slate-700">Edit Original</button>)}
                       </div>
                   </div>
               )}
@@ -562,56 +455,16 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               <div className="absolute inset-0 z-40 flex justify-end">
                   <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowArchive(false)}></div>
                   <div className="relative w-full max-w-md bg-slate-900 border-l border-slate-800 h-full flex flex-col shadow-2xl animate-fade-in-right">
-                      <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
-                          <h2 className="text-lg font-bold text-white flex items-center gap-2"><List className="text-indigo-400"/> Recent Checks</h2>
-                          <button onClick={() => setShowArchive(false)} className="text-slate-500 hover:text-white"><X/></button>
-                      </div>
+                      <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50"><h2 className="text-lg font-bold text-white flex items-center gap-2"><List className="text-indigo-400"/> Recent Checks</h2><button onClick={() => setShowArchive(false)} className="text-slate-500 hover:text-white"><X/></button></div>
                       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-slate-800">
-                          {loadingArchive ? (
-                              <div className="flex flex-col items-center justify-center h-40 gap-3 text-slate-500">
-                                  <Loader2 size={24} className="animate-spin"/>
-                                  <span className="text-xs font-bold uppercase tracking-widest">Scanning Ledger...</span>
-                              </div>
-                          ) : archiveChecks.length === 0 ? (
-                              <div className="text-center py-20 text-slate-600 italic text-sm">No published checks found in your account.</div>
-                          ) : (
+                          {loadingArchive ? (<div className="flex flex-col items-center justify-center h-40 gap-3 text-slate-500"><Loader2 size={24} className="animate-spin"/><span className="text-xs font-bold uppercase tracking-widest">Scanning Ledger...</span></div>) : archiveChecks.length === 0 ? (<div className="text-center py-20 text-slate-600 italic text-sm">No published checks found.</div>) : (
                               archiveChecks.map(ac => (
                                   <div key={ac.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4 hover:border-indigo-500/50 transition-all group">
-                                      <div className="flex justify-between items-start mb-2">
-                                          <div>
-                                              <p className="text-[10px] font-bold text-indigo-400 uppercase">Check #{ac.checkNumber}</p>
-                                              <h4 className="font-bold text-white text-sm line-clamp-1">{ac.payee || 'Unnamed Payee'}</h4>
-                                          </div>
-                                          <div className="text-right">
-                                              <p className="text-sm font-black text-white">${(ac.amount || ac.coinAmount || 0).toFixed(2)}</p>
-                                              <p className="text-[9px] text-slate-500">{ac.date}</p>
-                                          </div>
-                                      </div>
+                                      <div className="flex justify-between items-start mb-2"><div><p className="text-[10px] font-bold text-indigo-400 uppercase">Check #{ac.checkNumber}</p><h4 className="font-bold text-white text-sm line-clamp-1">{ac.payee || 'Unnamed Payee'}</h4></div><div className="text-right"><p className="text-sm font-black text-white">${(ac.amount || ac.coinAmount || 0).toFixed(2)}</p><p className="text-[9px] text-slate-500">{ac.date}</p></div></div>
                                       <p className="text-xs text-slate-500 italic mb-4 line-clamp-1">"{ac.memo}"</p>
                                       <div className="flex gap-2">
-                                          <button 
-                                            onClick={() => {
-                                                const url = new URL(window.location.origin);
-                                                url.searchParams.set('view', 'check_viewer');
-                                                url.searchParams.set('id', ac.id);
-                                                window.history.pushState({}, '', url.toString());
-                                                window.location.reload();
-                                            }}
-                                            className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold uppercase transition-all"
-                                          >
-                                              Open URI
-                                          </button>
-                                          <button 
-                                            onClick={() => {
-                                                setCheck({...ac, id: '', checkNumber: (parseInt(ac.checkNumber) + 1).toString(), date: new Date().toISOString().split('T')[0]});
-                                                setShareLink(null);
-                                                setShowArchive(false);
-                                            }}
-                                            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-bold uppercase transition-all"
-                                            title="Clone to Draft"
-                                          >
-                                              Clone
-                                          </button>
+                                          <button onClick={() => { const url = new URL(window.location.origin); url.searchParams.set('view', 'check_viewer'); url.searchParams.set('id', ac.id); window.history.pushState({}, '', url.toString()); window.location.reload(); }} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold uppercase transition-all">Open URI</button>
+                                          <button onClick={() => { setCheck({...ac, id: '', checkNumber: (parseInt(ac.checkNumber) + 1).toString(), date: new Date().toISOString().split('T')[0]}); setShareLink(null); setShowArchive(false); }} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-bold uppercase transition-all" title="Clone to Draft">Clone</button>
                                       </div>
                                   </div>
                               ))
@@ -625,17 +478,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       {showSignPad && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl p-6 shadow-2xl animate-fade-in-up">
-                  <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-bold text-white flex items-center gap-2"><PenTool size={20} className="text-indigo-400"/> Draw Official Signature</h3>
-                      <button onClick={() => setShowSignPad(false)} className="p-2 text-slate-500 hover:text-white"><X/></button>
-                  </div>
-                  <div className="h-[300px] border-2 border-dashed border-slate-800 rounded-2xl overflow-hidden mb-6 bg-white">
-                      <Whiteboard disableAI backgroundColor="transparent" initialColor="#000000" onDataChange={() => {}} onSessionStart={() => {}} />
-                  </div>
+                  <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center gap-2"><PenTool size={20} className="text-indigo-400"/> Draw Official Signature</h3><button onClick={() => setShowSignPad(false)} className="p-2 text-slate-500 hover:text-white"><X/></button></div>
+                  <div className="h-[300px] border-2 border-dashed border-slate-800 rounded-2xl overflow-hidden mb-6 bg-white"><Whiteboard disableAI backgroundColor="transparent" initialColor="#000000" onDataChange={() => {}} onSessionStart={() => {}} /></div>
                   <div className="flex justify-end gap-2">
                       <button onClick={() => setShowSignPad(false)} className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold">Cancel</button>
-                      <button 
-                        onClick={() => {
+                      <button onClick={() => {
                             const canvas = document.querySelector('.fixed canvas') as HTMLCanvasElement;
                             if (canvas) {
                                 setImageError(prev => ({ ...prev, 'sig': false }));
@@ -644,19 +491,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                 setConvertedAssets(prev => ({ ...prev, sig: dataUrl }));
                             }
                             setShowSignPad(false);
-                        }} 
-                        className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg"
-                      >
-                        Confirm
-                      </button>
+                        }} className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg">Confirm</button>
                   </div>
               </div>
           </div>
       )}
-
-      {showShareModal && shareLink && (
-          <ShareModal isOpen={true} onClose={() => setShowShareModal(false)} link={shareLink} title={`Check #${check.checkNumber}`} onShare={async () => {}} currentUserUid={currentUser?.uid} />
-      )}
+      {showShareModal && shareLink && (<ShareModal isOpen={true} onClose={() => setShowShareModal(false)} link={shareLink} title={`Check #${check.checkNumber}`} onShare={async () => {}} currentUserUid={currentUser?.uid} />)}
     </div>
   );
 };
