@@ -1,7 +1,6 @@
-
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
-import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity } from 'lucide-react';
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink } from '../services/googleDriveService';
 import { connectGoogleDrive, getDriveToken } from '../services/authService';
@@ -32,7 +31,7 @@ interface CodeStudioProps {
   sessionId?: string;
   accessKey?: string;
   onSessionStart: (id: string) => void;
-  onSessionStop: () => void;
+  onSessionStop: (id: string) => void;
   onStartLiveSession: (channel: Channel, context?: string) => void;
 }
 
@@ -51,6 +50,12 @@ function getLanguageFromExt(filename: string): any {
     if (['draw', 'whiteboard', 'wb'].includes(ext || '')) return 'whiteboard';
     return 'text';
 }
+
+const CURSOR_COLORS = [
+    '#f87171', '#fb923c', '#fbbf24', '#facc15', '#a3e635', 
+    '#4ade80', '#34d399', '#2dd4bf', '#22d3ee', '#38bdf8', 
+    '#60a5fa', '#818cf8', '#a78bfa', '#c084fc', '#e879f9', '#fb7185'
+];
 
 const FileIcon = ({ filename }: { filename: string }) => {
     if (!filename) return <File size={16} className="text-slate-500" />;
@@ -122,9 +127,10 @@ const FileTreeItem = ({ node, depth, activeId, onSelect, onToggle, onDelete, onS
     );
 };
 
-const RichCodeEditor = ({ code, onChange, onCursorMove, language, readOnly, fontSize, indentMode }: any) => {
+const RichCodeEditor = ({ code, onChange, onCursorMove, language, readOnly, fontSize, indentMode, remoteCursors, activeFilePath }: any) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const lineNumbersRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
     const lineCount = (code || '').split('\n').length;
     
     const handleScroll = () => {
@@ -157,29 +163,59 @@ const RichCodeEditor = ({ code, onChange, onCursorMove, language, readOnly, font
         MozTabSize: 4 
     } as React.CSSProperties;
 
+    // Filter remote cursors for THIS active file
+    /* Added useMemo from React to resolve reference error */
+    const activeRemoteCursors = useMemo(() => {
+        if (!remoteCursors) return [];
+        return Object.values(remoteCursors).filter((c: any) => c.fileName === activeFilePath);
+    }, [remoteCursors, activeFilePath]);
+
     return (
-        <div className="w-full h-full flex bg-slate-950 font-mono overflow-hidden relative">
+        <div ref={containerRef} className="w-full h-full flex bg-slate-950 font-mono overflow-hidden relative">
             <div ref={lineNumbersRef} className="w-12 flex-shrink-0 bg-slate-900 text-slate-600 py-4 text-right pr-3 select-none overflow-hidden border-r border-slate-800" style={editorStyles}>
                 {Array.from({ length: lineCount }).map((_, i) => <div key={i} className="h-[1.6em]">{i + 1}</div>)}
             </div>
-            <textarea
-                ref={textareaRef}
-                className="flex-1 bg-transparent text-slate-300 p-4 resize-none outline-none leading-relaxed overflow-auto whitespace-pre"
-                style={editorStyles}
-                value={code || ''}
-                wrap="off"
-                onChange={(e) => onChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onScroll={handleScroll}
-                onSelect={(e) => {
-                    const target = e.target as HTMLTextAreaElement;
-                    const val = target.value.substr(0, target.selectionStart);
-                    const lines = val.split('\n');
-                    if (onCursorMove) onCursorMove(lines.length, lines[lines.length - 1].length);
-                }}
-                spellCheck={false}
-                readOnly={readOnly}
-            />
+            
+            <div className="flex-1 relative overflow-hidden">
+                {/* Remote Cursors Overlay */}
+                <div className="absolute inset-0 pointer-events-none z-10 p-4" style={{ ...editorStyles, color: 'transparent' }}>
+                    {activeRemoteCursors.map((c: any) => {
+                        // Calculate positions based on line/col
+                        // This is a rough approximation for standard textareas without full layout measuring
+                        // In a real IDE we use a complex measuring system or Monaco
+                        const topOffset = (c.line - 1) * (fontSize * 1.6);
+                        const leftOffset = c.column * (fontSize * 0.6); // Very rough char width estimate
+                        
+                        return (
+                            <div key={c.clientId} className="absolute transition-all duration-100" style={{ top: `${topOffset}px`, left: `${leftOffset}px` }}>
+                                <div className="w-0.5 h-[1.2em] animate-pulse" style={{ backgroundColor: c.color }} />
+                                <div className="absolute top-0 left-0 -translate-y-full px-1 py-0.5 rounded text-[8px] font-bold text-white whitespace-nowrap" style={{ backgroundColor: c.color }}>
+                                    {c.userName}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <textarea
+                    ref={textareaRef}
+                    className="w-full h-full bg-transparent text-slate-300 p-4 resize-none outline-none leading-relaxed overflow-auto whitespace-pre relative z-0"
+                    style={editorStyles}
+                    value={code || ''}
+                    wrap="off"
+                    onChange={(e) => onChange(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onScroll={handleScroll}
+                    onSelect={(e) => {
+                        const target = e.target as HTMLTextAreaElement;
+                        const val = target.value.substr(0, target.selectionStart);
+                        const lines = val.split('\n');
+                        if (onCursorMove) onCursorMove(lines.length, lines[lines.length - 1].length);
+                    }}
+                    spellCheck={false}
+                    readOnly={readOnly}
+                />
+            </div>
         </div>
     );
 };
@@ -212,7 +248,7 @@ const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking }: a
     );
 };
 
-export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, userProfile, sessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession }) => {
+export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, userProfile, sessionId: propSessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession }) => {
   const defaultFile: CodeFile = {
       name: 'Welcome.md',
       path: 'drive://welcome',
@@ -222,6 +258,11 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       isDirectory: false,
       isModified: false
   };
+
+  /* Added useMemo from React to resolve reference error */
+  const clientId = useMemo(() => generateSecureId().substring(0, 8), []);
+  /* Added useMemo from React to resolve reference error */
+  const myColor = useMemo(() => CURSOR_COLORS[Math.floor(Math.random() * CURSOR_COLORS.length)], []);
 
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('single');
   const [activeSlots, setActiveSlots] = useState<(CodeFile | null)[]>([defaultFile, null, null, null]);
@@ -264,6 +305,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const centerContainerRef = useRef<HTMLDivElement>(null);
   const activeFile = activeSlots[focusedSlot];
 
+  // Collaborative Syncing logic
+  const [isLive, setIsLive] = useState(false);
+  const [lockStatus, setLockStatus] = useState<'free' | 'busy' | 'mine'>('free');
+
   const updateFileTool: FunctionDeclaration = {
     name: "update_active_file",
     description: "Updates the content of the currently focused file in the editor.",
@@ -277,6 +322,65 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     }
   };
 
+  // 1. URL ID Detection & Subscription
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pid = params.get('id');
+    if (pid && pid !== 'init') {
+        setIsLive(true);
+        const unsubscribe = subscribeToCodeProject(pid, (updatedProject) => {
+            setProject(updatedProject);
+            
+            // Sync Lock
+            if (updatedProject.activeClientId === clientId) setLockStatus('mine');
+            else if (updatedProject.activeClientId) setLockStatus('busy');
+            else setLockStatus('free');
+
+            // If we don't have the lock, sync file contents from remote
+            if (updatedProject.activeClientId !== clientId) {
+                // Determine which slot needs updating based on remote active file
+                if (updatedProject.activeFilePath) {
+                    const remoteFile = updatedProject.files.find(f => f.path === updatedProject.activeFilePath);
+                    if (remoteFile) {
+                        // Optimistically sync to focused slot if same path
+                        setActiveSlots(prev => prev.map((s, i) => {
+                            if (s?.path === remoteFile.path) return { ...s, content: remoteFile.content, isModified: false };
+                            return s;
+                        }));
+                    }
+                }
+            }
+        });
+        return () => unsubscribe();
+    }
+  }, [clientId]);
+
+  // 2. Cursor Broadcasting
+  const broadcastCursor = useCallback((line: number, col: number) => {
+      if (!isLive || project.id === 'init') return;
+      updateCursor(project.id, {
+          clientId,
+          userId: currentUser?.uid || 'guest',
+          userName: currentUser?.displayName || 'Guest',
+          fileName: activeFile?.path || 'none',
+          line,
+          column: col,
+          color: myColor,
+          updatedAt: Date.now()
+      });
+  }, [isLive, project.id, activeFile?.path, clientId, currentUser, myColor]);
+
+  const handleTakeControl = async () => {
+      if (project.id === 'init') return;
+      await claimCodeProjectLock(project.id, clientId);
+      if (activeFile?.path) await updateProjectActiveFile(project.id, activeFile.path);
+  };
+
+  const handleRelinquishControl = async () => {
+      if (project.id === 'init') return;
+      await claimCodeProjectLock(project.id, '');
+  };
+
   const handleSetLayout = (mode: LayoutMode) => {
       setLayoutMode(mode);
       if (mode === 'single' && focusedSlot !== 0) setFocusedSlot(0);
@@ -288,13 +392,11 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     setSaveStatus('saving');
     try {
         if (activeTab === 'drive' && driveToken && driveRootId) {
-             const driveId = fileToSave.path?.includes('drive://') ? fileToSave.path.replace('drive://', '') : null;
              await saveToDrive(driveToken, driveRootId, fileToSave.name, fileToSave.content);
              await refreshExplorer();
         } else if (activeTab === 'cloud' && currentUser) {
              await saveProjectToCloud(`projects/${currentUser.uid}`, fileToSave.name, fileToSave.content);
         } else if (activeTab === 'github' && githubToken && project.github) {
-            // Commit directly back to GitHub repo
             const { owner, repo, branch } = project.github;
             const res = await updateRepoFile(
                 githubToken,
@@ -306,10 +408,15 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                 `Update ${fileToSave.name} via AIVoiceCast Code Studio`,
                 branch
             );
-            // Update local SHA to match new GitHub state
             fileToSave.sha = res.sha;
             fileToSave.isModified = false;
         }
+        
+        // Broadcast to live session if active
+        if (isLive && lockStatus === 'mine') {
+            await updateCodeFile(project.id, fileToSave);
+        }
+
         setSaveStatus('saved');
     } catch(e: any) { 
         console.error("Save failed", e);
@@ -322,7 +429,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       let pid = project.id;
       if (pid === 'init') {
           pid = generateSecureId();
-          const newProject = { ...project, id: pid, ownerId: currentUser.uid };
+          const newProject = { ...project, id: pid, ownerId: currentUser.uid, accessLevel: 'public' };
           await saveCodeProject(newProject);
           setProject(newProject);
       }
@@ -348,6 +455,11 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       newSlots[slotIndex] = file;
       setActiveSlots(newSlots);
       if (file && isPreviewable(file.name)) setSlotViewModes(prev => ({ ...prev, [slotIndex]: 'code' }));
+      
+      // Update global active file for followers
+      if (isLive && lockStatus === 'mine' && file?.path) {
+          updateProjectActiveFile(project.id, file.path);
+      }
   };
 
   const isPreviewable = (filename: string) => ['md', 'puml', 'plantuml'].includes(filename.split('.').pop()?.toLowerCase() || '');
@@ -398,6 +510,12 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       newSlots[slotIdx] = updatedFile;
       setActiveSlots(newSlots);
       setSaveStatus('modified');
+
+      // Collaborative broadcast
+      if (isLive && lockStatus === 'mine') {
+          // Debounce this in production, but for demo we update on change
+          updateCodeFile(project.id, updatedFile);
+      }
   };
 
   const resize = useCallback((e: MouseEvent) => {
@@ -500,6 +618,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       } catch (e: any) { setChatMessages(prev => [...prev, { role: 'ai', text: `Error: ${e.message}` }]); } finally { setIsChatThinking(false); }
   };
 
+  /* Added useMemo from React to resolve reference error */
   const driveTree = useMemo(() => {
       const root: TreeNode[] = [];
       const map = new Map<string, TreeNode>();
@@ -514,6 +633,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       return root;
   }, [driveItems]);
 
+  /* Added useMemo from React to resolve reference error */
   const cloudTree = useMemo(() => {
     const root: TreeNode[] = [];
     const map = new Map<string, TreeNode>();
@@ -558,7 +678,19 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                         </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
-                        {vMode === 'preview' ? <div className="h-full overflow-y-auto p-8"><MarkdownView content={file.content} /></div> : <RichCodeEditor code={file.content} onChange={(c: string) => handleCodeChangeInSlot(c, idx)} language={file.language} fontSize={fontSize} indentMode={indentMode} />}
+                        {vMode === 'preview' ? <div className="h-full overflow-y-auto p-8"><MarkdownView content={file.content} /></div> : (
+                            <RichCodeEditor 
+                                code={file.content} 
+                                onChange={(c: string) => handleCodeChangeInSlot(c, idx)} 
+                                onCursorMove={broadcastCursor}
+                                language={file.language} 
+                                fontSize={fontSize} 
+                                indentMode={indentMode} 
+                                remoteCursors={project.cursors}
+                                activeFilePath={file.path}
+                                readOnly={isLive && lockStatus === 'busy'}
+                            />
+                        )}
                     </div>
                   </>
               ) : (
@@ -571,15 +703,56 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       );
   };
 
+  /* Added useMemo from React to resolve reference error */
+  const collaborators = useMemo(() => {
+      if (!project.cursors) return [];
+      const now = Date.now();
+      return Object.values(project.cursors).filter((c: any) => now - c.updatedAt < 60000); // 1 minute timeout
+  }, [project.cursors]);
+
   return (
     <div className="flex flex-col h-full bg-slate-950 text-slate-100 overflow-hidden">
       <header className="h-14 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-4 shrink-0 z-20">
          <div className="flex items-center space-x-4">
             <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"><ArrowLeft size={20} /></button>
             <button onClick={() => setIsLeftOpen(!isLeftOpen)} className={`p-2 rounded-lg ${isLeftOpen ? 'bg-slate-800 text-white' : 'text-slate-500'}`}><PanelLeftOpen size={20}/></button>
-            <h1 className="font-bold text-white text-sm">Code Studio</h1>
+            <div className="h-4 w-px bg-slate-800 mx-2"></div>
+            
+            <div className="flex items-center -space-x-2">
+                {collaborators.map((c: any) => (
+                    <div key={c.clientId} className="w-8 h-8 rounded-full border-2 border-slate-950 flex items-center justify-center bg-slate-800 overflow-hidden" title={c.userName}>
+                        <span className="text-[10px] font-bold" style={{ color: c.color }}>{c.userName[0]}</span>
+                    </div>
+                ))}
+                {isLive && collaborators.length > 0 && (
+                    <div className="ml-4 flex items-center gap-2 px-2 py-1 bg-emerald-900/20 text-emerald-400 border border-emerald-500/20 rounded-full text-[10px] font-black uppercase tracking-widest">
+                        /* Added Activity icon from lucide-react to fix missing reference error */
+                        <Activity size={12} className="animate-pulse" />
+                        Live
+                    </div>
+                )}
+            </div>
          </div>
+
          <div className="flex items-center space-x-2">
+            {isLive && (
+                <div className="flex gap-1 mr-4">
+                    {lockStatus === 'mine' ? (
+                        <button onClick={handleRelinquishControl} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg animate-pulse">
+                            <Unlock size={14}/> I am Controlling
+                        </button>
+                    ) : lockStatus === 'busy' ? (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-red-900/30 text-red-400 border border-red-500/30 rounded-lg text-[10px] font-black uppercase tracking-widest cursor-not-allowed">
+                            <Lock size={14}/> Session Busy
+                        </div>
+                    ) : (
+                        <button onClick={handleTakeControl} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-700 transition-all">
+                            <MousePointer2 size={14}/> Take Control
+                        </button>
+                    )}
+                </div>
+            )}
+
             <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 mr-4">
                 <button onClick={() => handleSetLayout('single')} className={`p-1.5 rounded ${layoutMode === 'single' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><SquareIcon size={16}/></button>
                 <button onClick={() => handleSetLayout('split-v')} className={`p-1.5 rounded ${layoutMode === 'split-v' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Columns size={16}/></button>
@@ -589,10 +762,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
             
             <button onClick={handleShareProject} className="flex items-center space-x-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all active:scale-95">
                 <Share2 size={14}/>
-                <span>Share URI</span>
+                <span>Share Session</span>
             </button>
 
-            <button onClick={() => handleSmartSave()} className="flex items-center space-x-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold"><Save size={14}/><span>Save</span></button>
+            <button onClick={() => handleSmartSave()} disabled={lockStatus === 'busy'} className="flex items-center space-x-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold"><Save size={14}/><span>Save</span></button>
             <button onClick={() => setIsRightOpen(!isRightOpen)} className={`p-2 rounded-lg ${isRightOpen ? 'bg-slate-800 text-white' : 'text-slate-500'}`}><PanelRightOpen size={20}/></button>
          </div>
       </header>
