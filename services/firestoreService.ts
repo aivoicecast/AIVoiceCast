@@ -116,7 +116,12 @@ export async function claimOnlineTransfer(txId: string): Promise<void> {
         const txData = txSnap.data() as CoinTransaction;
         
         if (txData.isVerified) throw new Error("Transfer already claimed.");
-        if (txData.toId !== auth.currentUser?.uid) throw new Error("Unauthorized claim.");
+        
+        // Use document ID as source of truth for current UID to avoid mismatch
+        if (txData.toId !== auth.currentUser?.uid) {
+            console.error("UID Mismatch:", { txToId: txData.toId, authUid: auth.currentUser?.uid });
+            throw new Error("Unauthorized claim: Recipient ID does not match your account.");
+        }
 
         t.update(recipientRef, { coinBalance: increment(txData.amount) });
         t.update(txRef, { isVerified: true, memo: (txData.memo || "") + " (Claimed)" });
@@ -393,7 +398,8 @@ export async function syncUserProfile(user: any): Promise<void> {
         await setDoc(userRef, { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL, createdAt: Date.now(), lastLogin: Date.now(), subscriptionTier: 'free', apiUsageCount: 0, groups: [], coinBalance: DEFAULT_MONTHLY_GRANT, lastCoinGrantAt: Date.now(), adminOwnerEmail: ADMIN_EMAIL });
         await setDoc(doc(db, 'stats', 'global'), { uniqueUsers: increment(1) }, { merge: true });
       } else {
-        await updateDoc(userRef, { lastLogin: Date.now(), photoURL: user.photoURL || snap.data()?.photoURL, displayName: user.displayName || snap.data()?.displayName });
+        // ALWAYS update uid and other metadata on login heartbeat to ensure schema consistency
+        await updateDoc(userRef, { uid: user.uid, lastLogin: Date.now(), photoURL: user.photoURL || snap.data()?.photoURL, displayName: user.displayName || snap.data()?.displayName });
       }
       await updateDoc(doc(db, 'stats', 'global'), { totalLogins: increment(1) });
   } catch (e) {}
@@ -413,14 +419,15 @@ export async function updateUserProfile(uid: string, data: Partial<UserProfile>)
 export async function getAllUsers(): Promise<UserProfile[]> {
     if (!db) return [];
     const snap = await getDocs(collection(db, USERS_COLLECTION));
-    return snap.docs.map(d => d.data() as UserProfile);
+    // Explicitly inject document ID as uid to guarantee authorization logic works
+    return snap.docs.map(d => ({ ...d.data(), uid: d.id } as UserProfile));
 }
 
 export async function getUserProfileByEmail(email: string): Promise<UserProfile | null> {
     if (!db) return null;
     const q = query(collection(db, USERS_COLLECTION), where('email', '==', email), limit(1));
     const snap = await getDocs(q);
-    return snap.empty ? null : (snap.docs[0].data() as UserProfile);
+    return snap.empty ? null : ({ ...snap.docs[0].data(), uid: snap.docs[0].id } as UserProfile);
 }
 
 // --- Groups ---
@@ -442,9 +449,9 @@ export async function getUserGroups(uid: string): Promise<Group[]> {
 
 export async function getGroupMembers(uids: string[]): Promise<UserProfile[]> {
     if (!db || uids.length === 0) return [];
-    const q = query(collection(db, USERS_COLLECTION), where('uid', 'in', uids.slice(0, 10)));
+    const q = query(collection(db, USERS_COLLECTION), where(documentId(), 'in', uids.slice(0, 10)));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as UserProfile);
+    return snap.docs.map(d => ({ ...d.data(), uid: d.id } as UserProfile));
 }
 
 export async function removeMemberFromGroup(groupId: string, memberId: string): Promise<void> {

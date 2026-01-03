@@ -138,7 +138,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
     }
     if (!databaseInstance) setDatabaseInstance(activeDb);
 
-    if (!force && initAttempted.current && user) return;
+    // If force is not requested and we already attempted, don't stall UI
+    // BUT we still want to ensure balance is fresh if coming from a claim
+    if (!force && initAttempted.current && user) {
+        setLoading(false);
+        return;
+    }
     
     setLoading(true);
     try {
@@ -169,7 +174,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   }, [user, databaseInstance]);
 
   useEffect(() => {
-    initWallet();
+    // ALWAYS force a refresh on mount to ensure balance is current (e.g. after notification claim)
+    initWallet(true);
     
     if (auth) {
         const unsubscribe = onAuthStateChanged(auth, (u) => {
