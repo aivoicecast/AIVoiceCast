@@ -54,7 +54,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [isExporting, setIsExporting] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isGeneratingArt, setIsGeneratingArt] = useState(false);
-  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [showSignPad, setShowSignPad] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -72,6 +71,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const convertRemoteToDataUrl = async (url: string): Promise<string> => {
       if (!url || !url.startsWith('http')) return url;
       try {
+          // Use a cache buster to ensure we get a fresh copy and bypass some CORS caching issues
           const bust = url.includes('?') ? `&cb_pdf=${Date.now()}` : `?cb_pdf=${Date.now()}`;
           const res = await fetch(url + bust, { mode: 'cors', credentials: 'omit' });
           if (!res.ok) throw new Error("Fetch failed");
@@ -210,22 +210,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       } catch (e) { console.error(e); } finally { setIsUpdatingWords(false); }
   };
 
-  const handleSaveAsTemplate = async () => {
-      if (!currentUser) return alert("Sign in to save templates.");
-      setIsSavingTemplate(true);
-      try {
-          const template: Partial<BankingCheck> = {
-              bankName: check.bankName,
-              routingNumber: check.routingNumber,
-              accountNumber: check.accountNumber,
-              senderAddress: check.senderAddress,
-              senderName: check.senderName
-          };
-          await updateUserProfile(currentUser.uid, { checkTemplate: template });
-          alert("Template saved as default!");
-      } catch(e: any) { alert("Save template failed: " + e.message); } finally { setIsSavingTemplate(false); }
-  };
-
   const handlePublishAndShareLink = async () => {
       if (shareLink) { setShowShareModal(true); return; }
       if (!auth.currentUser) return alert("Please sign in to publish.");
@@ -234,8 +218,36 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       try {
           const id = check.id || generateSecureId();
           
+          // CRITICAL: Ensure all remote images are converted to local data URLs before canvas capture
+          const sigUrl = check.signatureUrl || check.signature;
+          const wmUrl = check.watermarkUrl;
+          let newAssets: Record<string, string> = { ...convertedAssets };
+          let needsUpdate = false;
+
+          if (sigUrl && sigUrl.startsWith('http') && !newAssets.sig) {
+              newAssets.sig = await convertRemoteToDataUrl(sigUrl);
+              needsUpdate = true;
+          }
+          if (wmUrl && wmUrl.startsWith('http') && !newAssets.wm) {
+              newAssets.wm = await convertRemoteToDataUrl(wmUrl);
+              needsUpdate = true;
+          }
+
+          if (needsUpdate) {
+              setConvertedAssets(newAssets);
+              // Wait for React to re-render with new assets
+              await new Promise(r => setTimeout(r, 800));
+          }
+
           // 1. Generate PDF locally (where images are visible)
-          const canvas = await html2canvas(checkRef.current!, { scale: 4, useCORS: true });
+          const canvas = await html2canvas(checkRef.current!, { 
+              scale: 4, 
+              useCORS: true, 
+              backgroundColor: '#ffffff',
+              logging: false,
+              allowTaint: false,
+              imageTimeout: 60000
+          });
           const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
           pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
           const pdfBlob = pdf.output('blob');
@@ -278,9 +290,22 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           
           await saveBankingCheck(checkToSave as any);
           
-          // 5. Update Profile with Next Check Number (Atomic update)
-          const nextNum = (parseInt(check.checkNumber) || 1000) + 1;
-          await updateUserProfile(auth.currentUser.uid, { nextCheckNumber: nextNum });
+          // 5. AUTO-SAVE AS TEMPLATE & INCREMENT CHECK NUMBER
+          const currentNum = parseInt(check.checkNumber) || 1000;
+          const nextNum = currentNum + 1;
+          
+          const templateUpdate: Partial<UserProfile> = {
+              nextCheckNumber: nextNum,
+              checkTemplate: {
+                  bankName: check.bankName,
+                  routingNumber: check.routingNumber,
+                  accountNumber: check.accountNumber,
+                  senderAddress: check.senderAddress,
+                  senderName: check.senderName
+              }
+          };
+          
+          await updateUserProfile(auth.currentUser.uid, templateUpdate);
           
           setCheck(checkToSave);
           setShareLink(driveWebViewLink);
@@ -409,7 +434,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               {!isReadOnly && (
                 <>
                   <button onClick={loadArchive} className="flex items-center gap-2 px-3 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all"><List size={14}/><span className="hidden sm:inline">My Archive</span></button>
-                  <button onClick={handleSaveAsTemplate} disabled={isSavingTemplate} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-slate-300 rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">{isSavingTemplate ? <Loader2 size={14} className="animate-spin"/> : <HardDrive size={14}/><span className="hidden sm:inline">Save Default</span>}</button>
                   <button onClick={handlePublishAndShareLink} disabled={isSharing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all">{isSharing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}<span>{shareLink ? 'Share URI' : 'Publish to Drive'}</span></button>
                 </>
               )}
@@ -436,7 +460,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                     <div className="flex justify-between items-center mb-2">
                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><Landmark size={14}/> Bank & Account</h3>
                         <div className="flex items-center gap-1.5 text-indigo-400 bg-indigo-900/20 px-2 py-0.5 rounded border border-indigo-500/20">
-                            <span className="text-[10px] font-bold">NEXT NO.</span>
+                            <span className="text-[10px] font-bold">CHECK NO.</span>
                             <span className="text-xs font-mono font-black">{check.checkNumber}</span>
                         </div>
                     </div>
@@ -458,6 +482,12 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 <div className="grid grid-cols-2 gap-3">
                     <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="py-3 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded-xl font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all">{isGeneratingArt ? <Loader2 size={14} className="animate-spin"/> : <Palette size={14}/>} AI Watermark</button>
                     <button onClick={() => { setImageError({}); setShowSignPad(true); }} className="py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all"><PenTool size={14}/> Sign Check</button>
+                </div>
+                <div className="p-4 bg-indigo-900/10 rounded-xl border border-indigo-500/20">
+                    <p className="text-[10px] text-indigo-300 leading-relaxed font-medium">
+                        <Sparkles size={10} className="inline mr-1 mb-1"/> 
+                        <strong>Automatic Sync:</strong> Sharing or publishing will automatically increment your check number and save these settings as your default template.
+                    </p>
                 </div>
             </div>
           )}
