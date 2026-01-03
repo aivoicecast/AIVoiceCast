@@ -95,7 +95,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   const sig = data.signatureUrl || data.signature || '';
                   const wm = data.watermarkUrl || '';
                   
-                  // For shared view, we don't block the UI with the conversion, but try it in background
+                  // For shared view, try converting to base64 in background for PDF compatibility
                   convertRemoteToDataUrl(sig).then(base64 => setConvertedAssets(prev => ({ ...prev, sig: base64 })));
                   convertRemoteToDataUrl(wm).then(base64 => setConvertedAssets(prev => ({ ...prev, wm: base64 })));
 
@@ -271,7 +271,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const data = await getUserChecks(currentUser.uid);
           setArchiveChecks(data);
       } catch (e) {
-          console.error(e);
+          console.error("Archive load failed", e);
       } finally {
           setLoadingArchive(false);
       }
@@ -309,8 +309,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           return <span className="text-slate-200 font-serif text-[10px]">AUTHORIZED SIGNATURE</span>;
       }
       
-      // CRITICAL: Removed crossOrigin attribute to ensure visibility in shared links for guests
-      // where storage bucket CORS might not be configured.
+      // Removed crossOrigin to avoid guest load issues if Storage CORS is not set.
       return (
           <img 
               key={url}
@@ -326,6 +325,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       const url = convertedAssets.wm || check.watermarkUrl;
       if (!url || imageError['wm']) return null;
       
+      // Removed crossOrigin for guest access.
       return (
           <div className="absolute inset-0 opacity-[0.35] pointer-events-none z-0">
             <img 
@@ -371,7 +371,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                 </>
               )}
               <button onClick={handleDownloadPDF} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg text-xs font-bold border border-slate-700 hover:bg-slate-700 transition-all">
-                  {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14}/>}
+                  {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />}
                   <span>Download PDF</span>
               </button>
           </div>

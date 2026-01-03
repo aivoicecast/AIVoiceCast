@@ -164,9 +164,17 @@ export async function getCheckById(id: string): Promise<BankingCheck | null> {
 export async function getUserChecks(uid: string): Promise<BankingCheck[]> {
     if (!db) return [];
     try {
-        const q = query(collection(db, CHECKS_COLLECTION), where('ownerId', '==', uid), orderBy('date', 'desc'), limit(50));
+        // Query by ownerId only to avoid needing a composite index for orderBy('date')
+        // We will sort client-side instead.
+        const q = query(
+            collection(db, CHECKS_COLLECTION), 
+            where('ownerId', '==', uid), 
+            limit(100)
+        );
         const snap = await getDocs(q);
-        return snap.docs.map(d => ({ ...d.data(), id: d.id } as BankingCheck));
+        const results = snap.docs.map(d => ({ ...d.data(), id: d.id } as BankingCheck));
+        // Client-side sort by date descending
+        return results.sort((a, b) => b.date.localeCompare(a.date));
     } catch(e) { 
         console.error("Failed to fetch checks", e);
         return []; 
