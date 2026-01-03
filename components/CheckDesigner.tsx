@@ -144,17 +144,23 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     return () => window.removeEventListener('resize', handleAutoZoom);
   }, []);
 
+  // RESTORE: Auto-generate description of the amount
   useEffect(() => {
-    if (isReadOnly) return;
+    if (isReadOnly || isLoadingCheck) return;
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    const amountToSpell = check.isCoinCheck ? (check.coinAmount) : (check.amount);
-    if (amountToSpell && amountToSpell > 0) {
-        debounceTimerRef.current = setTimeout(() => handleGenerateAmountWords(amountToSpell as number, check.isCoinCheck), 1200); 
+    
+    const amountToSpell = check.isCoinCheck ? check.coinAmount : check.amount;
+    
+    if (amountToSpell !== undefined && amountToSpell > 0) {
+        debounceTimerRef.current = setTimeout(() => {
+            handleGenerateAmountWords(amountToSpell as number, check.isCoinCheck);
+        }, 1200); 
     } else {
         setCheck(prev => ({ ...prev, amountWords: '' }));
     }
+    
     return () => { if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current); };
-  }, [check.amount, check.coinAmount, check.isCoinCheck, isReadOnly]);
+  }, [check.amount, check.coinAmount, check.isCoinCheck, isReadOnly, isLoadingCheck]);
 
   const qrCodeUrl = useMemo(() => {
       const baseUri = shareLink || `${window.location.origin}?view=check_viewer&id=${check.id || 'preview'}`;
@@ -188,7 +194,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const response = await ai.models.generateContent({
               model: 'gemini-3-flash-preview',
-              contents: `Convert ${val} to check words (${isCoins ? 'Coins' : 'Dollars'}). Return text only.`
+              contents: `Convert ${val} to check words (${isCoins ? 'Coins' : 'Dollars'}). Return text only. Do not include labels.`
           });
           const text = response.text?.trim() || '';
           if (text) setCheck(prev => ({ ...prev, amountWords: text }));
@@ -306,7 +312,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           <img 
               key={url}
               src={url} 
-              className="max-h-12 w-auto object-contain mb-1" 
+              className="max-h-14 w-auto object-contain mb-1" 
               alt="Authorized Signature"
               crossOrigin={isRemote ? "anonymous" : undefined}
               onError={() => setImageError(prev => ({ ...prev, 'sig': true }))}
@@ -439,8 +445,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       
                       <div className="flex justify-between items-start relative z-10">
                           <div className="space-y-1">
-                              <h2 className="text-sm font-bold uppercase tracking-wider leading-relaxed">{check.senderName}</h2>
-                              <p className="text-[9px] text-slate-500 leading-normal max-w-[190px] truncate whitespace-pre-wrap">{check.senderAddress}</p>
+                              <h2 className="text-sm font-bold uppercase tracking-wider leading-[1.6]">{check.senderName}</h2>
+                              <p className="text-[9px] text-slate-500 leading-[1.6] max-w-[190px] whitespace-pre-wrap pb-2">{check.senderAddress}</p>
                           </div>
                           <div className="text-right">
                               <h2 className="text-xs font-black uppercase text-slate-800 leading-normal">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
@@ -467,21 +473,21 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       </div>
 
                       <div className="mt-6 flex items-center gap-4 relative z-10 overflow-hidden">
-                          <div className="flex-1 max-w-[460px] border-b border-black text-xs md:text-sm font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-1 leading-relaxed">
-                            {check.amountWords || '____________________________________________________________________'}
+                          <div className="flex-1 max-w-[460px] border-b border-black text-[13px] font-serif italic px-2 overflow-hidden whitespace-nowrap min-w-0 pb-1.5 leading-[1.6]">
+                            {isUpdatingWords ? 'Processing amount...' : (check.amountWords || '____________________________________________________________________')}
                           </div>
-                          <span className="text-xs font-bold shrink-0">DOLLARS</span>
+                          <span className="text-xs font-bold shrink-0">{check.isCoinCheck ? 'COINS' : 'DOLLARS'}</span>
                       </div>
 
-                      <div className="mt-auto flex items-end justify-between relative z-10 pb-1">
+                      <div className="mt-auto flex items-end justify-between relative z-10 pb-0">
                           <div className="flex-1 flex flex-col gap-2">
                               <div className="flex items-center gap-2 mb-2">
                                   <span className="text-[10px] font-bold">FOR</span>
-                                  <div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate leading-relaxed pb-1">{check.memo || '____________________'}</div>
+                                  <div className="w-64 border-b border-black text-sm font-serif italic px-1 truncate leading-relaxed pb-1.5">{check.memo || '____________________'}</div>
                               </div>
                           </div>
-                          <div className="w-48 relative ml-4 z-20 flex flex-col items-center">
-                              <div className="border-b border-black w-full min-h-[48px] flex items-end justify-center overflow-hidden pb-1">
+                          <div className="w-48 relative ml-4 z-20 flex flex-col items-center self-end">
+                              <div className="border-b border-black w-full min-h-[60px] flex items-end justify-center overflow-hidden pb-1">
                                   {renderSignature()}
                               </div>
                               <span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter w-full">Authorized Signature</span>
