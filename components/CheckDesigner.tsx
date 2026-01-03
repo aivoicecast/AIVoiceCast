@@ -42,7 +42,6 @@ const DEFAULT_CHECK: BankingCheck = {
 
 export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUser, userProfile }) => {
   const params = new URLSearchParams(window.location.search);
-  // Support both view modes
   const isReadOnly = params.get('mode') === 'view' || params.get('view') === 'check_viewer';
   const checkIdFromUrl = params.get('id');
 
@@ -68,23 +67,26 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           setIsLoadingCheck(true);
           getCheckById(checkIdFromUrl).then(data => {
               if (data) {
-                  // Ensure we normalize properties for older data
-                  setCheck({
+                  // CRITICAL: Normalize signature fields for both old and new records
+                  const normalizedCheck = {
                       ...DEFAULT_CHECK,
                       ...data,
-                      // Ensure signature fields are mapped correctly
+                      signature: data.signature || data.signatureUrl || '',
                       signatureUrl: data.signatureUrl || data.signature || ''
-                  });
+                  };
+                  setCheck(normalizedCheck);
                   setShareLink(`${window.location.origin}?view=check_viewer&id=${data.id}`);
               }
               setIsLoadingCheck(false);
           }).catch(() => setIsLoadingCheck(false));
       } else {
-          // New check: Hydrate from profile template if available
           let initial = { ...DEFAULT_CHECK, senderName: currentUser?.displayName || DEFAULT_CHECK.senderName };
           if (userProfile) {
               if (userProfile.senderAddress) initial.senderAddress = userProfile.senderAddress;
-              if (userProfile.savedSignatureUrl) initial.signatureUrl = userProfile.savedSignatureUrl;
+              if (userProfile.savedSignatureUrl) {
+                  initial.signatureUrl = userProfile.savedSignatureUrl;
+                  initial.signature = userProfile.savedSignatureUrl;
+              }
               if (userProfile.checkTemplate) {
                   initial = { ...initial, ...userProfile.checkTemplate };
               }
@@ -135,7 +137,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               config: { imageConfig: { aspectRatio: "16:9" } }
           });
           for (const part of response.candidates[0].content.parts) {
-              if (part.inlineData) { setCheck(prev => ({ ...prev, watermarkUrl: `data:image/png;base64,${part.inlineData.data}` })); break; }
+              if (part.inlineData) { 
+                  const dataUrl = `data:image/png;base64,${part.inlineData.data}`;
+                  setCheck(prev => ({ ...prev, watermarkUrl: dataUrl })); 
+                  break; 
+              }
           }
       } catch (e) { alert("Art failed."); } finally { setIsGeneratingArt(false); }
   };
@@ -180,7 +186,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       try {
           const id = check.id || generateSecureId();
           
-          // 1. Sync Watermark
           let finalWatermarkUrl = check.watermarkUrl || '';
           if (check.watermarkUrl?.startsWith('data:')) {
              const res = await fetch(check.watermarkUrl);
@@ -188,7 +193,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
              finalWatermarkUrl = await uploadFileToStorage(`checks/${id}/watermark.png`, blob);
           }
           
-          // 2. Sync Signature
           let finalSignatureUrl = check.signatureUrl || check.signature || '';
           if (finalSignatureUrl.startsWith('data:')) {
               const res = await fetch(finalSignatureUrl);
@@ -196,23 +200,17 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               finalSignatureUrl = await uploadFileToStorage(`checks/${id}/signature.png`, blob);
           }
           
-          // 3. Prepare Final Document
           const checkToSave = { 
               ...check, 
               id, 
               ownerId: auth.currentUser.uid, 
               watermarkUrl: finalWatermarkUrl, 
               signatureUrl: finalSignatureUrl,
-              signature: finalSignatureUrl // redundant for legacy compat
+              signature: finalSignatureUrl 
           };
           
-          // 4. Update Database
           await saveBankingCheck(checkToSave as any);
-          
-          // 5. IMPORTANT: Update local state so owner is now looking at Cloud URLs
           setCheck(checkToSave);
-          
-          // 6. Generate Links
           setShareLink(`${window.location.origin}?view=check_viewer&id=${id}`);
           setShowShareModal(true);
       } catch (e: any) { 
@@ -231,7 +229,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             useCORS: true, 
             backgroundColor: '#ffffff',
             logging: false,
-            // Ensure images are fully loaded
             allowTaint: false
         });
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
@@ -242,6 +239,48 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     } finally { 
         setIsExporting(false); 
     }
+  };
+
+  const renderSignature = () => {
+      const url = check.signatureUrl || check.signature;
+      if (!url || typeof url !== 'string' || url.length < 10) {
+          return <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>;
+      }
+
+      const isDataUrl = url.startsWith('data:');
+      return (
+          <img 
+              key={url}
+              src={url} 
+              className="max-h-12 w-auto object-contain" 
+              crossOrigin={isDataUrl ? undefined : "anonymous"}
+              alt="Authorized Signature"
+              onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  console.error("Signature load error for URL:", url);
+                  target.style.display = 'none';
+              }}
+          />
+      );
+  };
+
+  const renderWatermark = () => {
+      if (!check.watermarkUrl) return null;
+      const isDataUrl = check.watermarkUrl.startsWith('data:');
+      return (
+          <div className="absolute inset-0 opacity-[0.25] pointer-events-none z-0">
+            <img 
+                key={check.watermarkUrl} 
+                src={check.watermarkUrl} 
+                className="w-full h-full object-cover grayscale" 
+                crossOrigin={isDataUrl ? undefined : "anonymous"}
+                alt="Security Watermark"
+                onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                }}
+            />
+          </div>
+      );
   };
 
   if (isLoadingCheck) return <div className="h-screen bg-slate-950 flex items-center justify-center animate-pulse"><Loader2 className="animate-spin text-indigo-500" size={40} /></div>;
@@ -324,24 +363,14 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <p className="text-emerald-400 font-bold flex items-center justify-center gap-2 mb-1">
                               <ShieldCheckIcon /> Authenticated Document
                           </p>
-                          <p className="text-slate-400 text-xs leading-relaxed">This is an officially signed document verified via AIVoiceCast Neural Prism bank records.</p>
+                          <p className="text-slate-400 text-xs leading-relaxed">Verified via AIVoiceCast Neural Prism secure ledger.</p>
                       </div>
                   </div>
               )}
               
               <div style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }} className="transition-transform duration-300 mt-12">
                   <div ref={checkRef} className="w-[600px] h-[270px] bg-white text-black shadow-2xl flex flex-col border border-slate-300 rounded-lg relative overflow-hidden p-8">
-                      {check.watermarkUrl && (
-                        <div className="absolute inset-0 opacity-[0.25] pointer-events-none z-0">
-                          <img 
-                            key={check.watermarkUrl} 
-                            src={check.watermarkUrl} 
-                            className="w-full h-full object-cover grayscale" 
-                            crossOrigin="anonymous"
-                            alt="Security Watermark"
-                          />
-                        </div>
-                      )}
+                      {renderWatermark()}
                       
                       <div className="absolute top-8 left-[210px] z-40 pointer-events-none">
                         <img 
@@ -380,17 +409,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                           <div className="flex-1 flex flex-col gap-2"><div className="flex items-center gap-2"><span className="text-[10px] font-bold">FOR</span><div className="w-48 border-b border-black text-sm font-serif italic px-1 truncate">{check.memo || '____________________'}</div></div></div>
                           <div className="w-48 relative ml-4 z-20">
                               <div className="border-b border-black h-12 flex items-end justify-center pb-1 overflow-hidden">
-                                  {check.signatureUrl || check.signature ? (
-                                    <img 
-                                        key={check.signatureUrl || check.signature} 
-                                        src={check.signatureUrl || check.signature} 
-                                        className="max-h-12 w-auto object-contain" 
-                                        crossOrigin="anonymous"
-                                        alt="Signature"
-                                    />
-                                  ) : (
-                                    <span className="text-slate-200 font-serif text-sm">SIGN HERE</span>
-                                  )}
+                                  {renderSignature()}
                               </div>
                               <span className="text-[8px] font-bold text-center block mt-1 uppercase tracking-tighter">Authorized Signature</span>
                           </div>
@@ -438,7 +457,10 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <button 
                         onClick={() => {
                             const canvas = document.querySelector('.fixed canvas') as HTMLCanvasElement;
-                            if (canvas) setCheck(prev => ({ ...prev, signatureUrl: canvas.toDataURL('image/png'), signature: canvas.toDataURL('image/png') }));
+                            if (canvas) {
+                                const dataUrl = canvas.toDataURL('image/png');
+                                setCheck(prev => ({ ...prev, signatureUrl: dataUrl, signature: dataUrl }));
+                            }
                             setShowSignPad(false);
                         }} 
                         className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg"
