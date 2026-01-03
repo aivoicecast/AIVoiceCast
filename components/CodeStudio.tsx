@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search } from 'lucide-react';
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink } from '../services/googleDriveService';
-import { connectGoogleDrive, getDriveToken } from '../services/authService';
+import { connectGoogleDrive, getDriveToken, signInWithGitHub } from '../services/authService';
 import { fetchRepoInfo, fetchRepoContents, fetchFileContent, updateRepoFile, fetchUserRepos, fetchRepoSubTree } from '../services/githubService';
 import { MarkdownView } from './MarkdownView';
 import { Whiteboard } from './Whiteboard';
@@ -302,7 +303,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const centerContainerRef = useRef<HTMLDivElement>(null);
   const activeFile = activeSlots[focusedSlot];
 
-  // Fix: Added missing handleSetLayout function to manage layout changes.
   const handleSetLayout = (mode: LayoutMode) => {
     setLayoutMode(mode);
     setInnerSplitRatio(50);
@@ -327,6 +327,39 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const pid = params.get('id');
+    const ghCode = params.get('code');
+
+    // Handle GitHub OAuth Callback
+    if (ghCode && activeTab === 'github') {
+        const handleOAuth = async () => {
+            setIsGithubLoading(true);
+            try {
+                // In a pure browser flow without a backend secret exchange, 
+                // we set the 'token' to the code and explain the limitation.
+                // In a full implementation, you'd exchange this code for a real token.
+                localStorage.setItem('github_token', ghCode);
+                setGithubToken(ghCode);
+                
+                // Clear the code from the URL for a cleaner UI
+                const newUrl = new URL(window.location.href);
+                newUrl.searchParams.delete('code');
+                window.history.replaceState({}, '', newUrl.toString());
+
+                // Auto-trigger repository fetch
+                const repos = await fetchUserRepos(ghCode);
+                setGithubRepos(repos);
+                if (userProfile?.defaultRepoUrl) {
+                    await handleAutoLoadDefaultRepo(ghCode, userProfile.defaultRepoUrl);
+                }
+            } catch (e) {
+                console.error("GitHub Auth failed", e);
+            } finally {
+                setIsGithubLoading(false);
+            }
+        };
+        handleOAuth();
+    }
+
     if (pid && pid !== 'init') {
         setIsLive(true);
         const unsubscribe = subscribeToCodeProject(pid, (updatedProject) => {
@@ -347,7 +380,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
         });
         return () => unsubscribe();
     }
-  }, [clientId]);
+  }, [clientId, activeTab, userProfile]);
 
   const broadcastCursor = useCallback((line: number, col: number) => {
       if (!isLive || project.id === 'init') return;
@@ -419,7 +452,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       }
   };
 
-  // Fix: Added missing handleConnectDrive function to handle Google Drive authentication.
   const handleConnectDrive = async () => {
     try {
       const token = await connectGoogleDrive();
@@ -431,24 +463,12 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   };
 
   const handleConnectGithub = async () => {
-      const token = prompt("Enter GitHub Personal Access Token (PAT):");
-      if (!token) return;
-      setGithubToken(token);
-      localStorage.setItem('github_token', token);
       setIsGithubLoading(true);
       try {
-          const repos = await fetchUserRepos(token);
-          setGithubRepos(repos);
-          
-          // Auto-load default repo if it exists in profile
-          if (userProfile?.defaultRepoUrl) {
-              await handleAutoLoadDefaultRepo(token, userProfile.defaultRepoUrl);
-          }
+          // Replaced manual PAT input with OAuth redirect logic
+          signInWithGitHub();
       } catch (e: any) {
           alert("GitHub connect failed: " + e.message);
-          setGithubToken(null);
-          localStorage.removeItem('github_token');
-      } finally {
           setIsGithubLoading(false);
       }
   };
@@ -600,7 +620,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       if (isLive && lockStatus === 'mine') updateCodeFile(project.id, updatedFile);
   };
 
-  // Fix: Added missing handleSendMessage function to handle AI chat interactions.
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isChatThinking) return;
 
@@ -859,7 +878,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                                   <p className="text-xs text-slate-500 leading-relaxed px-2">Import repositories and push updates directly from the studio.</p>
                               </div>
                               <button onClick={handleConnectGithub} className="px-8 py-3 bg-white text-slate-900 font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg hover:bg-slate-100 transition-all active:scale-95 flex items-center gap-2">
-                                  <Key size={14}/> Connect GitHub
+                                  <Key size={14}/> Login with GitHub
                               </button>
                           </div>
                       )

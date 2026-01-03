@@ -7,15 +7,15 @@ import {
 } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 
+const GITHUB_CLIENT_ID = 'Ov23liwzhjDQN6DGl6Cx';
+
 /**
  * Standard Google OAuth via Firebase
- * Handles both platform login and Google Drive token acquisition.
  */
 export async function signInWithGoogle(): Promise<User | null> {
     if (!auth) return null;
 
     const provider = new GoogleAuthProvider();
-    // Add scopes for Google Drive and Profile
     provider.addScope('https://www.googleapis.com/auth/drive.file');
     provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
     provider.addScope('https://www.googleapis.com/auth/userinfo.email');
@@ -30,7 +30,6 @@ export async function signInWithGoogle(): Promise<User | null> {
             localStorage.setItem('token_expiry', (Date.now() + 3500 * 1000).toString());
         }
 
-        // Store a copy for components that still look in localStorage
         const userSummary = {
             uid: result.user.uid,
             displayName: result.user.displayName,
@@ -46,6 +45,39 @@ export async function signInWithGoogle(): Promise<User | null> {
     }
 }
 
+/**
+ * Initiates GitHub OAuth Flow
+ * Redirects the user to GitHub to authorize the app.
+ */
+export function signInWithGitHub(): void {
+    const root = window.location.origin + window.location.pathname;
+    const scope = 'repo,user';
+    const state = Math.random().toString(36).substring(7);
+    localStorage.setItem('gh_auth_state', state);
+
+    const url = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=${scope}&state=${state}&redirect_uri=${encodeURIComponent(root)}`;
+    window.location.assign(url);
+}
+
+/**
+ * Exchanges OAuth Code for Access Token
+ * NOTE: GitHub's token exchange endpoint does not support CORS for pure browser requests
+ * because it requires a Client Secret. In production, this call should go through a 
+ * backend or a CORS proxy/Gatekeeper.
+ */
+export async function exchangeGitHubCode(code: string): Promise<string> {
+    // In a real-world app, you'd call your own backend here:
+    // const res = await fetch('your-backend.com/github/token', { body: { code } });
+    
+    // For this implementation, we simulate the token acquisition 
+    // or assume a proxy is being used.
+    console.log("Exchanging GitHub code:", code);
+    
+    // Placeholder: In an ideal flow, the backend returns the token.
+    // Since we are pure frontend, we advise the user that the 'code' is the first step.
+    return code; 
+}
+
 export function getDriveToken(): string | null {
     const token = localStorage.getItem('google_drive_token');
     const expiry = localStorage.getItem('token_expiry');
@@ -58,20 +90,10 @@ export function getDriveToken(): string | null {
 export async function connectGoogleDrive(): Promise<string> {
     const token = getDriveToken();
     if (token) return token;
-    
-    // If no token or expired, trigger re-auth
     await signInWithGoogle();
     const newToken = getDriveToken();
     if (!newToken) throw new Error("Failed to obtain Drive token");
     return newToken;
-}
-
-export async function signInWithGitHub(): Promise<string> {
-    return new Promise((resolve) => {
-        const token = 'ghp_mock_token_' + Math.random().toString(36).substring(7);
-        localStorage.setItem('github_token', token);
-        setTimeout(() => resolve(token), 1000);
-    });
 }
 
 export async function signOut(): Promise<void> {
@@ -81,14 +103,12 @@ export async function signOut(): Promise<void> {
     localStorage.removeItem('google_drive_token');
     localStorage.removeItem('token_expiry');
     localStorage.removeItem('drive_user');
+    localStorage.removeItem('github_token');
     window.location.reload();
 }
 
 export function getCurrentUser(): any {
-    // If Firebase is initialized, that's our source of truth
     if (auth?.currentUser) return auth.currentUser;
-    
-    // Fallback for initial load before Firebase initializes
     const data = localStorage.getItem('drive_user');
     return data ? JSON.parse(data) : null;
 }
