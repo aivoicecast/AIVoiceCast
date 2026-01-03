@@ -1,12 +1,12 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link } from 'lucide-react';
+import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3 } from 'lucide-react';
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
 import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile, registerIdentity, claimOfflinePayment, DEFAULT_MONTHLY_GRANT } from '../services/firestoreService';
 import { auth, db, getDb } from '../services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { generateMemberIdentity, requestIdentityCertificate, verifyCertificateOffline, verifySignature, signPayment, AIVOICECAST_TRUST_PUBLIC_KEY } from '../utils/cryptoUtils';
 import { generateSecureId } from '../utils/idUtils';
+import { GoogleGenAI } from "@google/genai";
 
 interface CoinWalletProps {
   onBack: () => void;
@@ -18,7 +18,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [transactions, setTransactions] = useState<CoinTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [granting, setGranting] = useState(false);
   
   const [databaseInstance, setDatabaseInstance] = useState(db);
   
@@ -26,10 +25,13 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState('');
   const [transferMemo, setTransferMemo] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
-  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isTransferring, setIsTransferring] = useState(false);
+  const [pastedPayUri, setPastedPayUri] = useState('');
+
+  // Receive Form States
+  const [receiveAmount, setReceiveAmount] = useState('');
+  const [receiveMemo, setReceiveMemo] = useState('');
+  const [showReceiveForm, setShowReceiveForm] = useState(true);
 
   // Identity & Offline States
   const [isCreatingIdentity, setIsCreatingIdentity] = useState(false);
@@ -45,18 +47,11 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
 
   // Public Payment View (For scanning/opening receive links)
-  const [publicPaymentTarget, setPublicPaymentTarget] = useState<{ uid: string, name: string } | null>(null);
+  const [publicPaymentTarget, setPublicPaymentTarget] = useState<{ uid: string, name: string, amount?: string, memo?: string } | null>(null);
 
-  // Local storage for the private key (normally should be highly protected)
+  // Local storage for the private key
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
   
-  const filteredUsers = useMemo(() => {
-    return allUsers.filter(u => 
-      u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      (u.email && u.email.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
-  }, [allUsers, searchQuery]);
-
   const initAttempted = useRef(false);
 
   // Auto-Claim Effect
@@ -93,17 +88,19 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
         if (nextQueue.some(q => q.status === 'success')) handleRefresh();
     };
 
-    const interval = setInterval(processQueue, 30000); // Check every 30s
+    const interval = setInterval(processQueue, 30000); 
     processQueue();
     return () => clearInterval(interval);
   }, [user]);
 
-  // Pay/Token URI Handler
+  // Deep Link URI Handler
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payUid = params.get('pay');
     const payName = params.get('name');
     const tokenStr = params.get('token');
+    const amt = params.get('amount');
+    const mmo = params.get('memo');
 
     if (tokenStr) {
         setPastedToken(tokenStr);
@@ -114,21 +111,19 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
         newUrl.searchParams.delete('token');
         window.history.replaceState({}, '', newUrl.toString());
     } else if (payUid && payName) {
-        setPublicPaymentTarget({ uid: payUid, name: payName });
-        // Clean URL after capturing state
+        setPublicPaymentTarget({ 
+            uid: payUid, 
+            name: payName, 
+            amount: amt || undefined, 
+            memo: mmo || undefined 
+        });
+        
+        // Clean URL
         const newUrl = new URL(window.location.href);
-        newUrl.searchParams.delete('pay');
-        newUrl.searchParams.delete('name');
+        ['pay','name','amount','memo'].forEach(p => newUrl.searchParams.delete(p));
         window.history.replaceState({}, '', newUrl.toString());
     }
   }, []);
-
-  useEffect(() => {
-    if (propUser) {
-        setUser(propUser);
-        setLoading(false);
-    }
-  }, [propUser]);
 
   const initWallet = useCallback(async (force = false) => {
     const activeDb = databaseInstance || getDb();
@@ -138,8 +133,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
     }
     if (!databaseInstance) setDatabaseInstance(activeDb);
 
-    // If force is not requested and we already attempted, don't stall UI
-    // BUT we still want to ensure balance is fresh if coming from a claim
     if (!force && initAttempted.current && user) {
         setLoading(false);
         return;
@@ -174,9 +167,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   }, [user, databaseInstance]);
 
   useEffect(() => {
-    // ALWAYS force a refresh on mount to ensure balance is current (e.g. after notification claim)
     initWallet(true);
-    
     if (auth) {
         const unsubscribe = onAuthStateChanged(auth, (u) => {
             if (u) initWallet(true);
@@ -213,7 +204,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           await registerIdentity(user.uid, publicKey, certificate);
           setPrivateKey(privateKey);
           await handleRefresh();
-          alert("Cryptographic Identity Created & Verified by AIVoiceCast!");
+          alert("Cryptographic Identity Created!");
       } catch (e) {
           alert("Failed to create identity.");
       } finally {
@@ -231,7 +222,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           const paymentBase = {
               senderId: user.uid,
               senderName: user.displayName,
-              recipientId: selectedUser?.uid || 'any',
+              recipientId: publicPaymentTarget?.uid || 'any',
               amount,
               timestamp: Date.now(),
               nonce
@@ -261,7 +252,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       try {
           const token: OfflinePaymentToken = JSON.parse(atob(tokenToVerify));
           const isCertValid = verifyCertificateOffline(token.certificate);
-          if (!isCertValid) throw new Error("Certificate not signed by AIVoiceCast Trust.");
+          if (!isCertValid) throw new Error("Certificate invalid.");
           const senderCert = JSON.parse(atob(token.certificate));
           const isSigValid = await verifySignature(senderCert.publicKey, token.signature, {
               senderId: token.senderId,
@@ -271,10 +262,10 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               timestamp: token.timestamp,
               nonce: token.nonce
           });
-          if (!isSigValid) throw new Error("Invalid transaction signature.");
+          if (!isSigValid) throw new Error("Invalid signature.");
           setVerifiedToken(token);
       } catch (e: any) {
-          setVerificationError(e.message || "Invalid token format.");
+          setVerificationError(e.message || "Invalid token.");
       } finally {
           setIsVerifying(false);
       }
@@ -286,7 +277,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       try {
           if (navigator.onLine) {
               await claimOfflinePayment(verifiedToken);
-              alert("Offline payment cleared and added to your balance!");
+              alert("Payment cleared!");
               handleRefresh();
           } else {
               const claim: PendingClaim = { tokenStr: btoa(JSON.stringify(verifiedToken)), timestamp: Date.now(), status: 'pending' };
@@ -294,7 +285,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               const queue = JSON.parse(queueRaw);
               queue.push(claim);
               localStorage.setItem(`pending_claims_${user.uid}`, JSON.stringify(queue));
-              alert("You are offline. Token added to local claim queue and will sync automatically when online.");
+              alert("Offline. Token added to claim queue.");
           }
           setShowTokenInput(false);
           setVerifiedToken(null);
@@ -307,17 +298,16 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   };
 
   const handleTransfer = async () => {
-      if (!selectedUser || !transferAmount || !user) return;
+      if (!publicPaymentTarget || !transferAmount || !user) return;
       const amount = parseInt(transferAmount);
       if (isNaN(amount) || amount <= 0) return alert("Enter valid amount.");
       if (amount > user.coinBalance) return alert("Insufficient balance.");
 
       setIsTransferring(true);
       try {
-          await transferCoins(selectedUser.uid, selectedUser.displayName, amount, transferMemo);
-          alert(`Sent ${amount} coins to ${selectedUser.displayName}! Recipient notified to claim.`);
-          setShowTransfer(false);
-          setSelectedUser(null);
+          await transferCoins(publicPaymentTarget.uid, publicPaymentTarget.name, amount, transferMemo);
+          alert(`Sent ${amount} coins to ${publicPaymentTarget.name}!`);
+          setPublicPaymentTarget(null);
           setTransferAmount('');
           setTransferMemo('');
           await handleRefresh();
@@ -328,69 +318,128 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       }
   };
 
-  const handleSearchUsers = async () => {
+  const handlePastePayUri = () => {
       try {
-          const users = await getAllUsers();
-          const currentUid = auth?.currentUser?.uid;
-          setAllUsers(users.filter(u => u.uid !== currentUid));
-      } catch(e) {}
-  };
-
-  useEffect(() => {
-      if (showTransfer) handleSearchUsers();
-  }, [showTransfer]);
-
-  const formatCurrency = (coins: number) => {
-      return (coins / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+          const url = new URL(pastedPayUri);
+          const payUid = url.searchParams.get('pay');
+          const payName = url.searchParams.get('name');
+          const amt = url.searchParams.get('amount');
+          const mmo = url.searchParams.get('memo');
+          
+          if (payUid && payName) {
+              setPublicPaymentTarget({ uid: payUid, name: payName, amount: amt || undefined, memo: mmo || undefined });
+              setShowTransfer(false);
+              setPastedPayUri('');
+          } else {
+              alert("Invalid Payment URI. Ensure it contains 'pay' and 'name' parameters.");
+          }
+      } catch(e) {
+          alert("Invalid URL format.");
+      }
   };
 
   const qrImageUrl = (data: string) => `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(data)}`;
 
   const buildReceiveUri = (uid: string, name: string) => {
-      return `${window.location.origin}${window.location.pathname}?view=coin_wallet&pay=${uid}&name=${encodeURIComponent(name)}`;
+      let uri = `${window.location.origin}${window.location.pathname}?view=coin_wallet&pay=${uid}&name=${encodeURIComponent(name)}`;
+      if (receiveAmount) uri += `&amount=${receiveAmount}`;
+      if (receiveMemo) uri += `&memo=${encodeURIComponent(receiveMemo)}`;
+      return uri;
   };
   
   const buildTokenUri = (tokenStr: string) => {
       return `${window.location.origin}${window.location.pathname}?view=coin_wallet&token=${tokenStr}`;
   };
 
+  const formatCurrency = (coins: number) => {
+      return (coins / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  };
+
+  const handleGenerateAmountWords = async (val: number, isCoins = false) => {
+      setIsUpdatingWords(true);
+      try {
+          // Fix: Create a new GoogleGenAI instance right before making an API call
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const response = await ai.models.generateContent({
+              model: 'gemini-3-flash-preview',
+              contents: `Convert the exact amount ${val} to professional bank check words. MANDATORY: 'WORDS AND CENTS/100'. Respond with text ONLY.`
+          });
+          // Fix: Access response.text directly (not as a function)
+          const text = response.text?.trim().toUpperCase() || '';
+          if (text) setCheck(prev => ({ ...prev, amountWords: text }));
+      } catch (e) { console.error(e); } finally { setIsUpdatingWords(false); }
+  };
+
+  const [check, setCheck] = useState({ amountWords: '' });
+  const [isUpdatingWords, setIsUpdatingWords] = useState(false);
+
   if (publicPaymentTarget) {
-      const targetUri = buildReceiveUri(publicPaymentTarget.uid, publicPaymentTarget.name);
+      const isAutoMode = !!publicPaymentTarget.amount;
       return (
           <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden animate-fade-in">
               <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center px-6 shrink-0 z-20">
                   <button onClick={() => setPublicPaymentTarget(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors mr-4">
                       <ArrowLeft size={20} />
                   </button>
-                  <h1 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Personal Payment Page</h1>
+                  <h1 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Authorize Payment</h1>
               </header>
               <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center">
-                  <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center text-center animate-fade-in-up">
-                      <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center mb-6 border border-indigo-500/20 shadow-xl shadow-indigo-500/5">
-                          <User size={40} className="text-indigo-400" />
-                      </div>
-                      <h2 className="text-2xl font-black text-white mb-1 italic uppercase tracking-tighter">{publicPaymentTarget.name}</h2>
-                      <p className="text-xs text-indigo-400 font-bold uppercase tracking-[0.2em] mb-8">Verified AIVoiceCast Member</p>
-
-                      <div className="w-full bg-white p-6 rounded-[2rem] border-8 border-slate-800 mb-8 shadow-inner flex flex-col items-center">
-                          <img src={qrImageUrl(targetUri)} className="w-48 h-48" alt="Recipient QR"/>
-                          <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Scan to Pay</p>
+                  <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-[2.5rem] p-8 shadow-2xl flex flex-col animate-fade-in-up">
+                      <div className="flex flex-col items-center text-center mb-8">
+                        <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center mb-4 border border-indigo-500/20">
+                            <User size={40} className="text-indigo-400" />
+                        </div>
+                        <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter">{publicPaymentTarget.name}</h2>
+                        <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-[0.2em] mt-1">Requesting VoiceCoins</p>
                       </div>
 
-                      <div className="grid grid-cols-1 w-full gap-3">
-                          <button 
-                            onClick={() => { setSelectedUser({ uid: publicPaymentTarget.uid, displayName: publicPaymentTarget.name } as UserProfile); setShowTransfer(true); setPublicPaymentTarget(null); }}
-                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95"
-                          >
-                              <Send size={18} className="rotate-[-20deg]"/>
-                              Send VoiceCoins
-                          </button>
-                          <button 
-                            onClick={() => setPublicPaymentTarget(null)}
-                            className="w-full py-4 bg-slate-800 text-slate-400 font-bold rounded-2xl border border-slate-700 hover:bg-slate-700 transition-all"
-                          >
-                              Cancel
-                          </button>
+                      <div className="space-y-6">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Amount to Transfer</label>
+                                <div className="relative">
+                                    <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500" size={24}/>
+                                    <input 
+                                        type="number" 
+                                        value={transferAmount || publicPaymentTarget.amount || ''}
+                                        onChange={e => setTransferAmount(e.target.value)}
+                                        placeholder="0"
+                                        readOnly={isAutoMode}
+                                        className={`w-full bg-slate-950 border ${isAutoMode ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white'} rounded-2xl pl-12 pr-6 py-5 text-4xl font-black focus:outline-none focus:border-amber-500 transition-all`}
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Reference/Reason</label>
+                                <input 
+                                    type="text" 
+                                    value={transferMemo || publicPaymentTarget.memo || ''}
+                                    onChange={e => setTransferMemo(e.target.value)}
+                                    placeholder="Add a reason..."
+                                    readOnly={isAutoMode}
+                                    className={`w-full bg-slate-950 border ${isAutoMode ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white'} rounded-xl px-4 py-3 text-sm focus:outline-none`}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <button 
+                                onClick={handleTransfer}
+                                disabled={isTransferring || (!transferAmount && !publicPaymentTarget.amount)}
+                                className="py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                            >
+                                {isTransferring ? <Loader2 size={18} className="animate-spin" /> : <Globe size={18}/>}
+                                {isTransferring ? 'Syncing' : 'Send'}
+                            </button>
+                            <button 
+                                onClick={handleGenerateOfflineToken}
+                                disabled={!user?.certificate || !privateKey || (!transferAmount && !publicPaymentTarget.amount)}
+                                className="py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl border border-slate-700 flex items-center justify-center gap-2 transition-all active:scale-95"
+                            >
+                                <WifiOff size={18}/>
+                                Offline
+                            </button>
+                        </div>
                       </div>
                   </div>
               </div>
@@ -411,10 +460,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               </h1>
           </div>
           <div className="flex items-center gap-2">
-              {isAutoSyncing && <div className="flex items-center gap-2 px-3 py-1 bg-emerald-900/20 text-emerald-400 rounded-full text-[10px] font-bold uppercase animate-pulse border border-emerald-500/30"><RefreshCw size={10} className="animate-spin"/> Syncing Ledger</div>}
               <button onClick={() => setShowTokenInput(true)} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg text-xs font-bold border border-slate-700 transition-all flex items-center gap-2">
                   <Download size={14}/>
-                  Import Token
+                  Import
               </button>
               <button onClick={handleRefresh} disabled={isRefreshing} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
                   <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''}/>
@@ -447,11 +495,11 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                         onClick={() => setShowTransfer(true)}
                         className="bg-white text-indigo-900 font-bold py-3.5 rounded-2xl shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
                       >
-                          <Send size={18} className="rotate-[-20deg]" />
-                          <span>Send Coins</span>
+                          <Smartphone size={18} className="rotate-[-20deg]" />
+                          <span>Scan to Pay</span>
                       </button>
                       <button 
-                        onClick={() => setShowReceiveQR(true)}
+                        onClick={() => { setShowReceiveForm(true); setShowReceiveQR(true); }}
                         className="bg-indigo-500/30 text-white font-bold py-3.5 rounded-2xl border border-white/20 hover:bg-white/10 transition-all flex items-center justify-center gap-2"
                       >
                           <QrCode size={18} />
@@ -472,9 +520,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                       {user?.certificate && <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest font-black">Trusted</span>}
                   </h3>
                   <p className="text-sm text-slate-400 leading-relaxed">
-                      {user?.certificate 
-                        ? "Your decentralized identity is verified by AIVoiceCast. You can issue cryptographically signed offline tokens." 
-                        : "Initialize your cryptographic identity to support verified offline payments and peer-to-peer trust."}
+                      Initialize your cryptographic identity to support verified offline payments and peer-to-peer trust.
                   </p>
               </div>
               {!user?.certificate && (
@@ -489,28 +535,10 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-start gap-4">
-                  <div className="p-2.5 bg-indigo-900/30 rounded-xl text-indigo-400"><Info size={20}/></div>
-                  <div>
-                      <h4 className="text-sm font-bold text-white mb-1">Monthly Allowance</h4>
-                      <p className="text-xs text-slate-500 leading-relaxed">All members receive {DEFAULT_MONTHLY_GRANT.toLocaleString()} free VoiceCoins monthly to power the shared network of learning.</p>
-                  </div>
-              </div>
-              <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-start gap-4">
-                  <div className="p-2.5 bg-emerald-900/30 rounded-xl text-emerald-400"><Heart size={20}/></div>
-                  <div>
-                      <h4 className="text-sm font-bold text-white mb-1">Contribution Rewards</h4>
-                      <p className="text-xs text-slate-500 leading-relaxed">Earn 1000 coins for every "Like" your podcasts, blogs, or documents receive from the community.</p>
-                  </div>
-              </div>
-          </div>
-
           {/* Ledger Section */}
           <div className="space-y-4">
               <div className="flex items-center justify-between px-2">
                   <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Clock size={16}/> Transaction Ledger</h3>
-                  <button onClick={handleRefresh} className="text-[10px] text-indigo-400 font-bold hover:text-white transition-colors uppercase tracking-widest">Sync Ledger</button>
               </div>
               
               <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden divide-y divide-slate-800 shadow-2xl">
@@ -555,133 +583,105 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           </div>
       </div>
 
-      {/* Receive Modal */}
+      {/* Receive Modal (Request Form) */}
       {showReceiveQR && user && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
-              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl flex flex-col items-center text-center">
-                  <div className="w-16 h-16 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center mb-6 border border-indigo-500/20 shadow-xl shadow-indigo-500/10">
-                      <QrCode size={32}/>
-                  </div>
-                  <h3 className="text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">Receive VoiceCoins</h3>
-                  <p className="text-sm text-slate-400 mb-8 max-w-xs leading-relaxed">
-                      Other members can scan this code to transfer coins to you instantly or issue an offline payment.
-                  </p>
-                  
-                  <div className="w-full bg-white p-6 rounded-[2rem] border-8 border-slate-800 mb-8 shadow-inner flex flex-col items-center">
-                      <img src={qrImageUrl(buildReceiveUri(user.uid, user.displayName))} className="w-48 h-48" alt="Receive QR"/>
-                      <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">@{user.displayName.replace(/\s+/g, '_').toLowerCase()}</p>
-                  </div>
+              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up">
+                  {showReceiveForm ? (
+                      <div className="p-8 space-y-6">
+                        <div className="flex justify-between items-center mb-2">
+                            <h3 className="text-xl font-black text-white uppercase tracking-tight italic">Request VoiceCoins</h3>
+                            <button onClick={() => setShowReceiveQR(false)} className="text-slate-500 hover:text-white"><X/></button>
+                        </div>
+                        <p className="text-sm text-slate-400 leading-relaxed">Enter an amount and reason to generate a reusable payment QR code.</p>
+                        
+                        <div className="space-y-4 pt-2">
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2 px-1">Requested Amount</label>
+                                <div className="relative">
+                                    <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500" size={24}/>
+                                    <input 
+                                        type="number" 
+                                        value={receiveAmount}
+                                        onChange={e => setReceiveAmount(e.target.value)}
+                                        placeholder="0"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-12 pr-6 py-5 text-4xl font-black text-white focus:outline-none focus:border-amber-500 transition-all placeholder-slate-900"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2 px-1">Reason (Memo)</label>
+                                <input 
+                                    type="text" 
+                                    value={receiveMemo}
+                                    onChange={e => setReceiveMemo(e.target.value)}
+                                    placeholder="e.g. Design Consulting, Shared Lunch..."
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500"
+                                />
+                            </div>
+                        </div>
 
-                  <div className="flex gap-2 w-full mb-4">
-                      <button onClick={() => { navigator.clipboard.writeText(buildReceiveUri(user.uid, user.displayName)); alert("Payment Link Copied!"); }} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
-                          <Copy size={14}/> Copy Link
-                      </button>
-                      <button onClick={() => { if(navigator.share) navigator.share({ title: 'Receive VoiceCoins', url: buildReceiveUri(user.uid, user.displayName) }); }} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-all">
-                          <Share2 size={18}/>
-                      </button>
-                  </div>
-                  <button onClick={() => setShowReceiveQR(false)} className="w-full py-4 bg-slate-950 text-slate-500 rounded-2xl font-bold hover:text-white transition-all">Close</button>
+                        <button 
+                            onClick={() => setShowReceiveForm(false)}
+                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95"
+                        >
+                            Generate Request QR
+                        </button>
+                      </div>
+                  ) : (
+                      <div className="p-8 flex flex-col items-center text-center">
+                        <div className="w-16 h-16 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center mb-6 border border-indigo-500/20 shadow-xl shadow-indigo-500/10">
+                            <QrCode size={32}/>
+                        </div>
+                        <h3 className="text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">Receive {receiveAmount || ''} VC</h3>
+                        <p className="text-xs text-slate-400 mb-8 max-w-xs">{receiveMemo || 'General Request'}</p>
+                        
+                        <div className="w-full bg-white p-6 rounded-[2rem] border-8 border-slate-800 mb-8 shadow-inner flex flex-col items-center">
+                            <img src={qrImageUrl(buildReceiveUri(user.uid, user.displayName))} className="w-48 h-48" alt="Receive QR"/>
+                            <p className="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">@{user.displayName.replace(/\s+/g, '_').toLowerCase()}</p>
+                        </div>
+
+                        <div className="flex gap-2 w-full mb-4">
+                            <button onClick={() => { navigator.clipboard.writeText(buildReceiveUri(user.uid, user.displayName)); alert("Request URI Copied!"); }} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
+                                <Copy size={14}/> Copy URI
+                            </button>
+                            <button onClick={() => setShowReceiveForm(true)} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-all">
+                                <Edit3 size={18}/>
+                            </button>
+                        </div>
+                        <button onClick={() => setShowReceiveQR(false)} className="w-full py-4 bg-slate-950 text-slate-500 rounded-2xl font-bold hover:text-white transition-all">Dismiss</button>
+                      </div>
+                  )}
               </div>
           </div>
       )}
 
-      {/* Transfer Modal */}
+      {/* Send Modal (URI Input) */}
       {showTransfer && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-              <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-md overflow-hidden flex flex-col shadow-2xl">
+              <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-md overflow-hidden flex flex-col shadow-2xl animate-fade-in-up">
                   <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                      <h3 className="font-bold text-white flex items-center gap-2"><Send size={18} className="text-indigo-400 rotate-[-20deg]"/> Send Coins</h3>
-                      <button onClick={() => { setShowTransfer(false); setSelectedUser(null); }} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
+                      <h3 className="font-bold text-white flex items-center gap-2"><Send size={18} className="text-indigo-400 rotate-[-20deg]"/> Pay Request URI</h3>
+                      <button onClick={() => setShowTransfer(false)} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
                   </div>
                   
                   <div className="p-6 space-y-6">
-                      {!selectedUser ? (
-                          <div className="space-y-4">
-                              <div className="relative">
-                                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
-                                  <input 
-                                    autoFocus
-                                    type="text" 
-                                    placeholder="Find member..." 
-                                    value={searchQuery}
-                                    onChange={e => setSearchQuery(e.target.value)}
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-10 pr-4 py-4 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                                  />
-                              </div>
-                              <div className="max-h-64 overflow-y-auto space-y-1 pr-1 scrollbar-thin scrollbar-thumb-slate-800">
-                                  {filteredUsers.length === 0 ? (
-                                      <p className="text-center py-8 text-slate-600 text-sm">No members found.</p>
-                                  ) : filteredUsers.map(u => (
-                                      <button 
-                                        key={u.uid}
-                                        onClick={() => setSelectedUser(u)}
-                                        className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-slate-800 transition-all text-left group"
-                                      >
-                                          <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-10 h-10 rounded-full border border-slate-700 group-hover:border-indigo-500" />
-                                          <div className="min-w-0">
-                                              <p className="text-sm font-bold text-white truncate">{u.displayName}</p>
-                                              <p className="text-[10px] text-slate-500 uppercase font-bold">Verified Member</p>
-                                          </div>
-                                          <ChevronRight size={16} className="ml-auto text-slate-700 group-hover:text-indigo-400"/>
-                                      </button>
-                                  ))}
-                              </div>
-                          </div>
-                      ) : (
-                          <div className="space-y-6 animate-fade-in">
-                              <div className="flex items-center gap-4 bg-indigo-900/10 p-5 rounded-3xl border border-indigo-500/20">
-                                  <img src={selectedUser.photoURL || `https://ui-avatars.com/api/?name=${selectedUser.displayName}`} className="w-14 h-14 rounded-full border-2 border-indigo-500" />
-                                  <div className="min-w-0">
-                                      <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-[0.2em] mb-1">Recipient</p>
-                                      <p className="text-xl font-bold text-white truncate">{selectedUser.displayName}</p>
-                                  </div>
-                                  <button onClick={() => setSelectedUser(null)} className="ml-auto p-2 bg-slate-800 hover:bg-slate-700 rounded-full text-slate-400 hover:text-white transition-colors"><RefreshCw size={14}/></button>
-                              </div>
-                              
-                              <div className="space-y-4">
-                                  <div>
-                                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2 px-1">Amount to Transfer</label>
-                                      <div className="relative">
-                                          <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500" size={24}/>
-                                          <input 
-                                            type="number" 
-                                            value={transferAmount}
-                                            onChange={e => setTransferAmount(e.target.value)}
-                                            placeholder="0"
-                                            className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-12 pr-6 py-5 text-4xl font-black text-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 transition-all placeholder-slate-800"
-                                          />
-                                      </div>
-                                  </div>
-                                  <input 
-                                    type="text" 
-                                    value={transferMemo}
-                                    onChange={e => setTransferMemo(e.target.value)}
-                                    placeholder="Add a memo..."
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none"
-                                  />
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-3">
-                                  <button 
-                                    onClick={handleTransfer}
-                                    disabled={isTransferring || !transferAmount || parseInt(transferAmount) <= 0}
-                                    className="py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
-                                  >
-                                      {isTransferring ? <Loader2 size={18} className="animate-spin" /> : <Globe size={18}/>}
-                                      {isTransferring ? 'Processing' : 'Send Online'}
-                                  </button>
-                                  <button 
-                                    onClick={handleGenerateOfflineToken}
-                                    disabled={!user?.certificate || !privateKey || !transferAmount || parseInt(transferAmount) <= 0}
-                                    className="py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 border border-slate-700"
-                                    title={!user?.certificate ? "Create Identity First" : "Sign Offline Token"}
-                                  >
-                                      <WifiOff size={18}/>
-                                      Offline QR
-                                  </button>
-                              </div>
-                          </div>
-                      )}
+                    <p className="text-sm text-slate-400">Paste the Payment Request URI from another member to start a transfer.</p>
+                    <div className="space-y-4">
+                        <textarea 
+                            value={pastedPayUri}
+                            onChange={e => setPastedPayUri(e.target.value)}
+                            className="w-full h-24 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-indigo-300 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                            placeholder="https://aivoicecast.com/?view=coin_wallet&pay=..."
+                        />
+                        <button 
+                            onClick={handlePastePayUri}
+                            disabled={!pastedPayUri.trim()}
+                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95"
+                        >
+                            Analyze Request
+                        </button>
+                    </div>
                   </div>
               </div>
           </div>
