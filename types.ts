@@ -1,4 +1,5 @@
 
+
 export interface Address {
   name: string;
   street: string;
@@ -321,9 +322,10 @@ export interface TodoItem {
   date: string;
 }
 
+// Added 'pdf' to the language union to support PDF viewing in Code Studio
 export interface CodeFile {
   name: string;
-  language: 'python' | 'javascript' | 'typescript' | 'html' | 'css' | 'java' | 'c++' | 'c' | 'rust' | 'go' | 'c#' | 'json' | 'markdown' | 'text' | 'typescript (react)' | 'javascript (react)' | 'plantuml' | 'whiteboard';
+  language: 'python' | 'javascript' | 'typescript' | 'html' | 'css' | 'java' | 'c++' | 'c' | 'rust' | 'go' | 'c#' | 'json' | 'markdown' | 'text' | 'typescript (react)' | 'javascript (react)' | 'plantuml' | 'whiteboard' | 'pdf';
   content: string;
   sha?: string;
   path?: string;

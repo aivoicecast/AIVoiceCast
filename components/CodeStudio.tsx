@@ -1,6 +1,8 @@
+
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
-import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp } from 'lucide-react';
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink } from '../services/googleDriveService';
 import { connectGoogleDrive, getDriveToken, signInWithGitHub } from '../services/authService';
@@ -35,19 +37,29 @@ interface CodeStudioProps {
   onStartLiveSession: (channel: Channel, context?: string) => void;
 }
 
-function getLanguageFromExt(filename: string): any {
+// Fix: Return type explicitly set to CodeFile['language'] to satisfy type checker when creating CodeFile objects.
+// Also added missing mappings and fixed 'cpp' -> 'c++' to match types.ts.
+function getLanguageFromExt(filename: string): CodeFile['language'] {
     if (!filename) return 'text';
     const ext = filename.split('.').pop()?.toLowerCase();
-    if (['js', 'jsx'].includes(ext || '')) return 'javascript';
-    if (['ts', 'tsx'].includes(ext || '')) return 'typescript';
+    if (ext === 'jsx') return 'javascript (react)';
+    if (ext === 'tsx') return 'typescript (react)';
+    if (ext === 'js') return 'javascript';
+    if (ext === 'ts') return 'typescript';
     if (ext === 'py') return 'python';
-    if (['cpp', 'c', 'h', 'hpp'].includes(ext || '')) return 'c++';
+    if (['cpp', 'hpp', 'cc', 'cxx'].includes(ext || '')) return 'c++';
+    if (ext === 'c' || ext === 'h') return 'c';
+    if (ext === 'java') return 'java';
+    if (ext === 'rs') return 'rust';
+    if (ext === 'go') return 'go';
+    if (ext === 'cs') return 'c#';
     if (ext === 'html') return 'html';
     if (ext === 'css') return 'css';
     if (ext === 'json') return 'json';
     if (ext === 'md') return 'markdown';
     if (['puml', 'plantuml'].includes(ext || '')) return 'plantuml';
     if (['draw', 'whiteboard', 'wb'].includes(ext || '')) return 'whiteboard';
+    if (ext === 'pdf') return 'pdf';
     return 'text';
 }
 
@@ -60,15 +72,16 @@ const CURSOR_COLORS = [
 const FileIcon = ({ filename }: { filename: string }) => {
     if (!filename) return <File size={16} className="text-slate-500" />;
     const lang = getLanguageFromExt(filename);
-    if (lang === 'javascript' || lang === 'typescript') return <FileCode size={16} className="text-yellow-400" />;
+    if (lang === 'javascript' || lang === 'typescript' || lang === 'javascript (react)' || lang === 'typescript (react)') return <FileCode size={16} className="text-yellow-400" />;
     if (lang === 'python') return <FileCode size={16} className="text-blue-400" />;
-    if (lang === 'c++') return <FileCode size={16} className="text-indigo-400" />;
+    if (lang === 'c++' || lang === 'c') return <FileCode size={16} className="text-indigo-400" />;
     if (lang === 'html') return <FileCode size={16} className="text-orange-400" />;
     if (lang === 'css') return <FileCode size={16} className="text-blue-300" />;
     if (lang === 'json') return <FileCode size={16} className="text-green-400" />;
     if (lang === 'markdown') return <FileTextIcon size={16} className="text-slate-400" />;
     if (lang === 'plantuml') return <ImageIcon size={16} className="text-pink-400" />;
     if (lang === 'whiteboard') return <PenTool size={16} className="text-pink-500" />;
+    if (lang === 'pdf') return <FileTextIcon size={16} className="text-red-400" />;
     return <File size={16} className="text-slate-500" />;
 };
 
@@ -408,15 +421,36 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           } else if (activeTab === 'cloud' && currentUser) {
               const items = await listCloudDirectory(`projects/${currentUser.uid}`);
               setCloudItems(items);
-          } else if (activeTab === 'github' && githubToken && project.github) {
-              const { owner, repo, branch } = project.github;
-              const { files } = await fetchRepoContents(githubToken, owner, repo, branch);
-              const tree: TreeNode[] = files.map(f => ({ id: f.path || f.name, name: f.name.split('/').pop() || f.name, type: f.isDirectory ? 'folder' : 'file', isLoaded: f.childrenFetched, data: f }));
-              setGithubTree(tree);
+          } else if (activeTab === 'github' && githubToken) {
+              // If we already have a selected repo project, just use it, otherwise fetch repos
+              if (project.github && githubTree.length === 0) {
+                   await handleAutoLoadDefaultRepo(githubToken, `${project.github.owner}/${project.github.repo}`);
+              } else if (githubRepos.length === 0) {
+                  const repos = await fetchUserRepos(githubToken);
+                  setGithubRepos(repos);
+              }
           }
       } finally {
           setIsExplorerLoading(false);
       }
+  };
+
+  const handleCreateNewFile = () => {
+      const fileName = prompt("Enter filename (with extension):", "NewFile.ts");
+      if (!fileName) return;
+
+      const newFile: CodeFile = {
+          name: fileName,
+          path: activeTab === 'drive' ? `drive://${fileName}` : fileName,
+          content: "",
+          language: getLanguageFromExt(fileName),
+          loaded: true,
+          isDirectory: false,
+          isModified: true
+      };
+
+      updateSlotFile(newFile, focusedSlot);
+      setSaveStatus('modified');
   };
 
   const handleConnectDrive = async () => {
@@ -432,28 +466,32 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const handleConnectGithub = async () => {
       setIsGithubLoading(true);
       try {
-          // Uses standard OAuth popup result
           const token = await signInWithGitHub();
           if (token) {
               setGithubToken(token);
+              // Set active tab so user sees the result
+              setActiveTab('github');
               const repos = await fetchUserRepos(token);
               setGithubRepos(repos);
+              
               if (userProfile?.defaultRepoUrl) {
                   await handleAutoLoadDefaultRepo(token, userProfile.defaultRepoUrl);
               }
           }
       } catch (e: any) {
           console.error("GitHub connect failed", e);
+          alert("GitHub Connection Failed. Please ensure your browser allowed the login popup.");
       } finally {
           setIsGithubLoading(false);
       }
   };
 
   const handleAutoLoadDefaultRepo = async (token: string, repoUrl: string) => {
-      const parts = repoUrl.split('/');
+      const cleanUrl = repoUrl.replace('https://github.com/', '');
+      const parts = cleanUrl.split('/');
       if (parts.length < 2) return;
-      const owner = parts[parts.length - 2];
-      const repo = parts[parts.length - 1];
+      const owner = parts[0];
+      const repo = parts[1];
       
       setIsGithubLoading(true);
       try {
@@ -502,12 +540,31 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           let fileData: CodeFile | null = null;
           try {
               if (activeTab === 'drive' && driveToken) {
-                  const text = await readDriveFile(driveToken, node.id);
-                  fileData = { name: node.name, path: `drive://${node.id}`, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
+                  // For PDF we might want the URL instead of text content
+                  const isBinary = node.name.toLowerCase().endsWith('.pdf');
+                  if (isBinary) {
+                      fileData = { 
+                        name: node.name, 
+                        path: node.data?.webViewLink || `drive://${node.id}`, 
+                        content: '[PDF DATA]', 
+                        language: 'pdf', 
+                        loaded: true, 
+                        isDirectory: false, 
+                        isModified: false 
+                      };
+                  } else {
+                      const text = await readDriveFile(driveToken, node.id);
+                      fileData = { name: node.name, path: `drive://${node.id}`, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
+                  }
               } else if (activeTab === 'cloud' && node.data?.url) {
-                  const res = await fetch(node.data.url);
-                  const text = await res.text();
-                  fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
+                  const isBinary = node.name.toLowerCase().endsWith('.pdf');
+                  if (isBinary) {
+                      fileData = { name: node.name, path: node.data.url, content: '[PDF DATA]', language: 'pdf', loaded: true, isDirectory: false, isModified: false };
+                  } else {
+                      const res = await fetch(node.data.url);
+                      const text = await res.text();
+                      fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
+                  }
               } else if (activeTab === 'github' && project.github) {
                   const { owner, repo, branch } = project.github;
                   const text = await fetchFileContent(githubToken, owner, repo, node.id, branch);
@@ -578,12 +635,21 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       const newSlots = [...activeSlots];
       newSlots[slotIndex] = file;
       setActiveSlots(newSlots);
-      if (file && isPreviewable(file.name)) setSlotViewModes(prev => ({ ...prev, [slotIndex]: 'code' }));
+      
+      if (file) {
+        const lang = getLanguageFromExt(file.name);
+        if (['markdown', 'plantuml', 'pdf', 'whiteboard'].includes(lang)) {
+            setSlotViewModes(prev => ({ ...prev, [slotIndex]: 'preview' }));
+        } else {
+            setSlotViewModes(prev => ({ ...prev, [slotIndex]: 'code' }));
+        }
+      }
+      
       if (isLive && lockStatus === 'mine' && file?.path) updateProjectActiveFile(project.id, file.path);
   };
 
   const toggleSlotViewMode = (idx: number) => setSlotViewModes(prev => ({ ...prev, [idx]: prev[idx] === 'preview' ? 'code' : 'preview' }));
-  const isPreviewable = (filename: string) => ['md', 'puml', 'plantuml'].includes(filename.split('.').pop()?.toLowerCase() || '');
+  const isPreviewable = (filename: string) => ['md', 'puml', 'plantuml', 'pdf', 'draw', 'whiteboard', 'wb'].includes(filename.split('.').pop()?.toLowerCase() || '');
 
   const handleCodeChangeInSlot = (newCode: string, slotIdx: number) => {
       const file = activeSlots[slotIdx];
@@ -652,7 +718,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: true }));
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const prompt = `Reformat the following ${file.language} code follow industry best practices. MAINTAIN LOGIC. Respond ONLY with code.\n\n${file.content}`;
+          const prompt = `Reformat the following ${file.language} code follow industry best practices. If it is C++ (cpp), ensure it follows VS Code clang-format style (braces, indentation). MAINTAIN LOGIC. Respond ONLY with code.\n\n${file.content}`;
           const resp = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
           handleCodeChangeInSlot(resp.text?.trim() || file.content, slotIdx);
       } catch (e: any) { console.error(e); } finally { setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: false })); }
@@ -699,6 +765,9 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           if (layoutMode === 'split-v') slotStyle.width = size; else slotStyle.height = size;
           slotStyle.flex = 'none';
       }
+
+      const lang = file ? getLanguageFromExt(file.name) : 'text';
+
       return (
           <div key={idx} onClick={() => setFocusedSlot(idx)} style={slotStyle} className={`flex flex-col min-w-0 border ${isFocused ? 'border-indigo-500 z-10' : 'border-slate-800'} relative bg-slate-950 flex-1 overflow-hidden`}>
               {file ? (
@@ -709,7 +778,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                             <span className={`text-xs font-bold truncate ${isFocused ? 'text-indigo-200' : 'text-slate-400'}`}>{file.name}</span>
                         </div>
                         <div className="flex items-center gap-1">
-                            {vMode === 'code' && !['markdown'].includes(getLanguageFromExt(file.name)) && (
+                            {vMode === 'code' && !['markdown', 'pdf', 'whiteboard'].includes(lang) && (
                                 <button onClick={(e) => { e.stopPropagation(); handleFormatCode(idx); }} disabled={isFormatting} className={`p-1.5 rounded ${isFormatting ? 'text-indigo-400' : 'text-slate-500 hover:text-indigo-400'}`} title="AI Format"><Wand2 size={14}/></button>
                             )}
                             {isPreviewable(file.name) && <button onClick={(e) => { e.stopPropagation(); toggleSlotViewMode(idx); }} className={`p-1.5 rounded ${vMode === 'preview' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-white'}`}>{vMode === 'preview' ? <Code size={14}/> : <Eye size={14}/>}</button>}
@@ -717,7 +786,17 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                         </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
-                        {vMode === 'preview' ? <div className="h-full overflow-y-auto p-8 scrollbar-hide"><MarkdownView content={file.content} /></div> : (
+                        {vMode === 'preview' ? (
+                            lang === 'whiteboard' ? (
+                                <div className="w-full h-full"><Whiteboard isReadOnly={false} /></div>
+                            ) : lang === 'pdf' ? (
+                                <iframe src={file.path?.startsWith('http') ? file.path : file.path} className="w-full h-full border-none" title="PDF Viewer" />
+                            ) : (
+                                <div className="h-full overflow-y-auto p-8 scrollbar-hide">
+                                    <MarkdownView content={file.content} />
+                                </div>
+                            )
+                        ) : (
                             <RichCodeEditor 
                                 code={file.content} 
                                 onChange={(c: string) => handleCodeChangeInSlot(c, idx)} 
@@ -780,13 +859,19 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               </div>
               
               <div className="flex-1 flex flex-col overflow-hidden">
+                  <div className="p-3 border-b border-slate-800 flex gap-2 shrink-0 bg-slate-900/50">
+                      <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors" title="Refresh Explorer">
+                          {isExplorerLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}
+                      </button>
+                      <button onClick={handleCreateNewFile} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95">
+                          <FilePlus size={14}/>
+                          New File
+                      </button>
+                  </div>
+
                   {activeTab === 'drive' && (
                       driveToken ? (
-                          <div className="flex flex-col h-full">
-                              <div className="p-3 border-b border-slate-800 flex gap-2">
-                                  <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors">{isExplorerLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}</button>
-                                  <button onClick={() => handleSetLayout('single')} className="flex-1 bg-indigo-600 text-white py-1.5 rounded text-xs font-bold shadow-lg">New Project</button>
-                              </div>
+                          <div className="flex flex-col h-full overflow-hidden">
                               <div className="flex-1 overflow-y-auto scrollbar-hide py-2">
                                   {isExplorerLoading && driveItems.length === 0 ? <div className="p-8 text-center"><Loader2 size={24} className="animate-spin mx-auto text-indigo-500"/><p className="text-[10px] text-slate-500 mt-2 uppercase font-bold">Syncing...</p></div> : driveTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path?.replace('drive://','')} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}
                               </div>
@@ -796,11 +881,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
 
                   {activeTab === 'cloud' && (
                       currentUser ? (
-                          <div className="flex flex-col h-full">
-                              <div className="p-3 border-b border-slate-800 flex gap-2">
-                                  <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors">{isExplorerLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}</button>
-                                  <button onClick={() => {}} className="flex-1 bg-emerald-600 text-white py-1.5 rounded text-xs font-bold shadow-lg">Cloud Init</button>
-                              </div>
+                          <div className="flex flex-col h-full overflow-hidden">
                               <div className="flex-1 overflow-y-auto scrollbar-hide py-2">
                                   {isExplorerLoading && cloudItems.length === 0 ? <div className="p-8 text-center"><Loader2 size={24} className="animate-spin mx-auto text-emerald-500"/><p className="text-[10px] text-slate-500 mt-2 uppercase font-bold">Connecting...</p></div> : cloudItems.length === 0 ? <div className="p-8 text-center text-slate-500 italic text-xs">Private Cloud is empty.</div> : cloudTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}
                               </div>
@@ -811,13 +892,16 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                   {activeTab === 'github' && (
                       githubToken ? (
                           <div className="flex flex-col h-full overflow-hidden">
-                              <div className="p-3 border-b border-slate-800 flex flex-col gap-3">
-                                  <div className="flex gap-2">
-                                      <div className="relative flex-1">
-                                          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"/>
-                                          <input type="text" placeholder="Search repos..." value={githubSearchQuery} onChange={e => setGithubSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500 transition-all"/>
+                              <div className="px-3 pb-3 border-b border-slate-800 flex flex-col gap-2">
+                                  <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-1.5 text-[10px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-500/20">
+                                          <CheckCircle size={10}/> Connected
                                       </div>
-                                      <button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); }} className="p-1.5 bg-slate-800 hover:bg-red-900/30 text-slate-400 hover:text-red-400 rounded-lg border border-slate-700 transition-colors" title="Logout Session"><X size={14}/></button>
+                                      <button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); setGithubTree([]); }} className="text-[10px] text-slate-500 hover:text-red-400 font-bold uppercase transition-colors">Logout</button>
+                                  </div>
+                                  <div className="relative">
+                                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"/>
+                                      <input type="text" placeholder="Search repos..." value={githubSearchQuery} onChange={e => setGithubSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500 transition-all"/>
                                   </div>
                               </div>
                               
@@ -826,8 +910,11 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                                       <div className="p-12 text-center flex flex-col items-center gap-3"><Loader2 size={24} className="animate-spin text-indigo-500"/><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Querying GitHub...</span></div>
                                   ) : githubTree.length > 0 ? (
                                       <div className="py-2">
-                                          <div className="px-3 py-2 text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] border-b border-slate-800/50 mb-2 flex items-center gap-2"><Github size={12}/> {project.github?.repo || 'Active Tree'}</div>
-                                          {githubTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}
+                                          <div className="px-3 py-2 text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] border-b border-slate-800/50 mb-2 flex items-center gap-2 group cursor-pointer hover:bg-slate-800" onClick={() => setGithubTree([])}>
+                                              <ArrowLeft size={10}/> BACK TO REPOS
+                                          </div>
+                                          <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase mb-2">REPO: {project.github?.repo}</div>
+                                          {githubTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}
                                       </div>
                                   ) : (
                                       <div className="space-y-1 p-2">
