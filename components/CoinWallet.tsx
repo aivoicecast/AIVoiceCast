@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History, Signature } from 'lucide-react';
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
@@ -71,6 +70,33 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
   const initAttempted = useRef(false);
 
+  // Constants for Range Clamping
+  const { minVal, effectiveMax, walletBalance, isDonationRange, isAffordable } = useMemo(() => {
+    const balance = user?.coinBalance || 0;
+    const isDonRange = !!(publicPaymentTarget?.min || publicPaymentTarget?.max);
+    const min = Math.max(1, parseInt(publicPaymentTarget?.min || '1'));
+    const iMax = parseInt(publicPaymentTarget?.max || '1000000');
+    
+    // THE FIX: Upper bound is the minimum of the Invoice Max and current Wallet Balance
+    const effMax = Math.min(iMax, balance);
+    const affordable = balance >= min;
+
+    return { minVal: min, effectiveMax: effMax, walletBalance: balance, isDonationRange: isDonRange, isAffordable: affordable };
+  }, [publicPaymentTarget, user?.coinBalance]);
+
+  // Force clamp input whenever dependencies change
+  useEffect(() => {
+    if (isDonationRange && transferAmount) {
+        const val = parseInt(transferAmount);
+        if (val > effectiveMax) {
+            setTransferAmount(effectiveMax.toString());
+        } else if (val < minVal && transferAmount !== '') {
+            // Only clamp lower bound if they have enough balance, otherwise let validation error show
+            if (isAffordable) setTransferAmount(minVal.toString());
+        }
+    }
+  }, [effectiveMax, minVal, isDonationRange, isAffordable]);
+
   // UseMemo for total calculation to ensure it reacts to input changes
   const totalWithTip = useMemo(() => {
     const base = parseInt(transferAmount) || 0;
@@ -96,14 +122,14 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       }
   }, [user?.uid]);
 
-  // Handle donation range defaults and constrained limits
+  // Handle donation range defaults
   useEffect(() => {
-    if (publicPaymentTarget && (publicPaymentTarget.min || publicPaymentTarget.max)) {
+    if (publicPaymentTarget && isDonationRange) {
         if (!transferAmount) {
-            setTransferAmount(publicPaymentTarget.min || '1');
+            setTransferAmount(minVal.toString());
         }
     }
-  }, [publicPaymentTarget]);
+  }, [publicPaymentTarget, isDonationRange, minVal]);
 
   // Filtered Ledger Logic
   const filteredLedger = useMemo(() => {
@@ -420,18 +446,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
   if (publicPaymentTarget) {
       const isAutoMode = !!publicPaymentTarget.amount;
-      const isDonationRange = !!(publicPaymentTarget.min || publicPaymentTarget.max);
-      const isFixedWithTips = !!publicPaymentTarget.tips;
-      
       const currentVal = parseInt(transferAmount) || 0;
-      const minVal = Math.max(1, parseInt(publicPaymentTarget.min || '1'));
-      
-      // CONSTRAIN MAX BY WALLET BALANCE
-      const invoiceMax = parseInt(publicPaymentTarget.max || '1000000');
-      const walletBalance = user?.coinBalance || 0;
-      const effectiveMax = Math.min(invoiceMax, walletBalance);
-      
-      const isAffordable = walletBalance >= minVal;
       const isRangeValid = !isDonationRange || (currentVal >= minVal && currentVal <= effectiveMax);
 
       return (
@@ -467,6 +482,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                     <input 
                                         type="number" 
                                         value={transferAmount}
+                                        max={effectiveMax}
                                         onChange={e => setTransferAmount(e.target.value)}
                                         placeholder="0"
                                         readOnly={isAutoMode}
@@ -480,7 +496,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                 )}
                                 {isAffordable && !isRangeValid && (
                                     <div className="mt-2 text-[10px] text-red-400 font-bold uppercase flex items-center gap-1">
-                                        <AlertTriangle size={12}/> Out of Range. (Max: {effectiveMax})
+                                        <AlertTriangle size={12}/> Out of Range. (Limit: {effectiveMax})
                                     </div>
                                 )}
                                 {isDonationRange && isAffordable && (
@@ -493,7 +509,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                 )}
                             </div>
 
-                            {isFixedWithTips && (
+                            {publicPaymentTarget.tips && (
                                 <div className="p-4 bg-emerald-900/10 border border-emerald-500/20 rounded-2xl animate-fade-in">
                                     <div className="flex justify-between items-center mb-3">
                                         <label className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1">
