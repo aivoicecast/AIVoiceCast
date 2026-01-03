@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash } from 'lucide-react';
@@ -124,7 +125,11 @@ const FileTreeItem = ({ node, depth, activeId, onSelect, onToggle, onDelete, onS
                             depth={depth + 1} 
                             activeId={activeId} 
                             onSelect={onSelect} 
-                            onToggle(node);
+                            onToggle={onToggle}
+                            onDelete={onDelete}
+                            onShare={onShare}
+                            expandedIds={expandedIds}
+                            loadingIds={loadingIds}
                         />
                     ))}
                 </div>
@@ -215,6 +220,138 @@ const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking, cur
     );
 };
 
+interface SlotProps {
+    idx: number;
+    activeSlots: (CodeFile | null)[];
+    focusedSlot: number;
+    setFocusedSlot: (idx: number) => void;
+    slotViewModes: Record<number, 'code' | 'preview'>;
+    toggleSlotViewMode: (idx: number) => void;
+    isFormattingSlots: Record<number, boolean>;
+    terminalOutputs: Record<number, string[]>;
+    setTerminalOutputs: React.Dispatch<React.SetStateAction<Record<number, string[]>>>;
+    isTerminalOpen: Record<number, boolean>;
+    setIsTerminalOpen: React.Dispatch<React.SetStateAction<Record<number, boolean>>>;
+    isRunning: Record<number, boolean>;
+    layoutMode: LayoutMode;
+    innerSplitRatio: number;
+    handleRunCode: (idx: number) => void;
+    handleFormatCode: (idx: number) => void;
+    handleCodeChangeInSlot: (c: string, idx: number) => void;
+    updateSlotFile: (f: CodeFile | null, idx: number) => void;
+    fontSize: number;
+    indentMode: IndentMode;
+    isLive: boolean;
+    lockStatus: string;
+    broadcastCursor: (line: number, col: number) => void;
+}
+
+/* Fix: Wrapped Slot with React.FC to handle React-reserved 'key' prop implicitly */
+const Slot: React.FC<SlotProps> = ({ 
+    idx, activeSlots, focusedSlot, setFocusedSlot, slotViewModes, toggleSlotViewMode,
+    isFormattingSlots, terminalOutputs, setTerminalOutputs, isTerminalOpen, setIsTerminalOpen,
+    isRunning, layoutMode, innerSplitRatio, handleRunCode, handleFormatCode,
+    handleCodeChangeInSlot, updateSlotFile, fontSize, indentMode, isLive, lockStatus, broadcastCursor
+}) => {
+    const file = activeSlots[idx];
+    const isFocused = focusedSlot === idx;
+    const vMode = slotViewModes[idx] || 'code';
+    const isFormatting = isFormattingSlots[idx];
+    const terminalVisible = isTerminalOpen[idx];
+    const output = terminalOutputs[idx] || [];
+    const running = isRunning[idx];
+    
+    const isVisible = layoutMode === 'single' ? idx === 0 : (layoutMode === 'quad' ? true : idx < 2);
+    if (!isVisible) return null;
+    
+    const slotStyle: any = {};
+    if (layoutMode === 'split-v' || layoutMode === 'split-h') {
+        const size = idx === 0 ? `${innerSplitRatio}%` : `${100 - innerSplitRatio}%`;
+        if (layoutMode === 'split-v') slotStyle.width = size; else slotStyle.height = size;
+        slotStyle.flex = 'none';
+    }
+
+    const lang = file ? getLanguageFromExt(file.name) : 'text';
+    const canRun = ['c++', 'c', 'python', 'javascript', 'typescript'].includes(lang);
+
+    return (
+        <div onClick={() => setFocusedSlot(idx)} style={slotStyle} className={`flex flex-col min-w-0 border ${isFocused ? 'border-indigo-500 z-10' : 'border-slate-800'} relative bg-slate-950 flex-1 overflow-hidden`}>
+            {file ? (
+                <>
+                  <div className={`px-4 py-2 flex items-center justify-between shrink-0 border-b ${isFocused ? 'bg-indigo-900/20 border-indigo-500/30' : 'bg-slate-900 border-slate-800'}`}>
+                      <div className="flex items-center gap-2 overflow-hidden">
+                          <FileIcon filename={file.name} />
+                          <span className={`text-xs font-bold truncate ${isFocused ? 'text-indigo-200' : 'text-slate-400'}`}>{file.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                          {canRun && (
+                              <button onClick={(e) => { e.stopPropagation(); handleRunCode(idx); }} disabled={running} className={`p-1.5 rounded flex items-center gap-1 text-[10px] font-black uppercase transition-all ${running ? 'text-indigo-400' : 'text-emerald-400 hover:bg-emerald-600/10'}`} title="Compile & Run">
+                                  {running ? <Loader2 size={14} className="animate-spin"/> : <Play size={14} fill="currentColor"/>}
+                                  <span className="hidden md:inline">Run</span>
+                              </button>
+                          )}
+                          {vMode === 'code' && !['markdown', 'pdf', 'whiteboard'].includes(lang) && (
+                              <button onClick={(e) => { e.stopPropagation(); handleFormatCode(idx); }} disabled={isFormatting} className={`p-1.5 rounded ${isFormatting ? 'text-indigo-400' : 'text-slate-500 hover:text-indigo-400'}`} title="AI Format"><Wand2 size={14}/></button>
+                          )}
+                          {['md', 'puml', 'plantuml', 'pdf', 'draw', 'whiteboard', 'wb'].includes(file.name.split('.').pop()?.toLowerCase() || '') && <button onClick={(e) => { e.stopPropagation(); toggleSlotViewMode(idx); }} className={`p-1.5 rounded ${vMode === 'preview' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-white'}`}>{vMode === 'preview' ? <Code size={14}/> : <Eye size={14}/>}</button>}
+                          <button onClick={(e) => { e.stopPropagation(); updateSlotFile(null, idx); }} className="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-white"><X size={14}/></button>
+                      </div>
+                  </div>
+                  <div className="flex-1 flex flex-col overflow-hidden">
+                      <div className="flex-1 overflow-hidden">
+                          {vMode === 'preview' ? (
+                              lang === 'whiteboard' ? (
+                                  <div className="w-full h-full"><Whiteboard isReadOnly={false} /></div>
+                              ) : lang === 'pdf' ? (
+                                  <iframe src={file.path} className="w-full h-full border-none bg-white" title="PDF Viewer" />
+                              ) : (
+                                  <div className="h-full overflow-y-auto p-8 scrollbar-hide">
+                                      <MarkdownView content={file.content} />
+                                  </div>
+                              )
+                          ) : (
+                              <RichCodeEditor 
+                                  code={file.content} 
+                                  onChange={(c: string) => handleCodeChangeInSlot(c, idx)} 
+                                  onCursorMove={broadcastCursor}
+                                  language={file.language} 
+                                  fontSize={fontSize} 
+                                  indentMode={indentMode} 
+                                  readOnly={isLive && lockStatus === 'busy'}
+                              />
+                          )}
+                      </div>
+
+                      {terminalVisible && (
+                          <div className="h-1/3 bg-slate-950 border-t border-slate-800 flex flex-col animate-fade-in-up">
+                              <div className="p-2 border-b border-slate-900 bg-slate-900/50 flex justify-between items-center shrink-0">
+                                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><TerminalIcon size={12}/> Output Console</span>
+                                  <div className="flex items-center gap-1">
+                                      <button onClick={() => setTerminalOutputs(prev => ({ ...prev, [idx]: [] }))} className="p-1 text-slate-500 hover:text-white" title="Clear Console"><Trash size={12}/></button>
+                                      <button onClick={() => setIsTerminalOpen(prev => ({ ...prev, [idx]: false }))} className="p-1 text-slate-500 hover:text-white"><X size={12}/></button>
+                                  </div>
+                              </div>
+                              <div className="flex-1 overflow-y-auto p-3 font-mono text-xs scrollbar-hide select-text">
+                                  {output.map((line, lidx) => (
+                                      <div key={lidx} className={`${line.includes('[ERROR]') ? 'text-red-400' : 'text-slate-300'} whitespace-pre-wrap leading-relaxed`}>
+                                          {line}
+                                      </div>
+                                  ))}
+                                  {running && <div className="text-indigo-400 animate-pulse mt-2">▋ Running process...</div>}
+                              </div>
+                          </div>
+                      )}
+                  </div>
+                </>
+            ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-700 bg-slate-950/50 border-2 border-dashed border-slate-800 m-4 rounded-xl cursor-pointer hover:border-slate-600" onClick={() => {}}>
+                    <Plus size={32} className="opacity-20 mb-2" /><p className="text-xs font-bold uppercase">Pane {idx + 1}</p>
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, userProfile, sessionId: propSessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession }) => {
   const defaultFile: CodeFile = {
       name: 'main.cpp',
@@ -242,7 +379,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const [isLeftOpen, setIsLeftOpen] = useState(true);
   const [isRightOpen, setIsRightOpen] = useState(true);
   
-  // Console States
   const [terminalOutputs, setTerminalOutputs] = useState<Record<number, string[]>>({});
   const [isTerminalOpen, setIsTerminalOpen] = useState<Record<number, boolean>>({});
   const [isRunning, setIsRunning] = useState<Record<number, boolean>>({});
@@ -280,7 +416,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
 
   const centerContainerRef = useRef<HTMLDivElement>(null);
   const activeFile = activeSlots[focusedSlot];
-  
   const blobUrlsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -289,11 +424,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           blobUrlsRef.current.clear();
       };
   }, []);
-
-  const handleSetLayout = (mode: LayoutMode) => {
-    setLayoutMode(mode);
-    setInnerSplitRatio(50);
-  };
 
   const [isLive, setIsLive] = useState(false);
   const [lockStatus, setLockStatus] = useState<'free' | 'busy' | 'mine'>('free');
@@ -309,6 +439,56 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       },
       required: ["new_content"]
     }
+  };
+
+  /* Fix: Added missing toggleSlotViewMode handler */
+  const toggleSlotViewMode = (idx: number) => {
+      setSlotViewModes(prev => ({
+          ...prev,
+          [idx]: prev[idx] === 'preview' ? 'code' : 'preview'
+      }));
+  };
+
+  /* Fix: Added missing handleSetLayout handler */
+  const handleSetLayout = (mode: LayoutMode) => {
+      setLayoutMode(mode);
+  };
+
+  /* Fix: Added missing handleConnectDrive handler */
+  const handleConnectDrive = async () => {
+      try {
+          const token = await connectGoogleDrive();
+          setDriveToken(token);
+          await refreshExplorer();
+      } catch(e) {
+          console.error(e);
+      }
+  };
+
+  /* Fix: Added missing handleAutoLoadDefaultRepo handler */
+  const handleAutoLoadDefaultRepo = async (token: string, repoFullName: string) => {
+      const [owner, repo] = repoFullName.split('/');
+      setIsGithubLoading(true);
+      try {
+          const info = await fetchRepoInfo(owner, repo, token);
+          const { files } = await fetchRepoContents(token, owner, repo, info.default_branch);
+          const tree = files.map(f => ({
+              id: f.path || f.name,
+              name: f.name.split('/').pop() || f.name,
+              type: f.isDirectory ? 'folder' : 'file',
+              isLoaded: f.childrenFetched,
+              data: f
+          }));
+          setGithubTree(tree);
+          setProject(prev => ({
+              ...prev,
+              github: { owner, repo, branch: info.default_branch, sha: '' }
+          }));
+      } catch (e: any) {
+          alert("Failed to load repo: " + e.message);
+      } finally {
+          setIsGithubLoading(false);
+      }
   };
 
   useEffect(() => {
@@ -340,14 +520,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const broadcastCursor = useCallback((line: number, col: number) => {
       if (!isLive || project.id === 'init') return;
       updateCursor(project.id, {
-          clientId,
-          userId: currentUser?.uid || 'guest',
-          userName: currentUser?.displayName || 'Guest',
-          fileName: activeFile?.path || 'none',
-          line,
-          column: col,
-          color: myColor,
-          updatedAt: Date.now()
+          clientId, userId: currentUser?.uid || 'guest', userName: currentUser?.displayName || 'Guest',
+          fileName: activeFile?.path || 'none', line, column: col, color: myColor, updatedAt: Date.now()
       });
   }, [isLive, project.id, activeFile?.path, clientId, currentUser, myColor]);
 
@@ -406,174 +580,18 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                   setGithubRepos(repos);
               }
           }
-      } finally {
-          setIsExplorerLoading(false);
-      }
+      } finally { setIsExplorerLoading(false); }
   };
 
   const handleCreateNewFile = () => {
       const fileName = prompt("Enter filename (with extension):", "NewFile.ts");
       if (!fileName) return;
-
       const newFile: CodeFile = {
-          name: fileName,
-          path: activeTab === 'drive' ? `drive://${fileName}` : fileName,
-          content: "",
-          language: getLanguageFromExt(fileName),
-          loaded: true,
-          isDirectory: false,
-          isModified: true
+          name: fileName, path: activeTab === 'drive' ? `drive://${fileName}` : fileName,
+          content: "", language: getLanguageFromExt(fileName), loaded: true, isDirectory: false, isModified: true
       };
-
       updateSlotFile(newFile, focusedSlot);
       setSaveStatus('modified');
-  };
-
-  const handleCreateNewFolder = async () => {
-      if (activeTab !== 'drive' || !driveToken) {
-          alert("New folders are currently supported for Google Drive backend.");
-          return;
-      }
-      
-      const folderName = prompt("Enter folder name:", "New Folder");
-      if (!folderName) return;
-
-      setIsExplorerLoading(true);
-      try {
-          const rootId = driveRootId || await ensureCodeStudioFolder(driveToken);
-          await createDriveFolder(driveToken, folderName, rootId);
-          await refreshExplorer();
-      } catch (e: any) {
-          alert("Failed to create folder: " + e.message);
-      } finally {
-          setIsExplorerLoading(false);
-      }
-  };
-
-  const handleConnectDrive = async () => {
-    try {
-      const token = await connectGoogleDrive();
-      setDriveToken(token);
-      await refreshExplorer();
-    } catch (e: any) {
-      alert("Failed to connect to Google Drive: " + e.message);
-    }
-  };
-
-  const handleConnectGithub = async () => {
-      setIsGithubLoading(true);
-      try {
-          const token = await signInWithGitHub();
-          if (token) {
-              setGithubToken(token);
-              setActiveTab('github');
-              const repos = await fetchUserRepos(token);
-              setGithubRepos(repos);
-              
-              if (userProfile?.defaultRepoUrl) {
-                  await handleAutoLoadDefaultRepo(token, userProfile.defaultRepoUrl);
-              }
-          }
-      } catch (e: any) {
-          console.error("GitHub connect failed", e);
-          const errorMsg = e.message || "Please ensure your browser allowed the login popup.";
-          alert(`GitHub Connection Failed: ${errorMsg}`);
-      } finally {
-          setIsGithubLoading(false);
-      }
-  };
-
-  const handleAutoLoadDefaultRepo = async (token: string, repoUrl: string) => {
-      const cleanUrl = repoUrl.replace('https://github.com/', '');
-      const parts = cleanUrl.split('/');
-      if (parts.length < 2) return;
-      const owner = parts[0];
-      const repo = parts[1];
-      
-      setIsGithubLoading(true);
-      try {
-          const info = await fetchRepoInfo(owner, repo, token);
-          const { files } = await fetchRepoContents(token, owner, repo, info.default_branch);
-          
-          const newProject = { 
-              ...project, 
-              name: repo,
-              github: { owner, repo, branch: info.default_branch, sha: '' } 
-          };
-          setProject(newProject);
-          const tree: TreeNode[] = files.map(f => ({ id: f.path || f.name, name: f.name.split('/').pop() || f.name, type: f.isDirectory ? 'folder' : 'file', isLoaded: f.childrenFetched, data: f }));
-          setGithubTree(tree);
-      } catch (e) {
-          console.error("Auto-load default repo failed", e);
-      } finally {
-          setIsGithubLoading(false);
-      }
-  };
-
-  const handleSelectRepo = async (repo: any) => {
-      setIsGithubLoading(true);
-      try {
-          const { owner, name, default_branch } = repo;
-          const info = await fetchRepoInfo(owner.login, name, githubToken);
-          const { files } = await fetchRepoContents(githubToken, owner.login, name, info.default_branch);
-          
-          const newProject = { 
-              ...project, 
-              name: name,
-              github: { owner: owner.login, repo: name, branch: info.default_branch, sha: '' } 
-          };
-          setProject(newProject);
-          const tree: TreeNode[] = files.map(f => ({ id: f.path || f.name, name: f.name.split('/').pop() || f.name, type: f.isDirectory ? 'folder' : 'file', isLoaded: f.childrenFetched, data: f }));
-          setGithubTree(tree);
-      } catch (e: any) {
-          alert("Failed to load repo: " + e.message);
-      } finally {
-          setIsGithubLoading(false);
-      }
-  };
-
-  const handleExplorerSelect = async (node: TreeNode) => {
-      if (node.type === 'file') {
-          let fileData: CodeFile | null = null;
-          try {
-              if (activeTab === 'drive' && driveToken) {
-                  const iSBinary = node.name.toLowerCase().endsWith('.pdf');
-                  if (iSBinary) {
-                      const blob = await downloadDriveFileAsBlob(driveToken, node.id);
-                      const blobUrl = URL.createObjectURL(blob);
-                      blobUrlsRef.current.add(blobUrl);
-                      fileData = { 
-                        name: node.name, 
-                        path: blobUrl, 
-                        content: '[BINARY DATA]', 
-                        language: 'pdf', 
-                        loaded: true, 
-                        isDirectory: false, 
-                        isModified: false 
-                      };
-                  } else {
-                      const text = await readDriveFile(driveToken, node.id);
-                      fileData = { name: node.name, path: `drive://${node.id}`, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
-                  }
-              } else if (activeTab === 'cloud' && node.data?.url) {
-                  const iSBinary = node.name.toLowerCase().endsWith('.pdf');
-                  if (iSBinary) {
-                      fileData = { name: node.name, path: node.data.url, content: '[BINARY DATA]', language: 'pdf', loaded: true, isDirectory: false, isModified: false };
-                  } else {
-                      const res = await fetch(node.data.url);
-                      const text = await res.text();
-                      fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
-                  }
-              } else if (activeTab === 'github' && project.github) {
-                  const { owner, repo, branch } = project.github;
-                  const text = await fetchFileContent(githubToken, owner, repo, node.id, branch);
-                  fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false, sha: node.data?.sha };
-              }
-              if (fileData) updateSlotFile(fileData, focusedSlot);
-          } catch(e: any) { alert(e.message); }
-      } else {
-          toggleFolder(node);
-      }
   };
 
   const toggleFolder = async (node: TreeNode) => {
@@ -608,52 +626,50 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       }
   };
 
-  const driveTree = useMemo(() => {
-      const root: TreeNode[] = [];
-      const map = new Map<string, TreeNode>();
-      driveItems.forEach(item => map.set(item.id, { id: item.id, name: item.name, type: item.mimeType === 'application/vnd.google-apps.folder' ? 'folder' : 'file', data: item, children: [], isLoaded: item.isLoaded }));
-      driveItems.forEach(item => {
-          const node = map.get(item.id)!;
-          if (item.parentId && map.has(item.parentId)) map.get(item.parentId)!.children.push(node);
-          else if (!item.parentId) root.push(node);
-      });
-      return root;
-  }, [driveItems]);
-
-  const cloudTree = useMemo(() => {
-    const root: TreeNode[] = [];
-    const map = new Map<string, TreeNode>();
-    cloudItems.forEach(item => map.set(item.fullPath, { id: item.fullPath, name: item.name, type: item.isFolder ? 'folder' : 'file', data: item, children: [], isLoaded: true }));
-    cloudItems.forEach(item => { 
-        const node = map.get(item.fullPath)!; 
-        const parts = item.fullPath.split('/'); 
-        parts.pop(); 
-        const pPath = parts.join('/'); 
-        if (map.has(pPath)) map.get(pPath)!.children.push(node); 
-        else root.push(node); 
-    });
-    return root;
-  }, [cloudItems]);
+  const handleExplorerSelect = async (node: TreeNode) => {
+      if (node.type === 'file') {
+          let fileData: CodeFile | null = null;
+          try {
+              if (activeTab === 'drive' && driveToken) {
+                  const iSBinary = node.name.toLowerCase().endsWith('.pdf');
+                  if (iSBinary) {
+                      const blob = await downloadDriveFileAsBlob(driveToken, node.id);
+                      const blobUrl = URL.createObjectURL(blob);
+                      blobUrlsRef.current.add(blobUrl);
+                      fileData = { name: node.name, path: blobUrl, content: '[BINARY DATA]', language: 'pdf', loaded: true, isDirectory: false, isModified: false };
+                  } else {
+                      const text = await readDriveFile(driveToken, node.id);
+                      fileData = { name: node.name, path: `drive://${node.id}`, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
+                  }
+              } else if (activeTab === 'cloud' && node.data?.url) {
+                  const iSBinary = node.name.toLowerCase().endsWith('.pdf');
+                  if (iSBinary) {
+                      fileData = { name: node.name, path: node.data.url, content: '[BINARY DATA]', language: 'pdf', loaded: true, isDirectory: false, isModified: false };
+                  } else {
+                      const res = await fetch(node.data.url);
+                      const text = await res.text();
+                      fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
+                  }
+              } else if (activeTab === 'github' && project.github) {
+                  const { owner, repo, branch } = project.github;
+                  const text = await fetchFileContent(githubToken, owner, repo, node.id, branch);
+                  fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false, sha: node.data?.sha };
+              }
+              if (fileData) updateSlotFile(fileData, focusedSlot);
+          } catch(e: any) { alert(e.message); }
+      } else { toggleFolder(node); }
+  };
 
   const updateSlotFile = async (file: CodeFile | null, slotIndex: number) => {
       const newSlots = [...activeSlots];
       newSlots[slotIndex] = file;
       setActiveSlots(newSlots);
-      
       if (file) {
         const lang = getLanguageFromExt(file.name);
-        if (['markdown', 'plantuml', 'pdf', 'whiteboard'].includes(lang)) {
-            setSlotViewModes(prev => ({ ...prev, [slotIndex]: 'preview' }));
-        } else {
-            setSlotViewModes(prev => ({ ...prev, [slotIndex]: 'code' }));
-        }
+        setSlotViewModes(prev => ({ ...prev, [slotIndex]: ['markdown', 'plantuml', 'pdf', 'whiteboard'].includes(lang) ? 'preview' : 'code' }));
       }
-      
       if (isLive && lockStatus === 'mine' && file?.path) updateProjectActiveFile(project.id, file.path);
   };
-
-  const toggleSlotViewMode = (idx: number) => setSlotViewModes(prev => ({ ...prev, [idx]: prev[idx] === 'preview' ? 'code' : 'preview' }));
-  const isPreviewable = (filename: string) => ['md', 'puml', 'plantuml', 'pdf', 'draw', 'whiteboard', 'wb'].includes(filename.split('.').pop()?.toLowerCase() || '');
 
   const handleCodeChangeInSlot = (newCode: string, slotIdx: number) => {
       const file = activeSlots[slotIdx];
@@ -669,109 +685,36 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const handleRunCode = async (slotIdx: number) => {
       const file = activeSlots[slotIdx];
       if (!file) return;
-
       setIsRunning(prev => ({ ...prev, [slotIdx]: true }));
       setIsTerminalOpen(prev => ({ ...prev, [slotIdx]: true }));
-      
-      const updateTerminal = (msg: string, isError = false) => {
-          setTerminalOutputs(prev => ({
-              ...prev,
-              [slotIdx]: [...(prev[slotIdx] || []), `${isError ? '[ERROR] ' : ''}${msg}`]
-          }));
-      };
-
+      const updateTerminal = (msg: string, isError = false) => { setTerminalOutputs(prev => ({ ...prev, [slotIdx]: [...(prev[slotIdx] || []), `${isError ? '[ERROR] ' : ''}${msg}`] })); };
       updateTerminal(`>>> Starting Remote GCE Execution: ${file.name}`);
-      updateTerminal(`>>> Runtime Environment: g++ v12.2.0 (Debian)`);
-
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          
-          const prompt = `
-            Act as a remote C++ / Multi-language execution engine running on Google Compute Engine.
-            You are provided with a code file. Your task is to perform a virtual compilation and execution.
-            
-            CODE TO EXECUTE:
-            File: ${file.name}
-            Language: ${file.language}
-            Content:
-            ${file.content}
-
-            INSTRUCTIONS:
-            1. If there are syntax errors, provide specific compiler error messages (stderr style).
-            2. If code is valid, provide the EXACT output of running the program (stdout).
-            3. Simulate realistic execution behavior.
-            4. Respond ONLY with a JSON object: { "stdout": "string", "stderr": "string", "exitCode": number }
-          `;
-
-          updateTerminal(`$ g++ ${file.name} -o main && ./main`);
-
-          const resp = await ai.models.generateContent({
-              model: 'gemini-3-pro-preview',
-              contents: prompt,
-              config: { responseMimeType: 'application/json' }
-          });
-
+          const prompt = `Act as a remote C++ / Multi-language execution engine. Execute: File: ${file.name}, Lang: ${file.language}, Code: ${file.content}. Respond ONLY with JSON: { "stdout": "string", "stderr": "string", "exitCode": number }`;
+          const resp = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: prompt, config: { responseMimeType: 'application/json' } });
           const result = JSON.parse(resp.text || '{"stdout": "", "stderr": "Internal Error", "exitCode": 1}');
-          
           if (result.stderr) updateTerminal(result.stderr, true);
           if (result.stdout) updateTerminal(result.stdout);
           updateTerminal(`\n[Process exited with code ${result.exitCode}]`);
-
-      } catch (e: any) {
-          updateTerminal(`Execution failed: ${e.message}`, true);
-      } finally {
-          setIsRunning(prev => ({ ...prev, [slotIdx]: false }));
-      }
+      } catch (e: any) { updateTerminal(`Execution failed: ${e.message}`, true); } finally { setIsRunning(prev => ({ ...prev, [slotIdx]: false })); }
   };
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isChatThinking) return;
-
     setChatMessages(prev => [...prev, { role: 'user', text }]);
     setIsChatThinking(true);
-
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const history = chatMessages.map(m => ({
-          role: (m.role === 'ai' ? 'model' : 'user') as 'model' | 'user',
-          parts: [{ text: m.text }]
-      }));
-
+      const history = chatMessages.map(m => ({ role: (m.role === 'ai' ? 'model' : 'user') as 'model' | 'user', parts: [{ text: m.text }] }));
       let contextualMessage = text;
-      if (activeFile) {
-          contextualMessage = `CONTEXT: Focused File "${activeFile.name}" content:\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\`\n\nUSER REQUEST: ${text}`;
-      }
-
-      const response = await ai.models.generateContent({
-          model: 'gemini-3-pro-preview',
-          contents: [
-              ...history,
-              { role: 'user', parts: [{ text: contextualMessage }] }
-          ],
-          config: {
-              systemInstruction: "You are an expert pair programmer. Assist the user with their code. If they ask to modify it, use the 'update_active_file' tool. Format your responses in Markdown.",
-              tools: [{ functionDeclarations: [updateFileTool] }]
-          }
-      });
-
-      if (response.functionCalls && response.functionCalls.length > 0) {
-          for (const fc of response.functionCalls) {
-              if (fc.name === 'update_active_file') {
-                  const args = fc.args as any;
-                  if (args.new_content) {
-                      handleCodeChangeInSlot(args.new_content, focusedSlot);
-                      setChatMessages(prev => [...prev, { role: 'ai', text: `✅ I've updated the file. ${args.summary || ''}` }]);
-                  }
-              }
-          }
-      } else {
-          setChatMessages(prev => [...prev, { role: 'ai', text: response.text || "No response." }]);
-      }
-    } catch (e: any) {
-      setChatMessages(prev => [...prev, { role: 'ai', text: "Error: " + e.message }]);
-    } finally {
-      setIsChatThinking(false);
-    }
+      if (activeFile) contextualMessage = `CONTEXT: Focused File "${activeFile.name}" content:\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\`\n\nUSER REQUEST: ${text}`;
+      const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: [ ...history, { role: 'user', parts: [{ text: contextualMessage }] } ], config: { systemInstruction: "Expert pair programmer.", tools: [{ functionDeclarations: [updateFileTool] }] } });
+      if (response.functionCalls?.[0]?.name === 'update_active_file') {
+          const args = response.functionCalls[0].args as any;
+          if (args.new_content) { handleCodeChangeInSlot(args.new_content, focusedSlot); setChatMessages(prev => [...prev, { role: 'ai', text: `✅ Updated. ${args.summary || ''}` }]); }
+      } else { setChatMessages(prev => [...prev, { role: 'ai', text: response.text || "No response." }]); }
+    } catch (e: any) { setChatMessages(prev => [...prev, { role: 'ai', text: "Error: " + e.message }]); } finally { setIsChatThinking(false); }
   };
 
   const handleFormatCode = async (slotIdx: number) => {
@@ -780,29 +723,11 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: true }));
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const prompt = `Act as a professional code formatter like clang-format or prettier.
-          Format the following ${file.language} code to follow standard industry styles (VS Code style).
-          
-          CRITICAL INSTRUCTIONS:
-          1. Respond with the RAW code only.
-          2. DO NOT use markdown code blocks (no \`\`\`cpp or similar).
-          3. DO NOT add any explanations or preamble.
-          4. Maintain all comments and logic exactly.
-          
-          CODE TO FORMAT:
-          ${file.content}`;
-
-          const resp = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
-          
+          const resp = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: `Format RAW code: ${file.content}` });
           let result = resp.text || file.content;
           result = result.replace(/```(?:[a-zA-Z0-9+-]+)?\n?([\s\S]*?)\n?```/g, '$1').trim();
-          
           handleCodeChangeInSlot(result, slotIdx);
-      } catch (e: any) { 
-          console.error(e); 
-      } finally { 
-          setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: false })); 
-      }
+      } catch (e: any) { console.error(e); } finally { setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: false })); }
   };
 
   const resize = useCallback((e: MouseEvent) => {
@@ -826,117 +751,25 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
 
   useEffect(() => { refreshExplorer(); }, [activeTab, driveToken, githubToken, currentUser]);
 
-  useEffect(() => {
-    if (activeTab === 'github' && githubToken && userProfile?.defaultRepoUrl && githubTree.length === 0) {
-        handleAutoLoadDefaultRepo(githubToken, userProfile.defaultRepoUrl);
-    }
-  }, [activeTab, githubToken, userProfile?.defaultRepoUrl]);
+  const driveTree = useMemo(() => {
+      const root: TreeNode[] = [];
+      const map = new Map<string, TreeNode>();
+      driveItems.forEach(item => map.set(item.id, { id: item.id, name: item.name, type: item.mimeType === 'application/vnd.google-apps.folder' ? 'folder' : 'file', data: item, children: [], isLoaded: item.isLoaded }));
+      driveItems.forEach(item => {
+          const node = map.get(item.id)!;
+          if (item.parentId && map.has(item.parentId)) map.get(item.parentId)!.children.push(node);
+          else if (!item.parentId) root.push(node);
+      });
+      return root;
+  }, [driveItems]);
 
-  // Fix: Use any for props to avoid 'key' prop conflict when used in map() at line 1074
-  const Slot = ({ idx }: any) => {
-    const file = activeSlots[idx];
-    const isFocused = focusedSlot === idx;
-    const vMode = slotViewModes[idx] || 'code';
-    const isFormatting = isFormattingSlots[idx];
-    const terminalVisible = isTerminalOpen[idx];
-    const output = terminalOutputs[idx] || [];
-    const running = isRunning[idx];
-    
-    const isVisible = layoutMode === 'single' ? idx === 0 : (layoutMode === 'quad' ? true : idx < 2);
-    if (!isVisible) return null;
-    const slotStyle: any = {};
-    if (layoutMode === 'split-v' || layoutMode === 'split-h') {
-        const size = idx === 0 ? `${innerSplitRatio}%` : `${100 - innerSplitRatio}%`;
-        if (layoutMode === 'split-v') slotStyle.width = size; else slotStyle.height = size;
-        slotStyle.flex = 'none';
-    }
-
-    const lang = file ? getLanguageFromExt(file.name) : 'text';
-    const canRun = ['c++', 'c', 'python', 'javascript', 'typescript'].includes(lang);
-
-    return (
-        <div key={idx} onClick={() => setFocusedSlot(idx)} style={slotStyle} className={`flex flex-col min-w-0 border ${isFocused ? 'border-indigo-500 z-10' : 'border-slate-800'} relative bg-slate-950 flex-1 overflow-hidden`}>
-            {file ? (
-                <>
-                  <div className={`px-4 py-2 flex items-center justify-between shrink-0 border-b ${isFocused ? 'bg-indigo-900/20 border-indigo-500/30' : 'bg-slate-900 border-slate-800'}`}>
-                      <div className="flex items-center gap-2 overflow-hidden">
-                          <FileIcon filename={file.name} />
-                          <span className={`text-xs font-bold truncate ${isFocused ? 'text-indigo-200' : 'text-slate-400'}`}>{file.name}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                          {canRun && (
-                              <button onClick={(e) => { e.stopPropagation(); handleRunCode(idx); }} disabled={running} className={`p-1.5 rounded flex items-center gap-1 text-[10px] font-black uppercase transition-all ${running ? 'text-indigo-400' : 'text-emerald-400 hover:bg-emerald-600/10'}`} title="Compile & Run">
-                                  {running ? <Loader2 size={14} className="animate-spin"/> : <Play size={14} fill="currentColor"/>}
-                                  <span className="hidden md:inline">Run</span>
-                              </button>
-                          )}
-                          {vMode === 'code' && !['markdown', 'pdf', 'whiteboard'].includes(lang) && (
-                              <button onClick={(e) => { e.stopPropagation(); handleFormatCode(idx); }} disabled={isFormatting} className={`p-1.5 rounded ${isFormatting ? 'text-indigo-400' : 'text-slate-500 hover:text-indigo-400'}`} title="AI Format"><Wand2 size={14}/></button>
-                          )}
-                          {isPreviewable(file.name) && <button onClick={(e) => { e.stopPropagation(); toggleSlotViewMode(idx); }} className={`p-1.5 rounded ${vMode === 'preview' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-white'}`}>{vMode === 'preview' ? <Code size={14}/> : <Eye size={14}/>}</button>}
-                          <button onClick={(e) => { e.stopPropagation(); updateSlotFile(null, idx); }} className="p-1.5 hover:bg-slate-800 rounded text-slate-500 hover:text-white"><X size={14}/></button>
-                      </div>
-                  </div>
-                  <div className="flex-1 flex flex-col overflow-hidden">
-                      <div className="flex-1 overflow-hidden">
-                          {vMode === 'preview' ? (
-                              lang === 'whiteboard' ? (
-                                  <div className="w-full h-full"><Whiteboard isReadOnly={false} /></div>
-                              ) : lang === 'pdf' ? (
-                                  <iframe src={file.path} className="w-full h-full border-none bg-white" title="PDF Viewer" />
-                              ) : (
-                                  <div className="h-full overflow-y-auto p-8 scrollbar-hide">
-                                      <MarkdownView content={file.content} />
-                                  </div>
-                              )
-                          ) : (
-                              <RichCodeEditor 
-                                  code={file.content} 
-                                  onChange={(c: string) => handleCodeChangeInSlot(c, idx)} 
-                                  onCursorMove={broadcastCursor}
-                                  language={file.language} 
-                                  fontSize={fontSize} 
-                                  indentMode={indentMode} 
-                                  readOnly={isLive && lockStatus === 'busy'}
-                              />
-                          )}
-                      </div>
-
-                      {terminalVisible && (
-                          <div className="h-1/3 bg-slate-950 border-t border-slate-800 flex flex-col animate-fade-in-up">
-                              <div className="p-2 border-b border-slate-900 bg-slate-900/50 flex justify-between items-center shrink-0">
-                                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><TerminalIcon size={12}/> Output Console</span>
-                                  <div className="flex items-center gap-1">
-                                      <button onClick={() => setTerminalOutputs(prev => ({ ...prev, [idx]: [] }))} className="p-1 text-slate-500 hover:text-white" title="Clear Console"><Trash size={12}/></button>
-                                      <button onClick={() => setIsTerminalOpen(prev => ({ ...prev, [idx]: false }))} className="p-1 text-slate-500 hover:text-white"><X size={12}/></button>
-                                  </div>
-                              </div>
-                              <div className="flex-1 overflow-y-auto p-3 font-mono text-xs scrollbar-hide select-text">
-                                  {output.map((line, lidx) => (
-                                      <div key={lidx} className={`${line.includes('[ERROR]') ? 'text-red-400' : 'text-slate-300'} whitespace-pre-wrap leading-relaxed`}>
-                                          {line}
-                                      </div>
-                                  ))}
-                                  {running && <div className="text-indigo-400 animate-pulse mt-2">▋ Running process...</div>}
-                              </div>
-                          </div>
-                      )}
-                  </div>
-                </>
-            ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-slate-700 bg-slate-950/50 border-2 border-dashed border-slate-800 m-4 rounded-xl cursor-pointer hover:border-slate-600" onClick={handleCreateNewFile}>
-                    <Plus size={32} className="opacity-20 mb-2" /><p className="text-xs font-bold uppercase">Pane {idx + 1}</p>
-                </div>
-            )}
-        </div>
-    );
-  };
-
-  const collaborators = useMemo(() => {
-      if (!project.cursors) return [];
-      const now = Date.now();
-      return Object.values(project.cursors).filter((c: any) => now - c.updatedAt < 60000); 
-  }, [project.cursors]);
+  const cloudTree = useMemo(() => {
+    const root: TreeNode[] = [];
+    const map = new Map<string, TreeNode>();
+    cloudItems.forEach(item => map.set(item.fullPath, { id: item.fullPath, name: item.name, type: item.isFolder ? 'folder' : 'file', data: item, children: [], isLoaded: true }));
+    cloudItems.forEach(item => { const node = map.get(item.fullPath)!; const parts = item.fullPath.split('/'); parts.pop(); const pPath = parts.join('/'); if (map.has(pPath)) map.get(pPath)!.children.push(node); else root.push(node); });
+    return root;
+  }, [cloudItems]);
 
   return (
     <div className="flex flex-col h-full bg-slate-950 text-slate-100 overflow-hidden">
@@ -944,14 +777,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
          <div className="flex items-center space-x-4">
             <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
             <button onClick={() => setIsLeftOpen(!isLeftOpen)} className={`p-2 rounded-lg ${isLeftOpen ? 'bg-slate-800 text-white' : 'text-slate-50'}`}><PanelLeftOpen size={20}/></button>
-            <div className="h-4 w-px bg-slate-800 mx-2"></div>
-            <div className="flex items-center -space-x-2">
-                {collaborators.map((c: any) => <div key={c.clientId} className="w-8 h-8 rounded-full border-2 border-slate-950 flex items-center justify-center bg-slate-800 overflow-hidden" title={c.userName}><span className="text-[10px] font-bold" style={{ color: c.color }}>{c.userName[0]}</span></div>)}
-                {isLive && collaborators.length > 0 && <div className="ml-4 flex items-center gap-2 px-2 py-1 bg-emerald-900/20 text-emerald-400 border border-emerald-500/20 rounded-full text-[10px] font-black uppercase tracking-widest"><Activity size={12} className="animate-pulse" /> Live</div>}
-            </div>
          </div>
          <div className="flex items-center space-x-2">
-            {isLive && (<div className="flex gap-1 mr-4">{lockStatus === 'mine' ? (<button onClick={handleRelinquishControl} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase shadow-lg animate-pulse"><Unlock size={14}/> Active Control</button>) : lockStatus === 'busy' ? (<div className="flex items-center gap-2 px-3 py-1.5 bg-red-900/30 text-red-400 border border-red-500/30 rounded-lg text-[10px] font-black uppercase cursor-not-allowed"><Lock size={14}/> Busy</div>) : (<button onClick={handleTakeControl} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg text-[10px] font-black uppercase border border-slate-700 transition-all"><MousePointer2 size={14}/> Take Control</button>)}</div>)}
             <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 mr-4">
                 <button onClick={() => handleSetLayout('single')} className={`p-1.5 rounded ${layoutMode === 'single' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><SquareIcon size={16}/></button>
                 <button onClick={() => handleSetLayout('split-v')} className={`p-1.5 rounded ${layoutMode === 'split-v' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`}><Columns size={16}/></button>
@@ -969,116 +796,26 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                   <button onClick={() => setActiveTab('cloud')} className={`flex-1 py-3 flex justify-center border-b-2 transition-colors ${activeTab === 'cloud' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-500 hover:text-slate-300'}`} title="Private Cloud"><Cloud size={18}/></button>
                   <button onClick={() => setActiveTab('github')} className={`flex-1 py-3 flex justify-center border-b-2 transition-colors ${activeTab === 'github' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-500 hover:text-slate-300'}`} title="GitHub"><Github size={18}/></button>
               </div>
-              
               <div className="flex-1 flex flex-col overflow-hidden">
                   <div className="p-3 border-b border-slate-800 flex gap-1.5 shrink-0 bg-slate-900/50">
-                      <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors" title="Refresh Explorer">
-                          {isExplorerLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}
-                      </button>
-                      <button onClick={handleCreateNewFile} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-1.5 shadow-lg transition-all active:scale-95">
-                          <FilePlus size={14}/>
-                          New File
-                      </button>
-                      <button onClick={handleCreateNewFolder} className="p-2 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg border border-slate-700 transition-colors" title="New Folder">
-                          <FolderPlus size={16}/>
-                      </button>
+                      <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors" title="Refresh Explorer">{isExplorerLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}</button>
+                      <button onClick={handleCreateNewFile} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-1.5 shadow-lg transition-all active:scale-95"><FilePlus size={14}/> New File</button>
                   </div>
-
-                  {activeTab === 'drive' && (
-                      driveToken ? (
-                          <div className="flex flex-col h-full overflow-hidden">
-                              <div className="flex-1 overflow-y-auto scrollbar-hide py-2">
-                                  {isExplorerLoading && driveItems.length === 0 ? <div className="p-8 text-center"><Loader2 size={24} className="animate-spin mx-auto text-indigo-500"/><p className="text-[10px] text-slate-500 mt-2 uppercase font-bold">Syncing...</p></div> : driveTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path?.replace('drive://','')} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}
-                              </div>
-                          </div>
-                      ) : <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4"><div className="w-16 h-16 bg-indigo-900/20 rounded-3xl flex items-center justify-center border border-indigo-500/20"><HardDrive size={32} className="text-indigo-400"/></div><p className="text-xs text-slate-400 leading-relaxed px-4">Connect your Google Drive to edit files securely in the cloud.</p><button onClick={handleConnectDrive} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95">Connect G-Drive</button></div>
-                  )}
-
-                  {activeTab === 'cloud' && (
-                      currentUser ? (
-                          <div className="flex flex-col h-full overflow-hidden">
-                              <div className="flex-1 overflow-y-auto scrollbar-hide py-2">
-                                  {isExplorerLoading && cloudItems.length === 0 ? <div className="p-8 text-center"><Loader2 size={24} className="animate-spin mx-auto text-emerald-500"/><p className="text-[10px] text-slate-500 mt-2 uppercase font-bold">Connecting...</p></div> : cloudItems.length === 0 ? <div className="p-8 text-center text-slate-500 italic text-xs">Private Cloud is empty.</div> : cloudTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}
-                              </div>
-                          </div>
-                      ) : <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4"><div className="w-16 h-16 bg-emerald-900/20 rounded-3xl flex items-center justify-center border border-emerald-500/20"><Cloud size={32} className="text-emerald-400"/></div><p className="text-xs text-slate-400 leading-relaxed px-4">Please sign in to access your platform-hosted private cloud storage.</p></div>
-                  )}
-
-                  {activeTab === 'github' && (
-                      githubToken ? (
-                          <div className="flex flex-col h-full overflow-hidden">
-                              <div className="px-3 pb-3 border-b border-slate-800 flex flex-col gap-2">
-                                  <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-1.5 text-[10px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-500/20">
-                                          <CheckCircle size={10}/> Connected
-                                      </div>
-                                      <button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); setGithubTree([]); }} className="text-[10px] text-slate-500 hover:text-red-400 font-bold uppercase transition-colors">Logout</button>
-                                  </div>
-                                  <div className="relative">
-                                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"/>
-                                      <input type="text" placeholder="Search repos..." value={githubSearchQuery} onChange={e => setGithubSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500 transition-all"/>
-                                  </div>
-                              </div>
-                              
-                              <div className="flex-1 overflow-y-auto scrollbar-hide">
-                                  {isGithubLoading ? (
-                                      <div className="p-12 text-center flex flex-col items-center gap-3"><Loader2 size={24} className="animate-spin text-indigo-500"/><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Querying GitHub...</span></div>
-                                  ) : githubTree.length > 0 ? (
-                                      <div className="py-2">
-                                          <div className="px-3 py-2 text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] border-b border-slate-800/50 mb-2 flex items-center gap-2 group cursor-pointer hover:bg-slate-800" onClick={() => setGithubTree([])}>
-                                              <ArrowLeft size={10}/> BACK TO REPOS
-                                          </div>
-                                          <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase mb-2">REPO: {project.github?.repo}</div>
-                                          {githubTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}
-                                      </div>
-                                  ) : (
-                                      <div className="space-y-1 p-2">
-                                          {githubRepos.filter(r => r.name.toLowerCase().includes(githubSearchQuery.toLowerCase())).map(repo => (
-                                              <button key={repo.id} onClick={() => handleSelectRepo(repo)} className="w-full text-left p-3 rounded-xl border border-transparent hover:border-indigo-500/30 hover:bg-indigo-900/10 transition-all group">
-                                                  <div className="flex items-center gap-2 mb-1"><Github size={14} className="text-slate-400 group-hover:text-white transition-colors"/><span className="text-xs font-bold text-slate-200 group-hover:text-white truncate">{repo.name}</span></div>
-                                                  <div className="flex items-center gap-2">
-                                                      {repo.private && <Lock size={10} className="text-amber-500"/>}
-                                                      <span className="text-[10px] text-slate-500 uppercase font-bold tracking-tighter">{repo.owner.login}</span>
-                                                  </div>
-                                              </button>
-                                          ))}
-                                      </div>
-                                  )}
-                              </div>
-                          </div>
-                      ) : (
-                          <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-6">
-                              <div className="w-16 h-16 bg-slate-800 rounded-3xl flex items-center justify-center border border-slate-700 shadow-xl group hover:scale-105 transition-transform">
-                                  <Github size={36} className="text-white"/>
-                              </div>
-                              <div className="space-y-2">
-                                  <h3 className="font-bold text-white text-sm">Octopus Protocol</h3>
-                                  <p className="text-xs text-slate-500 leading-relaxed px-2">Import repositories and push updates directly from the studio.</p>
-                              </div>
-                              <button onClick={handleConnectGithub} className="px-8 py-3 bg-white text-slate-900 font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg hover:bg-slate-100 transition-all active:scale-[0.98] flex items-center gap-2">
-                                  <Key size={14}/> Login with GitHub
-                              </button>
-                          </div>
-                      )
-                  )}
+                  {activeTab === 'drive' && (driveToken ? <div className="flex-1 overflow-y-auto scrollbar-hide py-2">{driveTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path?.replace('drive://','')} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}</div> : <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4"><button onClick={handleConnectDrive} className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg">Connect G-Drive</button></div>)}
+                  {activeTab === 'cloud' && (currentUser ? <div className="flex-1 overflow-y-auto scrollbar-hide py-2">{cloudTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}</div> : <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4"><p className="text-xs text-slate-400">Sign in for Private Cloud.</p></div>)}
               </div>
           </div>
           <div onMouseDown={() => setIsDraggingLeft(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 z-30 shrink-0 bg-slate-800/20"></div>
           <div ref={centerContainerRef} className={`flex-1 bg-slate-950 flex min-w-0 relative ${layoutMode === 'quad' ? 'grid grid-cols-2 grid-rows-2' : layoutMode === 'split-v' ? 'flex-row' : layoutMode === 'split-h' ? 'flex-col' : 'flex-col'}`}>
-              {layoutMode === 'single' && <Slot idx={0}/>}
-              {layoutMode === 'split-v' && (<><Slot idx={0}/><div onMouseDown={() => setIsDraggingInner(true)} className="w-1.5 cursor-col-resize hover:bg-indigo-500/50 z-40 bg-slate-800"></div><Slot idx={1}/></>)}
-              {layoutMode === 'split-h' && (<><Slot idx={0}/><div onMouseDown={() => setIsDraggingInner(true)} className="h-1.5 cursor-row-resize hover:bg-indigo-500/50 z-40 bg-slate-800"></div><Slot idx={1}/></>)}
-              {layoutMode === 'quad' && [0,1,2,3].map(i => <Slot key={i} idx={i}/>)}
+              {[0, 1, 2, 3].map(i => (
+                  <Slot key={i} idx={i} activeSlots={activeSlots} focusedSlot={focusedSlot} setFocusedSlot={setFocusedSlot} slotViewModes={slotViewModes} toggleSlotViewMode={toggleSlotViewMode} isFormattingSlots={isFormattingSlots} terminalOutputs={terminalOutputs} setTerminalOutputs={setTerminalOutputs} isTerminalOpen={isTerminalOpen} setIsTerminalOpen={setIsTerminalOpen} isRunning={isRunning} layoutMode={layoutMode} innerSplitRatio={innerSplitRatio} handleRunCode={handleRunCode} handleFormatCode={handleFormatCode} handleCodeChangeInSlot={handleCodeChangeInSlot} updateSlotFile={updateSlotFile} fontSize={fontSize} indentMode={indentMode} isLive={isLive} lockStatus={lockStatus} broadcastCursor={broadcastCursor} />
+              ))}
           </div>
           <div onMouseDown={() => setIsDraggingRight(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 z-30 shrink-0 bg-slate-800/20"></div>
           <div className={`${isRightOpen ? '' : 'hidden'} bg-slate-950 flex flex-col shrink-0 overflow-hidden`} style={{ width: `${rightWidth}px` }}>
               <AIChatPanel isOpen={true} onClose={() => setIsRightOpen(false)} messages={chatMessages} onSendMessage={handleSendMessage} isThinking={isChatThinking} currentInput={chatInput} onInputChange={setChatInput} />
           </div>
       </div>
-
-      {showShareModal && shareUrl && (
-          <ShareModal isOpen={true} onClose={() => setShowShareModal(false)} link={shareUrl} title={project.name} onShare={async () => {}} currentUserUid={currentUser?.uid}/>
-      )}
     </div>
   );
 };
