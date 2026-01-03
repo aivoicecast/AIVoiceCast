@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
-import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search } from 'lucide-react';
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink } from '../services/googleDriveService';
 import { connectGoogleDrive, getDriveToken } from '../services/authService';
-import { fetchRepoInfo, fetchRepoContents, fetchFileContent, updateRepoFile } from '../services/githubService';
+import { fetchRepoInfo, fetchRepoContents, fetchFileContent, updateRepoFile, fetchUserRepos, fetchRepoSubTree } from '../services/githubService';
 import { MarkdownView } from './MarkdownView';
 import { Whiteboard } from './Whiteboard';
 import { ShareModal } from './ShareModal';
@@ -80,13 +80,13 @@ const FileTreeItem = ({ node, depth, activeId, onSelect, onToggle, onDelete, onS
     return (
         <div>
             <div 
-                className={`flex items-center gap-1 py-1 px-2 cursor-pointer select-none hover:bg-slate-800/50 group ${isActive ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`flex items-center gap-1 py-1 px-2 cursor-pointer select-none hover:bg-slate-800/50 group ${isActive ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'}`}
                 style={{ paddingLeft: `${depth * 12 + 8}px` }}
                 onClick={() => onSelect(node)}
             >
                 {node.type === 'folder' && (
                     <div onClick={(e) => { e.stopPropagation(); onToggle(node); }} className="p-0.5 hover:text-white">
-                        {isLoading ? <Loader2 size={12} className="animate-spin"/> : isExpanded ? <ChevronDown size={12}/> : <ChevronRight size={12}/>}
+                        {isLoading ? <Loader2 size={12} className="animate-spin text-indigo-400"/> : isExpanded ? <ChevronDown size={12}/> : <ChevronRight size={12}/>}
                     </div>
                 )}
                 {node.type === 'folder' ? (
@@ -163,8 +163,6 @@ const RichCodeEditor = ({ code, onChange, onCursorMove, language, readOnly, font
         MozTabSize: 4 
     } as React.CSSProperties;
 
-    // Filter remote cursors for THIS active file
-    /* Added useMemo from React to resolve reference error */
     const activeRemoteCursors = useMemo(() => {
         if (!remoteCursors) return [];
         return Object.values(remoteCursors).filter((c: any) => c.fileName === activeFilePath);
@@ -177,14 +175,10 @@ const RichCodeEditor = ({ code, onChange, onCursorMove, language, readOnly, font
             </div>
             
             <div className="flex-1 relative overflow-hidden">
-                {/* Remote Cursors Overlay */}
                 <div className="absolute inset-0 pointer-events-none z-10 p-4" style={{ ...editorStyles, color: 'transparent' }}>
                     {activeRemoteCursors.map((c: any) => {
-                        // Calculate positions based on line/col
-                        // This is a rough approximation for standard textareas without full layout measuring
-                        // In a real IDE we use a complex measuring system or Monaco
                         const topOffset = (c.line - 1) * (fontSize * 1.6);
-                        const leftOffset = c.column * (fontSize * 0.6); // Very rough char width estimate
+                        const leftOffset = c.column * (fontSize * 0.6); 
                         
                         return (
                             <div key={c.clientId} className="absolute transition-all duration-100" style={{ top: `${topOffset}px`, left: `${leftOffset}px` }}>
@@ -228,7 +222,7 @@ const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking }: a
                 <span className="font-bold text-slate-300 text-sm flex items-center gap-2"><Bot size={16} className="text-indigo-400"/> AI Assistant</span>
                 <button onClick={onClose} title="Minimize AI Panel"><PanelRightClose size={16} className="text-slate-500 hover:text-white"/></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
                 {messages.map((m: any, i: number) => (
                     <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[95%] rounded-lg p-3 text-sm leading-relaxed ${m.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
@@ -259,9 +253,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       isModified: false
   };
 
-  /* Added useMemo from React to resolve reference error */
   const clientId = useMemo(() => generateSecureId().substring(0, 8), []);
-  /* Added useMemo from React to resolve reference error */
   const myColor = useMemo(() => CURSOR_COLORS[Math.floor(Math.random() * CURSOR_COLORS.length)], []);
 
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('single');
@@ -280,24 +272,29 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const [isChatThinking, setIsChatThinking] = useState(false);
   const [isFormattingSlots, setIsFormattingSlots] = useState<Record<number, boolean>>({});
   
-  // Share state
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
 
   const [cloudItems, setCloudItems] = useState<CloudItem[]>([]); 
   const [driveItems, setDriveItems] = useState<(DriveFile & { parentId?: string, isLoaded?: boolean })[]>([]); 
   const [driveRootId, setDriveRootId] = useState<string | null>(null);
-  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
-  const [loadingFolders, setLoadingFolders] = useState<Record<string, boolean>>({});
-  const [isDriveLoading, setIsDriveLoading] = useState(false);
+  
+  // GitHub UI States
+  const [githubToken, setGithubToken] = useState<string | null>(localStorage.getItem('github_token'));
+  const [githubRepos, setGithubRepos] = useState<any[]>([]);
+  const [githubSearchQuery, setGithubSearchQuery] = useState('');
+  const [isGithubLoading, setIsGithubLoading] = useState(false);
+  const [githubTree, setGithubTree] = useState<TreeNode[]>([]);
+
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [loadingIds, setLoadingIds] = useState<Record<string, boolean>>({});
+  const [isExplorerLoading, setIsExplorerLoading] = useState(false);
   
   const [driveToken, setDriveToken] = useState<string | null>(getDriveToken());
-  const [githubToken, setGithubToken] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'modified' | 'saving'>('saved');
-  const [isZenMode, setIsZenMode] = useState(false);
   const [fontSize, setFontSize] = useState(14);
   const [indentMode, setIndentMode] = useState<IndentMode>('spaces');
-  const [leftWidth, setLeftWidth] = useState(256); 
+  const [leftWidth, setLeftWidth] = useState(260); 
   const [rightWidth, setRightWidth] = useState(320); 
   const [isDraggingLeft, setIsDraggingLeft] = useState(false);
   const [isDraggingRight, setIsDraggingRight] = useState(false);
@@ -305,7 +302,12 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const centerContainerRef = useRef<HTMLDivElement>(null);
   const activeFile = activeSlots[focusedSlot];
 
-  // Collaborative Syncing logic
+  // Fix: Added missing handleSetLayout function to manage layout changes.
+  const handleSetLayout = (mode: LayoutMode) => {
+    setLayoutMode(mode);
+    setInnerSplitRatio(50);
+  };
+
   const [isLive, setIsLive] = useState(false);
   const [lockStatus, setLockStatus] = useState<'free' | 'busy' | 'mine'>('free');
 
@@ -322,7 +324,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     }
   };
 
-  // 1. URL ID Detection & Subscription
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const pid = params.get('id');
@@ -330,24 +331,17 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
         setIsLive(true);
         const unsubscribe = subscribeToCodeProject(pid, (updatedProject) => {
             setProject(updatedProject);
-            
-            // Sync Lock
             if (updatedProject.activeClientId === clientId) setLockStatus('mine');
             else if (updatedProject.activeClientId) setLockStatus('busy');
             else setLockStatus('free');
 
-            // If we don't have the lock, sync file contents from remote
-            if (updatedProject.activeClientId !== clientId) {
-                // Determine which slot needs updating based on remote active file
-                if (updatedProject.activeFilePath) {
-                    const remoteFile = updatedProject.files.find(f => f.path === updatedProject.activeFilePath);
-                    if (remoteFile) {
-                        // Optimistically sync to focused slot if same path
-                        setActiveSlots(prev => prev.map((s, i) => {
-                            if (s?.path === remoteFile.path) return { ...s, content: remoteFile.content, isModified: false };
-                            return s;
-                        }));
-                    }
+            if (updatedProject.activeClientId !== clientId && updatedProject.activeFilePath) {
+                const remoteFile = updatedProject.files.find(f => f.path === updatedProject.activeFilePath);
+                if (remoteFile) {
+                    setActiveSlots(prev => prev.map((s, i) => {
+                        if (s?.path === remoteFile.path) return { ...s, content: remoteFile.content, isModified: false };
+                        return s;
+                    }));
                 }
             }
         });
@@ -355,7 +349,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     }
   }, [clientId]);
 
-  // 2. Cursor Broadcasting
   const broadcastCursor = useCallback((line: number, col: number) => {
       if (!isLive || project.id === 'init') return;
       updateCursor(project.id, {
@@ -381,11 +374,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       await claimCodeProjectLock(project.id, '');
   };
 
-  const handleSetLayout = (mode: LayoutMode) => {
-      setLayoutMode(mode);
-      if (mode === 'single' && focusedSlot !== 0) setFocusedSlot(0);
-  };
-
   const handleSmartSave = async (targetFileOverride?: CodeFile) => {
     const fileToSave = targetFileOverride || activeFile;
     if (!fileToSave || (!fileToSave.isModified && saveStatus === 'saved')) return;
@@ -393,30 +381,15 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     try {
         if (activeTab === 'drive' && driveToken && driveRootId) {
              await saveToDrive(driveToken, driveRootId, fileToSave.name, fileToSave.content);
-             await refreshExplorer();
         } else if (activeTab === 'cloud' && currentUser) {
              await saveProjectToCloud(`projects/${currentUser.uid}`, fileToSave.name, fileToSave.content);
         } else if (activeTab === 'github' && githubToken && project.github) {
             const { owner, repo, branch } = project.github;
-            const res = await updateRepoFile(
-                githubToken,
-                owner,
-                repo,
-                fileToSave.path || fileToSave.name,
-                fileToSave.content,
-                fileToSave.sha,
-                `Update ${fileToSave.name} via AIVoiceCast Code Studio`,
-                branch
-            );
+            const res = await updateRepoFile(githubToken, owner, repo, fileToSave.path || fileToSave.name, fileToSave.content, fileToSave.sha, `Update ${fileToSave.name}`, branch);
             fileToSave.sha = res.sha;
             fileToSave.isModified = false;
         }
-        
-        // Broadcast to live session if active
-        if (isLive && lockStatus === 'mine') {
-            await updateCodeFile(project.id, fileToSave);
-        }
-
+        if (isLive && lockStatus === 'mine') await updateCodeFile(project.id, fileToSave);
         setSaveStatus('saved');
     } catch(e: any) { 
         console.error("Save failed", e);
@@ -424,18 +397,258 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     }
   };
 
-  const handleShareProject = async () => {
-      if (!currentUser) return alert("Sign in to share project URIs.");
-      let pid = project.id;
-      if (pid === 'init') {
-          pid = generateSecureId();
-          const newProject = { ...project, id: pid, ownerId: currentUser.uid, accessLevel: 'public' };
-          await saveCodeProject(newProject);
-          setProject(newProject);
+  const refreshExplorer = async () => {
+      setIsExplorerLoading(true);
+      try {
+          if (activeTab === 'drive' && driveToken) {
+              const rootId = driveRootId || await ensureCodeStudioFolder(driveToken);
+              setDriveRootId(rootId);
+              const files = await listDriveFiles(driveToken, rootId);
+              setDriveItems([{ id: rootId, name: 'CodeStudio', mimeType: 'application/vnd.google-apps.folder', isLoaded: true }, ...files.map(f => ({ ...f, parentId: rootId, isLoaded: false }))]);
+          } else if (activeTab === 'cloud' && currentUser) {
+              const items = await listCloudDirectory(`projects/${currentUser.uid}`);
+              setCloudItems(items);
+          } else if (activeTab === 'github' && githubToken && project.github) {
+              const { owner, repo, branch } = project.github;
+              const { files } = await fetchRepoContents(githubToken, owner, repo, branch);
+              const tree: TreeNode[] = files.map(f => ({ id: f.path || f.name, name: f.name.split('/').pop() || f.name, type: f.isDirectory ? 'folder' : 'file', isLoaded: f.childrenFetched, data: f }));
+              setGithubTree(tree);
+          }
+      } finally {
+          setIsExplorerLoading(false);
       }
-      const url = `${window.location.origin}?view=code_studio&id=${pid}`;
-      setShareUrl(url);
-      setShowShareModal(true);
+  };
+
+  // Fix: Added missing handleConnectDrive function to handle Google Drive authentication.
+  const handleConnectDrive = async () => {
+    try {
+      const token = await connectGoogleDrive();
+      setDriveToken(token);
+      await refreshExplorer();
+    } catch (e: any) {
+      alert("Failed to connect to Google Drive: " + e.message);
+    }
+  };
+
+  const handleConnectGithub = async () => {
+      const token = prompt("Enter GitHub Personal Access Token (PAT):");
+      if (!token) return;
+      setGithubToken(token);
+      localStorage.setItem('github_token', token);
+      setIsGithubLoading(true);
+      try {
+          const repos = await fetchUserRepos(token);
+          setGithubRepos(repos);
+          
+          // Auto-load default repo if it exists in profile
+          if (userProfile?.defaultRepoUrl) {
+              await handleAutoLoadDefaultRepo(token, userProfile.defaultRepoUrl);
+          }
+      } catch (e: any) {
+          alert("GitHub connect failed: " + e.message);
+          setGithubToken(null);
+          localStorage.removeItem('github_token');
+      } finally {
+          setIsGithubLoading(false);
+      }
+  };
+
+  const handleAutoLoadDefaultRepo = async (token: string, repoUrl: string) => {
+      const parts = repoUrl.split('/');
+      if (parts.length < 2) return;
+      const owner = parts[parts.length - 2];
+      const repo = parts[parts.length - 1];
+      
+      setIsGithubLoading(true);
+      try {
+          const info = await fetchRepoInfo(owner, repo, token);
+          const { files } = await fetchRepoContents(token, owner, repo, info.default_branch);
+          
+          const newProject = { 
+              ...project, 
+              name: repo,
+              github: { owner, repo, branch: info.default_branch, sha: '' } 
+          };
+          setProject(newProject);
+          const tree: TreeNode[] = files.map(f => ({ id: f.path || f.name, name: f.name.split('/').pop() || f.name, type: f.isDirectory ? 'folder' : 'file', isLoaded: f.childrenFetched, data: f }));
+          setGithubTree(tree);
+      } catch (e: any) {
+          console.error("Auto-load default repo failed", e);
+      } finally {
+          setIsGithubLoading(false);
+      }
+  };
+
+  const handleSelectRepo = async (repo: any) => {
+      setIsGithubLoading(true);
+      try {
+          const { owner, name, default_branch } = repo;
+          const info = await fetchRepoInfo(owner.login, name, githubToken);
+          const { files } = await fetchRepoContents(githubToken, owner.login, name, info.default_branch);
+          
+          const newProject = { 
+              ...project, 
+              name: name,
+              github: { owner: owner.login, repo: name, branch: info.default_branch, sha: '' } 
+          };
+          setProject(newProject);
+          const tree: TreeNode[] = files.map(f => ({ id: f.path || f.name, name: f.name.split('/').pop() || f.name, type: f.isDirectory ? 'folder' : 'file', isLoaded: f.childrenFetched, data: f }));
+          setGithubTree(tree);
+      } catch (e: any) {
+          alert("Failed to load repo: " + e.message);
+      } finally {
+          setIsGithubLoading(false);
+      }
+  };
+
+  const handleExplorerSelect = async (node: TreeNode) => {
+      if (node.type === 'file') {
+          let fileData: CodeFile | null = null;
+          try {
+              if (activeTab === 'drive' && driveToken) {
+                  const text = await readDriveFile(driveToken, node.id);
+                  fileData = { name: node.name, path: `drive://${node.id}`, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
+              } else if (activeTab === 'cloud' && node.data?.url) {
+                  const res = await fetch(node.data.url);
+                  const text = await res.text();
+                  fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
+              } else if (activeTab === 'github' && project.github) {
+                  const { owner, repo, branch } = project.github;
+                  const text = await fetchFileContent(githubToken, owner, repo, node.id, branch);
+                  fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false, sha: node.data?.sha };
+              }
+              if (fileData) updateSlotFile(fileData, focusedSlot);
+          } catch(e: any) { alert(e.message); }
+      } else {
+          toggleFolder(node);
+      }
+  };
+
+  const toggleFolder = async (node: TreeNode) => {
+      const isExpanded = expandedIds[node.id];
+      setExpandedIds(prev => ({ ...prev, [node.id]: !isExpanded }));
+      
+      if (!isExpanded && !node.isLoaded) {
+          setLoadingIds(prev => ({ ...prev, [node.id]: true }));
+          try {
+              if (activeTab === 'drive' && driveToken) {
+                  const files = await listDriveFiles(driveToken, node.id);
+                  setDriveItems(prev => [...prev, ...files.map(f => ({ ...f, parentId: node.id, isLoaded: false }))]);
+              } else if (activeTab === 'github' && project.github) {
+                  const { owner, repo, branch } = project.github;
+                  const children = await fetchRepoSubTree(githubToken, owner, repo, node.data.treeSha, node.id);
+                  const childNodes: TreeNode[] = children.map(f => ({ id: f.path || f.name, name: f.name.split('/').pop() || f.name, type: f.isDirectory ? 'folder' : 'file', isLoaded: f.childrenFetched, data: f }));
+                  setGithubTree(prev => {
+                      const updateRecursive = (list: TreeNode[]): TreeNode[] => list.map(n => {
+                          if (n.id === node.id) return { ...n, isLoaded: true, children: childNodes };
+                          if (n.children) return { ...n, children: updateRecursive(n.children) };
+                          return n;
+                      });
+                      return updateRecursive(prev);
+                  });
+              }
+          } finally { setLoadingIds(prev => ({ ...prev, [node.id]: false })); }
+      }
+  };
+
+  const driveTree = useMemo(() => {
+      const root: TreeNode[] = [];
+      const map = new Map<string, TreeNode>();
+      driveItems.forEach(item => map.set(item.id, { id: item.id, name: item.name, type: item.mimeType === 'application/vnd.google-apps.folder' ? 'folder' : 'file', data: item, children: [], isLoaded: item.isLoaded }));
+      driveItems.forEach(item => {
+          const node = map.get(item.id)!;
+          if (item.parentId && map.has(item.parentId)) map.get(item.parentId)!.children.push(node);
+          else if (!item.parentId) root.push(node);
+      });
+      return root;
+  }, [driveItems]);
+
+  const cloudTree = useMemo(() => {
+    const root: TreeNode[] = [];
+    const map = new Map<string, TreeNode>();
+    cloudItems.forEach(item => map.set(item.fullPath, { id: item.fullPath, name: item.name, type: item.isFolder ? 'folder' : 'file', data: item, children: [], isLoaded: true }));
+    cloudItems.forEach(item => { 
+        const node = map.get(item.fullPath)!; 
+        const parts = item.fullPath.split('/'); 
+        parts.pop(); 
+        const pPath = parts.join('/'); 
+        if (map.has(pPath)) map.get(pPath)!.children.push(node); 
+        else root.push(node); 
+    });
+    return root;
+  }, [cloudItems]);
+
+  const updateSlotFile = async (file: CodeFile | null, slotIndex: number) => {
+      const newSlots = [...activeSlots];
+      newSlots[slotIndex] = file;
+      setActiveSlots(newSlots);
+      if (file && isPreviewable(file.name)) setSlotViewModes(prev => ({ ...prev, [slotIndex]: 'code' }));
+      if (isLive && lockStatus === 'mine' && file?.path) updateProjectActiveFile(project.id, file.path);
+  };
+
+  const toggleSlotViewMode = (idx: number) => setSlotViewModes(prev => ({ ...prev, [idx]: prev[idx] === 'preview' ? 'code' : 'preview' }));
+  const isPreviewable = (filename: string) => ['md', 'puml', 'plantuml'].includes(filename.split('.').pop()?.toLowerCase() || '');
+
+  const handleCodeChangeInSlot = (newCode: string, slotIdx: number) => {
+      const file = activeSlots[slotIdx];
+      if (!file) return;
+      const updatedFile = { ...file, content: newCode, isModified: true };
+      const newSlots = [...activeSlots];
+      newSlots[slotIdx] = updatedFile;
+      setActiveSlots(newSlots);
+      setSaveStatus('modified');
+      if (isLive && lockStatus === 'mine') updateCodeFile(project.id, updatedFile);
+  };
+
+  // Fix: Added missing handleSendMessage function to handle AI chat interactions.
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim() || isChatThinking) return;
+
+    setChatMessages(prev => [...prev, { role: 'user', text }]);
+    setIsChatThinking(true);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const history = chatMessages.map(m => ({
+          role: (m.role === 'ai' ? 'model' : 'user') as 'model' | 'user',
+          parts: [{ text: m.text }]
+      }));
+
+      let contextualMessage = text;
+      if (activeFile) {
+          contextualMessage = `CONTEXT: Focused File "${activeFile.name}" content:\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\`\n\nUSER REQUEST: ${text}`;
+      }
+
+      const response = await ai.models.generateContent({
+          model: 'gemini-3-pro-preview',
+          contents: [
+              ...history,
+              { role: 'user', parts: [{ text: contextualMessage }] }
+          ],
+          config: {
+              systemInstruction: "You are an expert pair programmer. Assist the user with their code. If they ask to modify it, use the 'update_active_file' tool. Format your responses in Markdown.",
+              tools: [{ functionDeclarations: [updateFileTool] }]
+          }
+      });
+
+      if (response.functionCalls && response.functionCalls.length > 0) {
+          for (const fc of response.functionCalls) {
+              if (fc.name === 'update_active_file') {
+                  const args = fc.args as any;
+                  if (args.new_content) {
+                      handleCodeChangeInSlot(args.new_content, focusedSlot);
+                      setChatMessages(prev => [...prev, { role: 'ai', text: `✅ I've updated the file. ${args.summary || ''}` }]);
+                  }
+              }
+          }
+      } else {
+          setChatMessages(prev => [...prev, { role: 'ai', text: response.text || "No response." }]);
+      }
+    } catch (e: any) {
+      setChatMessages(prev => [...prev, { role: 'ai', text: "Error: " + e.message }]);
+    } finally {
+      setIsChatThinking(false);
+    }
   };
 
   const handleFormatCode = async (slotIdx: number) => {
@@ -448,74 +661,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           const resp = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
           handleCodeChangeInSlot(resp.text?.trim() || file.content, slotIdx);
       } catch (e: any) { console.error(e); } finally { setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: false })); }
-  };
-
-  const updateSlotFile = async (file: CodeFile | null, slotIndex: number) => {
-      const newSlots = [...activeSlots];
-      newSlots[slotIndex] = file;
-      setActiveSlots(newSlots);
-      if (file && isPreviewable(file.name)) setSlotViewModes(prev => ({ ...prev, [slotIndex]: 'code' }));
-      
-      // Update global active file for followers
-      if (isLive && lockStatus === 'mine' && file?.path) {
-          updateProjectActiveFile(project.id, file.path);
-      }
-  };
-
-  const isPreviewable = (filename: string) => ['md', 'puml', 'plantuml'].includes(filename.split('.').pop()?.toLowerCase() || '');
-
-  const toggleSlotViewMode = (idx: number) => {
-      setSlotViewModes(prev => ({ ...prev, [idx]: prev[idx] === 'preview' ? 'code' : 'preview' }));
-  };
-
-  const handleExplorerSelect = async (node: TreeNode) => {
-      if (node.type === 'file') {
-          let fileData: CodeFile | null = null;
-          if (activeTab === 'drive' && driveToken) {
-              const text = await readDriveFile(driveToken, node.id);
-              fileData = { name: node.name, path: `drive://${node.id}`, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
-          } else if (activeTab === 'cloud' && node.data?.url) {
-              const res = await fetch(node.data.url);
-              const text = await res.text();
-              fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false };
-          } else if (activeTab === 'github' && project.github) {
-              const { owner, repo, branch } = project.github;
-              const text = await fetchFileContent(githubToken, owner, repo, node.id, branch);
-              fileData = { name: node.name, path: node.id, content: text, language: getLanguageFromExt(node.name), loaded: true, isDirectory: false, isModified: false, sha: node.data?.sha };
-          }
-          if (fileData) updateSlotFile(fileData, focusedSlot);
-      } else {
-          if (activeTab === 'drive') handleDriveToggle(node);
-          else if (activeTab === 'cloud') handleCloudToggle(node);
-          else if (activeTab === 'github') handleGithubToggle(node);
-      }
-  };
-
-  const handleExplorerShare = async (node: TreeNode) => {
-      if (!driveToken) return;
-      const email = prompt(`Enter member's Google Email to share "${node.name}" with:`);
-      if (!email) return;
-      try {
-          await shareFileWithEmail(driveToken, node.id, email, 'reader');
-          const link = await getDriveFileSharingLink(driveToken, node.id);
-          alert(`Successfully shared! Member can access via Drive.\nLink: ${link}`);
-      } catch(e: any) { alert(e.message); }
-  };
-
-  const handleCodeChangeInSlot = (newCode: string, slotIdx: number) => {
-      const file = activeSlots[slotIdx];
-      if (!file) return;
-      const updatedFile = { ...file, content: newCode, isModified: true };
-      const newSlots = [...activeSlots];
-      newSlots[slotIdx] = updatedFile;
-      setActiveSlots(newSlots);
-      setSaveStatus('modified');
-
-      // Collaborative broadcast
-      if (isLive && lockStatus === 'mine') {
-          // Debounce this in production, but for demo we update on change
-          updateCodeFile(project.id, updatedFile);
-      }
   };
 
   const resize = useCallback((e: MouseEvent) => {
@@ -537,115 +682,14 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       }
   }, [isDraggingLeft, isDraggingRight, isDraggingInner, resize]);
 
-  const refreshExplorer = async () => {
-      if (activeTab === 'drive' && driveToken) {
-          setIsDriveLoading(true);
-          try {
-            const rootId = driveRootId || await ensureCodeStudioFolder(driveToken);
-            setDriveRootId(rootId);
-            const files = await listDriveFiles(driveToken, rootId);
-            setDriveItems([{ id: rootId, name: 'CodeStudio', mimeType: 'application/vnd.google-apps.folder', isLoaded: true }, ...files.map(f => ({ ...f, parentId: rootId, isLoaded: false }))]);
-          } finally {
-            setIsDriveLoading(false);
-          }
-      } else if (activeTab === 'cloud' && currentUser) {
-          const items = await listCloudDirectory(`projects/${currentUser.uid}`);
-          setCloudItems(items);
-      }
-  };
+  useEffect(() => { refreshExplorer(); }, [activeTab, driveToken, githubToken, currentUser]);
 
-  const handleDriveToggle = async (node: TreeNode) => {
-      const isExpanded = expandedFolders[node.id];
-      setExpandedFolders(prev => ({ ...prev, [node.id]: !isExpanded }));
-      if (!isExpanded && driveToken && !node.isLoaded) {
-          setLoadingFolders(prev => ({ ...prev, [node.id]: true }));
-          try {
-              const files = await listDriveFiles(driveToken, node.id);
-              setDriveItems(prev => [...prev, ...files.map(f => ({ ...f, parentId: node.id, isLoaded: false }))]);
-          } finally { setLoadingFolders(prev => ({ ...prev, [node.id]: false })); }
-      }
-  };
-
-  const handleCloudToggle = async (node: TreeNode) => {
-      const isExpanded = expandedFolders[node.id];
-      setExpandedFolders(prev => ({ ...prev, [node.id]: !isExpanded }));
-      if (!isExpanded) {
-          setLoadingFolders(prev => ({ ...prev, [node.id]: true }));
-          const items = await listCloudDirectory(node.id);
-          setCloudItems(prev => [...prev, ...items]);
-          setLoadingFolders(prev => ({ ...prev, [node.id]: false }));
-      }
-  };
-
-  const handleGithubToggle = async (node: TreeNode) => {
-      // Implement lazy subtree loading if needed
-  };
-
-  const handleConnectDrive = async () => {
-      const token = await connectGoogleDrive();
-      setDriveToken(token);
-      refreshExplorer();
-  };
-
-  const handleCreateFile = async () => {
-      const name = prompt("File Name (e.g. script.py):");
-      if (!name || !driveToken || !driveRootId) return;
-      await saveToDrive(driveToken, driveRootId, name, "// New File");
-      await refreshExplorer();
-  };
-
-  const handleSendMessage = async (input: string) => {
-      if (!input.trim()) return;
-      setChatMessages(prev => [...prev, { role: 'user', text: input }]);
-      setIsChatThinking(true);
-      try {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const contextFiles = activeSlots.filter(f => f !== null).map(f => `File: ${f?.name}\nContent:\n${f?.content}`).join('\n---\n');
-          const promptText = `Help in Code Studio. Active: ${activeFile?.name || "None"}. Workspace:\n${contextFiles}\nRequest: ${input}`;
-          const resp = await ai.models.generateContent({ 
-              model: 'gemini-3-flash-preview', 
-              contents: promptText,
-              config: { tools: [{ functionDeclarations: [updateFileTool] }] }
-          });
-          if (resp.functionCalls) {
-              for (const fc of resp.functionCalls) {
-                  if (fc.name === 'update_active_file') {
-                      const { new_content, summary } = fc.args as any;
-                      if (activeFile) { handleCodeChangeInSlot(new_content, focusedSlot); setChatMessages(prev => [...prev, { role: 'ai', text: `✨ **Edit Applied**\n\n${summary || "Code updated."}` }]); }
-                  }
-              }
-          } else { setChatMessages(prev => [...prev, { role: 'ai', text: resp.text || "I'm not sure how to help with that." }]); }
-      } catch (e: any) { setChatMessages(prev => [...prev, { role: 'ai', text: `Error: ${e.message}` }]); } finally { setIsChatThinking(false); }
-  };
-
-  /* Added useMemo from React to resolve reference error */
-  const driveTree = useMemo(() => {
-      const root: TreeNode[] = [];
-      const map = new Map<string, TreeNode>();
-      driveItems.forEach(item => {
-          map.set(item.id, { id: item.id, name: item.name, type: item.mimeType === 'application/vnd.google-apps.folder' ? 'folder' : 'file', data: item, children: [], isLoaded: item.isLoaded });
-      });
-      driveItems.forEach(item => {
-          const node = map.get(item.id)!;
-          if (item.parentId && map.has(item.parentId)) map.get(item.parentId)!.children.push(node);
-          else if (!item.parentId) root.push(node);
-      });
-      return root;
-  }, [driveItems]);
-
-  /* Added useMemo from React to resolve reference error */
-  const cloudTree = useMemo(() => {
-    const root: TreeNode[] = [];
-    const map = new Map<string, TreeNode>();
-    cloudItems.forEach(item => map.set(item.fullPath, { id: item.fullPath, name: item.name, type: item.isFolder ? 'folder' : 'file', data: item, children: [], isLoaded: true }));
-    cloudItems.forEach(item => { const node = map.get(item.fullPath)!; const parts = item.fullPath.split('/'); parts.pop(); const pPath = parts.join('/'); if (map.has(pPath)) map.get(pPath)!.children.push(node); else root.push(node); });
-    return root;
-  }, [cloudItems]);
-
-  useEffect(() => { 
-      if (activeTab === 'drive' && !driveToken) return;
-      refreshExplorer(); 
-  }, [activeTab, driveToken, currentUser]);
+  // Auto-connect and auto-load 1st level dir when clicking github icon
+  useEffect(() => {
+    if (activeTab === 'github' && githubToken && userProfile?.defaultRepoUrl && githubTree.length === 0) {
+        handleAutoLoadDefaultRepo(githubToken, userProfile.defaultRepoUrl);
+    }
+  }, [activeTab, githubToken, userProfile?.defaultRepoUrl]);
 
   const renderSlot = (idx: number) => {
       const file = activeSlots[idx];
@@ -678,7 +722,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                         </div>
                     </div>
                     <div className="flex-1 overflow-hidden">
-                        {vMode === 'preview' ? <div className="h-full overflow-y-auto p-8"><MarkdownView content={file.content} /></div> : (
+                        {vMode === 'preview' ? <div className="h-full overflow-y-auto p-8 scrollbar-hide"><MarkdownView content={file.content} /></div> : (
                             <RichCodeEditor 
                                 code={file.content} 
                                 onChange={(c: string) => handleCodeChangeInSlot(c, idx)} 
@@ -698,16 +742,14 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                       <Plus size={32} className="opacity-20 mb-2" /><p className="text-xs font-bold uppercase">Pane {idx + 1}</p>
                   </div>
               )}
-              {isFocused && <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>}
           </div>
       );
   };
 
-  /* Added useMemo from React to resolve reference error */
   const collaborators = useMemo(() => {
       if (!project.cursors) return [];
       const now = Date.now();
-      return Object.values(project.cursors).filter((c: any) => now - c.updatedAt < 60000); // 1 minute timeout
+      return Object.values(project.cursors).filter((c: any) => now - c.updatedAt < 60000); 
   }, [project.cursors]);
 
   return (
@@ -717,80 +759,111 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
             <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"><ArrowLeft size={20} /></button>
             <button onClick={() => setIsLeftOpen(!isLeftOpen)} className={`p-2 rounded-lg ${isLeftOpen ? 'bg-slate-800 text-white' : 'text-slate-500'}`}><PanelLeftOpen size={20}/></button>
             <div className="h-4 w-px bg-slate-800 mx-2"></div>
-            
             <div className="flex items-center -space-x-2">
-                {collaborators.map((c: any) => (
-                    <div key={c.clientId} className="w-8 h-8 rounded-full border-2 border-slate-950 flex items-center justify-center bg-slate-800 overflow-hidden" title={c.userName}>
-                        <span className="text-[10px] font-bold" style={{ color: c.color }}>{c.userName[0]}</span>
-                    </div>
-                ))}
-                {isLive && collaborators.length > 0 && (
-                    <div className="ml-4 flex items-center gap-2 px-2 py-1 bg-emerald-900/20 text-emerald-400 border border-emerald-500/20 rounded-full text-[10px] font-black uppercase tracking-widest">
-                        /* Added Activity icon from lucide-react to fix missing reference error */
-                        <Activity size={12} className="animate-pulse" />
-                        Live
-                    </div>
-                )}
+                {collaborators.map((c: any) => <div key={c.clientId} className="w-8 h-8 rounded-full border-2 border-slate-950 flex items-center justify-center bg-slate-800 overflow-hidden" title={c.userName}><span className="text-[10px] font-bold" style={{ color: c.color }}>{c.userName[0]}</span></div>)}
+                {isLive && collaborators.length > 0 && <div className="ml-4 flex items-center gap-2 px-2 py-1 bg-emerald-900/20 text-emerald-400 border border-emerald-500/20 rounded-full text-[10px] font-black uppercase tracking-widest"><Activity size={12} className="animate-pulse" /> Live</div>}
             </div>
          </div>
-
          <div className="flex items-center space-x-2">
-            {isLive && (
-                <div className="flex gap-1 mr-4">
-                    {lockStatus === 'mine' ? (
-                        <button onClick={handleRelinquishControl} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg animate-pulse">
-                            <Unlock size={14}/> I am Controlling
-                        </button>
-                    ) : lockStatus === 'busy' ? (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-red-900/30 text-red-400 border border-red-500/30 rounded-lg text-[10px] font-black uppercase tracking-widest cursor-not-allowed">
-                            <Lock size={14}/> Session Busy
-                        </div>
-                    ) : (
-                        <button onClick={handleTakeControl} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-700 transition-all">
-                            <MousePointer2 size={14}/> Take Control
-                        </button>
-                    )}
-                </div>
-            )}
-
+            {isLive && (<div className="flex gap-1 mr-4">{lockStatus === 'mine' ? (<button onClick={handleRelinquishControl} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-[10px] font-black uppercase shadow-lg animate-pulse"><Unlock size={14}/> Active Control</button>) : lockStatus === 'busy' ? (<div className="flex items-center gap-2 px-3 py-1.5 bg-red-900/30 text-red-400 border border-red-500/30 rounded-lg text-[10px] font-black uppercase cursor-not-allowed"><Lock size={14}/> Busy</div>) : (<button onClick={handleTakeControl} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg text-[10px] font-black uppercase border border-slate-700 transition-all"><MousePointer2 size={14}/> Take Control</button>)}</div>)}
             <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 mr-4">
                 <button onClick={() => handleSetLayout('single')} className={`p-1.5 rounded ${layoutMode === 'single' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><SquareIcon size={16}/></button>
                 <button onClick={() => handleSetLayout('split-v')} className={`p-1.5 rounded ${layoutMode === 'split-v' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Columns size={16}/></button>
                 <button onClick={() => handleSetLayout('split-h')} className={`p-1.5 rounded ${layoutMode === 'split-h' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Rows size={16}/></button>
                 <button onClick={() => handleSetLayout('quad')} className={`p-1.5 rounded ${layoutMode === 'quad' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><Grid2X2 size={16}/></button>
             </div>
-            
-            <button onClick={handleShareProject} className="flex items-center space-x-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all active:scale-95">
-                <Share2 size={14}/>
-                <span>Share Session</span>
-            </button>
-
             <button onClick={() => handleSmartSave()} disabled={lockStatus === 'busy'} className="flex items-center space-x-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold"><Save size={14}/><span>Save</span></button>
             <button onClick={() => setIsRightOpen(!isRightOpen)} className={`p-2 rounded-lg ${isRightOpen ? 'bg-slate-800 text-white' : 'text-slate-500'}`}><PanelRightOpen size={20}/></button>
          </div>
       </header>
       <div className="flex-1 flex overflow-hidden">
           <div className={`${isLeftOpen ? '' : 'hidden'} bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 overflow-hidden`} style={{ width: `${leftWidth}px` }}>
-              <div className="flex border-b border-slate-800">
-                  <button onClick={() => setActiveTab('drive')} className={`flex-1 py-3 flex justify-center border-b-2 transition-colors ${activeTab === 'drive' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500'}`}><HardDrive size={16}/></button>
-                  <button onClick={() => setActiveTab('cloud')} className={`flex-1 py-3 flex justify-center border-b-2 transition-colors ${activeTab === 'cloud' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500'}`}><Cloud size={16}/></button>
-                  <button onClick={() => setActiveTab('github')} className={`flex-1 py-3 flex justify-center border-b-2 transition-colors ${activeTab === 'github' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500'}`}><Github size={16}/></button>
+              <div className="flex border-b border-slate-800 shrink-0">
+                  <button onClick={() => setActiveTab('drive')} className={`flex-1 py-3 flex justify-center border-b-2 transition-colors ${activeTab === 'drive' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-500 hover:text-slate-300'}`} title="Google Drive"><HardDrive size={18}/></button>
+                  <button onClick={() => setActiveTab('cloud')} className={`flex-1 py-3 flex justify-center border-b-2 transition-colors ${activeTab === 'cloud' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-500 hover:text-slate-300'}`} title="Private Cloud"><Cloud size={18}/></button>
+                  <button onClick={() => setActiveTab('github')} className={`flex-1 py-3 flex justify-center border-b-2 transition-colors ${activeTab === 'github' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-500 hover:text-slate-300'}`} title="GitHub"><Github size={18}/></button>
               </div>
-              <div className="p-3 border-b border-slate-800 flex gap-2">
-                  <button onClick={handleCreateFile} className="flex-1 bg-indigo-600 text-white py-1.5 rounded text-xs font-bold">New File</button>
-                  <button onClick={refreshExplorer} disabled={isDriveLoading} className="p-1.5 bg-slate-800 text-slate-300 rounded border border-slate-700 hover:text-white transition-colors">
-                      {isDriveLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}
-                  </button>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                  {activeTab === 'drive' && (driveToken ? (
-                      isDriveLoading && driveItems.length === 0 ? (
-                          <div className="p-8 text-center"><Loader2 size={24} className="animate-spin mx-auto text-indigo-500 opacity-50"/><p className="text-[10px] text-slate-500 mt-2 uppercase font-bold">Syncing Drive...</p></div>
+              
+              <div className="flex-1 flex flex-col overflow-hidden">
+                  {activeTab === 'drive' && (
+                      driveToken ? (
+                          <div className="flex flex-col h-full">
+                              <div className="p-3 border-b border-slate-800 flex gap-2">
+                                  <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors">{isExplorerLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}</button>
+                                  <button onClick={() => handleSetLayout('single')} className="flex-1 bg-indigo-600 text-white py-1.5 rounded text-xs font-bold shadow-lg">New Project</button>
+                              </div>
+                              <div className="flex-1 overflow-y-auto scrollbar-hide py-2">
+                                  {isExplorerLoading && driveItems.length === 0 ? <div className="p-8 text-center"><Loader2 size={24} className="animate-spin mx-auto text-indigo-500"/><p className="text-[10px] text-slate-500 mt-2 uppercase font-bold">Syncing...</p></div> : driveTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path?.replace('drive://','')} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}
+                              </div>
+                          </div>
+                      ) : <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4"><div className="w-16 h-16 bg-indigo-900/20 rounded-3xl flex items-center justify-center border border-indigo-500/20"><HardDrive size={32} className="text-indigo-400"/></div><p className="text-xs text-slate-400 leading-relaxed px-4">Connect your Google Drive to edit files securely in the cloud.</p><button onClick={handleConnectDrive} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95">Connect G-Drive</button></div>
+                  )}
+
+                  {activeTab === 'cloud' && (
+                      currentUser ? (
+                          <div className="flex flex-col h-full">
+                              <div className="p-3 border-b border-slate-800 flex gap-2">
+                                  <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors">{isExplorerLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}</button>
+                                  <button onClick={() => {}} className="flex-1 bg-emerald-600 text-white py-1.5 rounded text-xs font-bold shadow-lg">Cloud Init</button>
+                              </div>
+                              <div className="flex-1 overflow-y-auto scrollbar-hide py-2">
+                                  {isExplorerLoading && cloudItems.length === 0 ? <div className="p-8 text-center"><Loader2 size={24} className="animate-spin mx-auto text-emerald-500"/><p className="text-[10px] text-slate-500 mt-2 uppercase font-bold">Connecting...</p></div> : cloudItems.length === 0 ? <div className="p-8 text-center text-slate-500 italic text-xs">Private Cloud is empty.</div> : cloudTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}
+                              </div>
+                          </div>
+                      ) : <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4"><div className="w-16 h-16 bg-emerald-900/20 rounded-3xl flex items-center justify-center border border-emerald-500/20"><Cloud size={32} className="text-emerald-400"/></div><p className="text-xs text-slate-400 leading-relaxed px-4">Please sign in to access your platform-hosted private cloud storage.</p></div>
+                  )}
+
+                  {activeTab === 'github' && (
+                      githubToken ? (
+                          <div className="flex flex-col h-full overflow-hidden">
+                              <div className="p-3 border-b border-slate-800 flex flex-col gap-3">
+                                  <div className="flex gap-2">
+                                      <div className="relative flex-1">
+                                          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"/>
+                                          <input type="text" placeholder="Search repos..." value={githubSearchQuery} onChange={e => setGithubSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500 transition-all"/>
+                                      </div>
+                                      <button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); }} className="p-1.5 bg-slate-800 hover:bg-red-900/30 text-slate-400 hover:text-red-400 rounded-lg border border-slate-700 transition-colors" title="Disconnect"><X size={14}/></button>
+                                  </div>
+                              </div>
+                              
+                              <div className="flex-1 overflow-y-auto scrollbar-hide">
+                                  {isGithubLoading ? (
+                                      <div className="p-12 text-center flex flex-col items-center gap-3"><Loader2 size={24} className="animate-spin text-indigo-500"/><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Querying GitHub...</span></div>
+                                  ) : githubTree.length > 0 ? (
+                                      <div className="py-2">
+                                          <div className="px-3 py-2 text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] border-b border-slate-800/50 mb-2 flex items-center gap-2"><Github size={12}/> {project.github?.repo || 'Active Tree'}</div>
+                                          {githubTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}
+                                      </div>
+                                  ) : (
+                                      <div className="space-y-1 p-2">
+                                          {githubRepos.filter(r => r.name.toLowerCase().includes(githubSearchQuery.toLowerCase())).map(repo => (
+                                              <button key={repo.id} onClick={() => handleSelectRepo(repo)} className="w-full text-left p-3 rounded-xl border border-transparent hover:border-indigo-500/30 hover:bg-indigo-900/10 transition-all group">
+                                                  <div className="flex items-center gap-2 mb-1"><Github size={14} className="text-slate-400 group-hover:text-white transition-colors"/><span className="text-xs font-bold text-slate-200 group-hover:text-white truncate">{repo.name}</span></div>
+                                                  <div className="flex items-center gap-2">
+                                                      {repo.private && <Lock size={10} className="text-amber-500"/>}
+                                                      <span className="text-[10px] text-slate-500 uppercase font-bold tracking-tighter">{repo.owner.login}</span>
+                                                  </div>
+                                              </button>
+                                          ))}
+                                      </div>
+                                  )}
+                              </div>
+                          </div>
                       ) : (
-                          driveTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path?.replace('drive://','')} onSelect={handleExplorerSelect} onToggle={handleDriveToggle} onShare={handleExplorerShare} expandedIds={expandedFolders} loadingIds={loadingFolders}/>)
+                          <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-6">
+                              <div className="w-16 h-16 bg-slate-800 rounded-3xl flex items-center justify-center border border-slate-700 shadow-xl group hover:scale-105 transition-transform">
+                                  <Github size={36} className="text-white"/>
+                              </div>
+                              <div className="space-y-2">
+                                  <h3 className="font-bold text-white text-sm">Octopus Protocol</h3>
+                                  <p className="text-xs text-slate-500 leading-relaxed px-2">Import repositories and push updates directly from the studio.</p>
+                              </div>
+                              <button onClick={handleConnectGithub} className="px-8 py-3 bg-white text-slate-900 font-black uppercase tracking-widest text-[10px] rounded-xl shadow-lg hover:bg-slate-100 transition-all active:scale-95 flex items-center gap-2">
+                                  <Key size={14}/> Connect GitHub
+                              </button>
+                          </div>
                       )
-                  ) : <div className="p-4 text-center"><button onClick={handleConnectDrive} className="px-4 py-2 bg-indigo-600 text-white text-xs rounded-lg">Connect Drive</button></div>)}
-                  {activeTab === 'cloud' && cloudTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} onSelect={handleExplorerSelect} onToggle={handleCloudToggle} onShare={()=>{}} expandedIds={expandedFolders} loadingIds={loadingFolders}/>)}
+                  )}
               </div>
           </div>
           <div onMouseDown={() => setIsDraggingLeft(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 z-30 shrink-0 bg-slate-800/20"></div>
@@ -806,22 +879,11 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           </div>
       </div>
 
-      {showShareModal && (
-          <ShareModal 
-              isOpen={true} 
-              onClose={() => setShowShareModal(false)} 
-              link={shareUrl} 
-              title={project.name}
-              onShare={async (uids, isPublic) => {
-                  if (project.id !== 'init') {
-                      await updateProjectAccess(project.id, isPublic ? 'public' : 'restricted', uids);
-                  }
-              }}
-              currentAccess={project.accessLevel}
-              currentAllowedUsers={project.allowedUserIds}
-              currentUserUid={currentUser?.uid}
-          />
+      {showShareModal && shareUrl && (
+          <ShareModal isOpen={true} onClose={() => setShowShareModal(false)} link={shareUrl} title={project.name} onShare={async () => {}} currentUserUid={currentUser?.uid}/>
       )}
     </div>
   );
 };
+
+export default CodeStudio;
