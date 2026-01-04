@@ -290,7 +290,8 @@ export type ViewState =
   | 'groups'
   | 'recordings'
   | 'mentorship'
-  | 'docs'; // Added 'docs' to support the Document Studio view in App.tsx
+  | 'docs'
+  | 'firestore_debug';
 
 export interface AudioState {
   isConnected: boolean;

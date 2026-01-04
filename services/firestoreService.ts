@@ -52,7 +52,6 @@ export const DEFAULT_MONTHLY_GRANT = 1000000;
 
 /**
  * Initiates a coin transfer.
- * Deducts from sender immediately, but recipient must claim it via notification.
  */
 export async function transferCoins(toId: string, toName: string, amount: number, memo?: string): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Database unavailable");
@@ -73,19 +72,17 @@ export async function transferCoins(toId: string, toName: string, amount: number
         if (!toSnap.exists()) throw new Error("Recipient not found");
         const toData = toSnap.data() as UserProfile;
 
-        // Transaction record marked as pending
         const tx: CoinTransaction = { 
           id: txId, fromId, fromName, toId, toName, amount, type: 'transfer', memo, timestamp: Date.now(), isVerified: false 
         };
         
-        // Create an in-app notification (Invitation) for the recipient
         const invRef = doc(collection(db, INVITATIONS_COLLECTION), generateSecureId());
         const notification: Invitation = {
             id: invRef.id,
             fromUserId: fromId,
             fromName: fromName,
             toEmail: toData.email || '',
-            groupId: txId, // Store Transaction ID in groupId field temporarily for claim logic
+            groupId: txId, 
             groupName: 'VoiceCoin Transfer',
             status: 'pending',
             createdAt: Date.now(),
@@ -95,7 +92,6 @@ export async function transferCoins(toId: string, toName: string, amount: number
         };
 
         transaction.update(fromRef, { coinBalance: increment(-amount) });
-        // NOTE: Recipient balance is NOT updated here. It's updated in claimOnlineTransfer.
         transaction.set(txRef, sanitizeData(tx));
         transaction.set(invRef, sanitizeData(notification));
     });
@@ -103,7 +99,6 @@ export async function transferCoins(toId: string, toName: string, amount: number
 
 /**
  * Finalizes an online transfer.
- * Adds coins to recipient balance and marks transaction as verified.
  */
 export async function claimOnlineTransfer(txId: string): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Auth required");
@@ -116,10 +111,7 @@ export async function claimOnlineTransfer(txId: string): Promise<void> {
         const txData = txSnap.data() as CoinTransaction;
         
         if (txData.isVerified) throw new Error("Transfer already claimed.");
-        
-        // Use document ID as source of truth for current UID to avoid mismatch
         if (txData.toId !== auth.currentUser?.uid) {
-            console.error("UID Mismatch:", { txToId: txData.toId, authUid: auth.currentUser?.uid });
             throw new Error("Unauthorized claim: Recipient ID does not match your account.");
         }
 
@@ -129,7 +121,7 @@ export async function claimOnlineTransfer(txId: string): Promise<void> {
 }
 
 /**
- * Processes an offline payment token once the recipient syncs.
+ * Processes an offline payment token.
  */
 export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Auth required");
@@ -142,11 +134,10 @@ export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<v
         if (txSnap.exists()) throw new Error("Payment already claimed.");
 
         const senderSnap = await t.get(senderRef);
-        if (!senderSnap.exists()) throw new Error("Sender identity not found on cloud ledger.");
+        if (!senderSnap.exists()) throw new Error("Sender not found.");
         const senderData = senderSnap.data() as UserProfile;
         
-        // Final sanity check on ledger funds
-        if ((senderData.coinBalance || 0) < token.amount) throw new Error("Sender has insufficient funds on ledger.");
+        if ((senderData.coinBalance || 0) < token.amount) throw new Error("Sender has insufficient funds.");
 
         const tx: CoinTransaction = {
             id: txRef.id,
@@ -171,7 +162,6 @@ export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<v
 export async function getCoinTransactions(uid: string): Promise<CoinTransaction[]> {
     if (!db) return [];
     try {
-        // RESILIENT FETCH: Removed explicit orderBy from query to avoid "Missing Index" failures
         const qFrom = query(collection(db, TRANSACTIONS_COLLECTION), where('fromId', '==', uid), limit(100));
         const qTo = query(collection(db, TRANSACTIONS_COLLECTION), where('toId', '==', uid), limit(100));
         
@@ -182,10 +172,8 @@ export async function getCoinTransactions(uid: string): Promise<CoinTransaction[
             ...toSnap.docs.map(d => ({ ...d.data(), id: d.id }))
         ] as CoinTransaction[];
         
-        // Sort merged results in TypeScript
         return all.sort((a, b) => b.timestamp - a.timestamp);
     } catch(e: any) { 
-      console.error("Ledger fetch error:", e);
       return []; 
     }
 }
@@ -212,10 +200,6 @@ export async function checkAndGrantMonthlyCoins(uid: string): Promise<number> {
     return granted;
 }
 
-/**
- * Awards coins to a creator when their content is liked.
- * Earning Rate: 1000 Coins per Like.
- */
 export async function awardContributionBonus(ownerId: string, type: 'podcast' | 'blog' | 'doc', sourceId: string): Promise<void> {
     if (!db || !ownerId) return;
     const reward = 1000;
@@ -286,7 +270,7 @@ export async function saveBankingCheck(check: BankingCheck): Promise<string> {
         const userRef = doc(db, USERS_COLLECTION, auth.currentUser.uid);
         await runTransaction(db, async (t) => {
             const userSnap = await t.get(userRef);
-            if (!userSnap.exists()) throw new Error("User profile not found");
+            if (!userSnap.exists()) throw new Error("User not found");
             const userData = userSnap.data() as UserProfile;
             if ((userData.coinBalance || 0) < check.coinAmount!) throw new Error("Insufficient balance.");
             t.update(userRef, { coinBalance: increment(-check.coinAmount!) });
@@ -300,26 +284,16 @@ export async function saveBankingCheck(check: BankingCheck): Promise<string> {
 
 export async function getCheckById(id: string): Promise<BankingCheck | null> {
     if (!db) return null;
-    try {
-        const snap = await getDoc(doc(db, CHECKS_COLLECTION, id));
-        return snap.exists() ? (snap.data() as BankingCheck) : null;
-    } catch(e) { return null; }
+    const snap = await getDoc(doc(db, CHECKS_COLLECTION, id));
+    return snap.exists() ? (snap.data() as BankingCheck) : null;
 }
 
 export async function getUserChecks(uid: string): Promise<BankingCheck[]> {
     if (!db) return [];
-    try {
-        const q = query(
-            collection(db, CHECKS_COLLECTION), 
-            where('ownerId', '==', uid)
-        );
-        const snap = await getDocs(q);
-        const results = snap.docs.map(d => ({ ...d.data(), id: d.id } as BankingCheck));
-        return results.sort((a, b) => b.date.localeCompare(a.date));
-    } catch(e) { 
-        console.error("Failed to fetch checks", e);
-        return []; 
-    }
+    const q = query(collection(db, CHECKS_COLLECTION), where('ownerId', '==', uid));
+    const snap = await getDocs(q);
+    const results = snap.docs.map(d => ({ ...d.data(), id: d.id } as BankingCheck));
+    return results.sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export async function deleteCheck(id: string): Promise<void> {
@@ -498,13 +472,11 @@ export async function respondToInvitation(invitation: Invitation, accept: boolea
 // --- Bookings ---
 export async function getUserBookings(uid: string, email: string): Promise<Booking[]> {
     if (!db) return [];
-    try {
-        const q1 = query(collection(db, BOOKINGS_COLLECTION), where('userId', '==', uid));
-        const q2 = query(collection(db, BOOKINGS_COLLECTION), where('invitedEmail', '==', email));
-        const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-        const combined = [...snap1.docs, ...snap2.docs];
-        return Array.from(new Map(combined.map(d => [d.id, d.data() as Booking])).values());
-    } catch (e) { return []; }
+    const q1 = query(collection(db, BOOKINGS_COLLECTION), where('userId', '==', uid));
+    const q2 = query(collection(db, BOOKINGS_COLLECTION), where('invitedEmail', '==', email));
+    const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+    const combined = [...snap1.docs, ...snap2.docs];
+    return Array.from(new Map(combined.map(d => [d.id, d.data() as Booking])).values());
 }
 
 export async function getPendingBookings(email: string): Promise<Booking[]> {
@@ -677,7 +649,7 @@ export async function claimSystemChannels(email: string): Promise<number> {
     const q = query(collection(db, CHANNELS_COLLECTION), where('ownerId', '==', null));
     const snap = await getDocs(q);
     const user = await getUserProfileByEmail(email);
-    if (!user) throw new Error("Target user not found");
+    if (!user) throw new Error("User not found");
     let count = 0;
     for (const d of snap.docs) {
         await updateDoc(d.ref, { ownerId: user.uid, author: user.displayName });
@@ -885,7 +857,6 @@ export async function ensureUserBlog(user: any): Promise<Blog> {
 
 export async function getCommunityPosts(): Promise<BlogPost[]> {
     if (!db) return [];
-    // RESILIENT FETCH: Removed server-side orderBy to bypass "Missing Index" error.
     const q = query(collection(db, POSTS_COLLECTION), where('status', '==', 'published'));
     const snap = await getDocs(q);
     const data = snap.docs.map(d => ({ ...d.data(), id: d.id } as BlogPost));
