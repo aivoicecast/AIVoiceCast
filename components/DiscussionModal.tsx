@@ -214,34 +214,6 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
       } catch (e) { alert("Failed."); }
   };
 
-  const handleDelete = async () => {
-      if (!activeDiscussion || activeDiscussion.id === 'system-doc-001') return;
-      if (!confirm("Delete permanently?")) return;
-      setIsDeletingDoc(true);
-      try {
-          if (activeDiscussion.id.startsWith('local-')) {
-              const localDocsRaw = localStorage.getItem('guest_docs_v1');
-              if (localDocsRaw) {
-                  const localDocs = JSON.parse(localDocsRaw);
-                  localStorage.setItem('guest_docs_v1', JSON.stringify(localDocs.filter((d: any) => d.id !== activeDiscussion.id)));
-              }
-          } else await deleteDiscussion(activeDiscussion.id);
-          if (onDocumentDeleted) onDocumentDeleted();
-          onClose();
-      } catch (e) { alert("Failed."); } finally { setIsDeletingDoc(false); }
-  };
-
-  const handleExportToGoogleDocs = async () => {
-      if (!activeDiscussion || !editedDocContent) return;
-      setIsExportingGDoc(true);
-      try {
-          const token = await connectGoogleDrive();
-          const url = await createGoogleDoc(token, docTitle || "AIVoiceCast Spec", editedDocContent);
-          setGDocUrl(url);
-          window.open(url, '_blank');
-      } catch(e: any) { alert(`Export failed: ${e.message}`); } finally { setIsExportingGDoc(false); }
-  };
-
   const isOwner = !activeDiscussion || activeDiscussion.userId === 'guest' || (currentUser && activeDiscussion.userId === currentUser.uid) || currentUser?.email === 'shengliang.song.ai@gmail.com';
 
   return (

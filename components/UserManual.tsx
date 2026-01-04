@@ -85,9 +85,9 @@ export const UserManual: React.FC<UserManualProps> = ({ onBack }) => {
         </h1>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-[#fdfbf7]">
+      <div className="flex-1 overflow-y-auto bg-[#fdfbf7] text-slate-900">
         <div className="max-w-4xl mx-auto px-6 py-16 md:py-24">
-            <div className="prose prose-slate prose-lg max-w-none antialiased">
+            <div className="prose prose-slate prose-lg max-w-none antialiased text-slate-800">
                 <MarkdownView content={MANUAL_CONTENT} />
             </div>
         </div>

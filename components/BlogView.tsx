@@ -20,23 +20,19 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // My Blog State
   const [myBlog, setMyBlog] = useState<Blog | null>(null);
   const [myPosts, setMyPosts] = useState<BlogPost[]>([]);
   const [isEditingSettings, setIsEditingSettings] = useState(false);
   const [blogTitle, setBlogTitle] = useState('');
   const [blogDesc, setBlogDesc] = useState('');
 
-  // Editor State
   const [editingPost, setEditingPost] = useState<Partial<BlogPost>>({ title: '', content: '', tags: [] });
   const [tagInput, setTagInput] = useState('');
   const [isPreviewMode, setIsPreviewMode] = useState(false);
 
-  // Detail View State
   const [activePost, setActivePost] = useState<BlogPost | null>(null);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
 
-  // Load data based on tab
   useEffect(() => {
     setErrorMsg(null);
     if (activeTab === 'feed') {
@@ -57,7 +53,7 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
       setPosts(finalPosts.sort((a, b) => (b.publishedAt || b.createdAt) - (a.publishedAt || a.createdAt)));
     } catch (e: any) {
       console.error("Feed load error:", e);
-      setErrorMsg("Community feed sync currently unavailable. Displaying static posts.");
+      setErrorMsg("Failed to load community feed. Falling back to system posts.");
       setPosts(SYSTEM_BLOG_POSTS);
     } finally {
       setLoading(false);
@@ -99,9 +95,7 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
       await updateBlogSettings(myBlog.id, { title: blogTitle, description: blogDesc });
       setMyBlog({ ...myBlog, title: blogTitle, description: blogDesc });
       setIsEditingSettings(false);
-    } catch(e) {
-      alert("Failed to save settings");
-    }
+    } catch(e) { alert("Failed to save settings"); }
   };
 
   const handleCreatePost = () => {
@@ -121,9 +115,7 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
     try {
       await deleteBlogPost(postId);
       setMyPosts(prev => prev.filter(p => p.id !== postId));
-    } catch(e) {
-      alert("Failed to delete post");
-    }
+    } catch(e) { alert("Failed to delete post"); }
   };
 
   const handleSavePost = async () => {
@@ -151,11 +143,7 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
         setActiveTab('my_blog');
         await loadMyBlog(); 
         alert(editingPost.status === 'published' ? "Post published successfully!" : "Draft saved successfully!");
-    } catch(e: any) {
-        alert("Failed to save post: " + (e.message || "Unknown error"));
-    } finally {
-        setLoading(false);
-    }
+    } catch(e: any) { alert("Failed to save post: " + (e.message || "Unknown error")); } finally { setLoading(false); }
   };
 
   const handleViewPost = (post: BlogPost) => {
@@ -182,9 +170,7 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
           setActivePost(updatedPost);
           setPosts(prev => prev.map(p => p.id === activePost.id ? updatedPost : p));
           setMyPosts(prev => prev.map(p => p.id === activePost.id ? updatedPost : p));
-      } catch(e) {
-          alert("Failed to post comment.");
-      }
+      } catch(e) { alert("Failed to post comment."); }
   };
 
   const renderPostCard = (post: BlogPost, isOwner = false) => {
@@ -268,7 +254,7 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
             )}
 
             {activeTab === 'post_detail' && activePost && (
-                <div className="bg-[#fdfbf7] min-h-full animate-fade-in">
+                <div className="bg-[#fdfbf7] min-h-full animate-fade-in text-slate-900">
                     <div className="max-w-4xl mx-auto px-6 py-12 md:py-20">
                         <div className="border-b border-slate-200 pb-10 mb-10 text-center">
                             <h1 className="text-4xl md:text-5xl font-black text-slate-900 mb-6 leading-tight tracking-tight">{activePost.title}</h1>
@@ -280,7 +266,7 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
                             </div>
                         </div>
                         
-                        <div className="prose prose-slate prose-lg max-w-none antialiased">
+                        <div className="prose prose-slate prose-lg max-w-none antialiased text-slate-800">
                             <MarkdownView content={activePost.content} />
                         </div>
                         

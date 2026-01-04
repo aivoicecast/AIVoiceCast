@@ -1,5 +1,4 @@
 
-
 export interface Address {
   name: string;
   street: string;
@@ -287,7 +286,11 @@ export type ViewState =
   | 'check_designer'
   | 'check_viewer'
   | 'coin_wallet'
-  | 'calendar';
+  | 'calendar'
+  | 'groups'
+  | 'recordings'
+  | 'mentorship'
+  | 'docs'; // Added 'docs' to support the Document Studio view in App.tsx
 
 export interface AudioState {
   isConnected: boolean;
@@ -322,7 +325,6 @@ export interface TodoItem {
   date: string;
 }
 
-// Added 'pdf' to the language union to support PDF viewing in Code Studio
 export interface CodeFile {
   name: string;
   language: 'python' | 'javascript' | 'typescript' | 'html' | 'css' | 'java' | 'c++' | 'c' | 'rust' | 'go' | 'c#' | 'json' | 'markdown' | 'text' | 'typescript (react)' | 'javascript (react)' | 'plantuml' | 'whiteboard' | 'pdf';

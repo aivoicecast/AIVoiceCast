@@ -172,7 +172,6 @@ export async function getCoinTransactions(uid: string): Promise<CoinTransaction[
     if (!db) return [];
     try {
         // RESILIENT FETCH: Removed explicit orderBy from query to avoid "Missing Index" failures
-        // We handle sorting in memory to ensure history always shows up even without index config.
         const qFrom = query(collection(db, TRANSACTIONS_COLLECTION), where('fromId', '==', uid), limit(100));
         const qTo = query(collection(db, TRANSACTIONS_COLLECTION), where('toId', '==', uid), limit(100));
         
@@ -401,7 +400,6 @@ export async function syncUserProfile(user: any): Promise<void> {
         await setDoc(userRef, { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL, createdAt: Date.now(), lastLogin: Date.now(), subscriptionTier: 'free', apiUsageCount: 0, groups: [], coinBalance: DEFAULT_MONTHLY_GRANT, lastCoinGrantAt: Date.now(), adminOwnerEmail: ADMIN_EMAIL });
         await setDoc(doc(db, 'stats', 'global'), { uniqueUsers: increment(1) }, { merge: true });
       } else {
-        // ALWAYS update uid and other metadata on login heartbeat to ensure schema consistency
         await updateDoc(userRef, { uid: user.uid, lastLogin: Date.now(), photoURL: user.photoURL || snap.data()?.photoURL, displayName: user.displayName || snap.data()?.displayName });
       }
       await updateDoc(doc(db, 'stats', 'global'), { totalLogins: increment(1) });
@@ -422,7 +420,6 @@ export async function updateUserProfile(uid: string, data: Partial<UserProfile>)
 export async function getAllUsers(): Promise<UserProfile[]> {
     if (!db) return [];
     const snap = await getDocs(collection(db, USERS_COLLECTION));
-    // Explicitly inject document ID as uid to guarantee authorization logic works
     return snap.docs.map(d => ({ ...d.data(), uid: d.id } as UserProfile));
 }
 
@@ -489,17 +486,10 @@ export async function getPendingInvitations(email: string): Promise<Invitation[]
 
 export async function respondToInvitation(invitation: Invitation, accept: boolean): Promise<void> {
     if (!db || !auth?.currentUser) return;
-    
-    // Handle specific logic for coin claims
-    if (invitation.type === 'coin' && accept) {
-        // Use the transaction ID stored in the groupId field
-        if (invitation.groupId) {
-            await claimOnlineTransfer(invitation.groupId);
-        }
+    if (invitation.type === 'coin' && accept && invitation.groupId) {
+        await claimOnlineTransfer(invitation.groupId);
     }
-
     await updateDoc(doc(db, INVITATIONS_COLLECTION, invitation.id), { status: accept ? 'accepted' : 'rejected' });
-    
     if (accept && invitation.type === 'group' && invitation.groupId) {
         await updateDoc(doc(db, GROUPS_COLLECTION, invitation.groupId), { memberIds: arrayUnion(auth.currentUser.uid) });
     }
@@ -513,11 +503,8 @@ export async function getUserBookings(uid: string, email: string): Promise<Booki
         const q2 = query(collection(db, BOOKINGS_COLLECTION), where('invitedEmail', '==', email));
         const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
         const combined = [...snap1.docs, ...snap2.docs];
-        const unique = Array.from(new Map(combined.map(d => [d.id, d.data() as Booking])).values());
-        return unique;
-    } catch (e) {
-        return [];
-    }
+        return Array.from(new Map(combined.map(d => [d.id, d.data() as Booking])).values());
+    } catch (e) { return []; }
 }
 
 export async function getPendingBookings(email: string): Promise<Booking[]> {
@@ -603,8 +590,6 @@ export async function voteChannel(ch: Channel, type: 'like' | 'dislike') {
     const incrementVal = type === 'like' ? 1 : -1;
     await updateDoc(doc(db, CHANNELS_COLLECTION, ch.id), { likes: increment(incrementVal) });
     await setDoc(doc(db, CHANNEL_STATS_COLLECTION, ch.id), { likes: increment(incrementVal) }, { merge: true });
-
-    // Award creator for positive engagement
     if (type === 'like' && ch.ownerId) {
         awardContributionBonus(ch.ownerId, 'podcast', ch.id).catch(console.error);
     }
@@ -900,12 +885,11 @@ export async function ensureUserBlog(user: any): Promise<Blog> {
 
 export async function getCommunityPosts(): Promise<BlogPost[]> {
     if (!db) return [];
-    // RESILIENT FETCH: Remove server-side orderBy to avoid "Missing Index" crash.
-    // We sort on the client side instead.
+    // RESILIENT FETCH: Removed server-side orderBy to bypass "Missing Index" error.
     const q = query(collection(db, POSTS_COLLECTION), where('status', '==', 'published'));
     const snap = await getDocs(q);
     const data = snap.docs.map(d => ({ ...d.data(), id: d.id } as BlogPost));
-    return data.sort((a, b) => b.publishedAt! - a.publishedAt!);
+    return data.sort((a, b) => (b.publishedAt || b.createdAt) - (a.publishedAt || a.createdAt));
 }
 
 export async function getUserPosts(blogId: string): Promise<BlogPost[]> {
@@ -986,7 +970,6 @@ export async function createOrGetDMChannel(otherUserId: string, otherUserName: s
     const snap = await getDocs(q);
     const existing = snap.docs.find(d => (d.data()?.memberIds || []).includes(otherUserId));
     if (existing) return existing.id;
-
     const id = generateSecureId();
     await setDoc(doc(db, 'chat_channels', id), { id, name: `${myName} & ${otherUserName}`, type: 'dm', memberIds: [myUid, otherUserId], createdAt: Date.now() });
     return id;
