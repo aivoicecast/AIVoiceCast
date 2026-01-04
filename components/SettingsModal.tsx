@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile } from '../types';
-/* Added Zap and Crown to fix missing imports */
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown } from 'lucide-react';
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck } from 'lucide-react';
 import { logUserActivity, getBillingHistory, createStripePortalSession, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut } from '../services/authService';
 import { clearAudioCache } from '../services/tts';
 import { TOPIC_CATEGORIES } from '../utils/initialData';
 import { Whiteboard } from './Whiteboard';
+import { GoogleGenAI } from '@google/genai';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -20,13 +20,20 @@ interface SettingsModalProps {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
   isOpen, onClose, user, onUpdateProfile, onUpgradeClick 
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'interests' | 'preferences' | 'banking' | 'billing'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'interests' | 'profile' | 'banking' | 'billing'>('general');
   const [isSaving, setIsSaving] = useState(false);
   const [displayName, setDisplayName] = useState(user.displayName);
   const [defaultRepo, setDefaultRepo] = useState(user.defaultRepoUrl || '');
   const [aiProvider, setAiProvider] = useState<'gemini' | 'openai'>(user.preferredAiProvider || 'gemini');
   const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
   
+  // LinkedIn Profile Simulation
+  const [headline, setHeadline] = useState(user.headline || '');
+  const [company, setCompany] = useState(user.company || '');
+  const [resumeText, setResumeText] = useState(user.resumeText || '');
+  const [isParsingResume, setIsParsingResume] = useState(false);
+  const resumeInputRef = useRef<HTMLInputElement>(null);
+
   // Banking Profile State
   const [senderAddress, setSenderAddress] = useState(user.senderAddress || '');
   const [signaturePreview, setSignaturePreview] = useState(user.savedSignatureUrl || '');
@@ -36,7 +43,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [billingHistory, setBillingHistory] = useState<any[]>([]);
   const [isProcessingPortal, setIsProcessingPortal] = useState(false);
 
-  /* Added missing helper variables and functions */
   const currentTier = user.subscriptionTier || 'free';
   const isPaid = currentTier === 'pro';
 
@@ -81,13 +87,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setNextCheckNumber(user.nextCheckNumber || 1001);
           setDisplayName(user.displayName);
           setDefaultRepo(user.defaultRepoUrl || '');
+          setHeadline(user.headline || '');
+          setCompany(user.company || '');
+          setResumeText(user.resumeText || '');
       }
   }, [isOpen, user]);
+
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      setIsParsingResume(true);
+      try {
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const base64 = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve((reader.result as string).split(',')[1]);
+              reader.readAsDataURL(file);
+          });
+
+          const response = await ai.models.generateContent({
+              model: 'gemini-3-flash-preview',
+              contents: {
+                  parts: [
+                      { inlineData: { data: base64, mimeType: file.type } },
+                      { text: "Extract a professional summary and key skills from this resume. Focus on technical keywords and experience levels. Return text only." }
+                  ]
+              }
+          });
+          setResumeText(response.text || "");
+          
+          // Also upload the original file to storage
+          const url = await uploadFileToStorage(`users/${user.uid}/resume.pdf`, file);
+          updateUserProfile(user.uid, { resumeUrl: url });
+      } catch (err) {
+          alert("Could not parse PDF. Try copying and pasting your resume text.");
+      } finally {
+          setIsParsingResume(false);
+      }
+  };
 
   const handleSaveAll = async () => {
       setIsSaving(true);
       try {
-          // Handle Signature Upload if it's a new local drawing
           let finalSigUrl = signaturePreview;
           if (signaturePreview.startsWith('data:')) {
               const res = await fetch(signaturePreview);
@@ -102,7 +144,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               preferredAiProvider: aiProvider,
               senderAddress,
               savedSignatureUrl: finalSigUrl,
-              nextCheckNumber
+              nextCheckNumber,
+              headline,
+              company,
+              resumeText
           };
 
           await updateUserProfile(user.uid, updateData);
@@ -112,7 +157,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           
           setIsSaving(false);
           onClose();
-          // Optional: Show a subtle toast or just close
       } catch(e: any) {
           alert("Failed to save settings: " + e.message);
           setIsSaving(false);
@@ -143,9 +187,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         <div className="flex border-b border-slate-800 bg-slate-900/50 shrink-0 overflow-x-auto no-scrollbar">
             <button onClick={() => setActiveTab('general')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'general' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>General</button>
+            <button onClick={() => setActiveTab('profile')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'profile' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Professional</button>
             <button onClick={() => setActiveTab('interests')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'interests' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Interests</button>
             <button onClick={() => setActiveTab('banking')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'banking' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Check Profile</button>
-            <button onClick={() => setActiveTab('preferences')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'preferences' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Preferences</button>
             <button onClick={() => setActiveTab('billing')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'billing' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Billing</button>
         </div>
 
@@ -181,8 +225,77 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     placeholder="owner/repo" 
                                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
                                 />
-                                <p className="text-[10px] text-slate-500 mt-1 px-1">Sets the primary target for Code Studio synchronization.</p>
                             </div>
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-4 pt-4">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Cpu size={16}/> Preferred AI Engine</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'gemini' ? 'bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
+                                <div className="flex items-center gap-3">
+                                    <input type="radio" name="aiProvider" checked={aiProvider === 'gemini'} onChange={() => setAiProvider('gemini')} className="accent-indigo-500 w-4 h-4"/>
+                                    <div><p className="text-sm font-bold text-white">Google Gemini</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Native Engine</p></div>
+                                </div>
+                                <Sparkles size={20} className={aiProvider === 'gemini' ? 'text-indigo-400' : 'text-slate-700'}/>
+                            </label>
+                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'openai' ? 'bg-emerald-900/20 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
+                                <div className="flex items-center gap-3">
+                                    <input type="radio" name="aiProvider" checked={aiProvider === 'openai'} onChange={() => setAiProvider('openai')} className="accent-emerald-500 w-4 h-4"/>
+                                    <div><p className="text-sm font-bold text-white">OpenAI GPT</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Requires Pro</p></div>
+                                </div>
+                                <Zap size={20} className={aiProvider === 'openai' ? 'text-emerald-400' : 'text-slate-700'}/>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'profile' && (
+                <div className="space-y-8 animate-fade-in">
+                    <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-center gap-3">
+                        <Linkedin className="text-indigo-400" size={24}/>
+                        <div>
+                            <h3 className="text-sm font-bold text-white">Professional Profile</h3>
+                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-0.5">Used for Mock Interviews & Talent Discovery</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Headline</label>
+                                <input type="text" value={headline} onChange={e => setHeadline(e.target.value)} placeholder="Senior Software Engineer..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Current Company</label>
+                                <input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder="Tech Corp" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div className="flex justify-between items-center mb-2 px-1">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Resume Summary</label>
+                                <button onClick={() => resumeInputRef.current?.click()} className="text-[10px] font-black text-indigo-400 flex items-center gap-1 hover:text-white transition-all">
+                                    <FileUp size={12}/> Update PDF
+                                </button>
+                            </div>
+                            <div className="relative">
+                                <textarea 
+                                    value={resumeText} 
+                                    onChange={e => setResumeText(e.target.value)} 
+                                    rows={8}
+                                    placeholder="Click upload or paste your resume details here..."
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-slate-300 focus:ring-1 focus:ring-indigo-500 outline-none leading-relaxed resize-none shadow-inner"
+                                />
+                                {isParsingResume && (
+                                    <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center gap-3">
+                                        <Loader2 className="animate-spin text-indigo-400" size={32}/>
+                                        <span className="text-[10px] font-black text-white uppercase tracking-widest">Neural Parsing PDF...</span>
+                                    </div>
+                                )}
+                            </div>
+                            <input type="file" ref={resumeInputRef} className="hidden" accept=".pdf,.txt" onChange={handleResumeUpload} />
                         </div>
                     </div>
                 </div>
@@ -274,40 +387,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 </div>
                             </div>
                         ))}
-                    </div>
-                </div>
-            )}
-
-            {activeTab === 'preferences' && (
-                <div className="space-y-8 animate-fade-in">
-                    <div className="space-y-4">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Cpu size={16}/> Preferred AI Engine</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'gemini' ? 'bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-900 border-slate-800 hover:bg-slate-800'}`}>
-                                <div className="flex items-center gap-3">
-                                    <input type="radio" name="aiProvider" checked={aiProvider === 'gemini'} onChange={() => setAiProvider('gemini')} className="accent-indigo-500 w-4 h-4"/>
-                                    <div><p className="text-sm font-bold text-white">Google Gemini</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Native Platform Engine</p></div>
-                                </div>
-                                <Sparkles size={20} className={aiProvider === 'gemini' ? 'text-indigo-400' : 'text-slate-700'}/>
-                            </label>
-                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'openai' ? 'bg-emerald-900/20 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-900 border-slate-800 hover:bg-slate-800'}`}>
-                                <div className="flex items-center gap-3">
-                                    <input type="radio" name="aiProvider" checked={aiProvider === 'openai'} onChange={() => setAiProvider('openai')} className="accent-emerald-500 w-4 h-4"/>
-                                    <div><p className="text-sm font-bold text-white">OpenAI GPT</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Requires Pro &sk-...</p></div>
-                                </div>
-                                <Zap size={20} className={aiProvider === 'openai' ? 'text-emerald-400' : 'text-slate-700'}/>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div className="p-6 bg-slate-950 border border-slate-800 rounded-2xl space-y-4 shadow-inner">
-                        <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-bold text-slate-300">Application Cache</h4>
-                            <button onClick={handleClearCache} className="text-xs font-bold text-red-400 hover:text-red-300 transition-colors uppercase tracking-widest">Wipe Cache</button>
-                        </div>
-                        <p className="text-xs text-slate-500 leading-relaxed">
-                            Clears local neural audio fragments and temporary session data. This can help resolve playback issues or free up disk space.
-                        </p>
                     </div>
                 </div>
             )}

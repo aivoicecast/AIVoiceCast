@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel } from '../types';
-// Added missing Users icon import
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star } from 'lucide-react';
+/* Added Edit3 to imports from lucide-react to fix "Cannot find name 'Edit3'" error */
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3 } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
-import { saveInterviewRecording, getPublicInterviews, deleteInterview } from '../services/firestoreService';
+import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -41,6 +41,13 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [language, setLanguage] = useState('TypeScript');
   const [jobDesc, setJobDesc] = useState('');
   const [resumeText, setResumeText] = useState('');
+  
+  // File Upload State
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [jdFile, setJdFile] = useState<File | null>(null);
+  const [isParsingFile, setIsParsingFile] = useState<string | null>(null);
+  const [resumeSource, setResumeSource] = useState<'text' | 'profile' | 'upload'>('text');
+
   const [isStarting, setIsStarting] = useState(false);
   
   // Interview Logic
@@ -56,6 +63,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const streamRef = useRef<MediaStream | null>(null);
   const interviewIdRef = useRef(generateSecureId());
 
+  const resumeInputRef = useRef<HTMLInputElement>(null);
+  const jdInputRef = useRef<HTMLInputElement>(null);
+
   const currentUser = auth?.currentUser;
 
   useEffect(() => {
@@ -70,6 +80,56 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     } finally {
       setLoading(false);
     }
+  };
+
+  const parseFileToText = async (file: File): Promise<string> => {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(',')[1]);
+          reader.readAsDataURL(file);
+      });
+
+      const response = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: {
+              parts: [
+                  { inlineData: { data: base64, mimeType: file.type } },
+                  { text: "Extract and summarize the text from this document. If it is a resume, provide a technical summary of skills and experience. If it is a job description, provide the core requirements and responsibilities. Respond with text ONLY." }
+              ]
+          }
+      });
+      return response.text || "";
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'resume' | 'jd') => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      setIsParsingFile(type);
+      try {
+          const text = await parseFileToText(file);
+          if (type === 'resume') {
+              setResumeText(text);
+              setResumeFile(file);
+          } else {
+              setJdDesc(text);
+              setJdFile(file);
+          }
+      } catch (err) {
+          alert("Neural parsing failed for this file type. Please try pasting the text manually.");
+      } finally {
+          setIsParsingFile(null);
+      }
+  };
+
+  const handleLoadResumeFromProfile = () => {
+      if (userProfile?.resumeText) {
+          setResumeText(userProfile.resumeText);
+          setResumeSource('profile');
+      } else {
+          alert("No resume found in your profile. Go to Settings to upload one.");
+      }
   };
 
   const handleStartInterview = async () => {
@@ -245,6 +305,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       }
   };
 
+  const setJdDesc = (text: string) => setJobDesc(text);
+
   const filteredInterviews = interviews.filter(i => 
     i.userName.toLowerCase().includes(searchQuery.toLowerCase()) || 
     i.mode.includes(searchQuery.toLowerCase())
@@ -355,7 +417,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           )}
 
           {view === 'prep' && (
-              <div className="max-w-4xl mx-auto p-8 lg:p-20 animate-fade-in-up">
+              <div className="max-w-5xl mx-auto p-8 lg:p-20 animate-fade-in-up">
                   <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl space-y-10">
                       <div className="text-center">
                           <div className="w-16 h-16 bg-indigo-500/10 text-indigo-500 rounded-2xl flex items-center justify-center mx-auto mb-6"><Bot size={32}/></div>
@@ -364,35 +426,123 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                          {/* Candidate Information Section */}
                           <div className="space-y-6">
-                              <div>
-                                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 block">1. Focus Area</label>
+                              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-6">
+                                  <div className="flex items-center justify-between">
+                                      <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Candidate Info</h3>
+                                      {currentUser && (
+                                          <button 
+                                            onClick={handleLoadResumeFromProfile}
+                                            className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600/10 text-indigo-300 border border-indigo-500/20 rounded-full text-[10px] font-black uppercase tracking-tighter hover:bg-indigo-600 hover:text-white transition-all"
+                                          >
+                                            <Linkedin size={10}/> From Profile
+                                          </button>
+                                      )}
+                                  </div>
+
+                                  <div className="flex gap-2">
+                                      {['text', 'upload'].map((src) => (
+                                          <button 
+                                            key={src} 
+                                            onClick={() => setResumeSource(src as any)}
+                                            className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase border transition-all ${resumeSource === src ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}
+                                          >
+                                              {src === 'text' ? <Edit3 size={12} className="inline mr-1"/> : <FileUp size={12} className="inline mr-1"/>}
+                                              {src} Resume
+                                          </button>
+                                      ))}
+                                  </div>
+
+                                  {resumeSource === 'text' || resumeSource === 'profile' ? (
+                                      <textarea 
+                                          value={resumeText} 
+                                          onChange={e => { setResumeText(e.target.value); setResumeSource('text'); }} 
+                                          placeholder="Brief summary of your experience or paste full resume text..." 
+                                          className="w-full h-40 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
+                                      />
+                                  ) : (
+                                      <div 
+                                        onClick={() => resumeInputRef.current?.click()}
+                                        className={`w-full h-40 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${resumeFile ? 'border-emerald-500 bg-emerald-950/20' : 'border-slate-800 hover:border-indigo-500 bg-slate-900/50'}`}
+                                      >
+                                          {isParsingFile === 'resume' ? (
+                                              <Loader2 className="animate-spin text-indigo-400" size={32}/>
+                                          ) : resumeFile ? (
+                                              <>
+                                                <FileCheck className="text-emerald-400" size={32}/>
+                                                <p className="text-[10px] font-black text-emerald-400 uppercase">{resumeFile.name}</p>
+                                                <span className="text-[9px] text-slate-500">Neural analysis complete</span>
+                                              </>
+                                          ) : (
+                                              <>
+                                                <Upload className="text-slate-600" size={32}/>
+                                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select PDF or TXT</p>
+                                              </>
+                                          )}
+                                      </div>
+                                  )}
+                                  <input type="file" ref={resumeInputRef} className="hidden" accept=".pdf,.txt" onChange={e => handleFileUpload(e, 'resume')} />
+                              </div>
+
+                              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
+                                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Settings2 size={14}/> Simulation Mode</h3>
                                   <div className="grid grid-cols-1 gap-2">
                                       {['coding', 'system_design', 'behavioral'].map(m => (
-                                          <button key={m} onClick={() => setMode(m as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
+                                          <button key={m} onClick={() => setMode(m as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>
                                               <span className="text-xs font-bold uppercase tracking-wide">{m.replace('_', ' ')}</span>
                                               {mode === m && <CheckCircle size={16}/>}
                                           </button>
                                       ))}
                                   </div>
                               </div>
-                              {mode === 'coding' && (
-                                  <div>
-                                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 block">2. Coding Language</label>
-                                      <select value={language} onChange={e => setLanguage(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:border-indigo-500">
-                                          {['TypeScript', 'Python', 'C++', 'Java', 'Rust', 'Go'].map(l => <option key={l} value={l}>{l}</option>)}
-                                      </select>
-                                  </div>
-                              )}
                           </div>
+
+                          {/* Job/Technical Section */}
                           <div className="space-y-6">
-                              <div>
-                                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 block">3. Target Job / Role</label>
-                                  <textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="e.g. Senior Frontend Engineer at Google. Mention specifics like React, Scale, or Distributed Systems..." className="w-full h-32 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner"/>
+                              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-6">
+                                  <div className="flex items-center justify-between">
+                                      <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><Building size={14}/> Target Role</h3>
+                                      <button 
+                                        onClick={() => jdInputRef.current?.click()}
+                                        className="text-[10px] font-black text-emerald-400 uppercase hover:underline"
+                                      >
+                                          <FileUp size={10} className="inline mr-1"/> Upload JD
+                                      </button>
+                                  </div>
+
+                                  {isParsingFile === 'jd' ? (
+                                      <div className="w-full h-40 bg-slate-900 rounded-2xl flex flex-col items-center justify-center gap-2 border border-slate-800">
+                                          <Loader2 className="animate-spin text-emerald-400" size={32}/>
+                                          <span className="text-[10px] font-black text-slate-500 uppercase">Reading File...</span>
+                                      </div>
+                                  ) : (
+                                      <textarea 
+                                          value={jobDesc} 
+                                          onChange={e => setJobDesc(e.target.value)} 
+                                          placeholder="Paste the job description or specific role details here..." 
+                                          className="w-full h-40 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"
+                                      />
+                                  )}
+                                  <input type="file" ref={jdInputRef} className="hidden" accept=".pdf,.txt" onChange={e => handleFileUpload(e, 'jd')} />
+
+                                  {mode === 'coding' && (
+                                      <div className="pt-2">
+                                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 block">Preferred Stack</label>
+                                          <select value={language} onChange={e => setLanguage(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:border-indigo-500">
+                                              {['TypeScript', 'Python', 'C++', 'Java', 'Rust', 'Go'].map(l => <option key={l} value={l}>{l}</option>)}
+                                          </select>
+                                      </div>
+                                  )}
                               </div>
-                              <div>
-                                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 block">4. Your Background (Resume)</label>
-                                  <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Brief summary of your experience to personalize the questions..." className="w-full h-32 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner"/>
+
+                              <div className="p-6 bg-indigo-900/10 border border-indigo-500/20 rounded-3xl">
+                                  <div className="flex gap-4">
+                                      <Sparkles className="text-indigo-400 shrink-0" size={24}/>
+                                      <p className="text-xs text-indigo-200 leading-relaxed">
+                                          <strong>Adaptive Logic:</strong> AI will analyze your resume against the target role to generate highly relevant follow-up questions. Be ready for a deep dive!
+                                      </p>
+                                  </div>
                               </div>
                           </div>
                       </div>
@@ -572,3 +722,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     </div>
   );
 };
+
+interface Settings2IconProps { size?: number, className?: string }
+const Settings2 = ({ size = 20, className = "" }: Settings2IconProps) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+);

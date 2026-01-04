@@ -72,6 +72,11 @@ export interface UserProfile {
   preferredMobileQuickApp?: string;
   coinBalance: number;
   lastCoinGrantAt?: number;
+  // Simulated LinkedIn Profile
+  resumeUrl?: string;
+  resumeText?: string;
+  headline?: string;
+  company?: string;
   // Banking Profile
   senderAddress?: string;
   savedSignatureUrl?: string;
