@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Channel, Booking, UserProfile } from '../types';
-import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Loader2, Play, Users, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight, Coins, Check as CheckIcon } from 'lucide-react';
+import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Loader2, Play, Users, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight, Coins, Check as CheckIcon, HeartHandshake, Edit3 } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { createBooking, getUserBookings, cancelBooking, updateBookingInvite, deleteBookingRecording, getAllUsers, getUserProfileByEmail } from '../services/firestoreService';
 
@@ -59,6 +59,11 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
     return members.filter(m => m.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || m.email?.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [members, searchQuery]);
 
+  const handleOpenBooking = (member: UserProfile) => {
+      setBookingMember(member);
+      setSelectedMentor(null);
+  };
+
   const handleBookSession = async () => {
     if (!currentUser || !selectedDate || !selectedTime || !topic.trim()) return alert("Please fill in all fields.");
     const isP2P = !!bookingMember;
@@ -103,7 +108,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                         <div className="space-y-6">
                             <div><h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><Calendar size={14}/> Select Date</h3><div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide">{[1,2,3,4,5,6,7].map(i => { const d = new Date(); d.setDate(d.getDate() + i); const ds = d.toISOString().split('T')[0]; return <button key={ds} onClick={() => setSelectedDate(ds)} className={`flex-shrink-0 w-20 p-4 rounded-2xl border flex flex-col items-center transition-all ${selectedDate === ds ? 'bg-indigo-600 border-indigo-500 text-white shadow-xl shadow-indigo-500/20 scale-105' : 'bg-slate-800 border-slate-700 text-slate-400'}`}><span className="text-[10px] font-black uppercase mb-1">{d.toLocaleDateString(undefined, {weekday:'short'})}</span><span className="text-lg font-black">{d.getDate()}</span></button>; })}</div></div>
-                            <div><h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><Clock size={14}/> Select Time</h3><div className="grid grid-cols-4 gap-2">{TIME_SLOTS.map(time => <button key={time} onClick={() => setSelectedTime(time)} className={`py-3 rounded-xl text-xs font-black border transition-all ${selectedTime === time ? 'bg-emerald-600 border-emerald-500 text-white shadow-xl shadow-emerald-500/20' : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500'}`}>{time}</button>)}</div></div>
+                            <div><h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><Clock size={14}/> Select Time</h3><div className="grid grid-cols-4 gap-2">{TIME_SLOTS.map(time => <button key={time} onClick={() => setSelectedTime(time)} className={`py-3 rounded-xl text-xs font-black border transition-all ${selectedTime === time ? 'bg-emerald-600 border-emerald-500 text-white shadow-xl shadow-emerald-500/20' : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-50'}`}>{time}</button>)}</div></div>
                         </div>
                         <div className="space-y-6">
                             <div><h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><Edit3 size={14}/> Session Topic</h3><textarea value={topic} onChange={e => setTopic(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-6 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner h-48" placeholder="What are your goals for this session?"/></div>

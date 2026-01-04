@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Channel, Booking, TodoItem } from '../types';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Briefcase, Plus, Video, CheckCircle, X, Users, Loader2, Mic, Play, Mail, Sparkles, ArrowLeft, Monitor, Filter, LayoutGrid, List, Languages, CloudSun, Wind, BookOpen, CheckSquare, Square, Trash2, StopCircle, Download, FileText, Check, Podcast, RefreshCw, Share2, Target, ExternalLink } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Briefcase, Plus, Video, CheckCircle, X, Users, Loader2, Mic, Play, Mail, Sparkles, ArrowLeft, Monitor, Filter, LayoutGrid, List, Languages, CloudSun, Wind, BookOpen, CheckSquare, Square, Trash2, StopCircle, Download, FileText, Check, Podcast, RefreshCw, Share2, Target, ExternalLink, Circle, Edit3 } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { getUserBookings, createBooking, updateBookingInvite, saveSavedWord, getSavedWordForUser } from '../services/firestoreService';
 import { fetchLocalWeather, getWeatherDescription, WeatherData } from '../utils/weatherService';
@@ -28,7 +28,10 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const getStartOfDay = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); return d; };
-const getDateKey = (date: Date | number | string) => { const d = new Date(date); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+const getDateKey = (date: Date | number | string) => { 
+    const d = new Date(date); 
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; 
+};
 
 export const CalendarView: React.FC<CalendarViewProps> = ({
   channels, handleChannelClick, handleVote, currentUser, setChannelToEdit, setIsSettingsModalOpen, globalVoice, t, onCommentClick, onStartLiveSession, onCreateChannel, onSchedulePodcast
@@ -227,7 +230,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       <h3 className="font-bold text-white text-lg">Agenda</h3>
                       <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{selectedDate.toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'})}</p>
                   </div>
-                  <button onClick={() => onSchedulePodcast(selectedDate)} className="p-3 bg-indigo-600 rounded-2xl text-white hover:bg-indigo-500 transition-all shadow-lg active:scale-95"><Plus size={20}/></button>
+                  <button onClick={() => onSchedulePodcast(selectedDate)} className="p-3 bg-indigo-600 rounded-2xl text-white hover:bg-indigo-500 transition-all shadow-lg active:scale-95" title="New Podcast Episode"><Plus size={20}/></button>
               </div>
               
               <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
