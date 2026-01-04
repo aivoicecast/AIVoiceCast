@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel } from '../types';
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage, getUserInterviews, updateInterviewMetadata } from '../services/firestoreService';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
-import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
+import { ensureFolder, uploadToDrive, getDriveFileSharingLink, readPublicDriveFile } from '../services/googleDriveService';
 import { GeminiLiveService } from '../services/geminiLive';
 import { GoogleGenAI } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
@@ -34,12 +34,12 @@ interface InterviewReport {
   verdict: 'Strong Hire' | 'Hire' | 'No Hire' | 'Strong No Hire';
   summary: string;
   idealAnswers: IdealAnswer[];
-  learningMaterial: string; // Markdown
+  learningMaterial: string; 
   todoList: string[];
 }
 
 export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfile, onStartLiveSession }) => {
-  const [view, setView] = useState<'hub' | 'prep' | 'interview' | 'report' | 'archive'>('hub');
+  const [view, setView] = useState<'hub' | 'prep' | 'interview' | 'report'>('hub');
   const [interviews, setInterviews] = useState<MockInterviewRecording[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
@@ -63,8 +63,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [isCodeStudioOpen, setIsCodeStudioOpen] = useState(false);
   const [initialStudioFiles, setInitialStudioFiles] = useState<CodeFile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Active Report State
+  const [activeRecording, setActiveRecording] = useState<MockInterviewRecording | null>(null);
   const [report, setReport] = useState<InterviewReport | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [videoPlaybackUrl, setVideoPlaybackUrl] = useState<string | null>(null);
   
   // Feedback Session State
   const [isFeedbackSessionActive, setIsFeedbackSessionActive] = useState(false);
@@ -74,13 +78,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const videoBlobRef = useRef<Blob | null>(null);
   const interviewIdRef = useRef(generateSecureId());
   
-  // Ref for local camera stream to fix black box issue
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const activeStreamRef = useRef<MediaStream | null>(null);
 
   const currentUser = auth?.currentUser;
 
-  // Ensure camera feed is attached when view changes to 'interview'
   useEffect(() => {
       if (view === 'interview' && activeStreamRef.current && localVideoRef.current) {
           localVideoRef.current.srcObject = activeStreamRef.current;
@@ -101,8 +103,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       
       const combined = [...publicData, ...userData];
       const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
-      
       setInterviews(unique.sort((a, b) => b.timestamp - a.timestamp));
+    } catch (e) {
+        console.error("Load failed", e);
     } finally {
       setLoading(false);
     }
@@ -157,11 +160,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       setIsStarting(true);
       setTranscript([]);
       setReport(null);
+      setActiveRecording(null);
+      setVideoPlaybackUrl(null);
       videoBlobRef.current = null;
       interviewIdRef.current = generateSecureId();
 
       try {
-          // 1. Generate Problem First
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const problemPrompt = `
             Context: Job Description: ${jobDesc}. Mode: ${mode}. Language: ${language}.
@@ -181,75 +185,85 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           ];
           setInitialStudioFiles(files);
 
-          // 2. Setup Recording & Video Feedback
+          // REQUEST PERMISSIONS
           const camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
           
           activeStreamRef.current = camStream;
 
           const canvas = document.createElement('canvas');
-          canvas.width = 1920; canvas.height = 1080;
-          const ctx = canvas.getContext('2d')!;
+          canvas.width = 1920; 
+          canvas.height = 1080;
+          const ctx = canvas.getContext('2d', { alpha: false })!;
           
           const camVideo = document.createElement('video');
           camVideo.srcObject = camStream; 
           camVideo.muted = true;
-          camVideo.play();
+          camVideo.playsInline = true;
           
           const screenVideo = document.createElement('video');
           screenVideo.srcObject = screenStream; 
           screenVideo.muted = true;
-          screenVideo.play();
+          screenVideo.playsInline = true;
+
+          // CRITICAL: Ensure both videos are actually ready to play before recording starts
+          await Promise.all([
+              new Promise((resolve) => { camVideo.onloadedmetadata = () => { camVideo.play().then(resolve); }; }),
+              new Promise((resolve) => { screenVideo.onloadedmetadata = () => { screenVideo.play().then(resolve); }; })
+          ]);
           
           const drawFrame = () => {
-              // Only draw if we're in interview view or starting
-              if (!isRecording && !isStarting) return;
+              // The draw loop should continue as long as we are starting or recording
+              if (view !== 'interview' && !isStarting) return;
+              
               ctx.fillStyle = '#020617';
               ctx.fillRect(0, 0, canvas.width, canvas.height);
-              ctx.drawImage(screenVideo, 0, 0, 1920, 1080);
               
-              // Floating cam overlay
-              ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 10;
-              ctx.strokeRect(1500, 750, 380, 280);
-              ctx.drawImage(camVideo, 1500, 750, 380, 280);
+              // Draw Screen (Background)
+              if (screenVideo.readyState >= 2) {
+                  ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+              }
+              
+              // Draw Camera (Overlay)
+              if (camVideo.readyState >= 2) {
+                  ctx.strokeStyle = '#6366f1'; 
+                  ctx.lineWidth = 10;
+                  ctx.strokeRect(1500, 750, 380, 280);
+                  ctx.drawImage(camVideo, 1500, 750, 380, 280);
+              }
               
               requestAnimationFrame(drawFrame);
           };
           
+          // Start drawing before starting recorder to ensure stream is warm
+          requestAnimationFrame(drawFrame);
+          
           const combinedStream = canvas.captureStream(30);
           camStream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
           
-          const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
+          const recorder = new MediaRecorder(combinedStream, { 
+              mimeType: 'video/webm;codecs=vp9,opus',
+              videoBitsPerSecond: 2500000 // 2.5 Mbps
+          });
+          
           const chunks: Blob[] = [];
-          recorder.ondataavailable = e => chunks.push(e.data);
-          recorder.onstop = () => { videoBlobRef.current = new Blob(chunks, { type: 'video/webm' }); };
+          recorder.ondataavailable = e => {
+              if (e.data.size > 0) chunks.push(e.data);
+          };
+          recorder.onstop = () => { 
+              videoBlobRef.current = new Blob(chunks, { type: 'video/webm' }); 
+          };
           mediaRecorderRef.current = recorder;
           
-          // Switch to interview view first so element exists
           setView('interview');
-          recorder.start();
+          recorder.start(1000); // Capture in 1s slices for robustness
           setIsRecording(true);
-          requestAnimationFrame(drawFrame);
           
-          // 3. Connect AI with ACTIVE LISTENING protocols
           const persona = mode === 'coding' ? 'Senior Technical Interviewer' : mode === 'system_design' ? 'Principal System Architect' : 'Hiring Manager';
           const prompt = `You are a world-class ${persona}. 
-          MISSION: Conduct a team-collaboration mock interview.
-          
-          ACTIVE LISTENING PROTOCOL:
-          - DO NOT let the conversation go cold. If the user stops talking for a few seconds, provide a short verbal acknowledgment like "I see," "Go on," or "Okay, that makes sense."
-          - If the user is silent for more than 7 seconds, ask a checking question: "Are you still working through that logic?" or "Would you like a hint on this part?"
-          - Explicitly check for completion: "Are you done with this part, or should we keep refining it before moving on?"
-          - NEVER repeat the same filler word twice in a row.
-          
-          PHASES:
-          1. INTRO: Start with a quick mutual introduction. Mention you are here as a peer/team-mate.
-          2. PROBLEM: Tell the candidate you have pre-filled the problem in their Code Studio. Briefly summarize it.
-          3. COLLABORATE: Act as a peer. Monitor their progress.
-          4. WRAP UP: Thank them at the end.
-          
-          GUIDELINES:
-          - DO NOT output one word per line. Use natural, complete sentences.
+          MISSION: Conduct a mock interview.
+          PROTOCOL:
+          - If the user is silent for more than 7 seconds, ask a checking question.
           - Context: Job: ${jobDesc}, Candidate: ${resumeText}, Stack: ${language}.`;
 
           const service = new GeminiLiveService();
@@ -275,18 +289,19 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       } catch (e) {
           console.error(e);
           alert("Permissions required for Mock Interview (Camera + Screen Share).");
-          setView('prep');
+          setView('hub');
       } finally {
           setIsStarting(false);
       }
   };
 
   const handleEndInterview = async () => {
-      mediaRecorderRef.current?.stop();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+      }
+      
       liveServiceRef.current?.disconnect();
       setIsRecording(false);
-      
-      // Stop stream tracks
       activeStreamRef.current?.getTracks().forEach(t => t.stop());
       activeStreamRef.current = null;
       
@@ -294,31 +309,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-          
-          const reportPrompt = `
-            Analyze this mock interview transcript and generate a detailed performance report.
-            
-            JOB CONTEXT: ${jobDesc}
-            TRANSCRIPT:
-            ${transcriptText}
-            
-            RESPOND ONLY IN JSON FORMAT with this schema:
-            {
-              "score": number,
-              "technicalSkills": "string",
-              "communication": "string",
-              "collaboration": "string",
-              "strengths": ["string"],
-              "areasForImprovement": ["string"],
-              "verdict": "Strong Hire" | "Hire" | "No Hire" | "Strong No Hire",
-              "summary": "string",
-              "idealAnswers": [
-                { "question": "Key question asked", "expectedAnswer": "A strong model answer", "rationale": "Why this is good" }
-              ],
-              "learningMaterial": "Markdown content explaining technical topics and gaps",
-              "todoList": ["Action item 1", "Action item 2"]
-            }
-          `;
+          const reportPrompt = `Analyze interview transcript. Respond ONLY in JSON format: { "score": number, "technicalSkills": "string", "communication": "string", "collaboration": "string", "strengths": ["string"], "areasForImprovement": ["string"], "verdict": "Strong Hire", "summary": "string", "idealAnswers": [], "learningMaterial": "Markdown", "todoList": [] } Transcript: ${transcriptText}`;
 
           const response = await ai.models.generateContent({
               model: 'gemini-3-pro-preview',
@@ -328,82 +319,40 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
           const reportData = JSON.parse(response.text || '{}') as InterviewReport;
           setReport(reportData);
-          setView('report');
-
-          // Wait for video blob to finalize
+          
+          // Allow some time for MediaRecorder onstop to finish processing chunks
           let attempts = 0;
           while (!videoBlobRef.current && attempts < 50) {
               await new Promise(r => setTimeout(r, 100));
               attempts++;
           }
-          await finalizeAndSave(videoBlobRef.current || new Blob([], { type: 'video/webm' }), reportData);
+          
+          const blob = videoBlobRef.current || new Blob([], { type: 'video/webm' });
+          const savedRec = await finalizeAndSave(blob, reportData);
+          
+          setActiveRecording(savedRec);
+          if (blob.size > 0) setVideoPlaybackUrl(URL.createObjectURL(blob));
+          setView('report');
       } catch (e) {
-          console.error("Report generation failed", e);
+          console.error("Report failed", e);
           setView('hub');
       } finally {
           setIsGeneratingReport(false);
       }
   };
 
-  const startCoachingSession = async () => {
-      if (!report) return;
-      setIsFeedbackSessionActive(true);
-      
-      const coachPrompt = `
-        You are now the "Neural Career Coach". 
-        CONTEXT: You just finished a mock interview for the user. 
-        PERFORMANCE SUMMARY: ${report.summary}
-        SCORE: ${report.score}/100
-        VERDICT: ${report.verdict}
-        STRENGTHS: ${report.strengths.join(', ')}
-        IMPROVEMENTS: ${report.areasForImprovement.join(', ')}
-        LEARNING PATH: ${report.learningMaterial}
-        
-        MISSION:
-        1. Vocally walk the user through their report. 
-        2. Congratulate them on their strengths.
-        3. TEACH them how to perform better next time. Specifically explain the concepts in the "Learning Path".
-        4. Answer their questions about the feedback.
-        5. Stay encouraging and professional.
-        
-        GUIDELINES:
-        - Speak naturally. No "one word per line".
-        - Be a mentor, not just a judge.
-      `;
-
-      try {
-          const service = new GeminiLiveService();
-          liveServiceRef.current = service;
-          await service.connect('Zephyr', coachPrompt, {
-              onOpen: () => {},
-              onClose: () => setIsFeedbackSessionActive(false),
-              onError: (e) => console.error(e),
-              onVolumeUpdate: () => {},
-              onTranscript: (text, isUser) => {
-                  setTranscript(prev => {
-                      const role = isUser ? 'user' : 'ai';
-                      if (prev.length > 0 && prev[prev.length - 1].role === role) {
-                          const last = prev[prev.length - 1];
-                          return [...prev.slice(0, -1), { ...last, text: last.text + text }];
-                      }
-                      return [...prev, { role, text, timestamp: Date.now() }];
-                  });
-              }
-          });
-      } catch (e) {
-          alert("Coaching session failed to start.");
-          setIsFeedbackSessionActive(false);
-      }
-  };
-
-  const finalizeAndSave = async (videoBlob: Blob, finalReport: InterviewReport) => {
+  const finalizeAndSave = async (videoBlob: Blob, finalReport: InterviewReport): Promise<MockInterviewRecording> => {
       setIsUploading(true);
       try {
           const token = getDriveToken() || await connectGoogleDrive();
-          const folderId = await ensureCodeStudioFolder(token);
-          const driveId = await uploadToDrive(token, folderId, `Interview_${new Date().toISOString()}.webm`, videoBlob);
+          const studioFolderId = await ensureFolder(token, 'CodeStudio');
+          const interviewsFolderId = await ensureFolder(token, 'Interviews', studioFolderId);
           
-          // CRITICAL: Ensure only plain data is sent to save function to avoid circular errors
+          // Generate a filename with local timestamp
+          const timestampStr = new Date().toISOString();
+          const driveId = await uploadToDrive(token, interviewsFolderId, `Interview_${timestampStr}.webm`, videoBlob);
+          const webViewUrl = await getDriveFileSharingLink(token, driveId);
+
           const recording: MockInterviewRecording = {
               id: interviewIdRef.current,
               userId: currentUser?.uid || 'guest',
@@ -411,305 +360,170 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               userPhoto: currentUser?.photoURL || '',
               mode, language, jobDescription: jobDesc,
               timestamp: Date.now(),
-              videoUrl: `drive://${driveId}`,
+              videoUrl: webViewUrl || `drive://${driveId}`,
               transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
               feedback: JSON.stringify(finalReport),
               visibility: visibility
           };
           
           await saveInterviewRecording(recording);
-          loadInterviews();
+          await loadInterviews();
+          return recording;
       } catch (e: any) {
           console.error("Sync failed", e);
+          return { id: 'error', userId: 'error', userName: 'Error', mode, jobDescription: jobDesc, timestamp: Date.now(), videoUrl: '' };
       } finally {
           setIsUploading(false);
       }
   };
 
-  const handleDeleteRecording = async (e: React.MouseEvent, id: string) => {
-      e.stopPropagation();
-      if (!confirm("Permanently delete this interview recording?")) return;
-      try {
-          await deleteInterview(id);
-          setInterviews(prev => prev.filter(i => i.id !== id));
-      } catch (err) {
-          alert("Delete failed.");
-      }
+  const handleViewArchiveItem = async (rec: MockInterviewRecording) => {
+      setActiveRecording(rec);
+      setReport(JSON.parse(rec.feedback || '{}'));
+      setVideoPlaybackUrl(rec.videoUrl);
+      setView('report');
   };
 
-  const handleToggleVisibility = async (e: React.MouseEvent, rec: MockInterviewRecording) => {
-      e.stopPropagation();
-      const newVisibility = rec.visibility === 'private' ? 'public' : 'private';
-      try {
-          await updateInterviewMetadata(rec.id, { visibility: newVisibility });
-          setInterviews(prev => prev.map(i => i.id === rec.id ? { ...i, visibility: newVisibility } : i));
-      } catch (err) {
-          alert("Update failed.");
-      }
-  };
+  const startCoachingSession = () => {
+    if (!report || !activeRecording) return;
 
-  const filteredInterviews = interviews.filter(i => 
-    i.userName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    i.mode.includes(searchQuery.toLowerCase())
-  );
+    const feedbackChannel: Channel = {
+        id: `feedback-${activeRecording.id}`,
+        title: `Coaching: ${activeRecording.mode}`,
+        description: `Voice coaching for your ${activeRecording.mode} interview based on neural simulation report.`,
+        author: 'AI Headhunter',
+        voiceName: 'Kore',
+        systemInstruction: `You are an expert Executive Search Consultant and Interview Coach. 
+        MISSION: Provide actionable voice coaching based on the previous interview session.
+        
+        INTERVIEW DATA:
+        REPORT: ${JSON.stringify(report)}
+        TRANSCRIPT SUMMARY: ${activeRecording.transcript?.map(t => `${t.role}: ${t.text}`).join('\n').substring(0, 5000)}
+        
+        GUIDELINES:
+        - Be encouraging but provide specific technical critiques.
+        - Focus on the "Areas for Improvement" mentioned in the report.
+        - Offer to practice specific questions where the user fell short.
+        - Act as a mentor who wants them to land a $500k/year senior role.`,
+        likes: 0,
+        dislikes: 0,
+        comments: [],
+        tags: ['Coaching', 'Feedback', 'Growth'],
+        imageUrl: activeRecording.userPhoto || 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&q=80',
+        createdAt: Date.now()
+    };
+
+    setIsFeedbackSessionActive(true);
+    onStartLiveSession(feedbackChannel, `Feedback for ${activeRecording.mode} session`);
+  };
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
-      {/* Header */}
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
-              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
+              <button onClick={() => view === 'hub' ? onBack() : setView('hub')} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400">
                   <ArrowLeft size={20} />
               </button>
-              <h1 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Video className="text-red-500" />
-                  Mock Interview Center
-              </h1>
+              <h1 className="text-lg font-bold text-white flex items-center gap-2"><Video className="text-red-500" /> Mock Interview</h1>
           </div>
-          <div className="flex items-center gap-3">
-              {view === 'hub' && (
-                  <button onClick={() => setView('prep')} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all active:scale-95">
-                      <Zap size={14}/>
-                      <span>Start New Session</span>
-                  </button>
-              )}
-              {view === 'interview' && (
-                  <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2 px-3 py-1 bg-red-900/20 text-red-400 border border-red-500/20 rounded-full animate-pulse">
-                          <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                          <span className="text-xs font-black uppercase tracking-widest">LIVE RECORDING</span>
-                      </div>
-                      <button onClick={handleEndInterview} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold shadow-lg">
-                          End Interview
-                      </button>
-                  </div>
-              )}
-              {view === 'report' && (
-                  <button onClick={() => setView('hub')} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold">
-                      Back to Dashboard
-                  </button>
-              )}
-          </div>
+          {view === 'interview' && (
+              <button onClick={handleEndInterview} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold shadow-lg">End & Generate Report</button>
+          )}
       </header>
 
       <main className="flex-1 overflow-y-auto scrollbar-hide">
           {view === 'hub' && (
-              <div className="max-w-6xl mx-auto p-8 space-y-10 animate-fade-in">
-                  <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-slate-800 pb-8">
-                      <div>
-                          <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase mb-2">Interview Archives</h2>
-                          <p className="text-slate-400 max-w-xl">Review past performance metrics and AI generated growth paths.</p>
+              <div className="max-w-6xl mx-auto p-8 space-y-12 animate-fade-in">
+                  <div className="bg-indigo-600 rounded-[3rem] p-12 shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center gap-10">
+                      <div className="absolute top-0 right-0 p-32 bg-white/10 blur-[100px] rounded-full"></div>
+                      <div className="relative z-10 flex-1 space-y-6">
+                          <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Ready for your<br/>Next Big Step?</h2>
+                          <p className="text-indigo-100 text-lg font-medium opacity-90 max-w-lg">Run high-fidelity technical simulations with senior-level AI personas. Get real-time feedback, code reviews, and a detailed growth path.</p>
+                          <button onClick={() => setView('prep')} className="px-10 py-5 bg-white text-indigo-600 font-black uppercase tracking-widest rounded-2xl shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center gap-3">
+                              <Zap size={20} fill="currentColor"/> Start Simulation
+                          </button>
                       </div>
-                      <div className="relative w-full md:w-80">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16}/>
-                          <input 
-                            type="text" 
-                            placeholder="Search by candidate or mode..." 
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                          />
-                      </div>
+                      <div className="relative z-10 hidden lg:block"><div className="w-64 h-64 bg-slate-950 rounded-[3rem] border-8 border-indigo-400/30 flex items-center justify-center rotate-3 shadow-2xl"><Bot size={100} className="text-indigo-400 animate-pulse"/></div></div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                      {loading ? <div className="col-span-full py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={40}/></div> : filteredInterviews.length === 0 ? (
-                          <div className="col-span-full py-32 text-center text-slate-500 bg-slate-900/20 border-2 border-dashed border-slate-800 rounded-[3rem] space-y-4">
-                              <Video size={48} className="mx-auto opacity-20"/>
-                              <p>No interviews in the archive yet.</p>
-                          </div>
-                      ) : filteredInterviews.map(rec => {
-                          const isMine = currentUser && rec.userId === currentUser.uid;
-                          return (
-                          <div key={rec.id} className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden hover:border-indigo-500/50 transition-all group flex flex-col shadow-xl">
-                              <div className="aspect-video relative bg-black">
-                                  <div className="absolute inset-0 flex items-center justify-center">
-                                      <Play size={40} className="text-white opacity-40 group-hover:opacity-100 transition-opacity" fill="white" />
+                  <div className="space-y-6">
+                      <div className="flex justify-between items-end px-2">
+                          <div><h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Recent Sessions</h3><p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Review your growth trajectory</p></div>
+                          <div className="relative w-72"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16}/><input type="text" placeholder="Search archive..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"/></div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {loading ? <div className="col-span-full py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : interviews.length === 0 ? (
+                              <div className="col-span-full py-32 text-center text-slate-500 border-2 border-dashed border-slate-800 rounded-[3rem]"><p>No sessions recorded yet.</p></div>
+                          ) : interviews.filter(i => i.userName.toLowerCase().includes(searchQuery.toLowerCase())).map(rec => (
+                              <div key={rec.id} onClick={() => handleViewArchiveItem(rec)} className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-6 hover:border-indigo-500/50 transition-all group cursor-pointer shadow-xl relative overflow-hidden">
+                                  <div className="flex justify-between items-start mb-6">
+                                      <div className="flex items-center gap-3">
+                                          <img src={rec.userPhoto || `https://ui-avatars.com/api/?name=${rec.userName}`} className="w-12 h-12 rounded-2xl object-cover border-2 border-slate-800" />
+                                          <div><h4 className="font-bold text-white text-sm">@{rec.userName}</h4><p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{new Date(rec.timestamp).toLocaleDateString()}</p></div>
+                                      </div>
+                                      <div className="p-2 bg-slate-950 rounded-xl text-indigo-400 group-hover:scale-110 transition-transform"><FileCheck size={20}/></div>
                                   </div>
-                                  <div className="absolute bottom-4 right-4 flex gap-2">
-                                      {isMine && (
-                                          <button 
-                                            onClick={(e) => handleToggleVisibility(e, rec)}
-                                            className={`bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-black uppercase border border-white/10 tracking-widest flex items-center gap-1.5 transition-all hover:bg-white hover:text-black ${rec.visibility === 'private' ? 'text-amber-400' : 'text-emerald-400'}`}
-                                          >
-                                              {rec.visibility === 'private' ? <Lock size={10}/> : <Globe size={10}/>}
-                                              {rec.visibility || 'public'}
-                                          </button>
-                                      )}
-                                      <div className="bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-black text-white uppercase border border-white/10 tracking-widest">VERIFIED</div>
-                                  </div>
-                                  {isMine && (
-                                      <button 
-                                        onClick={(e) => handleDeleteRecording(e, rec.id)}
-                                        className="absolute top-4 right-4 p-2 bg-slate-900/80 rounded-lg text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                                      >
-                                          <Trash2 size={16}/>
-                                      </button>
-                                  )}
-                              </div>
-                              <div className="p-6 space-y-4 flex-1 flex flex-col">
-                                  <div className="flex items-center gap-3">
-                                      <img src={rec.userPhoto || `https://ui-avatars.com/api/?name=${rec.userName}`} className="w-10 h-10 rounded-full border-2 border-slate-800" />
-                                      <div>
-                                          <h3 className="font-bold text-white text-sm">@{rec.userName}</h3>
-                                          <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{new Date(rec.timestamp).toLocaleDateString()}</p>
+                                  <div className="space-y-4">
+                                      <div className="flex gap-2">
+                                          <span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode}</span>
+                                          <span className="text-[9px] font-black uppercase bg-emerald-900/20 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/30">Verified</span>
+                                      </div>
+                                      <p className="text-xs text-slate-400 line-clamp-2 italic leading-relaxed">"{rec.jobDescription}"</p>
+                                      <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
+                                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Review Report</span>
+                                          <ChevronRight size={16} className="text-slate-500 group-hover:translate-x-1 transition-transform" />
                                       </div>
                                   </div>
-                                  <div className="flex flex-wrap gap-2">
-                                      <span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span>
-                                  </div>
-                                  <div className="flex-1">
-                                      <p className="text-xs text-slate-400 line-clamp-2 italic">"{rec.jobDescription}"</p>
-                                  </div>
-                                  <button onClick={() => {
-                                      if (rec.feedback) {
-                                          setReport(JSON.parse(rec.feedback));
-                                          setView('report');
-                                          interviewIdRef.current = rec.id;
-                                      } else {
-                                          alert("No report available for this recording.");
-                                      }
-                                  }} className="w-full py-3 bg-slate-800 hover:bg-indigo-600 text-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Review Report</button>
                               </div>
-                          </div>
-                      )})}
+                          ))}
+                      </div>
                   </div>
               </div>
           )}
 
           {view === 'prep' && (
-              <div className="max-w-5xl mx-auto p-8 lg:p-20 animate-fade-in-up">
+              <div className="max-w-4xl mx-auto p-12 animate-fade-in-up">
                   <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl space-y-10">
                       <div className="text-center">
                           <div className="w-16 h-16 bg-indigo-500/10 text-indigo-500 rounded-2xl flex items-center justify-center mx-auto mb-6"><Bot size={32}/></div>
-                          <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">Interview Simulation Setup</h2>
-                          <p className="text-slate-400 mt-2">Personalize the simulation to your target role and stack.</p>
+                          <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">Simulation Setup</h2>
+                          <p className="text-slate-400">Target your role and customize the interviewer personality.</p>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                           <div className="space-y-6">
-                              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-6">
-                                  <div className="flex items-center justify-between">
-                                      <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Candidate Context</h3>
-                                      {currentUser && (
-                                          <button 
-                                            onClick={handleLoadResumeFromProfile}
-                                            className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600/10 text-indigo-300 border border-indigo-500/20 rounded-full text-[10px] font-black uppercase tracking-tighter hover:bg-indigo-600 hover:text-white transition-all"
-                                          >
-                                            <Linkedin size={10}/> From Profile
-                                          </button>
-                                      )}
-                                  </div>
-
-                                  <div className="flex gap-2">
-                                      {['text', 'upload'].map((src) => (
-                                          <button 
-                                            key={src} 
-                                            onClick={() => setResumeSource(src as any)}
-                                            className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase border transition-all ${resumeSource === src ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}
-                                          >
-                                              {src === 'text' ? <Edit3 size={12} className="inline mr-1"/> : <FileUp size={12} className="inline mr-1"/>}
-                                              {src} Resume
-                                          </button>
-                                      ))}
-                                  </div>
-
-                                  {resumeSource === 'text' || resumeSource === 'profile' ? (
-                                      <textarea 
-                                          value={resumeText} 
-                                          onChange={e => { setResumeText(e.target.value); setResumeSource('text'); }} 
-                                          placeholder="Summary of your experience..." 
-                                          className="w-full h-40 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
-                                      />
-                                  ) : (
-                                      <div 
-                                        onClick={() => (document.getElementById('resume-input') as HTMLInputElement).click()}
-                                        className={`w-full h-40 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${isParsingFile === 'resume' ? 'border-indigo-500 bg-indigo-950/20' : 'border-slate-800 hover:border-indigo-500 bg-slate-900/50'}`}
-                                      >
-                                          {isParsingFile === 'resume' ? <Loader2 className="animate-spin text-indigo-400" size={32}/> : <Upload className="text-slate-600" size={32}/>}
-                                          <p className="text-[10px] font-black text-slate-500 uppercase">Select PDF or TXT</p>
-                                      </div>
-                                  )}
-                                  <input id="resume-input" type="file" className="hidden" accept=".pdf,.txt" onChange={e => handleFileUpload(e, 'resume')} />
-                              </div>
-
                               <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
-                                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><ListChecks size={14}/> Interview Track</h3>
+                                  <div className="flex items-center justify-between"><h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Candidate</h3>{currentUser && <button onClick={handleLoadResumeFromProfile} className="text-[10px] font-black text-indigo-400 uppercase hover:underline">From Profile</button>}</div>
+                                  <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume summary..." className="w-full h-40 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-indigo-500 outline-none resize-none"/>
+                              </div>
+                              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
+                                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Track</h3>
                                   <div className="grid grid-cols-1 gap-2">
                                       {['coding', 'system_design', 'behavioral'].map(m => (
-                                          <button key={m} onClick={() => setMode(m as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>
-                                              <span className="text-xs font-bold uppercase tracking-wide">{m.replace('_', ' ')}</span>
-                                              {mode === m && <CheckCircle size={16}/>}
-                                          </button>
+                                          <button key={m} onClick={() => setMode(m as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}><span className="text-xs font-bold uppercase">{m.replace('_', ' ')}</span>{mode === m && <CheckCircle size={16}/>}</button>
                                       ))}
                                   </div>
                               </div>
                           </div>
-
                           <div className="space-y-6">
-                              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-6">
-                                  <div className="flex items-center justify-between">
-                                      <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><Building size={14}/> Job Description</h3>
-                                      <button onClick={() => (document.getElementById('jd-input') as HTMLInputElement).click()} className="text-[10px] font-black text-emerald-400 uppercase hover:underline">
-                                          <FileUp size={10} className="inline mr-1"/> Upload
-                                      </button>
-                                  </div>
-                                  <textarea 
-                                      value={jobDesc} 
-                                      onChange={e => setJobDesc(e.target.value)} 
-                                      placeholder="Paste target JD here..." 
-                                      className="w-full h-40 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"
-                                  />
-                                  <input id="jd-input" type="file" className="hidden" accept=".pdf,.txt" onChange={e => handleFileUpload(e, 'jd')} />
-
-                                  {mode === 'coding' && (
-                                      <div className="pt-2">
-                                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 block">Preferred Language</label>
-                                          <select value={language} onChange={e => setLanguage(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 text-sm text-white outline-none focus:border-indigo-500">
-                                              {['TypeScript', 'Python', 'C++', 'Java', 'Rust', 'Go'].map(l => <option key={l} value={l}>{l}</option>)}
-                                          </select>
-                                      </div>
-                                  )}
-                              </div>
-
                               <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
-                                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                      <Globe size={14}/> Archive Visibility
-                                  </h3>
-                                  <div className="grid grid-cols-2 gap-2">
-                                      <button onClick={() => setVisibility('public')} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${visibility === 'public' ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>
-                                          <div className="flex flex-col">
-                                              <span className="text-xs font-bold uppercase">Public Gallery</span>
-                                              <span className="text-[8px] opacity-60">Visible to all users</span>
-                                          </div>
-                                          {visibility === 'public' && <CheckCircle size={16}/>}
-                                      </button>
-                                      <button onClick={() => setVisibility('private')} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${visibility === 'private' ? 'bg-amber-600 border-amber-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>
-                                          <div className="flex flex-col">
-                                              <span className="text-xs font-bold uppercase">Private Solo</span>
-                                              <span className="text-[8px] opacity-60">Visible only to me</span>
-                                          </div>
-                                          {visibility === 'private' && <CheckCircle size={16}/>}
-                                      </button>
-                                  </div>
+                                  <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><Building size={14}/> Job Context</h3>
+                                  <textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste Job Description..." className="w-full h-40 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"/>
                               </div>
-
-                              <div className="p-6 bg-indigo-900/10 border border-indigo-500/20 rounded-3xl flex gap-4">
-                                  <Sparkles className="text-indigo-400 shrink-0" size={24}/>
-                                  <p className="text-xs text-indigo-200 leading-relaxed">
-                                      <strong>Collaborative Engine:</strong> The AI will present a specific problem in your Code Studio. Use the editor to code while explaining your thoughts vocally.
-                                  </p>
+                              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
+                                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Visibility</h3>
+                                  <div className="grid grid-cols-2 gap-2">
+                                      <button onClick={() => setVisibility('public')} className={`p-4 rounded-2xl border transition-all ${visibility === 'public' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-500'}`}><span className="text-xs font-bold uppercase">Public</span></button>
+                                      <button onClick={() => setVisibility('private')} className={`p-4 rounded-2xl border transition-all ${visibility === 'private' ? 'bg-amber-600 border-amber-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-500'}`}><span className="text-xs font-bold uppercase">Private</span></button>
+                                  </div>
                               </div>
                           </div>
                       </div>
 
                       <div className="pt-8 border-t border-slate-800 flex justify-end">
-                          <button 
-                            onClick={handleStartInterview} 
-                            disabled={isStarting || !jobDesc.trim()} 
-                            className="px-12 py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-30"
-                          >
-                              {isStarting ? <Loader2 className="animate-spin" /> : 'Enter Studio & Start Recording'}
+                          <button onClick={handleStartInterview} disabled={isStarting || !jobDesc.trim()} className="px-12 py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-30">
+                              {isStarting ? <Loader2 className="animate-spin" /> : 'Enter Simulation & Record'}
                           </button>
                       </div>
                   </div>
@@ -720,232 +534,66 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               <div className="h-full flex overflow-hidden relative">
                   <div className={`flex flex-col border-r border-slate-800 transition-all ${isCodeStudioOpen ? 'w-[400px]' : 'flex-1'}`}>
                       <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                              <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-400"><Bot size={20}/></div>
-                              <span className="font-bold text-white uppercase tracking-tighter">AI Interviewer</span>
-                          </div>
-                          <button onClick={() => setIsCodeStudioOpen(!isCodeStudioOpen)} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
-                              <Code size={16}/>
-                              <span>{isCodeStudioOpen ? 'Video Only' : 'Open Workspace'}</span>
-                          </button>
+                          <span className="font-bold text-white uppercase tracking-tighter flex items-center gap-2"><Bot size={20} className="text-indigo-400"/> AI Panel</span>
+                          <button onClick={() => setIsCodeStudioOpen(!isCodeStudioOpen)} className="p-2 bg-slate-800 rounded-lg text-xs font-bold uppercase">{isCodeStudioOpen ? 'Hide Workspace' : 'Show Workspace'}</button>
                       </div>
-                      
                       <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
                           {transcript.map((item, idx) => (
                               <div key={idx} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                                  <span className={`text-[9px] uppercase font-black tracking-widest mb-1 ${item.role === 'user' ? 'text-emerald-400' : 'text-indigo-400'}`}>
-                                      {item.role === 'user' ? 'Candidate' : 'Interviewer'}
-                                  </span>
-                                  <div className={`max-w-[90%] px-5 py-3 rounded-2xl text-sm leading-relaxed shadow-lg ${item.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>
-                                      {item.text}
-                                  </div>
+                                  <span className={`text-[9px] uppercase font-black mb-1 ${item.role === 'user' ? 'text-emerald-400' : 'text-indigo-400'}`}>{item.role === 'user' ? 'You' : 'Interviewer'}</span>
+                                  <div className={`max-w-[90%] px-5 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{item.text}</div>
                               </div>
                           ))}
                       </div>
-
-                      <div className="p-6 bg-slate-900 border-t border-slate-800 flex items-center gap-4">
-                          <div className="flex-1 bg-slate-950 rounded-2xl border border-slate-800 p-4 flex items-center gap-3">
-                              <Mic size={20} className="text-red-500 animate-pulse"/>
-                              <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Voice Linked • Active Listening Enabled</p>
-                          </div>
-                      </div>
                   </div>
-
-                  {isCodeStudioOpen && (
-                      <div className="flex-1 flex flex-col bg-slate-950 animate-fade-in">
-                          <CodeStudio 
-                            onBack={() => setIsCodeStudioOpen(false)} 
-                            currentUser={currentUser} 
-                            userProfile={userProfile} 
-                            onSessionStart={() => {}} 
-                            onSessionStop={() => {}} 
-                            onStartLiveSession={onStartLiveSession}
-                            initialFiles={initialStudioFiles}
-                          />
-                      </div>
-                  )}
-
-                  {/* Camera Feedback: Fixed with useRef and playsInline */}
-                  <div className="absolute bottom-24 right-8 w-64 aspect-video rounded-3xl overflow-hidden border-4 border-slate-800 shadow-2xl z-50 group bg-black">
-                      <video 
-                        ref={localVideoRef}
-                        autoPlay 
-                        muted 
-                        playsInline 
-                        className="w-full h-full object-cover" 
-                      />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                          <Camera size={24} className="text-white opacity-60"/>
-                      </div>
-                  </div>
+                  {isCodeStudioOpen && <div className="flex-1 bg-slate-950"><CodeStudio onBack={() => setIsCodeStudioOpen(false)} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={onStartLiveSession} initialFiles={initialStudioFiles}/></div>}
+                  <div className="absolute bottom-12 right-8 w-64 aspect-video rounded-3xl overflow-hidden border-4 border-slate-800 shadow-2xl z-50 bg-black"><video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" /></div>
               </div>
           )}
 
           {view === 'report' && report && (
-              <div className="max-w-4xl mx-auto p-8 animate-fade-in-up space-y-8 pb-32">
-                  {/* Report Header */}
-                  <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl text-center relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-20 bg-indigo-500/10 blur-[100px] rounded-full"></div>
-                      <div className="relative z-10 flex flex-col items-center">
-                          <Trophy className="text-amber-500 mb-4" size={64}/>
-                          <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase mb-2">Performance Report</h2>
-                          <div className="flex flex-wrap items-center justify-center gap-4 mt-6">
-                              <div className="px-6 py-3 bg-slate-950 rounded-2xl border border-slate-800">
-                                  <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Global Score</p>
-                                  <p className="text-3xl font-black text-indigo-400">{report.score}/100</p>
+              <div className="max-w-4xl mx-auto p-8 animate-fade-in-up space-y-12 pb-32">
+                  <div className="bg-slate-900 border border-slate-800 rounded-[3rem] overflow-hidden shadow-2xl">
+                      <div className="aspect-video bg-black relative group">
+                          {videoPlaybackUrl ? (
+                              <video src={videoPlaybackUrl} controls className="w-full h-full object-contain" />
+                          ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 gap-4">
+                                  <PlayCircle size={64} className="opacity-20"/>
+                                  <p className="text-sm font-bold uppercase tracking-widest">Video Recording Saved to Drive</p>
                               </div>
-                              <div className="px-6 py-3 bg-slate-950 rounded-2xl border border-slate-800">
-                                  <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Neural Verdict</p>
-                                  <p className={`text-xl font-black uppercase tracking-widest ${report.verdict.includes('Strong') ? 'text-emerald-400' : 'text-amber-400'}`}>{report.verdict}</p>
-                              </div>
+                          )}
+                          <div className="absolute top-6 left-6 z-10"><div className="bg-emerald-500 text-white px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest flex items-center gap-2 shadow-xl"><ShieldCheck size={14}/> Verified Session</div></div>
+                      </div>
+                      <div className="p-10 flex flex-col items-center text-center space-y-6">
+                          <Trophy className="text-amber-500" size={64}/>
+                          <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Simulation Report</h2>
+                          <div className="flex gap-4">
+                              <div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Overall Score</p><p className="text-4xl font-black text-indigo-400">{report.score}/100</p></div>
+                              <div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p><p className={`text-xl font-black uppercase ${report.verdict.includes('Strong') ? 'text-emerald-400' : 'text-amber-400'}`}>{report.verdict}</p></div>
                           </div>
-                          
-                          {/* Neural Coaching Toggle */}
-                          <div className="mt-8">
-                             <button 
-                                onClick={isFeedbackSessionActive ? () => liveServiceRef.current?.disconnect() : startCoachingSession}
-                                className={`px-8 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center gap-3 transition-all shadow-2xl active:scale-95 ${isFeedbackSessionActive ? 'bg-red-600 text-white animate-pulse' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}
-                             >
-                                {isFeedbackSessionActive ? <X size={20}/> : <MessageCircleCode size={20} />}
-                                <span>{isFeedbackSessionActive ? 'Stop Coaching Session' : 'Voice Coaching: Review Feedback'}</span>
-                             </button>
-                             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-3">Let the AI explain the gaps and teach you the missed concepts</p>
-                          </div>
+                          <button onClick={startCoachingSession} className={`px-10 py-5 rounded-2xl font-black uppercase tracking-widest flex items-center gap-3 transition-all ${isFeedbackSessionActive ? 'bg-red-600 animate-pulse' : 'bg-emerald-600 hover:bg-emerald-500'} text-white shadow-2xl`}><MessageCircleCode size={24}/><span>{isFeedbackSessionActive ? 'End Coaching' : 'Start Voice Coaching'}</span></button>
                       </div>
                   </div>
 
-                  {/* Coaching Transcript (If active) */}
-                  {isFeedbackSessionActive && (
-                      <div className="bg-slate-900/50 border border-emerald-500/30 rounded-[2.5rem] p-8 animate-fade-in shadow-xl space-y-4">
-                           <div className="flex items-center gap-2 mb-4">
-                               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
-                               <span className="text-xs font-black text-emerald-400 uppercase tracking-widest">Live Feedback Session Active</span>
-                           </div>
-                           <div className="max-h-64 overflow-y-auto space-y-4 scrollbar-hide">
-                                {transcript.slice(-5).map((item, idx) => (
-                                    <div key={idx} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                        <span className={`text-[9px] uppercase font-bold mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : 'Neural Coach'}</span>
-                                        <div className={`max-w-[80%] px-4 py-2 rounded-xl text-sm ${item.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'}`}>{item.text}</div>
-                                    </div>
-                                ))}
-                           </div>
-                      </div>
-                  )}
-
-                  {/* Reference Answers Section */}
-                  <div className="space-y-6">
-                      <div className="flex items-center gap-2 px-2">
-                          <Lightbulb className="text-amber-400" size={20}/>
-                          <h3 className="text-xl font-bold text-white uppercase tracking-tight">Model Answers & Rationale</h3>
-                      </div>
-                      <div className="grid grid-cols-1 gap-6">
-                          {report.idealAnswers?.map((item, i) => (
-                              <div key={i} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-4 hover:border-amber-500/30 transition-colors">
-                                  <div>
-                                      <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Question</span>
-                                      <p className="text-white font-bold text-lg mt-1">{item.question}</p>
-                                  </div>
-                                  <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800">
-                                      <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Strong Candidate Sample</span>
-                                      <div className="text-slate-300 text-sm mt-3 leading-relaxed whitespace-pre-wrap italic">
-                                          "{item.expectedAnswer}"
-                                      </div>
-                                  </div>
-                                  <div className="flex gap-3 items-start px-2">
-                                      <Target size={16} className="text-indigo-400 mt-1 shrink-0"/>
-                                      <div>
-                                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Why it works</span>
-                                          <p className="text-slate-400 text-xs mt-1 leading-relaxed">{item.rationale}</p>
-                                      </div>
-                                  </div>
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-
-                  {/* Growth Path & Material */}
-                  <div className="space-y-6">
-                      <div className="flex items-center gap-2 px-2">
-                          <GraduationCap className="text-indigo-400" size={20}/>
-                          <h3 className="text-xl font-bold text-white uppercase tracking-tight">Neural Growth Path</h3>
-                      </div>
-                      <MarkdownView content={report.learningMaterial} initialTheme={userProfile?.preferredReaderTheme || 'slate'} />
-                  </div>
-
-                  {/* Summary & Key Points */}
                   <div className="bg-white rounded-[3rem] p-12 text-slate-950 shadow-2xl space-y-10">
-                      <div>
-                          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">Executive Summary</h3>
-                          <p className="text-xl font-serif leading-relaxed text-slate-800 italic">"{report.summary}"</p>
-                      </div>
-                      
+                      <div><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">Summary</h3><p className="text-xl font-serif leading-relaxed text-slate-800 italic">"{report.summary}"</p></div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                          <div>
-                              <h3 className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><Star size={12} fill="currentColor"/> Key Strengths</h3>
-                              <ul className="space-y-3">
-                                  {report.strengths.map((s, i) => (
-                                      <li key={i} className="flex gap-3 text-sm font-bold text-slate-700"><CheckCircle className="text-emerald-500 shrink-0" size={18}/> <span>{s}</span></li>
-                                  ))}
-                              </ul>
-                          </div>
-                          <div>
-                              <h3 className="text-[10px] font-black text-red-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><BarChart3 size={12}/> Growth Areas</h3>
-                              <ul className="space-y-3">
-                                  {report.areasForImprovement.map((a, i) => (
-                                      <li key={i} className="flex gap-3 text-sm font-bold text-slate-700"><Zap className="text-amber-500 shrink-0" size={18}/> <span>{a}</span></li>
-                                  ))}
-                              </ul>
-                          </div>
-                      </div>
-
-                      {report.todoList?.length > 0 && (
-                          <div className="pt-8 border-t border-slate-100">
-                              <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.3em] mb-4 flex items-center gap-2"><ListChecks size={14}/> Recommended Actions</h3>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                  {report.todoList.map((todo, i) => (
-                                      <div key={i} className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 font-bold text-sm text-slate-700">
-                                          <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center border border-slate-200 text-[10px]">{i+1}</div>
-                                          {todo}
-                                      </div>
-                                  ))}
-                              </div>
-                          </div>
-                      )}
-                  </div>
-
-                  {/* Archive Action */}
-                  <div className="flex justify-center pt-8">
-                      <div className="bg-slate-900 border border-slate-800 px-6 py-4 rounded-2xl flex items-center gap-4">
-                          <div className="text-left">
-                              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Share Verification UUID</p>
-                              <code className="text-xs text-indigo-300 font-mono">{interviewIdRef.current}</code>
-                          </div>
-                          <button onClick={() => {
-                              navigator.clipboard.writeText(interviewIdRef.current);
-                              alert("UUID Copied to Clipboard");
-                          }} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors"><ClipboardCheck size={20}/></button>
+                          <div><h3 className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><Star size={12} fill="currentColor"/> Strengths</h3><ul className="space-y-3">{report.strengths.map((s, i) => (<li key={i} className="flex gap-3 text-sm font-bold text-slate-700"><CheckCircle className="text-emerald-500 shrink-0" size={18}/><span>{s}</span></li>))}</ul></div>
+                          <div><h3 className="text-[10px] font-black text-red-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><BarChart3 size={12}/> Growth</h3><ul className="space-y-3">{report.areasForImprovement.map((a, i) => (<li key={i} className="flex gap-3 text-sm font-bold text-slate-700"><Zap className="text-amber-500 shrink-0" size={18}/><span>{a}</span></li>))}</ul></div>
                       </div>
                   </div>
+
+                  <div className="space-y-6"><h3 className="text-xl font-bold text-white uppercase flex items-center gap-2 px-2"><GraduationCap className="text-indigo-400"/> Neural Growth Path</h3><MarkdownView content={report.learningMaterial} initialTheme={userProfile?.preferredReaderTheme || 'slate'} /></div>
               </div>
           )}
       </main>
 
       {(isUploading || isGeneratingReport) && (
-          <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-4 animate-fade-in">
-              <div className="relative">
-                  <div className="w-24 h-24 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
-                  {isGeneratingReport ? (
-                      <BarChart3 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400" size={32}/>
-                  ) : (
-                      <CloudUpload className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400" size={32}/>
-                  )}
-              </div>
-              <h3 className="text-xl font-bold text-white uppercase tracking-tighter">
-                  {isGeneratingReport ? 'Analyzing Session' : 'Syncing Record'}
-              </h3>
-              <p className="text-sm text-slate-400">
-                  {isGeneratingReport ? 'Generating performance metrics and growth path...' : 'Moving verified simulation to Google Drive...'}
-              </p>
+          <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-4">
+              <div className="relative"><div className="w-24 h-24 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div><CloudUpload className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400" size={32}/></div>
+              <h3 className="text-xl font-bold text-white uppercase">{isGeneratingReport ? 'Synthesizing Metrics' : 'Sovereign Sync'}</h3>
+              <p className="text-sm text-slate-400">{isGeneratingReport ? 'Processing session transcript...' : 'Moving recording to Google Drive...'}</p>
           </div>
       )}
     </div>
