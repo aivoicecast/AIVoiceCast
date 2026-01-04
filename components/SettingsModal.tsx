@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, ReaderTheme } from '../types';
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette } from 'lucide-react';
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2 } from 'lucide-react';
 import { logUserActivity, getBillingHistory, createStripePortalSession, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut, getDriveToken, connectGoogleDrive } from '../services/authService';
 import { clearAudioCache } from '../services/tts';
@@ -25,6 +25,8 @@ const THEME_OPTIONS: { id: ReaderTheme, label: string, icon: any, desc: string }
     { id: 'sepia', label: 'Sepia', icon: Coffee, desc: 'Warm low-eye-strain' }
 ];
 
+const LANGUAGES = ['TypeScript', 'JavaScript', 'Python', 'C++', 'Java', 'Rust', 'Go', 'C#', 'Swift'];
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
   isOpen, onClose, user, onUpdateProfile, onUpgradeClick 
 }) => {
@@ -32,6 +34,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [displayName, setDisplayName] = useState(user.displayName);
   const [defaultRepo, setDefaultRepo] = useState(user.defaultRepoUrl || '');
+  const [defaultLanguage, setDefaultLanguage] = useState(user.defaultLanguage || 'TypeScript');
   const [aiProvider, setAiProvider] = useState<'gemini' | 'openai'>(user.preferredAiProvider || 'gemini');
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(user.preferredReaderTheme || 'slate');
   const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
@@ -99,6 +102,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setNextCheckNumber(user.nextCheckNumber || 1001);
           setDisplayName(user.displayName);
           setDefaultRepo(user.defaultRepoUrl || '');
+          setDefaultLanguage(user.defaultLanguage || 'TypeScript');
           setHeadline(user.headline || '');
           setCompany(user.company || '');
           setLinkedinUrl(user.linkedinUrl || '');
@@ -186,6 +190,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           const updateData: Partial<UserProfile> = {
               displayName,
               defaultRepoUrl: defaultRepo,
+              defaultLanguage,
               interests: selectedInterests,
               preferredAiProvider: aiProvider,
               preferredReaderTheme: readerTheme,
@@ -264,15 +269,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
                                 />
                             </div>
-                            <div>
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Github size={12}/> Default GitHub Repository</label>
-                                <input 
-                                    type="text" 
-                                    value={defaultRepo} 
-                                    onChange={(e) => setDefaultRepo(e.target.value)} 
-                                    placeholder="owner/repo" 
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
-                                />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Github size={12}/> Default GitHub Repository</label>
+                                    <input 
+                                        type="text" 
+                                        value={defaultRepo} 
+                                        onChange={(e) => setDefaultRepo(e.target.value)} 
+                                        placeholder="owner/repo" 
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Code2 size={12}/> Preferred Language</label>
+                                    <select 
+                                        value={defaultLanguage} 
+                                        onChange={(e) => setDefaultLanguage(e.target.value)}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                    >
+                                        {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -386,6 +403,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
             )}
 
+            {activeTab === 'interests' && (
+                <div className="space-y-6 animate-fade-in">
+                    <div>
+                        <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2"><Heart className="text-pink-500" /> Your Interests</h3>
+                        <p className="text-sm text-slate-400">Select topics you love to personalize your feed and recommendations.</p>
+                    </div>
+                    <div className="space-y-6">
+                        {Object.keys(TOPIC_CATEGORIES).map(category => (
+                            <div key={category} className="bg-slate-800/30 border border-slate-800 rounded-2xl p-5">
+                                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-slate-800 pb-2"><HashIcon size={12} className="text-indigo-400" /> {category}</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {TOPIC_CATEGORIES[category].map(tag => {
+                                        const isSelected = selectedInterests.includes(tag);
+                                        return (
+                                            <button 
+                                                key={tag} 
+                                                onClick={() => toggleInterest(tag)} 
+                                                className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95 ${isSelected ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/20' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-50'}`}
+                                            >
+                                                {tag}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {activeTab === 'banking' && (
                 <div className="space-y-8 animate-fade-in">
                     <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-start gap-4">
@@ -442,36 +489,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 </button>
                             )}
                         </div>
-                    </div>
-                </div>
-            )}
-
-            {activeTab === 'interests' && (
-                <div className="space-y-6 animate-fade-in">
-                    <div>
-                        <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2"><Heart className="text-pink-500" /> Your Interests</h3>
-                        <p className="text-sm text-slate-400">Select topics you love to personalize your feed and recommendations.</p>
-                    </div>
-                    <div className="space-y-6">
-                        {Object.keys(TOPIC_CATEGORIES).map(category => (
-                            <div key={category} className="bg-slate-800/30 border border-slate-800 rounded-2xl p-5">
-                                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-slate-800 pb-2"><HashIcon size={12} className="text-indigo-400" /> {category}</h4>
-                                <div className="flex flex-wrap gap-2">
-                                    {TOPIC_CATEGORIES[category].map(tag => {
-                                        const isSelected = selectedInterests.includes(tag);
-                                        return (
-                                            <button 
-                                                key={tag} 
-                                                onClick={() => toggleInterest(tag)} 
-                                                className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95 ${isSelected ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/20' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-50'}`}
-                                            >
-                                                {tag}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ))}
                     </div>
                 </div>
             )}

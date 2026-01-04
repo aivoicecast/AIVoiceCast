@@ -34,6 +34,7 @@ export interface UserProfile {
   savedSignatureUrl?: string;
   nextCheckNumber?: number;
   defaultRepoUrl?: string;
+  defaultLanguage?: string; // New field for profile
   checkTemplate?: {
       bankName: string;
       routingNumber: string;
@@ -499,6 +500,7 @@ export interface MockInterviewRecording {
   timestamp: number;
   videoUrl: string; // Drive Link
   transcript?: TranscriptItem[];
+  coachingTranscript?: TranscriptItem[]; // Persistent coaching history
   feedback?: string;
   visibility?: 'public' | 'private';
 }
