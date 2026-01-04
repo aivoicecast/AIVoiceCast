@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Blog, BlogPost, Comment } from '../types';
-import { ensureUserBlog, getCommunityPosts, getUserPosts, createBlogPost, updateBlogPost, deleteBlogPost, updateBlogSettings, addPostComment, getBlogPost } from '../services/firestoreService';
+import { Blog, BlogPost, Comment, UserProfile } from '../types';
+import { ensureUserBlog, getCommunityPosts, getUserPosts, createBlogPost, updateBlogPost, deleteBlogPost, updateBlogSettings, addPostComment, getBlogPost, getUserProfile } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
 import { Edit3, Plus, Trash2, Globe, User, MessageSquare, Loader2, ArrowLeft, Save, Image as ImageIcon, Search, LayoutList, PenTool, Rss, X, Pin, AlertCircle, RefreshCw, Eye, Code } from 'lucide-react';
 import { MarkdownView } from './MarkdownView';
@@ -19,6 +19,7 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   
   const [myBlog, setMyBlog] = useState<Blog | null>(null);
   const [myPosts, setMyPosts] = useState<BlogPost[]>([]);
@@ -35,6 +36,9 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
 
   useEffect(() => {
     setErrorMsg(null);
+    if (currentUser) {
+        getUserProfile(currentUser.uid).then(setProfile);
+    }
     if (activeTab === 'feed') {
       loadFeed();
     } else if (activeTab === 'my_blog' && currentUser) {
@@ -247,33 +251,31 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
                 <div className="max-w-5xl mx-auto p-4 md:p-8 h-full flex flex-col space-y-6 animate-fade-in-up">
                     <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-6 shadow-xl flex-1 flex flex-col">
                         <div className="space-y-4"><div className="flex justify-between items-center"><input type="text" value={editingPost.title} onChange={e => setEditingPost({...editingPost, title: e.target.value})} className="flex-1 bg-transparent text-3xl font-bold text-white placeholder-slate-600 outline-none border-b border-slate-800 pb-2 focus:border-indigo-500 transition-colors mr-4" placeholder="Post Title..."/><div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800"><button onClick={() => setIsPreviewMode(false)} className={`p-2 rounded transition-colors ${!isPreviewMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`} title="Edit Raw Markdown"><Code size={18}/></button><button onClick={() => setIsPreviewMode(true)} className={`p-2 rounded transition-colors ${isPreviewMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`} title="Preview Rendered Content"><Eye size={18}/></button></div></div><div className="flex items-center gap-4"><select value={editingPost.status} onChange={e => setEditingPost({...editingPost, status: e.target.value as any})} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white outline-none focus:border-indigo-500"><option value="draft">Save as Draft</option><option value="published">Publish to Feed</option></select><div className="flex items-center gap-2 flex-1"><input type="text" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && tagInput.trim()) { setEditingPost(prev => ({ ...prev, tags: [...(prev.tags || []), tagInput.trim()] })); setTagInput(''); } }} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white outline-none w-full focus:border-indigo-500" placeholder="Add tags (Enter to add)"/></div></div><div className="flex flex-wrap gap-2">{editingPost.tags?.map((t, i) => <span key={i} className="text-xs bg-indigo-900/30 text-indigo-300 px-2 py-1 rounded flex items-center gap-1 border border-indigo-500/30">#{t} <button onClick={() => setEditingPost(prev => ({...prev, tags: prev.tags?.filter((_, idx) => idx !== i)}))} className="hover:text-white"><X size={10}/></button></span>)}</div></div>
-                        <div className="flex-1 min-h-[400px]">{isPreviewMode ? <div className="h-full w-full bg-[#fdfbf7] rounded-xl p-8 overflow-y-auto prose prose-sm max-w-none shadow-inner border border-slate-200">{editingPost.content ? <MarkdownView content={editingPost.content} /> : <div className="h-full flex flex-col items-center justify-center text-slate-400 italic"><Eye size={48} className="mb-2 opacity-10" /><p>Nothing to preview yet.</p></div>}</div> : <textarea value={editingPost.content} onChange={e => setEditingPost({...editingPost, content: e.target.value})} className="w-full h-full bg-slate-950 border border-slate-800 rounded-xl p-6 text-slate-300 font-mono text-sm leading-relaxed outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none shadow-inner" placeholder="Write your story in Markdown..."/>}</div>
+                        <div className="flex-1 min-h-[400px]">{isPreviewMode ? <div className="h-full w-full bg-[#fdfbf7] rounded-xl p-8 overflow-y-auto prose prose-sm max-w-none shadow-inner border border-slate-200">{editingPost.content ? <MarkdownView content={editingPost.content} initialTheme={profile?.preferredReaderTheme || 'slate'} /> : <div className="h-full flex flex-col items-center justify-center text-slate-400 italic"><Eye size={48} className="mb-2 opacity-10" /><p>Nothing to preview yet.</p></div>}</div> : <textarea value={editingPost.content} onChange={e => setEditingPost({...editingPost, content: e.target.value})} className="w-full h-full bg-slate-950 border border-slate-800 rounded-xl p-6 text-slate-300 font-mono text-sm leading-relaxed outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none shadow-inner" placeholder="Write your story in Markdown..."/>}</div>
                         <div className="flex justify-end pt-2"><button onClick={handleSavePost} disabled={loading} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-transform hover:scale-105 disabled:opacity-50">{loading ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}<span>{editingPost.id ? "Update Post" : "Publish Post"}</span></button></div>
                     </div>
                 </div>
             )}
 
             {activeTab === 'post_detail' && activePost && (
-                <div className="bg-[#fdfbf7] min-h-full animate-fade-in text-slate-900">
+                <div className="animate-fade-in">
                     <div className="max-w-4xl mx-auto px-6 py-12 md:py-20">
-                        <div className="border-b border-slate-200 pb-10 mb-10 text-center">
-                            <h1 className="text-4xl md:text-5xl font-black text-slate-900 mb-6 leading-tight tracking-tight">{activePost.title}</h1>
+                        <div className="mb-10 text-center">
+                            <h1 className="text-4xl md:text-5xl font-black mb-6 leading-tight tracking-tight">{activePost.title}</h1>
                             <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-slate-500 font-medium">
                                 <div className="flex items-center gap-2"><div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold border border-indigo-200">{activePost.authorName.charAt(0)}</div><span>{activePost.authorName}</span></div>
                                 <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
                                 <span>{new Date(activePost.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                                <div className="flex gap-2">{activePost.tags.map(t => <span key={t} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200 text-[10px] uppercase font-bold tracking-wider">#{t}</span>)}</div>
+                                <div className="flex gap-2">{activePost.tags.map(t => <span key={t} className="bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700 text-[10px] uppercase font-bold tracking-wider">#{t}</span>)}</div>
                             </div>
                         </div>
                         
-                        <div className="prose prose-slate prose-lg max-w-none antialiased text-slate-800">
-                            <MarkdownView content={activePost.content} />
-                        </div>
+                        <MarkdownView content={activePost.content} initialTheme={profile?.preferredReaderTheme || 'slate'} />
                         
-                        <div className="mt-20 pt-10 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-6">
-                            <button className="flex items-center gap-3 text-slate-600 font-bold hover:text-indigo-600 transition-colors"><MessageSquare size={24}/><span>{activePost.commentCount || 0} Responses</span></button>
+                        <div className="mt-20 pt-10 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-6">
+                            <button className="flex items-center gap-3 text-slate-400 font-bold hover:text-indigo-400 transition-colors"><MessageSquare size={24}/><span>{activePost.commentCount || 0} Responses</span></button>
                             {currentUser && (
-                                <button onClick={() => setIsCommentsOpen(true)} className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold shadow-xl hover:bg-indigo-600 transition-all active:scale-95">Leave a Comment</button>
+                                <button onClick={() => setIsCommentsOpen(true)} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-xl hover:bg-indigo-500 transition-all active:scale-95">Leave a Comment</button>
                             )}
                         </div>
                     </div>

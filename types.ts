@@ -3,6 +3,8 @@ export type SubscriptionTier = 'free' | 'pro';
 
 export type ChannelVisibility = 'public' | 'private' | 'group';
 
+export type ReaderTheme = 'slate' | 'light' | 'dark' | 'sepia';
+
 export interface TranscriptItem {
   role: 'user' | 'ai';
   text: string;
@@ -26,11 +28,11 @@ export interface UserProfile {
   backupSize?: number;
   itemCount?: number;
   preferredAiProvider?: 'gemini' | 'openai';
+  preferredReaderTheme?: ReaderTheme;
   interests?: string[];
   senderAddress?: string;
   savedSignatureUrl?: string;
   nextCheckNumber?: number;
-  // Added missing property to fix type error in SettingsModal
   defaultRepoUrl?: string;
   checkTemplate?: {
       bankName: string;

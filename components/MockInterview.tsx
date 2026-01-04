@@ -869,11 +869,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                           <GraduationCap className="text-indigo-400" size={20}/>
                           <h3 className="text-xl font-bold text-white uppercase tracking-tight">Neural Growth Path</h3>
                       </div>
-                      <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 md:p-12 shadow-2xl">
-                          <div className="prose prose-invert prose-indigo max-w-none antialiased">
-                              <MarkdownView content={report.learningMaterial} />
-                          </div>
-                      </div>
+                      <MarkdownView content={report.learningMaterial} initialTheme={userProfile?.preferredReaderTheme || 'slate'} />
                   </div>
 
                   {/* Summary & Key Points */}

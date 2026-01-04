@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { X, MessageCircle, FileText, Loader2, Edit2, Save, Sparkles, Cloud, Trash2, RefreshCw, Info, Lock, Globe, Users, ChevronDown, Check, Download, Image as ImageIcon, FileCode, Type } from 'lucide-react';
-import { CommunityDiscussion, Group, ChannelVisibility } from '../types';
-import { getDiscussionById, subscribeToDiscussion, saveDiscussionDesignDoc, saveDiscussion, deleteDiscussion, updateDiscussionVisibility, getUserGroups } from '../services/firestoreService';
+import { CommunityDiscussion, Group, ChannelVisibility, UserProfile } from '../types';
+import { getDiscussionById, subscribeToDiscussion, saveDiscussionDesignDoc, saveDiscussion, deleteDiscussion, updateDiscussionVisibility, getUserGroups, getUserProfile } from '../services/firestoreService';
 import { generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { MarkdownView } from './MarkdownView';
 import { connectGoogleDrive } from '../services/authService';
@@ -48,6 +48,7 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
   const [activeDiscussion, setActiveDiscussion] = useState<CommunityDiscussion | null>(initialDiscussion || null);
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'transcript' | 'doc'>('transcript');
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   
   const [showVisibilityMenu, setShowVisibilityMenu] = useState(false);
   const [userGroups, setUserGroups] = useState<Group[]>([]);
@@ -71,6 +72,10 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
     if (isOpen) {
       setGDocUrl(null);
       let unsubscribe = () => {};
+
+      if (currentUser) {
+          getUserProfile(currentUser.uid).then(setProfile);
+      }
 
       if (discussionId !== 'new') {
         setLoading(true);
@@ -256,25 +261,36 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
                   </div>
               )}
           </div>
-          <div className={`flex-1 overflow-y-auto ${viewMode === 'doc' && !isEditingDoc ? 'bg-[#fdfbf7]' : 'bg-slate-900'} scrollbar-thin`}>
+          <div className={`flex-1 overflow-y-auto ${isEditingDoc ? 'bg-slate-900' : ''} scrollbar-thin`}>
               {loading ? (<div className="text-center py-20 text-slate-500"><Loader2 size={32} className="animate-spin mx-auto mb-2"/><p>Syncing Document...</p></div>) : activeDiscussion ? (
                   <div className="p-6 md:p-10 max-w-4xl mx-auto">
                       {viewMode === 'transcript' ? (
-                          <div className="space-y-4 animate-fade-in">
+                          <div className="space-y-4 animate-fade-in text-slate-300">
                               <div className="bg-slate-800/50 p-4 rounded-xl text-xs border border-slate-700 flex justify-between items-center"><div className="flex items-center gap-3"><div className="p-2 bg-emerald-900/30 rounded-full text-emerald-400"><Sparkles size={16}/></div><div><p className="font-bold text-slate-200">Session Context</p><p className="text-slate-500">{activeDiscussion.userName} • {new Date(activeDiscussion.createdAt).toLocaleDateString()}</p></div></div>{isOwner && (<button onClick={handleGenerateDoc} disabled={isGeneratingDoc} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold flex items-center gap-2 shadow-lg transition-all">{isGeneratingDoc ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14} />}AI Synthesize</button>)}</div>
-                              <div className="space-y-4 pt-4">{activeDiscussion.transcript?.map((item, idx) => (<div key={idx} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'}`}><span className="text-[10px] text-slate-600 uppercase font-bold mb-1 px-1">{item.role === 'user' ? activeDiscussion.userName : 'AI Host'}</span><div className={`px-4 py-2 rounded-2xl max-w-[90%] text-sm ${item.role === 'user' ? 'bg-indigo-900/40 text-indigo-100 border border-indigo-500/20' : 'bg-slate-800 text-slate-300 border border-slate-700'}`}><p className="whitespace-pre-wrap">{item.text}</p></div></div>))}</div>
+                              <div className="space-y-4 pt-4">{activeDiscussion.transcript?.map((item, idx) => (
+                                  <div key={idx} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                      <span className="text-[10px] text-slate-600 uppercase font-bold mb-1 px-1">{item.role === 'user' ? activeDiscussion.userName : 'AI Host'}</span>
+                                      <div className={`px-4 py-2 rounded-2xl max-w-[90%] text-sm ${item.role === 'user' ? 'bg-indigo-900/40 text-indigo-100 border border-indigo-500/20' : 'bg-slate-800 text-slate-300 border border-slate-700'}`}>
+                                          <p className="whitespace-pre-wrap">{item.text}</p>
+                                      </div>
+                                  </div>
+                              ))}</div>
                           </div>
                       ) : (
                           <div className="h-full flex flex-col min-h-[400px]">
-                                <div className={`flex justify-between items-center mb-6 sticky top-0 z-10 ${isEditingDoc ? 'bg-slate-900' : 'bg-[#fdfbf7]'} pb-2 border-b border-slate-200/50`}>
+                                <div className={`flex justify-between items-center mb-6 sticky top-0 z-10 ${isEditingDoc ? 'bg-slate-900' : ''} pb-2 border-b border-white/5`}>
                                     <div className="flex gap-2">{isOwner && isEditingDoc && TEMPLATES.map(t => (<button key={t.id} onClick={() => handleApplyTemplate(t)} className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded border border-slate-700 text-[10px] font-bold uppercase flex items-center gap-1"><t.icon size={10}/> {t.name}</button>))}</div>
                                     <div className="flex space-x-2">{isOwner && (isEditingDoc ? (<><button onClick={() => setIsEditingDoc(false)} className="px-3 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 rounded-lg border border-slate-700">Cancel</button><button onClick={handleSaveDoc} disabled={isSavingDoc} className="px-4 py-1.5 text-xs text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg flex items-center gap-2 font-bold shadow-lg">{isSavingDoc ? <Loader2 size={14} className="animate-spin"/> : <Save size={14}/>} Save</button></>) : (<button onClick={() => setIsEditingDoc(true)} className="px-4 py-1.5 text-xs text-white bg-slate-900 hover:bg-indigo-600 rounded-lg flex items-center gap-2 font-bold shadow-lg transition-all"><Edit2 size={14}/> Edit Content</button>)) }</div>
                                 </div>
-                                {isEditingDoc ? (<textarea autoFocus value={editedDocContent} onChange={e => setEditedDocContent(e.target.value)} className="w-full flex-1 min-h-[500px] bg-slate-950 p-6 rounded-xl border border-slate-700 font-mono text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none leading-relaxed" placeholder="Start writing Markdown..."/>) : (
-                                    <div ref={exportRef} className="prose prose-slate prose-lg max-w-none bg-white p-8 md:p-16 rounded-xl shadow-xl border border-slate-200 text-slate-900 antialiased">
-                                        <div className="mb-12 border-b-4 border-emerald-600 pb-6"><h1 className="text-4xl font-black text-slate-950 m-0 uppercase tracking-tight">{docTitle}</h1></div>
-                                        {editedDocContent ? <MarkdownView content={editedDocContent} /> : <div className="py-20 text-center text-slate-400 italic">No content.</div>}
-                                        <div className="mt-20 pt-8 border-t border-slate-100 flex justify-between items-center opacity-40 text-[10px] font-bold uppercase tracking-widest text-slate-500 italic"><span>Neural OS Synthetic Record</span><span>{new Date(activeDiscussion.updatedAt || activeDiscussion.createdAt).toLocaleDateString()}</span></div>
+                                {isEditingDoc ? (
+                                    <textarea autoFocus value={editedDocContent} onChange={e => setEditedDocContent(e.target.value)} className="w-full flex-1 min-h-[500px] bg-slate-950 p-6 rounded-xl border border-slate-700 font-mono text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none leading-relaxed" placeholder="Start writing Markdown..."/>
+                                ) : (
+                                    <div ref={exportRef} className="rounded-xl overflow-hidden shadow-2xl">
+                                        <MarkdownView 
+                                            content={editedDocContent} 
+                                            initialTheme={profile?.preferredReaderTheme || 'slate'} 
+                                            showThemeSwitcher={true}
+                                        />
                                     </div>
                                 )}
                           </div>

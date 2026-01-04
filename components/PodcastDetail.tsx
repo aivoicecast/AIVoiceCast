@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment } from '../types';
+import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile } from '../types';
 import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2 } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { synthesizeSpeech } from '../services/tts';
@@ -24,7 +24,8 @@ interface PodcastDetailProps {
   language: 'en' | 'zh';
   onEditChannel?: () => void; 
   onViewComments?: () => void;
-  currentUser: any; 
+  currentUser: any;
+  userProfile?: UserProfile | null;
 }
 
 const UI_TEXT = {
@@ -52,7 +53,7 @@ const UI_TEXT = {
   }
 };
 
-export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, language, currentUser, onStartLiveSession }) => {
+export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, language, currentUser, onStartLiveSession, userProfile }) => {
   const t = UI_TEXT[language];
   const [activeLecture, setActiveLecture] = useState<GeneratedLecture | null>(null);
   const [isLoadingLecture, setIsLoadingLecture] = useState(false);
@@ -124,10 +125,12 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
                     <div><h2 className="text-xl font-bold text-white">{activeLecture.topic}</h2><p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">{t.lectureTitle}</p></div>
                     <button onClick={handleShareLecture} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-lg"><Share2 size={14}/> Share Lecture URI</button>
                 </div>
-                <div className="bg-white rounded-2xl p-8 md:p-12 shadow-2xl text-slate-900 space-y-8">
-                    <div className="border-b border-slate-200 pb-6 mb-8"><h1 className="text-3xl font-black text-slate-900 mb-2 uppercase tracking-tighter italic">{activeLecture.topic}</h1></div>
-                    <div className="space-y-10">{activeLecture.sections.map((section, idx) => (<div key={idx} className="flex gap-6"><div className="shrink-0 w-12 flex flex-col items-center"><div className={`w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-black border-2 ${section.speaker === 'Teacher' ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>{section.speaker === 'Teacher' ? 'PRO' : 'STU'}</div><div className="w-0.5 flex-1 bg-slate-100 mt-2"></div></div><div className="flex-1 pb-4"><p className="text-[10px] font-black text-slate-400 uppercase mb-2">{section.speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}</p><p className="text-lg leading-relaxed font-serif text-slate-800 whitespace-pre-wrap">{section.text}</p></div></div>))}</div>
-                </div>
+                
+                <MarkdownView 
+                    content={`# ${activeLecture.topic}\n\n${activeLecture.sections.map(s => `**${s.speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}**: ${s.text}`).join('\n\n')}`}
+                    initialTheme={userProfile?.preferredReaderTheme || 'slate'}
+                    showThemeSwitcher={true}
+                />
             </div>
           ) : (<div className="h-64 flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-800 rounded-2xl bg-slate-900/30"><Info size={32} className="mb-2 opacity-20" /><h3 className="text-lg font-bold text-slate-400">{t.selectTopic}</h3></div>)}
         </div>

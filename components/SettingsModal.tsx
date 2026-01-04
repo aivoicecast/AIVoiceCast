@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { UserProfile } from '../types';
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link } from 'lucide-react';
+import { UserProfile, ReaderTheme } from '../types';
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette } from 'lucide-react';
 import { logUserActivity, getBillingHistory, createStripePortalSession, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut, getDriveToken, connectGoogleDrive } from '../services/authService';
 import { clearAudioCache } from '../services/tts';
@@ -18,6 +18,13 @@ interface SettingsModalProps {
   onUpgradeClick?: () => void;
 }
 
+const THEME_OPTIONS: { id: ReaderTheme, label: string, icon: any, desc: string }[] = [
+    { id: 'slate', label: 'Slate', icon: Palette, desc: 'Classic AIVoiceCast dark' },
+    { id: 'light', label: 'Paper', icon: Sun, desc: 'Clean high-contrast light' },
+    { id: 'dark', label: 'Night', icon: Moon, desc: 'Deep black for reading' },
+    { id: 'sepia', label: 'Sepia', icon: Coffee, desc: 'Warm low-eye-strain' }
+];
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
   isOpen, onClose, user, onUpdateProfile, onUpgradeClick 
 }) => {
@@ -26,6 +33,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [displayName, setDisplayName] = useState(user.displayName);
   const [defaultRepo, setDefaultRepo] = useState(user.defaultRepoUrl || '');
   const [aiProvider, setAiProvider] = useState<'gemini' | 'openai'>(user.preferredAiProvider || 'gemini');
+  const [readerTheme, setReaderTheme] = useState<ReaderTheme>(user.preferredReaderTheme || 'slate');
   const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
   
   // LinkedIn Profile Simulation
@@ -85,6 +93,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (isOpen) {
           setSelectedInterests(user.interests || []);
           setAiProvider(user.preferredAiProvider || 'gemini');
+          setReaderTheme(user.preferredReaderTheme || 'slate');
           setSenderAddress(user.senderAddress || '');
           setSignaturePreview(user.savedSignatureUrl || '');
           setNextCheckNumber(user.nextCheckNumber || 1001);
@@ -179,6 +188,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               defaultRepoUrl: defaultRepo,
               interests: selectedInterests,
               preferredAiProvider: aiProvider,
+              preferredReaderTheme: readerTheme,
               senderAddress,
               savedSignatureUrl: finalSigUrl,
               nextCheckNumber,
@@ -267,6 +277,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                     </div>
                     
+                    <div className="space-y-4 pt-4">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Palette size={16}/> Preferred Reader Theme</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                            {THEME_OPTIONS.map((theme) => {
+                                const TIcon = theme.icon;
+                                return (
+                                    <button 
+                                        key={theme.id}
+                                        onClick={() => setReaderTheme(theme.id)}
+                                        className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left group ${readerTheme === theme.id ? 'bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}
+                                    >
+                                        <div className={`p-2 rounded-lg transition-colors ${readerTheme === theme.id ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-500 group-hover:text-slate-300'}`}>
+                                            <TIcon size={18}/>
+                                        </div>
+                                        <div>
+                                            <p className={`text-xs font-bold ${readerTheme === theme.id ? 'text-indigo-200' : 'text-slate-400'}`}>{theme.label}</p>
+                                            <p className="text-[9px] text-slate-500 uppercase tracking-tighter">{theme.desc}</p>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
                     <div className="space-y-4 pt-4">
                         <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Cpu size={16}/> Preferred AI Engine</h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
