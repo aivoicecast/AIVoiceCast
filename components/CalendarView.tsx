@@ -1,13 +1,11 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Channel, Booking, TodoItem } from '../types';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Briefcase, Plus, Video, CheckCircle, X, Users, Loader2, Mic, Play, Mail, Sparkles, ArrowLeft, Monitor, Filter, LayoutGrid, List, Languages, CloudSun, Wind, BookOpen, CheckSquare, Square, Trash2, StopCircle, Download, FileText, Check, Podcast, RefreshCw, Share2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Briefcase, Plus, Video, CheckCircle, X, Users, Loader2, Mic, Play, Mail, Sparkles, ArrowLeft, Monitor, Filter, LayoutGrid, List, Languages, CloudSun, Wind, BookOpen, CheckSquare, Square, Trash2, StopCircle, Download, FileText, Check, Podcast, RefreshCw, Share2, Target, ExternalLink } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { getUserBookings, createBooking, updateBookingInvite, saveSavedWord, getSavedWordForUser } from '../services/firestoreService';
 import { fetchLocalWeather, getWeatherDescription, WeatherData } from '../utils/weatherService';
 import { getLunarDate, getDailyWord, getSeasonContext, DailyWord } from '../utils/lunarService';
-import { GoogleGenAI } from '@google/genai';
-import { synthesizeSpeech } from '../services/tts';
 import { generateSecureId } from '../utils/idUtils';
 import { ShareModal } from './ShareModal';
 
@@ -27,10 +25,10 @@ interface CalendarViewProps {
 }
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const TIME_SLOTS = ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00', '19:00', '20:00'];
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 const getStartOfDay = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); return d; };
 const getDateKey = (date: Date | number | string) => { const d = new Date(date); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
-const isSameDate = (d1: Date, d2: Date) => d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
 
 export const CalendarView: React.FC<CalendarViewProps> = ({
   channels, handleChannelClick, handleVote, currentUser, setChannelToEdit, setIsSettingsModalOpen, globalVoice, t, onCommentClick, onStartLiveSession, onCreateChannel, onSchedulePodcast
@@ -41,29 +39,28 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [newTodo, setNewTodo] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   
-  // Share States
   const [shareUrl, setShareUrl] = useState('');
   const [shareTitle, setShareTitle] = useState('');
   const [showShareModal, setShowShareModal] = useState(false);
   
-  // Sub-components State (Weather, etc)
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [dailyWord, setDailyWord] = useState<DailyWord | null>(null);
 
   useEffect(() => { loadData(); }, [currentUser]);
+  useEffect(() => {
+      fetchLocalWeather().then(setWeather);
+      setDailyWord(getDailyWord(new Date()));
+  }, []);
 
   const loadData = async () => {
     if (!currentUser) return;
     setIsRefreshing(true);
-    const [bData, tData] = await Promise.all([
-        getUserBookings(currentUser.uid, currentUser.email),
-        Promise.resolve(JSON.parse(localStorage.getItem(`todos_${currentUser.uid}`) || '[]'))
-    ]);
-    setBookings(bData.filter(b => b.status !== 'cancelled' && b.status !== 'rejected'));
-    setTodos(tData);
-    setIsRefreshing(false);
+    try {
+        const bData = await getUserBookings(currentUser.uid, currentUser.email);
+        setBookings(bData.filter(b => b.status !== 'cancelled' && b.status !== 'rejected'));
+        setTodos(JSON.parse(localStorage.getItem(`todos_${currentUser.uid}`) || '[]'));
+    } catch(e) { console.error(e); } finally { setIsRefreshing(false); }
   };
 
   const handleAddTodo = () => {
@@ -80,14 +77,18 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       setNewTodo('');
   };
 
-  const handleShareItem = (type: 'event' | 'task', id: string, name: string) => {
-      const url = `${window.location.origin}?view=calendar&${type}Id=${id}`;
-      setShareUrl(url);
-      setShareTitle(name);
-      setShowShareModal(true);
+  const toggleTodo = (id: string) => {
+      const next = todos.map(t => t.id === id ? { ...t, isCompleted: !t.isCompleted } : t);
+      setTodos(next);
+      localStorage.setItem(`todos_${currentUser.uid}`, JSON.stringify(next));
   };
 
-  // Memoized Grid Indicators
+  const deleteTodo = (id: string) => {
+      const next = todos.filter(t => t.id !== id);
+      setTodos(next);
+      localStorage.setItem(`todos_${currentUser.uid}`, JSON.stringify(next));
+  };
+
   const eventsByDate = useMemo(() => {
     const map: Record<string, { channels: Channel[], bookings: Booking[], todos: TodoItem[] }> = {};
     channels.forEach(c => {
@@ -98,17 +99,42 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       }
     });
     bookings.forEach(b => {
-        const key = getDateKey(b.date + 'T' + b.time); 
+        const key = getDateKey(b.date); 
         if (!map[key]) map[key] = { channels: [], bookings: [], todos: [] };
         map[key].bookings.push(b);
     });
     todos.forEach(t => {
-        const key = getDateKey(new Date(t.date));
+        const key = getDateKey(t.date);
         if (!map[key]) map[key] = { channels: [], bookings: [], todos: [] };
         map[key].todos.push(t);
     });
     return map;
   }, [channels, bookings, todos]);
+
+  const calendarDays = useMemo(() => {
+      const year = displayDate.getFullYear();
+      const month = displayDate.getMonth();
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const prevMonthDays = new Date(year, month, 0).getDate();
+      
+      const grid = [];
+      // Pad prev month
+      for (let i = firstDay - 1; i >= 0; i--) {
+          grid.push({ date: new Date(year, month - 1, prevMonthDays - i), current: false });
+      }
+      // Current month
+      for (let i = 1; i <= daysInMonth; i++) {
+          grid.push({ date: new Date(year, month, i), current: true });
+      }
+      // Pad next month
+      const total = 42;
+      const remaining = total - grid.length;
+      for (let i = 1; i <= remaining; i++) {
+          grid.push({ date: new Date(year, month + 1, i), current: false });
+      }
+      return grid;
+  }, [displayDate]);
 
   const activeDayData = useMemo(() => {
       const key = getDateKey(selectedDate);
@@ -116,62 +142,158 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   }, [eventsByDate, selectedDate]);
 
   return (
-    <div className="space-y-8 animate-fade-in relative">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row">
-        {/* Simplified Calendar Left Rail */}
-        <div className="p-4 bg-slate-950/50 border-b md:border-b-0 md:border-r border-slate-800 md:w-64 flex flex-col gap-6">
-            <div className="flex items-center justify-between bg-slate-900 p-2 rounded-xl border border-slate-800 text-sm font-bold">
-                <button onClick={() => setDisplayDate(new Date(displayDate.getFullYear(), displayDate.getMonth() - 1, 1))}><ChevronLeft/></button>
-                <span>{MONTHS[displayDate.getMonth()]}</span>
-                <button onClick={() => setDisplayDate(new Date(displayDate.getFullYear(), displayDate.getMonth() + 1, 1))}><ChevronRight/></button>
-            </div>
-            <div className="space-y-4">
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest px-1">Daily Tasks</h4>
-                <div className="space-y-2">
-                    {activeDayData.todos.map(t => (
-                        <div key={t.id} className="flex items-center gap-2 group p-1 hover:bg-slate-800/50 rounded-lg">
-                            <span className={`text-sm flex-1 truncate ${t.isCompleted ? 'line-through opacity-50' : ''}`}>{t.text}</span>
-                            <button onClick={() => handleShareItem('task', t.id, t.text)} className="opacity-0 group-hover:opacity-100 text-indigo-400 p-1"><Share2 size={12}/></button>
-                        </div>
-                    ))}
-                    <div className="flex gap-2 items-center px-1">
-                        <Plus size={14} className="text-slate-600"/>
-                        <input value={newTodo} onChange={e => setNewTodo(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddTodo()} placeholder="New task..." className="bg-transparent text-sm outline-none w-full"/>
+    <div className="h-full flex flex-col p-6 space-y-6 overflow-hidden max-w-7xl mx-auto w-full animate-fade-in">
+      
+      {/* Top Header Card */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 shrink-0">
+          <div className="lg:col-span-2 bg-indigo-600 rounded-[2rem] p-8 shadow-2xl relative overflow-hidden flex flex-col justify-between">
+              <div className="absolute top-0 right-0 p-24 bg-white/10 blur-3xl rounded-full"></div>
+              <div className="relative z-10">
+                  <div className="flex justify-between items-start">
+                    <div>
+                        <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">{MONTHS[displayDate.getMonth()]} {displayDate.getFullYear()}</h2>
+                        <p className="text-indigo-100 font-bold opacity-80 mt-1 flex items-center gap-2">
+                           <Target size={14}/> 
+                           {bookings.length} Sessions scheduled this month
+                        </p>
                     </div>
-                </div>
-            </div>
-        </div>
+                    <div className="flex gap-2">
+                        <button onClick={() => setDisplayDate(new Date())} className="px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-xl text-xs font-black text-white border border-white/20 transition-all">TODAY</button>
+                    </div>
+                  </div>
+              </div>
+              <div className="relative z-10 flex gap-4 mt-8">
+                  <button onClick={() => setDisplayDate(new Date(displayDate.getFullYear(), displayDate.getMonth() - 1, 1))} className="p-3 bg-white/10 hover:bg-white/20 rounded-2xl border border-white/20 transition-all"><ChevronLeft size={24} className="text-white"/></button>
+                  <button onClick={() => setDisplayDate(new Date(displayDate.getFullYear(), displayDate.getMonth() + 1, 1))} className="p-3 bg-white/10 hover:bg-white/20 rounded-2xl border border-white/20 transition-all"><ChevronRight size={24} className="text-white"/></button>
+              </div>
+          </div>
 
-        {/* Main Grid Placeholder (Reusing Logic from Existing) */}
-        <div className="flex-1 p-6">
-            <div className="grid grid-cols-7 gap-2">
-                {/* Visual grid rendering here... */}
-                <p className="text-xs text-slate-500 italic">Select a day to view agenda and share items.</p>
-            </div>
-        </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-8 flex flex-col justify-between shadow-xl">
+               {weather ? (
+                   <div className="flex items-center gap-6">
+                       <div className="text-5xl">{getWeatherDescription(weather.weatherCode).icon}</div>
+                       <div>
+                           <p className="text-3xl font-black text-white">{weather.temperature}°C</p>
+                           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">{getWeatherDescription(weather.weatherCode).label}</p>
+                       </div>
+                   </div>
+               ) : <div className="animate-pulse flex gap-4"><div className="w-12 h-12 bg-slate-800 rounded-xl"></div><div className="w-24 h-4 bg-slate-800 rounded mt-4"></div></div>}
+               <div className="mt-6 pt-6 border-t border-slate-800">
+                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-2">Daily Neural Word</p>
+                    <h3 className="text-2xl font-bold text-white leading-tight">{dailyWord?.word}</h3>
+                    <p className="text-xs text-slate-500 mt-1 italic line-clamp-2">"{dailyWord?.meaning}"</p>
+               </div>
+          </div>
       </div>
 
-      <div className="space-y-4">
-          <h3 className="font-bold text-white uppercase text-xs tracking-widest">Selected Day Events</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {activeDayData.bookings.map(b => (
-                  <div key={b.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl flex items-center justify-between group">
-                      <div className="flex items-center gap-4">
-                          <div className="bg-slate-800 p-2 rounded-lg text-indigo-400"><Clock size={20}/></div>
-                          <div><p className="text-sm font-bold text-white">{b.topic}</p><p className="text-[10px] text-slate-500 uppercase">{b.time} with {b.mentorName}</p></div>
-                      </div>
-                      <button onClick={() => handleShareItem('event', b.id, b.topic)} className="p-2 bg-indigo-600/10 text-indigo-400 rounded-lg opacity-0 group-hover:opacity-100 transition-all"><Share2 size={16}/></button>
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
+          
+          {/* Main Grid */}
+          <div className="flex-[2] bg-slate-900 border border-slate-800 rounded-[2.5rem] flex flex-col shadow-2xl overflow-hidden">
+              <div className="grid grid-cols-7 border-b border-slate-800">
+                  {DAYS.map(d => <div key={d} className="py-4 text-center text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">{d}</div>)}
+              </div>
+              <div className="flex-1 grid grid-cols-7 grid-rows-6">
+                  {calendarDays.map((day, i) => {
+                      const key = getDateKey(day.date);
+                      const isSelected = isSameDate(day.date, selectedDate);
+                      const isToday = isSameDate(day.date, new Date());
+                      const hasData = eventsByDate[key];
+                      
+                      return (
+                          <div 
+                            key={i} 
+                            onClick={() => setSelectedDate(day.date)}
+                            className={`relative border-r border-b border-slate-800 p-2 cursor-pointer transition-all hover:bg-slate-800/50 flex flex-col items-center justify-center group ${!day.current ? 'opacity-20' : ''} ${isSelected ? 'bg-indigo-600/10' : ''}`}
+                          >
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${isToday ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : isSelected ? 'bg-white text-slate-950 scale-110' : 'text-slate-400 group-hover:text-white'}`}>
+                                  {day.date.getDate()}
+                              </div>
+                              <div className="flex gap-1 mt-1 h-1.5 items-center">
+                                  {hasData?.bookings.length > 0 && <div className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse"></div>}
+                                  {hasData?.channels.length > 0 && <div className="w-1 h-1 rounded-full bg-emerald-500"></div>}
+                                  {hasData?.todos.length > 0 && <div className="w-1 h-1 rounded-full bg-amber-500"></div>}
+                              </div>
+                          </div>
+                      );
+                  })}
+              </div>
+          </div>
+
+          {/* Agenda Sidebar */}
+          <div className="flex-1 bg-slate-900 border border-slate-800 rounded-[2.5rem] flex flex-col shadow-2xl overflow-hidden">
+              <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
+                  <div>
+                      <h3 className="font-bold text-white text-lg">Agenda</h3>
+                      <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{selectedDate.toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'})}</p>
                   </div>
-              ))}
+                  <button onClick={() => onSchedulePodcast(selectedDate)} className="p-3 bg-indigo-600 rounded-2xl text-white hover:bg-indigo-500 transition-all shadow-lg active:scale-95"><Plus size={20}/></button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
+                  
+                  {activeDayData.bookings.length === 0 && activeDayData.channels.length === 0 && activeDayData.todos.length === 0 && (
+                      <div className="py-20 text-center text-slate-600 flex flex-col items-center gap-4">
+                          <Wind size={40} className="opacity-20"/>
+                          <p className="text-xs font-bold uppercase tracking-widest">No activities recorded</p>
+                      </div>
+                  )}
+
+                  {activeDayData.bookings.map(b => (
+                      <div key={b.id} className="bg-slate-950 border border-slate-800 p-4 rounded-2xl flex items-center gap-4 group hover:border-indigo-500/50 transition-all">
+                          <div className="bg-indigo-900/20 p-3 rounded-xl text-indigo-400 group-hover:scale-110 transition-transform"><Clock size={20}/></div>
+                          <div className="flex-1 min-w-0">
+                              <p className="text-xs font-black text-indigo-400 uppercase tracking-widest">{b.time}</p>
+                              <h4 className="font-bold text-white text-sm truncate">{b.topic}</h4>
+                              <p className="text-[10px] text-slate-500 uppercase font-bold truncate">with {b.mentorName}</p>
+                          </div>
+                          {b.status === 'scheduled' && <button onClick={() => onStartLiveSession(channels.find(c => c.id === b.mentorId) || channels[0], b.topic, true, b.id)} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-all"><Play size={14} fill="currentColor"/></button>}
+                      </div>
+                  ))}
+
+                  {activeDayData.channels.map(c => (
+                      <div key={c.id} onClick={() => handleChannelClick(c.id)} className="bg-emerald-950/10 border border-emerald-900/30 p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:border-emerald-500/50 transition-all">
+                          <img src={c.imageUrl} className="w-10 h-10 rounded-lg object-cover border border-emerald-900/50" />
+                          <div className="flex-1 min-w-0">
+                              <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Podcast Release</p>
+                              <h4 className="font-bold text-white text-sm truncate">{c.title}</h4>
+                          </div>
+                      </div>
+                  ))}
+
+                  <div className="space-y-2 pt-4">
+                      <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2 mb-3">Today's Micro-Tasks</h4>
+                      {activeDayData.todos.map(todo => (
+                          <div key={todo.id} className="bg-slate-800/40 p-3 rounded-xl border border-slate-700/50 flex items-center gap-3 group">
+                              <button onClick={() => toggleTodo(todo.id)} className={`p-0.5 rounded transition-all ${todo.isCompleted ? 'text-emerald-400 bg-emerald-400/10' : 'text-slate-600 hover:text-white'}`}>
+                                  {todo.isCompleted ? <CheckCircle size={16}/> : <Circle size={16}/>}
+                              </button>
+                              <span className={`text-xs flex-1 truncate ${todo.isCompleted ? 'text-slate-600 line-through' : 'text-slate-300'}`}>{todo.text}</span>
+                              <button onClick={() => deleteTodo(todo.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-opacity"><Trash2 size={14}/></button>
+                          </div>
+                      ))}
+                      <div className="flex gap-2 p-2 bg-slate-950 rounded-xl border border-slate-800 mt-2">
+                          <input 
+                            value={newTodo} 
+                            onChange={e => setNewTodo(e.target.value)} 
+                            onKeyDown={e => e.key === 'Enter' && handleAddTodo()}
+                            placeholder="Add task..." 
+                            className="bg-transparent text-xs font-bold text-white outline-none flex-1 px-1"
+                          />
+                          <button onClick={handleAddTodo} className="text-indigo-400 hover:text-white"><Plus size={16}/></button>
+                      </div>
+                  </div>
+              </div>
           </div>
       </div>
 
       {showShareModal && (
-          <ShareModal 
-            isOpen={true} onClose={() => setShowShareModal(false)} link={shareUrl} title={shareTitle}
-            onShare={async () => {}} currentUserUid={currentUser?.uid}
-          />
+          <ShareModal isOpen={true} onClose={() => setShowShareModal(false)} link={shareUrl} title={shareTitle} onShare={async () => {}} currentUserUid={currentUser?.uid} />
       )}
     </div>
   );
 };
+
+function isSameDate(d1: Date, d2: Date) {
+    return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+}
