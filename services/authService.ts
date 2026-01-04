@@ -17,6 +17,7 @@ export async function signInWithGoogle(): Promise<User | null> {
 
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/drive.file');
+    provider.addScope('https://www.googleapis.com/auth/youtube.upload'); // Added YouTube Scope
     provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
     provider.addScope('https://www.googleapis.com/auth/userinfo.email');
     
@@ -30,7 +31,7 @@ export async function signInWithGoogle(): Promise<User | null> {
         const token = credential?.accessToken;
 
         if (token) {
-            localStorage.setItem('google_drive_token', token);
+            localStorage.setItem('google_drive_token', token); // We use this token for all Google APIs
             localStorage.setItem('token_expiry', (Date.now() + 3500 * 1000).toString());
         }
 
@@ -51,7 +52,6 @@ export async function signInWithGoogle(): Promise<User | null> {
 
 /**
  * Initiates GitHub OAuth Flow using Firebase SDK
- * Handles linking if the user is already signed in via another provider
  */
 export async function signInWithGitHub(): Promise<string | null> {
     if (!auth) return null;
@@ -62,8 +62,6 @@ export async function signInWithGitHub(): Promise<string | null> {
 
     try {
         let result;
-        
-        // If user is already logged in (e.g. via Google), attempt to LINK the GitHub account
         if (auth.currentUser) {
             result = await linkWithPopup(auth.currentUser, provider);
         } else {
@@ -79,40 +77,17 @@ export async function signInWithGitHub(): Promise<string | null> {
         }
         return null;
     } catch (error: any) {
-        console.error("Firebase GitHub Auth Exception:", error);
-        // Log detailed internal structure for the user to see in console
-        console.dir(error);
-        
-        if (error.code === 'auth/credential-already-in-use') {
-            // Extract the conflicting email if Firebase provides it
-            const email = error.customData?.email || "Unknown Email";
-            const message = `CONFLICT: This GitHub account is already bound to a different Firebase User.\n\nAssociated Email: ${email}\n\nYou must sign out and sign in using THAT account, or use a Manual Token.`;
-            const newErr = new Error(message);
-            (newErr as any).code = error.code;
-            (newErr as any).conflictingEmail = email;
-            throw newErr;
-        }
-        
-        if (error.code === 'auth/account-exists-with-different-credential') {
-            alert("This GitHub email is already associated with another sign-in method (likely Google). \n\nFIX: Sign in with Google first, then return here to connect GitHub.");
-        }
-        
         handleAuthError(error);
         throw error;
     }
 }
 
-/**
- * Common Error Handler for Auth Flows
- */
 function handleAuthError(error: any) {
     console.error("Firebase Auth Error:", error);
     if (error.code === 'auth/unauthorized-domain') {
-        alert("Domain Not Authorized: Add this URL to 'Authorized Domains' in Firebase Console -> Auth -> Settings.");
+        alert("Domain Not Authorized: Add this URL to 'Authorized Domains' in Firebase Console.");
     } else if (error.code === 'auth/popup-blocked') {
-        alert("Popup Blocked: Please allow popups for this site in your browser settings.");
-    } else if (error.code === 'auth/network-request-failed') {
-        alert("Network Error: Please check your connection or firewall (SSL/TLS issues detected).");
+        alert("Popup Blocked: Please allow popups for this site.");
     }
 }
 
@@ -130,7 +105,7 @@ export async function connectGoogleDrive(): Promise<string> {
     if (token) return token;
     await signInWithGoogle();
     const newToken = getDriveToken();
-    if (!newToken) throw new Error("Failed to obtain Drive token");
+    if (!newToken) throw new Error("Failed to obtain Google token");
     return newToken;
 }
 

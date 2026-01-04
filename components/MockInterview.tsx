@@ -1,18 +1,19 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel } from '../types';
 import { auth } from '../services/firebaseConfig';
 import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage, getUserInterviews, updateInterviewMetadata } from '../services/firestoreService';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
-import { ensureFolder, uploadToDrive, getDriveFileSharingLink, readPublicDriveFile } from '../services/googleDriveService';
+import { uploadToYouTube, getYouTubeVideoUrl, getYouTubeEmbedUrl } from '../services/youtubeService';
 import { GeminiLiveService } from '../services/geminiLive';
 import { GoogleGenAI } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
+import { saveLocalRecording, deleteLocalRecording, getLocalRecordings } from '../utils/db';
 import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-// Added StopCircle to the lucide-react imports to fix line 572 error
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 interface MockInterviewProps {
   onBack: () => void;
@@ -55,8 +56,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [mode, setMode] = useState<'coding' | 'system_design' | 'behavioral'>('coding');
   const [language, setLanguage] = useState(userProfile?.defaultLanguage || 'TypeScript');
   const [jobDesc, setJobDesc] = useState('');
-  const [resumeText, setResumeText] = useState('');
+  const [resumeText, setResumeText] = useState(userProfile?.resumeText || '');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
+  const [youtubePrivacy, setYoutubePrivacy] = useState<'private' | 'unlisted' | 'public'>('unlisted');
   
   // Interview Logic
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
@@ -86,6 +88,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const activeStreamRef = useRef<MediaStream | null>(null);
+  const activeScreenStreamRef = useRef<MediaStream | null>(null);
 
   const currentUser = auth?.currentUser;
 
@@ -213,13 +216,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const startCoachingSession = async () => {
     if (!report || !activeRecording) return;
     
-    // Resume logic: if already active and AI dropped, reconnect
     if (isFeedbackSessionActive && !isAiConnected) {
-        // Fall through to initialization logic
+        // Fall through
     } else if (isFeedbackSessionActive) {
-        // End session manually
         if (liveServiceRef.current) liveServiceRef.current.disconnect();
-        // Save coaching history to the interview record
         if (activeRecording.id !== 'error') {
             await updateInterviewMetadata(activeRecording.id, { coachingTranscript });
         }
@@ -228,20 +228,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     }
 
     const coachingHistoryText = coachingTranscript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-    const systemPrompt = `You are an expert Executive Search Consultant and Interview Coach. 
-    MISSION: Provide actionable voice coaching based on the previous interview session.
-    
-    INTERVIEW DATA:
+    const systemPrompt = `You are an expert Interview Coach. MISSION: Act as a mentor based on this report.
     REPORT: ${JSON.stringify(report)}
-    HISTORY: ${activeRecording.transcript?.map(t => `${t.role}: ${t.text}`).join('\n').substring(0, 3000)}
-    
-    PREVIOUS COACHING LOGS:
-    ${coachingHistoryText}
-
-    GUIDELINES:
-    - If history exists, pick up from the last coaching point.
-    - Focus on technical improvements and the "Areas for Improvement" section.
-    - Act as a mentor who wants them to land a $500k/year senior role.`;
+    PREVIOUS COACHING: ${coachingHistoryText}`;
 
     const service = new GeminiLiveService();
     liveServiceRef.current = service;
@@ -264,7 +253,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 });
             }
         });
-    } catch(e) { alert("Coaching session failed to initialize."); }
+    } catch(e) { alert("Coaching failed."); }
   };
 
   const handleStartInterview = async () => {
@@ -279,13 +268,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const problemPrompt = `Job Context: ${jobDesc}. 
-          Mode: ${mode}. 
-          Programming Language: ${language}. 
-          
-          TASK: Generate a challenging senior-level ${mode} question. 
-          CRITICAL: You MUST provide code examples and any expected API interfaces in ${language}.
-          Format the entire problem as clean Markdown.`;
+          const problemPrompt = `Job: ${jobDesc}. Mode: ${mode}. Language: ${language}. Generate a challenging senior question in Markdown. Include code interfaces in ${language}.`;
 
           const probResponse = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: problemPrompt });
           const problemMarkdown = probResponse.text || "Problem loading...";
@@ -301,7 +284,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
           const camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+          
           activeStreamRef.current = camStream;
+          activeScreenStreamRef.current = screenStream;
 
           const canvas = document.createElement('canvas');
           canvas.width = 1920; canvas.height = 1080;
@@ -330,8 +315,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           camStream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
           const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 2500000 });
           const chunks: Blob[] = [];
+          
           recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-          recorder.onstop = () => { videoBlobRef.current = new Blob(chunks, { type: 'video/webm' }); };
+          
+          const recordingFinished = new Promise<Blob>((resolve) => {
+              recorder.onstop = () => {
+                  const blob = new Blob(chunks, { type: 'video/webm' });
+                  videoBlobRef.current = blob;
+                  resolve(blob);
+              };
+          });
+          
           mediaRecorderRef.current = recorder;
           
           setView('interview');
@@ -366,49 +360,131 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   };
 
   const handleEndInterview = async () => {
-      mediaRecorderRef.current?.stop();
+      setIsGeneratingReport(true);
+      
+      // 1. Terminate all hardware streams immediately
       liveServiceRef.current?.disconnect();
       setIsRecording(false);
       activeStreamRef.current?.getTracks().forEach(t => t.stop());
       activeStreamRef.current = null;
-      setIsGeneratingReport(true);
+      activeScreenStreamRef.current?.getTracks().forEach(t => t.stop());
+      activeScreenStreamRef.current = null;
+
+      // 2. Force MediaRecorder completion
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          const blobPromise = new Promise<Blob>((resolve) => {
+              const recorder = mediaRecorderRef.current!;
+              recorder.onstop = () => {
+                  // Re-construct blob from all chunks collected
+                  const chunks = (recorder as any)._chunks || [];
+                  resolve(new Blob(chunks, { type: 'video/webm' }));
+              };
+              recorder.stop();
+          });
+          const finalBlob = await blobPromise;
+          videoBlobRef.current = finalBlob;
+      }
+      
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-          const reportPrompt = `Analyze interview. Respond ONLY JSON: { "score": number, "technicalSkills": "string", "communication": "string", "collaboration": "string", "strengths": ["string"], "areasForImprovement": ["string"], "verdict": "Strong Hire", "summary": "string", "idealAnswers": [], "learningMaterial": "Markdown", "todoList": [] } Transcript: ${transcriptText}`;
-          const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: reportPrompt, config: { responseMimeType: 'application/json' } });
-          const reportData = JSON.parse(response.text || '{}') as InterviewReport;
+          
+          const reportPrompt = `Analyze this interview transcript and provide a senior hiring panel report.
+          RESPOND ONLY IN VALID JSON: 
+          { "score": number, "technicalSkills": "string", "communication": "string", "collaboration": "string", "strengths": ["string"], "areasForImprovement": ["string"], "verdict": "Strong Hire", "summary": "string", "idealAnswers": [], "learningMaterial": "Markdown String", "todoList": [] } 
+          
+          Transcript:
+          ${transcriptText}`;
+
+          const response = await ai.models.generateContent({
+              model: 'gemini-3-pro-preview',
+              contents: reportPrompt,
+              config: { responseMimeType: 'application/json' }
+          });
+
+          let jsonStr = response.text || "{}";
+          if (jsonStr.includes('```')) {
+              jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
+          }
+
+          const reportData = JSON.parse(jsonStr) as InterviewReport;
           setReport(reportData);
           
-          let attempts = 0;
-          while (!videoBlobRef.current && attempts < 50) { await new Promise(r => setTimeout(r, 100)); attempts++; }
+          // 3. Robust Save: Local DB Staging
           const blob = videoBlobRef.current || new Blob([], { type: 'video/webm' });
           const savedRec = await finalizeAndSave(blob, reportData);
+          
           setActiveRecording(savedRec);
+          
+          // Selection for initial playback: local blob until YouTube transcode finishes
           if (blob.size > 0) setVideoPlaybackUrl(URL.createObjectURL(blob));
+          
           setView('report');
-      } catch (e) { setView('hub'); } finally { setIsGeneratingReport(false); }
+      } catch (e) {
+          console.error("Critical Failure in Report Finalization:", e);
+          alert("Report synthesis failed. Check your history.");
+          setView('hub');
+      } finally {
+          setIsGeneratingReport(false);
+      }
   };
 
   const finalizeAndSave = async (videoBlob: Blob, finalReport: InterviewReport): Promise<MockInterviewRecording> => {
       setIsUploading(true);
+      const recordingId = interviewIdRef.current;
+      
+      const recording: MockInterviewRecording = {
+          id: recordingId, userId: currentUser?.uid || 'guest', userName: currentUser?.displayName || 'Candidate', userPhoto: currentUser?.photoURL || '',
+          mode, language, jobDescription: jobDesc, timestamp: Date.now(), videoUrl: '',
+          transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
+          feedback: JSON.stringify(finalReport), visibility: visibility
+      };
+
+      // A. Stage Locally First (Safety Net)
+      try {
+          await saveLocalRecording({
+              id: recordingId,
+              userId: currentUser?.uid || 'guest',
+              channelId: 'mock-interview',
+              channelTitle: `Mock Interview: ${jobDesc}`,
+              timestamp: Date.now(),
+              mediaUrl: URL.createObjectURL(videoBlob),
+              mediaType: 'video/webm',
+              transcriptUrl: '', 
+              blob: videoBlob
+          });
+      } catch (e) {
+          console.warn("Local stage failed.");
+      }
+
+      // B. Broadcast to YouTube with User's Privacy Preference
       try {
           const token = getDriveToken() || await connectGoogleDrive();
-          const studioFolderId = await ensureFolder(token, 'CodeStudio');
-          const interviewsFolderId = await ensureFolder(token, 'Interviews', studioFolderId);
-          const driveId = await uploadToDrive(token, interviewsFolderId, `Interview_${new Date().toISOString()}.webm`, videoBlob);
-          const webViewUrl = await getDriveFileSharingLink(token, driveId);
-          const recording: MockInterviewRecording = {
-              id: interviewIdRef.current, userId: currentUser?.uid || 'guest', userName: currentUser?.displayName || 'Candidate', userPhoto: currentUser?.photoURL || '',
-              mode, language, jobDescription: jobDesc, timestamp: Date.now(), videoUrl: webViewUrl || `drive://${driveId}`,
-              transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
-              feedback: JSON.stringify(finalReport), visibility: visibility
-          };
+          const videoId = await uploadToYouTube(token, videoBlob, {
+              title: `Mock Interview: ${jobDesc.substring(0, 50)}...`,
+              description: `Automated Mock Interview Session.\nMode: ${mode}\nCandidate: ${currentUser?.displayName || 'Guest'}\nVerdict: ${finalReport.verdict}`,
+              privacyStatus: youtubePrivacy // Use dynamically selected privacy status
+          });
+          recording.videoUrl = getYouTubeVideoUrl(videoId);
+          
+          // C. CLEANUP: Once YouTube sync is confirmed, wipe heavy local blob to save disk space
+          await deleteLocalRecording(recordingId);
+          console.log("YouTube Sync Complete. Purged local cache.");
+      } catch (e) { 
+          console.warn("YouTube broadcast failed. Keeping local safety copy.", e);
+          // If broadcast failed, the local blob URL remains in recording.videoUrl via metadata
+      }
+
+      // D. Save Metadata to Firestore
+      try {
           await saveInterviewRecording(recording);
           await loadInterviews();
-          return recording;
-      } catch (e) { return { id: 'error', userId: 'error', userName: 'Error', mode, jobDescription: jobDesc, timestamp: Date.now(), videoUrl: '' }; }
-      finally { setIsUploading(false); }
+      } catch (e) {
+          console.error("Firestore sync failed", e);
+      }
+      
+      setIsUploading(false);
+      return recording;
   };
 
   const handleViewArchiveItem = async (rec: MockInterviewRecording) => {
@@ -418,6 +494,31 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       setTranscript(rec.transcript || []);
       setCoachingTranscript(rec.coachingTranscript || []);
       setView('report');
+  };
+
+  const renderVideoPlayer = () => {
+    if (!videoPlaybackUrl) return (
+        <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 gap-4">
+            <PlayCircle size={64} className="opacity-20"/>
+            <p className="text-sm font-bold uppercase tracking-widest">Video Not Available</p>
+        </div>
+    );
+
+    const isYouTube = videoPlaybackUrl.includes('youtube.com');
+    
+    if (isYouTube) {
+        const videoId = videoPlaybackUrl.split('v=')[1];
+        return (
+            <iframe 
+                src={getYouTubeEmbedUrl(videoId)}
+                className="w-full h-full border-none"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+            />
+        );
+    }
+
+    return <video src={videoPlaybackUrl} controls className="w-full h-full object-contain" />;
   };
 
   return (
@@ -480,7 +581,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           )}
 
           {view === 'prep' && (
-              <div className="max-w-4xl mx-auto p-12 animate-fade-in-up">
+              <div className="max-w-5xl mx-auto p-12 animate-fade-in-up">
                   <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl space-y-10">
                       <div className="text-center"><h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">Simulation Setup</h2></div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
@@ -494,6 +595,19 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                   <select value={language} onChange={e => setLanguage(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs font-bold text-white focus:ring-2 focus:ring-indigo-500 outline-none">
                                       {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
                                   </select>
+                              </div>
+                              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
+                                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Youtube size={14} className="text-red-500"/> YouTube Privacy</h3>
+                                  <div className="flex p-1 bg-slate-900 rounded-xl border border-slate-700">
+                                      <button onClick={() => setYoutubePrivacy('private')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all flex items-center justify-center gap-2 ${youtubePrivacy === 'private' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><Lock size={12}/> Private</button>
+                                      <button onClick={() => setYoutubePrivacy('unlisted')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all flex items-center justify-center gap-2 ${youtubePrivacy === 'unlisted' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><EyeOff size={12}/> Unlisted</button>
+                                      <button onClick={() => setYoutubePrivacy('public')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all flex items-center justify-center gap-2 ${youtubePrivacy === 'public' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><Globe size={12}/> Public</button>
+                                  </div>
+                                  <p className="text-[9px] text-slate-500 italic px-1">
+                                      {youtubePrivacy === 'unlisted' ? 'Anyone with the URI can watch. Hidden from search.' : 
+                                       youtubePrivacy === 'private' ? 'Only you can watch when logged into YouTube.' : 
+                                       'Visible to everyone on your YouTube channel.'}
+                                  </p>
                               </div>
                           </div>
                           <div className="space-y-6">
@@ -517,7 +631,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                           <div ref={problemRef} className="bg-[#020617] p-8 rounded-2xl border border-slate-800 mb-8"><h1 className="text-2xl font-black text-indigo-400 mb-4 uppercase">Coding Challenge</h1><MarkdownView content={generatedProblemMd} /></div>
                           <div className="space-y-4">
                               {transcript.map((item, idx) => (
-                                  <div key={idx} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}><span className={`text-[9px] uppercase font-black mb-1 ${item.role === 'user' ? 'text-emerald-400' : 'text-indigo-400'}`}>{item.role === 'user' ? 'You' : 'Interviewer'}</span><div className={`max-w-[90%] px-5 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{item.text}</div></div>
+                                  <div key={idx} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}><span className={`text-[9px] uppercase font-black mb-1 ${item.role === 'user' ? 'text-emerald-400' : 'text-indigo-400'}`}>{item.role === 'user' ? 'You' : 'Interviewer'}</span><div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{item.text}</div></div>
                               ))}
                           </div>
                       </div>
@@ -529,7 +643,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
           {view === 'report' && report && (
               <div className="max-w-4xl mx-auto p-8 animate-fade-in-up space-y-12 pb-32">
-                  {/* HIDDEN BUNDLE CONTENT FOR PDF EXPORT */}
                   <div className="hidden">
                     <div ref={bundleRef} className="bg-[#020617] text-white p-20 space-y-20">
                         <div className="text-center border-b border-white/10 pb-10">
@@ -562,8 +675,20 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                     </div>
                   </div>
 
-                  <div className="bg-slate-900 border border-slate-800 rounded-[3rem] overflow-hidden shadow-2xl">
-                      <div className="aspect-video bg-black relative group">{videoPlaybackUrl ? <video src={videoPlaybackUrl} controls className="w-full h-full object-contain" /> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 gap-4"><PlayCircle size={64} className="opacity-20"/><p className="text-sm font-bold uppercase tracking-widest">Video Recording Saved</p></div>}</div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-[3rem] overflow-hidden shadow-2xl relative">
+                      {isUploading && (
+                          <div className="absolute inset-0 z-10 bg-slate-900/80 backdrop-blur-md flex flex-col items-center justify-center text-center p-8">
+                              <div className="relative mb-4">
+                                <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
+                                <Youtube className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-red-500" size={24}/>
+                              </div>
+                              <h4 className="text-lg font-bold text-white uppercase">Broadcasting to YouTube</h4>
+                              <p className="text-xs text-slate-400 mt-2 max-w-xs">Your recording is being securely hosted for high-quality streaming. Hang tight.</p>
+                          </div>
+                      )}
+                      <div className="aspect-video bg-black relative group">
+                          {renderVideoPlayer()}
+                      </div>
                       <div className="p-10 flex flex-col items-center text-center space-y-6" ref={reportRef}>
                           <Trophy className="text-amber-500" size={64}/><h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Simulation Report</h2>
                           <div className="flex gap-4"><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Score</p><p className="text-4xl font-black text-indigo-400">{report.score}/100</p></div><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p><p className={`text-xl font-black uppercase text-emerald-400`}>{report.verdict}</p></div></div>
@@ -604,9 +729,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
       {(isUploading || isGeneratingReport) && (
           <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-4">
-              <div className="relative"><div className="w-24 h-24 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div><CloudUpload className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400" size={32}/></div>
-              <h3 className="text-xl font-bold text-white uppercase">{isGeneratingReport ? 'Synthesizing Metrics' : 'Sovereign Sync'}</h3>
-              <p className="text-sm text-slate-400">{isGeneratingReport ? 'Processing session transcript...' : 'Moving recording to Google Drive...'}</p>
+              <div className="relative"><div className="w-24 h-24 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div><Youtube className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-red-500" size={32}/></div>
+              <h3 className="text-xl font-bold text-white uppercase">{isGeneratingReport ? 'Synthesizing Metrics' : 'YouTube Broadcast'}</h3>
+              <p className="text-sm text-slate-400">{isGeneratingReport ? 'Processing session transcript...' : 'Broadcasting recording to your YouTube channel...'}</p>
           </div>
       )}
     </div>
