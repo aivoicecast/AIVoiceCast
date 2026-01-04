@@ -1,8 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel } from '../types';
-/* Added Edit3 to imports from lucide-react to fix "Cannot find name 'Edit3'" error */
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3 } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
@@ -11,11 +10,18 @@ import { GeminiLiveService } from '../services/geminiLive';
 import { GoogleGenAI } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import CodeStudio from './CodeStudio';
+import { MarkdownView } from './MarkdownView';
 
 interface MockInterviewProps {
   onBack: () => void;
   userProfile: UserProfile | null;
   onStartLiveSession: (channel: Channel, context?: string) => void;
+}
+
+interface IdealAnswer {
+  question: string;
+  expectedAnswer: string;
+  rationale: string;
 }
 
 interface InterviewReport {
@@ -27,6 +33,8 @@ interface InterviewReport {
   areasForImprovement: string[];
   verdict: 'Strong Hire' | 'Hire' | 'No Hire' | 'Strong No Hire';
   summary: string;
+  idealAnswers: IdealAnswer[];
+  learningMaterial: string; // Markdown formatted
 }
 
 export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfile, onStartLiveSession }) => {
@@ -43,28 +51,23 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [resumeText, setResumeText] = useState('');
   
   // File Upload State
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [jdFile, setJdFile] = useState<File | null>(null);
   const [isParsingFile, setIsParsingFile] = useState<string | null>(null);
   const [resumeSource, setResumeSource] = useState<'text' | 'profile' | 'upload'>('text');
 
   const [isStarting, setIsStarting] = useState(false);
   
   // Interview Logic
-  const [timer, setTimer] = useState(1800); // 30 mins
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [isCodeStudioOpen, setIsCodeStudioOpen] = useState(false);
+  const [initialStudioFiles, setInitialStudioFiles] = useState<CodeFile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [report, setReport] = useState<InterviewReport | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const liveServiceRef = useRef<GeminiLiveService | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const videoBlobRef = useRef<Blob | null>(null);
   const interviewIdRef = useRef(generateSecureId());
-
-  const resumeInputRef = useRef<HTMLInputElement>(null);
-  const jdInputRef = useRef<HTMLInputElement>(null);
 
   const currentUser = auth?.currentUser;
 
@@ -111,10 +114,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           const text = await parseFileToText(file);
           if (type === 'resume') {
               setResumeText(text);
-              setResumeFile(file);
           } else {
-              setJdDesc(text);
-              setJdFile(file);
+              setJobDesc(text);
           }
       } catch (err) {
           alert("Neural parsing failed for this file type. Please try pasting the text manually.");
@@ -128,7 +129,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           setResumeText(userProfile.resumeText);
           setResumeSource('profile');
       } else {
-          alert("No resume found in your profile. Go to Settings to upload one.");
+          alert("No resume found in your profile. Please go to Settings to upload one.");
       }
   };
 
@@ -136,17 +137,16 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       setIsStarting(true);
       setTranscript([]);
       setReport(null);
+      videoBlobRef.current = null;
       interviewIdRef.current = generateSecureId();
 
       try {
-          // 1. Request Media
           const camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
           
           const videoFeedback = document.getElementById('local-camera-feedback') as HTMLVideoElement;
           if (videoFeedback) videoFeedback.srcObject = camStream;
 
-          // 2. Setup Recording Canvas (PiP)
           const canvas = document.createElement('canvas');
           canvas.width = 1920; canvas.height = 1080;
           const ctx = canvas.getContext('2d')!;
@@ -161,7 +161,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               ctx.fillStyle = '#020617';
               ctx.fillRect(0, 0, canvas.width, canvas.height);
               ctx.drawImage(screenVideo, 0, 0, 1920, 1080);
-              // Draw Camera PiP
               ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 10;
               ctx.strokeRect(1500, 750, 380, 280);
               ctx.drawImage(camVideo, 1500, 750, 380, 280);
@@ -172,58 +171,79 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           const combinedStream = canvas.captureStream(30);
           camStream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
           
-          // 3. Start Recorder
           const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
           const chunks: Blob[] = [];
           recorder.ondataavailable = e => chunks.push(e.data);
-          recorder.onstop = async () => {
-              const blob = new Blob(chunks, { type: 'video/webm' });
-              await finalizeInterview(blob);
+          recorder.onstop = () => {
+              videoBlobRef.current = new Blob(chunks, { type: 'video/webm' });
           };
           mediaRecorderRef.current = recorder;
           recorder.start();
           setIsRecording(true);
+
+          // Prepare Initial Files for CodeStudio
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const questionPrompt = `Generate a technical ${mode} question based on this job description: ${jobDesc}. Return ONLY the Markdown text of the question.`;
+          const questionResponse = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: questionPrompt });
+          const questionMarkdown = questionResponse.text || "Loading question...";
+
+          const files: CodeFile[] = [
+              { name: 'Question.md', path: 'mock://question', content: questionMarkdown, language: 'markdown', loaded: true, isDirectory: false, isModified: false },
+              { name: mode === 'coding' ? `solution.${language.toLowerCase()}` : 'design.draw', path: 'mock://work', content: '', language: mode === 'coding' ? language.toLowerCase() as any : 'whiteboard', loaded: true, isDirectory: false, isModified: false }
+          ];
+          setInitialStudioFiles(files);
           
-          // 4. Initialize AI Interviewer Persona & Adaptive Workflow
           const persona = mode === 'coding' ? 'Senior Technical Interviewer' : mode === 'system_design' ? 'Principal System Architect' : 'Strategic Hiring Manager';
+          const modeInstruction = mode === 'coding' 
+            ? `Your goal is a CODING INTERVIEW. Present a specific data structure or algorithm problem. Refer them to the "Question.md" file I just opened in the Code Studio. Tell them to write code in the solution file.`
+            : mode === 'system_design' 
+            ? "Your goal is a SYSTEM DESIGN INTERVIEW. Refer them to the " + (mode === 'coding' ? 'Solution' : 'Design') + " tab and explain the scenario. Use the " + (mode === 'coding' ? 'Question.md' : 'Question.md') + " as a guide."
+            : "Your goal is a BEHAVIORAL INTERVIEW. Focus on leadership and soft skills.";
+
           const prompt = `You are a world-class ${persona}. 
           MISSION: Conduct a peer-collaboration mock interview.
+          ${modeInstruction}
           
           PHASES:
-          1. INTRO: Start with a quick mutual introduction (Name, Role). Mention you are here as a peer/team-mate.
-          2. PROBLEM: Provide a challenging ${mode} problem related to: ${jobDesc}.
-          3. COLLABORATE: Act as a peer. If the candidate is stuck, give a subtle hint. Test their learning capability by seeing if they can use the hint effectively. If they really don't know a sub-topic, acknowledge it and pivot to a related or next question.
+          1. INTRO: Start with a quick mutual introduction. Mention you are here as a peer/team-mate.
+          2. PROBLEM: The problem is already visible in their Code Studio. Briefly introduce it vocally.
+          3. COLLABORATE: Act as a peer. If the candidate is stuck, give a subtle hint. Test their learning capability.
           4. DEEP DIVE: Ask adaptive follow-up questions to test the limits of their knowledge.
           5. WRAP UP: At the end, thank them.
           
-          INTERVIEWER GUIDELINES:
-          - Be professional but collaborative. We are a team solving this together.
-          - Use Socratic questioning: "What would happen if we scaled this to 10M users?" or "Is there a more space-efficient way to store this?"
-          - Encourage the use of the Code Studio if it's a technical session.
-          
-          CONTEXT:
-          - Target Job: ${jobDesc}
-          - Candidate Summary: ${resumeText}
-          - Language: ${language}
-          
-          Current Time: 30 minutes total.`;
+          GUIDELINES:
+          - DO NOT print one word per line. Speak in full natural sentences. 
+          - Be a peer. Collaborate.
+          - Context: Job: ${jobDesc}, Candidate: ${resumeText}, Stack: ${language}.`;
 
           const service = new GeminiLiveService();
           liveServiceRef.current = service;
-          await service.connect(mode === 'coding' ? 'Fenrir' : 'Puck', prompt, {
+          // Specialized Voice Mapping: Interview uses Fenrir, Linux uses Puck
+          const voiceToUse = mode === 'coding' ? 'Software Interview Voice gen-lang-client-0648937375' : 'Puck';
+
+          await service.connect(voiceToUse, prompt, {
               onOpen: () => {},
               onClose: () => { if (view === 'interview') handleEndInterview(); },
               onError: (e) => console.error(e),
               onVolumeUpdate: () => {},
               onTranscript: (text, isUser) => {
-                  setTranscript(prev => [...prev, { role: isUser ? 'user' : 'ai', text, timestamp: Date.now() }]);
+                  setTranscript(prev => {
+                      const role = isUser ? 'user' : 'ai';
+                      if (prev.length > 0 && prev[prev.length - 1].role === role) {
+                          const last = prev[prev.length - 1];
+                          // Group text fragments into the same bubble for natural chat flow
+                          return [...prev.slice(0, -1), { ...last, text: last.text + text }];
+                      }
+                      return [...prev, { role, text, timestamp: Date.now() }];
+                  });
               }
           });
 
+          setIsCodeStudioOpen(true);
           setView('interview');
       } catch (e) {
           console.error(e);
-          alert("Permissions required for Mock Interview. Screen share and camera are needed for pro experience.");
+          alert("Permissions required for Mock Interview.");
       } finally {
           setIsStarting(false);
       }
@@ -234,7 +254,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       liveServiceRef.current?.disconnect();
       setIsRecording(false);
       
-      // Generate Report using Gemini 3 Pro (Text Model)
       setIsGeneratingReport(true);
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -247,16 +266,20 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             TRANSCRIPT:
             ${transcriptText}
             
-            RESPOND ONLY IN JSON FORMAT:
+            RESPOND ONLY IN JSON FORMAT with this schema:
             {
               "score": number (0-100),
               "technicalSkills": "string analysis of tech depth",
               "communication": "string analysis of communication",
-              "collaboration": "string analysis of how they worked with you as a peer",
+              "collaboration": "string analysis of team work",
               "strengths": ["string", "string"],
               "areasForImprovement": ["string", "string"],
               "verdict": "Strong Hire" | "Hire" | "No Hire" | "Strong No Hire",
-              "summary": "Detailed executive summary"
+              "summary": "Detailed executive summary",
+              "idealAnswers": [
+                { "question": "Key question asked", "expectedAnswer": "A strong reference answer", "rationale": "Why this answer is considered strong" }
+              ],
+              "learningMaterial": "Markdown content explaining technical concepts they missed, with external references"
             }
           `;
 
@@ -266,9 +289,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               config: { responseMimeType: 'application/json' }
           });
 
-          const reportData = JSON.parse(response.text || '{}');
+          const reportData = JSON.parse(response.text || '{}') as InterviewReport;
           setReport(reportData);
           setView('report');
+
+          // Wait for video blob to finalize and save to Firestore
+          let attempts = 0;
+          while (!videoBlobRef.current && attempts < 50) {
+              await new Promise(r => setTimeout(r, 100));
+              attempts++;
+          }
+          await finalizeAndSave(videoBlobRef.current || new Blob([], { type: 'video/webm' }), reportData);
       } catch (e) {
           console.error("Report generation failed", e);
           setView('hub');
@@ -277,7 +308,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       }
   };
 
-  const finalizeInterview = async (videoBlob: Blob) => {
+  const finalizeAndSave = async (videoBlob: Blob, finalReport: InterviewReport) => {
       setIsUploading(true);
       try {
           const token = getDriveToken() || await connectGoogleDrive();
@@ -293,19 +324,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               timestamp: Date.now(),
               videoUrl: `drive://${driveId}`,
               transcript,
-              feedback: report ? JSON.stringify(report) : undefined
+              feedback: JSON.stringify(finalReport)
           };
           
           await saveInterviewRecording(recording);
           loadInterviews();
       } catch (e: any) {
-          console.error("Drive save failed", e);
+          console.error("Archive sync failed", e);
       } finally {
           setIsUploading(false);
       }
   };
-
-  const setJdDesc = (text: string) => setJobDesc(text);
 
   const filteredInterviews = interviews.filter(i => 
     i.userName.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -405,6 +434,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                       if (rec.feedback) {
                                           setReport(JSON.parse(rec.feedback));
                                           setView('report');
+                                          interviewIdRef.current = rec.id;
                                       } else {
                                           alert("No report available for this older recording.");
                                       }
@@ -426,7 +456,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                          {/* Candidate Information Section */}
                           <div className="space-y-6">
                               <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-6">
                                   <div className="flex items-center justify-between">
@@ -463,17 +492,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                       />
                                   ) : (
                                       <div 
-                                        onClick={() => resumeInputRef.current?.click()}
-                                        className={`w-full h-40 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${resumeFile ? 'border-emerald-500 bg-emerald-950/20' : 'border-slate-800 hover:border-indigo-500 bg-slate-900/50'}`}
+                                        onClick={() => (document.getElementById('prep-resume-upload') as HTMLInputElement).click()}
+                                        className={`w-full h-40 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${isParsingFile === 'resume' ? 'border-indigo-500 bg-indigo-950/20' : 'border-slate-800 hover:border-indigo-500 bg-slate-900/50'}`}
                                       >
                                           {isParsingFile === 'resume' ? (
                                               <Loader2 className="animate-spin text-indigo-400" size={32}/>
-                                          ) : resumeFile ? (
-                                              <>
-                                                <FileCheck className="text-emerald-400" size={32}/>
-                                                <p className="text-[10px] font-black text-emerald-400 uppercase">{resumeFile.name}</p>
-                                                <span className="text-[9px] text-slate-500">Neural analysis complete</span>
-                                              </>
                                           ) : (
                                               <>
                                                 <Upload className="text-slate-600" size={32}/>
@@ -482,11 +505,13 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                           )}
                                       </div>
                                   )}
-                                  <input type="file" ref={resumeInputRef} className="hidden" accept=".pdf,.txt" onChange={e => handleFileUpload(e, 'resume')} />
+                                  <input id="prep-resume-upload" type="file" className="hidden" accept=".pdf,.txt" onChange={e => handleFileUpload(e, 'resume')} />
                               </div>
 
                               <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
-                                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Settings2 size={14}/> Simulation Mode</h3>
+                                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                      <Settings2 size={14}/> Simulation Mode
+                                  </h3>
                                   <div className="grid grid-cols-1 gap-2">
                                       {['coding', 'system_design', 'behavioral'].map(m => (
                                           <button key={m} onClick={() => setMode(m as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>
@@ -498,13 +523,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                               </div>
                           </div>
 
-                          {/* Job/Technical Section */}
                           <div className="space-y-6">
                               <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-6">
                                   <div className="flex items-center justify-between">
                                       <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><Building size={14}/> Target Role</h3>
                                       <button 
-                                        onClick={() => jdInputRef.current?.click()}
+                                        onClick={() => (document.getElementById('prep-jd-upload') as HTMLInputElement).click()}
                                         className="text-[10px] font-black text-emerald-400 uppercase hover:underline"
                                       >
                                           <FileUp size={10} className="inline mr-1"/> Upload JD
@@ -524,7 +548,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                           className="w-full h-40 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"
                                       />
                                   )}
-                                  <input type="file" ref={jdInputRef} className="hidden" accept=".pdf,.txt" onChange={e => handleFileUpload(e, 'jd')} />
+                                  <input id="prep-jd-upload" type="file" className="hidden" accept=".pdf,.txt" onChange={e => handleFileUpload(e, 'jd')} />
 
                                   {mode === 'coding' && (
                                       <div className="pt-2">
@@ -540,7 +564,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                   <div className="flex gap-4">
                                       <Sparkles className="text-indigo-400 shrink-0" size={24}/>
                                       <p className="text-xs text-indigo-200 leading-relaxed">
-                                          <strong>Adaptive Logic:</strong> AI will analyze your resume against the target role to generate highly relevant follow-up questions. Be ready for a deep dive!
+                                          <strong>Collaborative Mode:</strong> AI will open a shared workspace. You can code or draw together while communicating vocally.
                                       </p>
                                   </div>
                               </div>
@@ -553,7 +577,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             disabled={isStarting || !jobDesc.trim()} 
                             className="px-12 py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-30 disabled:grayscale"
                           >
-                              {isStarting ? <Loader2 className="animate-spin" /> : 'Enter Studio & Start Recording'}
+                              {isStarting ? <Loader2 className="animate-spin" /> : 'Authorize & Start Simulation'}
                           </button>
                       </div>
                   </div>
@@ -571,7 +595,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                           </div>
                           <button onClick={() => setIsCodeStudioOpen(!isCodeStudioOpen)} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center gap-2 text-[10px] font-black uppercase tracking-widest">
                               <Code size={16}/>
-                              <span>{isCodeStudioOpen ? 'Maximize Video' : 'Open IDE'}</span>
+                              <span>{isCodeStudioOpen ? 'Show Video' : 'Workspace'}</span>
                           </button>
                       </div>
                       
@@ -591,12 +615,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       <div className="p-6 bg-slate-900 border-t border-slate-800 flex items-center gap-4">
                           <div className="flex-1 bg-slate-950 rounded-2xl border border-slate-800 p-4 flex items-center gap-3">
                               <Mic size={20} className="text-red-500 animate-pulse"/>
-                              <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Voice Active • Collaborate as a Team</p>
+                              <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Voice Linked • Collaborate Now</p>
                           </div>
                       </div>
                   </div>
 
-                  {/* Right: Work Area */}
+                  {/* Right: CodeStudio Integration */}
                   {isCodeStudioOpen && (
                       <div className="flex-1 flex flex-col bg-slate-950 animate-fade-in">
                           <CodeStudio 
@@ -606,6 +630,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             onSessionStart={() => {}} 
                             onSessionStop={() => {}} 
                             onStartLiveSession={onStartLiveSession}
+                            initialFiles={initialStudioFiles}
                           />
                       </div>
                   )}
@@ -621,7 +646,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           )}
 
           {view === 'report' && report && (
-              <div className="max-w-4xl mx-auto p-8 animate-fade-in-up space-y-8 pb-20">
+              <div className="max-w-4xl mx-auto p-8 animate-fade-in-up space-y-8 pb-32">
                   {/* Report Header */}
                   <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl text-center relative overflow-hidden">
                       <div className="absolute top-0 right-0 p-20 bg-indigo-500/10 blur-[100px] rounded-full"></div>
@@ -654,6 +679,45 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl space-y-4">
                           <div className="flex items-center gap-3 text-purple-400"><Users size={20}/><h3 className="font-bold uppercase tracking-widest text-xs">Collaboration</h3></div>
                           <p className="text-sm text-slate-300 leading-relaxed">{report.collaboration}</p>
+                      </div>
+                  </div>
+
+                  {/* Reference Answers Section */}
+                  <div className="space-y-6">
+                      <div className="flex items-center gap-2 px-2">
+                          <Lightbulb className="text-amber-400" size={20}/>
+                          <h3 className="text-xl font-bold text-white uppercase tracking-tight">Reference Answers</h3>
+                      </div>
+                      <div className="grid grid-cols-1 gap-6">
+                          {report.idealAnswers?.map((item, i) => (
+                              <div key={i} className="bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-4 hover:border-amber-500/30 transition-colors">
+                                  <div className="flex flex-col gap-1">
+                                      <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Question</span>
+                                      <p className="text-white font-bold">{item.question}</p>
+                                  </div>
+                                  <div className="flex flex-col gap-1 bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                                      <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Model Candidate Answer</span>
+                                      <p className="text-slate-300 text-sm italic">"{item.expectedAnswer}"</p>
+                                  </div>
+                                  <div className="flex flex-col gap-1">
+                                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Rationale</span>
+                                      <p className="text-slate-400 text-xs leading-relaxed">{item.rationale}</p>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+
+                  {/* Learning & Reading Material */}
+                  <div className="space-y-6">
+                      <div className="flex items-center gap-2 px-2">
+                          <BookOpen className="text-indigo-400" size={20}/>
+                          <h3 className="text-xl font-bold text-white uppercase tracking-tight">Personalized Learning Path</h3>
+                      </div>
+                      <div className="bg-slate-900 border border-slate-800 rounded-[2rem] p-8 md:p-12 shadow-2xl">
+                          <div className="prose prose-invert prose-indigo max-w-none antialiased">
+                              <MarkdownView content={report.learningMaterial} />
+                          </div>
                       </div>
                   </div>
 

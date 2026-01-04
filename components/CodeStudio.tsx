@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash, ExternalLink } from 'lucide-react';
@@ -34,6 +35,7 @@ interface CodeStudioProps {
   onSessionStart: (id: string) => void;
   onSessionStop: (id: string) => void;
   onStartLiveSession: (channel: Channel, context?: string) => void;
+  initialFiles?: CodeFile[]; // New prop for pre-filling files
 }
 
 function getLanguageFromExt(filename: string): CodeFile['language'] {
@@ -96,7 +98,7 @@ const FileTreeItem = ({ node, depth, activeId, onSelect, onToggle, onDelete, onS
             >
                 {node.type === 'folder' && (
                     <div onClick={(e) => { e.stopPropagation(); onToggle(node); }} className="p-0.5 hover:text-white">
-                        {isLoading ? <Loader2 size={12} className="animate-spin text-indigo-400"/> : isExpanded ? <ChevronDown size={12}/> : <ChevronRight size={12}/>}
+                        {isLoading ? <Loader2 size={12} className="animate-spin text-indigo-400"/> : isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </div>
                 )}
                 {node.type === 'folder' ? (
@@ -284,7 +286,7 @@ const Slot: React.FC<SlotProps> = ({
                       <div className="flex items-center gap-1">
                           {canRun && (
                               <button onClick={(e) => { e.stopPropagation(); handleRunCode(idx); }} disabled={running} className={`p-1.5 rounded flex items-center gap-1 text-[10px] font-black uppercase transition-all ${running ? 'text-indigo-400' : 'text-emerald-400 hover:bg-emerald-600/10'}`} title="Compile & Run">
-                                  {running ? <Loader2 size={14} className="animate-spin"/> : <Play size={14} fill="currentColor"/>}
+                                  {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
                                   <span className="hidden md:inline">Run</span>
                               </button>
                           )}
@@ -350,7 +352,7 @@ const Slot: React.FC<SlotProps> = ({
     );
 };
 
-export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, userProfile, sessionId: propSessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession }) => {
+export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, userProfile, sessionId: propSessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession, initialFiles }) => {
   const [githubLinkingError, setGithubLinkingError] = useState<string | null>(null);
   
   const defaultFile: CodeFile = {
@@ -367,10 +369,29 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const myColor = useMemo(() => CURSOR_COLORS[Math.floor(Math.random() * CURSOR_COLORS.length)], []);
 
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('single');
-  const [activeSlots, setActiveSlots] = useState<(CodeFile | null)[]>([defaultFile, null, null, null]);
+  const [activeSlots, setActiveSlots] = useState<(CodeFile | null)[]>([null, null, null, null]);
   const [focusedSlot, setFocusedSlot] = useState<number>(0);
   const [slotViewModes, setSlotViewModes] = useState<Record<number, 'code' | 'preview'>>({ 0: 'code' });
   
+  // Hydrate initial files
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0) {
+        const slots: (CodeFile | null)[] = [null, null, null, null];
+        const vModes: Record<number, 'code' | 'preview'> = {};
+        initialFiles.slice(0, 4).forEach((file, i) => {
+            slots[i] = file;
+            const lang = getLanguageFromExt(file.name);
+            vModes[i] = ['markdown', 'plantuml', 'pdf', 'whiteboard'].includes(lang) ? 'preview' : 'code';
+        });
+        setActiveSlots(slots);
+        setSlotViewModes(vModes);
+        if (initialFiles.length > 1) setLayoutMode('split-v');
+    } else {
+        setActiveSlots([defaultFile, null, null, null]);
+        setSlotViewModes({ 0: 'code' });
+    }
+  }, [initialFiles]);
+
   const [innerSplitRatio, setInnerSplitRatio] = useState(50);
   const [isDraggingInner, setIsDraggingInner] = useState(false);
   
@@ -851,7 +872,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               </div>
               <div className="flex-1 flex flex-col overflow-hidden">
                   <div className="p-3 border-b border-slate-800 flex gap-1.5 shrink-0 bg-slate-900/50">
-                      <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors" title="Refresh Explorer">{isExplorerLoading ? <Loader2 size={16} className="animate-spin"/> : <RefreshCw size={16}/>}</button>
+                      <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors" title="Refresh Explorer">{isExplorerLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}</button>
                       <button onClick={handleCreateNewFile} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-1.5 shadow-lg transition-all active:scale-95"><FilePlus size={14}/> New File</button>
                   </div>
                   
