@@ -43,6 +43,7 @@ export interface UserProfile {
   company?: string;
   resumeText?: string;
   resumeUrl?: string;
+  linkedinUrl?: string;
   likedChannelIds?: string[];
   following?: string[];
   followers?: string[];

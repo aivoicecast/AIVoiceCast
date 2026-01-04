@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile } from '../types';
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check } from 'lucide-react';
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link } from 'lucide-react';
 import { logUserActivity, getBillingHistory, createStripePortalSession, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut, getDriveToken, connectGoogleDrive } from '../services/authService';
 import { clearAudioCache } from '../services/tts';
@@ -31,6 +31,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // LinkedIn Profile Simulation
   const [headline, setHeadline] = useState(user.headline || '');
   const [company, setCompany] = useState(user.company || '');
+  const [linkedinUrl, setLinkedinUrl] = useState(user.linkedinUrl || '');
   const [resumeText, setResumeText] = useState(user.resumeText || '');
   const [resumeUploadStatus, setResumeUploadStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [resumeStatusMsg, setResumeStatusMsg] = useState('');
@@ -91,6 +92,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setDefaultRepo(user.defaultRepoUrl || '');
           setHeadline(user.headline || '');
           setCompany(user.company || '');
+          setLinkedinUrl(user.linkedinUrl || '');
           setResumeText(user.resumeText || '');
           setResumeUploadStatus('idle');
           setResumeStatusMsg('');
@@ -182,6 +184,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               nextCheckNumber,
               headline,
               company,
+              linkedinUrl,
               resumeText
           };
 
@@ -309,6 +312,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
 
                         <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Link size={12} className="text-indigo-400" /> LinkedIn Profile URI</label>
+                            <input type="text" value={linkedinUrl} onChange={e => setLinkedinUrl(e.target.value)} placeholder="https://www.linkedin.com/in/username" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/>
+                        </div>
+
+                        <div>
                             <div className="flex justify-between items-center mb-2 px-1">
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Resume Summary</label>
                                 <button onClick={() => resumeInputRef.current?.click()} className="text-[10px] font-black text-indigo-400 flex items-center gap-1 hover:text-white transition-all">
@@ -421,7 +429,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                             <button 
                                                 key={tag} 
                                                 onClick={() => toggleInterest(tag)} 
-                                                className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95 ${isSelected ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/20' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'}`}
+                                                className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95 ${isSelected ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/20' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-50'}`}
                                             >
                                                 {tag}
                                             </button>
