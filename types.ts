@@ -1,30 +1,361 @@
 
-export interface Address {
-  name: string;
-  street: string;
-  city: string;
-  state: string;
-  zip: string;
-  country: string;
+export type SubscriptionTier = 'free' | 'pro';
+
+export type ChannelVisibility = 'public' | 'private' | 'group';
+
+export interface TranscriptItem {
+  role: 'user' | 'ai';
+  text: string;
+  timestamp: number;
 }
 
-export interface PackageDetails {
-  weight: string;
-  unit: 'lbs' | 'kg';
-  type: 'envelope' | 'box' | 'tube' | 'pallet';
-  dimensions?: string;
-  service: 'standard' | 'express' | 'overnight';
-  carrier: 'USPS' | 'FedEx' | 'UPS' | 'DHL';
-}
-
-export interface ShippingLabel {
-  id: string;
-  sender: Address;
-  recipient: Address;
-  package: PackageDetails;
-  trackingNumber: string;
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL?: string;
   createdAt: number;
+  lastLogin: number;
+  subscriptionTier: SubscriptionTier;
+  subscriptionStatus?: string;
+  apiUsageCount: number;
+  groups: string[];
+  coinBalance: number;
+  lastCoinGrantAt?: number;
+  lastBackup?: any; // Firestore Timestamp
+  backupSize?: number;
+  itemCount?: number;
+  preferredAiProvider?: 'gemini' | 'openai';
+  interests?: string[];
+  senderAddress?: string;
+  savedSignatureUrl?: string;
+  nextCheckNumber?: number;
+  // Added missing property to fix type error in SettingsModal
+  defaultRepoUrl?: string;
+  checkTemplate?: {
+      bankName: string;
+      routingNumber: string;
+      accountNumber: string;
+      senderAddress: string;
+      senderName: string;
+  };
+  headline?: string;
+  company?: string;
+  resumeText?: string;
+  resumeUrl?: string;
+  likedChannelIds?: string[];
+  following?: string[];
+  followers?: string[];
+  certificate?: string;
+  publicKey?: string;
+}
+
+export type AttachmentType = 'image' | 'video' | 'audio' | 'file';
+
+export interface Attachment {
+  id: string;
+  type: AttachmentType;
+  url: string;
+  name?: string;
+}
+
+export interface Comment {
+  id: string;
+  userId: string;
+  user: string;
+  text: string;
+  timestamp: number;
+  attachments?: Attachment[];
+}
+
+export interface SubTopic {
+  id: string;
+  title: string;
+}
+
+export interface Chapter {
+  id: string;
+  title: string;
+  subTopics: SubTopic[];
+}
+
+export interface Channel {
+  id: string;
+  title: string;
+  description: string;
+  author: string;
   ownerId?: string;
+  visibility?: ChannelVisibility;
+  groupId?: string;
+  voiceName: string;
+  systemInstruction: string;
+  likes: number;
+  dislikes: number;
+  comments: Comment[];
+  tags: string[];
+  imageUrl: string;
+  createdAt: number;
+  chapters?: Chapter[];
+  welcomeMessage?: string;
+  starterPrompts?: string[];
+  appendix?: Attachment[];
+  shares?: number;
+}
+
+export interface ChannelStats {
+  likes: number;
+  dislikes: number;
+  shares: number;
+}
+
+export interface GeneratedLecture {
+  topic: string;
+  professorName: string;
+  studentName: string;
+  sections: { speaker: string; text: string }[];
+  readingMaterial?: string;
+  homework?: string;
+}
+
+export interface CommunityDiscussion {
+  id: string;
+  lectureId: string;
+  channelId: string;
+  userId: string;
+  userName: string;
+  transcript: TranscriptItem[];
+  createdAt: number;
+  updatedAt?: number;
+  title: string;
+  isManual?: boolean;
+  designDoc?: string;
+  segmentIndex?: number;
+  visibility?: ChannelVisibility;
+  groupIds?: string[];
+}
+
+export interface RecordingSession {
+  id: string;
+  userId: string;
+  channelId: string;
+  channelTitle: string;
+  channelImage?: string;
+  timestamp: number;
+  mediaUrl: string;
+  mediaType?: string;
+  transcriptUrl: string;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  ownerId: string;
+  memberIds: string[];
+  createdAt: number;
+}
+
+export interface ChatChannel {
+  id: string;
+  name: string;
+  type: 'dm' | 'group' | 'public';
+  memberIds: string[];
+  createdAt: number;
+}
+
+export interface RealTimeMessage {
+  id: string;
+  text: string;
+  senderId: string;
+  senderName: string;
+  senderImage?: string;
+  timestamp: any; // Firestore Timestamp
+  replyTo?: {
+      id: string;
+      text: string;
+      senderName: string;
+  };
+  attachments?: Attachment[];
+}
+
+export interface CodeFile {
+  name: string;
+  path: string;
+  language: 'javascript' | 'typescript' | 'javascript (react)' | 'typescript (react)' | 'python' | 'c++' | 'c' | 'java' | 'rust' | 'go' | 'c#' | 'html' | 'css' | 'json' | 'markdown' | 'plantuml' | 'whiteboard' | 'pdf' | 'text';
+  content: string;
+  loaded?: boolean;
+  isDirectory?: boolean;
+  isModified?: boolean;
+  sha?: string;
+  treeSha?: string;
+  childrenFetched?: boolean;
+}
+
+export interface CodeProject {
+  id: string;
+  name: string;
+  files: CodeFile[];
+  lastModified: number;
+  activeClientId?: string;
+  activeFilePath?: string;
+  accessLevel?: 'public' | 'restricted';
+  allowedUserIds?: string[];
+  github?: {
+      owner: string;
+      repo: string;
+      branch: string;
+      sha: string;
+  };
+}
+
+export interface CursorPosition {
+  clientId: string;
+  userId: string;
+  userName: string;
+  fileName: string;
+  line: number;
+  column: number;
+  color: string;
+  updatedAt: number;
+}
+
+export interface CloudItem {
+  name: string;
+  fullPath: string;
+  isFolder: boolean;
+  size?: number;
+  url?: string;
+}
+
+export type ToolType = 'pen' | 'eraser' | 'rect' | 'circle' | 'line' | 'arrow' | 'triangle' | 'star' | 'type' | 'move';
+export type LineStyle = 'solid' | 'dashed' | 'dotted' | 'dash-dot' | 'long-dash';
+export type BrushType = 'standard' | 'pencil' | 'marker' | 'airbrush' | 'calligraphy-pen' | 'writing-brush';
+
+export interface WhiteboardElement {
+  id: string;
+  type: ToolType;
+  x: number;
+  y: number;
+  color: string;
+  strokeWidth: number;
+  lineStyle?: LineStyle;
+  brushType?: BrushType;
+  points?: { x: number, y: number }[];
+  width?: number;
+  height?: number;
+  endX?: number;
+  endY?: number;
+  borderRadius?: number;
+  rotation?: number;
+  startArrow?: boolean;
+  endArrow?: boolean;
+}
+
+export interface Blog {
+  id: string;
+  ownerId: string;
+  authorName: string;
+  title: string;
+  description: string;
+  createdAt: number;
+}
+
+export interface BlogPost {
+  id: string;
+  blogId: string;
+  authorId: string;
+  authorName: string;
+  authorImage?: string;
+  title: string;
+  excerpt: string;
+  content: string;
+  status: 'draft' | 'published';
+  publishedAt?: number | null;
+  createdAt: number;
+  likes: number;
+  commentCount: number;
+  tags: string[];
+  comments?: Comment[];
+}
+
+export interface JobPosting {
+  id?: string;
+  title: string;
+  company: string;
+  location: string;
+  type: 'full-time' | 'part-time' | 'contract' | 'freelance';
+  description: string;
+  requirements?: string;
+  contactEmail: string;
+  postedBy: string;
+  postedAt: number;
+}
+
+export interface CareerApplication {
+  id?: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userPhotoURL?: string;
+  role: 'mentor' | 'expert';
+  expertise: string[];
+  bio: string;
+  resumeUrl: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  createdAt: number;
+}
+
+export interface NotebookCell {
+  id: string;
+  type: 'markdown' | 'code';
+  content: string;
+  language?: string;
+  output?: string;
+  isExecuting?: boolean;
+}
+
+export interface Notebook {
+  id: string;
+  title: string;
+  author: string;
+  ownerId?: string;
+  description: string;
+  kernel: 'python' | 'javascript';
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+  cells: NotebookCell[];
+}
+
+export interface AgentMemory {
+  id?: string;
+  ownerId?: string;
+  recipientName: string;
+  senderName: string;
+  occasion: string;
+  cardMessage: string;
+  theme: string;
+  customThemePrompt: string;
+  userImages: string[];
+  googlePhotosUrl: string;
+  generatedAt: string;
+  fontFamily?: string;
+  fontSizeScale?: number;
+  coverImageUrl?: string;
+  voiceMessageUrl?: string;
+}
+
+export interface GlobalStats {
+  totalLogins: number;
+  uniqueUsers: number;
+}
+
+export interface GeneratedIcon {
+  id: string;
+  prompt: string;
+  style: string;
+  url: string;
+  createdAt: number;
+  ownerId: string;
 }
 
 export interface BankingCheck {
@@ -41,68 +372,41 @@ export interface BankingCheck {
   senderName: string;
   senderAddress: string;
   recipientAddress?: string;
-  signature: string;
+  signature?: string;
   signatureUrl?: string;
-  ownerId?: string;
   watermarkUrl?: string;
-  coinAmount?: number;
   isCoinCheck?: boolean;
+  coinAmount?: number;
   isClaimed?: boolean;
-  claimToken?: string;
+  ownerId?: string;
   drivePdfUrl?: string;
 }
 
-export interface UserProfile {
-  uid: string;
-  email: string;
-  displayName: string;
-  photoURL: string;
-  groups: string[];
-  interests?: string[];
-  apiUsageCount?: number;
-  createdAt?: number;
-  lastLogin?: any;
-  subscriptionTier?: SubscriptionTier;
-  subscriptionStatus?: 'active' | 'past_due' | 'canceled';
-  defaultRepoUrl?: string;
-  followers?: string[];
-  following?: string[];
-  likedChannelIds?: string[];
-  preferredAiProvider?: 'gemini' | 'openai';
-  preferredMobileQuickApp?: string;
-  coinBalance: number;
-  lastCoinGrantAt?: number;
-  // Simulated LinkedIn Profile
-  resumeUrl?: string;
-  resumeText?: string;
-  headline?: string;
-  company?: string;
-  // Banking Profile
-  senderAddress?: string;
-  savedSignatureUrl?: string;
-  checkTemplate?: Partial<BankingCheck>;
-  nextCheckNumber?: number;
-  // Cryptographic Identity for VoiceCoin
-  publicKey?: string; // PEM or JWK string
-  certificate?: string; // Signed by AIVoiceCast Root
+export interface Address {
+  name: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
 }
 
-export interface OfflinePaymentToken {
-  senderId: string;
-  senderName: string;
-  recipientId: string;
-  amount: number;
-  timestamp: number;
-  nonce: string;
-  signature: string; // Signature of JSON.stringify({senderId, recipientId, amount, timestamp, nonce})
-  certificate: string; // Sender's cert to verify signature offline
+export interface PackageDetails {
+  weight: string;
+  unit: 'lbs' | 'kg';
+  type: 'box' | 'envelope' | 'pallet';
+  service: 'standard' | 'express' | 'overnight';
+  carrier: 'USPS' | 'FedEx' | 'UPS' | 'DHL';
 }
 
-export interface PendingClaim {
-  tokenStr: string;
-  timestamp: number;
-  status: 'pending' | 'failed' | 'success';
-  error?: string;
+export interface ShippingLabel {
+  id: string;
+  sender: Address;
+  recipient: Address;
+  package: PackageDetails;
+  trackingNumber: string;
+  createdAt: number;
+  ownerId: string;
 }
 
 export interface CoinTransaction {
@@ -112,20 +416,38 @@ export interface CoinTransaction {
   toId: string;
   toName: string;
   amount: number;
-  type: 'transfer' | 'grant' | 'check' | 'mentoring' | 'contribution' | 'offline';
+  type: 'transfer' | 'grant' | 'contribution' | 'check' | 'offline';
   memo?: string;
   timestamp: number;
-  isVerified?: boolean;
-  offlineToken?: string; // Base64 encoded OfflinePaymentToken
+  isVerified: boolean;
+  offlineToken?: string;
 }
 
-export interface GeneratedIcon {
+export interface TodoItem {
   id: string;
-  prompt: string;
-  style: string;
-  url: string;
-  createdAt: number;
+  text: string;
+  isCompleted: boolean;
+  date: string;
   ownerId?: string;
+}
+
+export interface OfflinePaymentToken {
+  senderId: string;
+  senderName: string;
+  recipientId: string;
+  amount: number;
+  timestamp: number;
+  nonce: string;
+  memo?: string;
+  signature: string;
+  certificate: string;
+}
+
+export interface PendingClaim {
+  tokenStr: string;
+  timestamp: number;
+  status: 'pending' | 'success' | 'failed';
+  error?: string;
 }
 
 export interface Invitation {
@@ -133,137 +455,35 @@ export interface Invitation {
   fromUserId: string;
   fromName: string;
   toEmail: string;
-  groupId: string;
-  groupName: string;
+  groupId?: string;
+  groupName?: string;
   status: 'pending' | 'accepted' | 'rejected';
   createdAt: number;
-  type?: 'group' | 'session' | 'coin';
-  link?: string;
+  type?: 'group' | 'session' | 'coin' | 'project';
   amount?: number;
+  link?: string;
 }
 
 export interface Booking {
   id: string;
   userId: string;
-  hostName?: string;
+  hostName: string;
   mentorId: string;
   mentorName: string;
-  mentorImage: string;
+  mentorImage?: string;
   date: string;
   time: string;
   topic: string;
   invitedEmail?: string;
-  status: 'scheduled' | 'completed' | 'cancelled' | 'pending' | 'rejected';
-  type?: 'ai' | 'p2p';
+  status: 'pending' | 'scheduled' | 'completed' | 'cancelled' | 'rejected';
+  type: 'ai' | 'p2p';
   createdAt: number;
-  recordingUrl?: string;
-  transcriptUrl?: string;
   coinPrice?: number;
+  recordingUrl?: string | null;
+  transcriptUrl?: string | null;
 }
 
-export type AttachmentType = 'image' | 'audio' | 'video' | 'file';
-
-export interface Attachment {
-  id: string;
-  type: AttachmentType;
-  url: string;
-  name?: string;
-  uploadedAt?: number;
-}
-
-export interface Comment {
-  id: string;
-  userId?: string;
-  user: string;
-  text: string;
-  timestamp: number;
-  attachments?: Attachment[];
-}
-
-export interface TranscriptItem {
-  role: string;
-  text: string;
-  timestamp: number;
-}
-
-export interface SubTopic {
-  id: string;
-  title: string;
-  isCompleted?: boolean;
-}
-
-export interface Chapter {
-  id: string;
-  title: string;
-  subTopics: SubTopic[];
-}
-
-export type ChannelVisibility = 'private' | 'public' | 'group';
-
-export interface ChannelStats {
-  likes: number;
-  dislikes: number;
-  shares: number;
-}
-
-export interface Channel {
-  id: string;
-  title: string;
-  description: string;
-  author: string;
-  ownerId?: string;
-  visibility?: ChannelVisibility;
-  groupId?: string;
-  voiceName: string;
-  systemInstruction: string;
-  likes: number;
-  dislikes: number;
-  shares?: number;
-  comments: Comment[];
-  tags: string[];
-  imageUrl: string;
-  welcomeMessage?: string;
-  starterPrompts?: string[];
-  chapters?: Chapter[];
-  appendix?: Attachment[];
-  createdAt?: number;
-  bookUrl?: string;
-  bookGeneratedAt?: number;
-  mentorCoinRate?: number;
-}
-
-export interface LectureSection {
-  speaker: string;
-  text: string;
-  discussionId?: string;
-}
-
-export interface GeneratedLecture {
-  topic: string;
-  professorName: string;
-  studentName: string;
-  sections: LectureSection[];
-  readingMaterial?: string;
-  homework?: string;
-}
-
-export interface CommunityDiscussion {
-  id: string;
-  lectureId: string;
-  channelId: string;
-  userId: string;
-  userName: string;
-  transcript: TranscriptItem[];
-  summary?: string;
-  designDoc?: string;
-  createdAt: number;
-  segmentIndex?: number;
-  updatedAt?: number;
-  title?: string;
-  isManual?: boolean;
-  visibility?: ChannelVisibility;
-  groupIds?: string[];
-}
+export type ViewState = 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'groups' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'shipping_viewer' | 'icon_generator' | 'icon_viewer' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview';
 
 export interface MockInterviewRecording {
   id: string;
@@ -277,299 +497,5 @@ export interface MockInterviewRecording {
   videoUrl: string; // Drive Link
   transcript?: TranscriptItem[];
   feedback?: string;
+  visibility?: 'public' | 'private';
 }
-
-export type ViewState = 
-  | 'directory' 
-  | 'podcast_detail' 
-  | 'live_session' 
-  | 'create_channel' 
-  | 'debug' 
-  | 'cloud_debug' 
-  | 'public_debug' 
-  | 'mission' 
-  | 'code_studio' 
-  | 'whiteboard' 
-  | 'blog' 
-  | 'chat' 
-  | 'careers' 
-  | 'user_guide' 
-  | 'notebook_viewer' 
-  | 'card_workshop' 
-  | 'card_explorer' 
-  | 'card_viewer'
-  | 'icon_generator'
-  | 'icon_viewer'
-  | 'shipping_labels'
-  | 'shipping_viewer'
-  | 'check_designer'
-  | 'check_viewer'
-  | 'coin_wallet'
-  | 'calendar'
-  | 'groups'
-  | 'recordings'
-  | 'mentorship'
-  | 'docs'
-  | 'firestore_debug'
-  | 'mock_interview';
-
-export interface AudioState {
-  isConnected: boolean;
-  isTalking: boolean;
-  volume: number;
-}
-
-export interface Group {
-  id: string;
-  name: string;
-  ownerId: string;
-  memberIds: string[];
-  createdAt: number;
-}
-
-export interface RecordingSession {
-  id: string;
-  userId: string;
-  channelId: string;
-  channelTitle: string;
-  channelImage: string;
-  timestamp: number;
-  mediaUrl: string;
-  mediaType: string;
-  transcriptUrl: string;
-}
-
-export interface TodoItem {
-  id: string;
-  text: string;
-  isCompleted: boolean;
-  date: string;
-}
-
-export interface CodeFile {
-  name: string;
-  language: 'python' | 'javascript' | 'typescript' | 'html' | 'css' | 'java' | 'c++' | 'c' | 'rust' | 'go' | 'c#' | 'json' | 'markdown' | 'text' | 'typescript (react)' | 'javascript (react)' | 'plantuml' | 'whiteboard' | 'pdf';
-  content: string;
-  sha?: string;
-  path?: string;
-  loaded?: boolean;
-  isDirectory?: boolean;
-  treeSha?: string;
-  childrenFetched?: boolean;
-  isModified?: boolean;
-}
-
-export interface ChatMessage {
-  role: 'user' | 'ai' | 'system';
-  text: string;
-}
-
-export interface GithubMetadata {
-  owner: string;
-  repo: string;
-  branch: string;
-  sha: string;
-}
-
-export interface CursorPosition {
-  clientId: string;
-  userId: string;
-  userName: string;
-  fileName: string;
-  line: number;
-  column: number;
-  color: string;
-  updatedAt: number;
-}
-
-export interface CodeProject {
-  id: string;
-  name: string;
-  files: CodeFile[];
-  lastModified: number;
-  ownerId?: string;
-  github?: GithubMetadata;
-  review?: string;
-  humanComments?: string;
-  interviewFeedback?: string;
-  chatHistory?: ChatMessage[];
-  cursors?: Record<string, CursorPosition>;
-  activeClientId?: string;
-  activeWriterName?: string;
-  activeFilePath?: string;
-  editRequest?: {
-    clientId: string;
-    userName: string;
-    timestamp: number;
-  };
-  accessLevel?: 'public' | 'restricted';
-  allowedUserIds?: string[];
-}
-
-export interface Blog {
-  id: string;
-  ownerId: string;
-  authorName: string;
-  title: string;
-  description: string;
-  createdAt: number;
-  likes?: number;
-}
-
-export interface BlogPost {
-  id: string;
-  blogId: string;
-  authorId: string;
-  authorName: string;
-  authorImage?: string;
-  title: string;
-  content: string;
-  excerpt: string;
-  tags: string[];
-  status: 'draft' | 'published';
-  publishedAt?: number;
-  createdAt: number;
-  likes: number;
-  imageUrl?: string;
-  comments?: Comment[];
-  commentCount?: number;
-}
-
-export interface ChatChannel {
-  id: string;
-  name: string;
-  type: 'public' | 'group' | 'dm';
-  groupId?: string;
-  memberIds?: string[];
-  lastMessage?: {
-    text: string;
-    senderName: string;
-    timestamp: number;
-  };
-  createdAt: number;
-}
-
-export interface RealTimeMessage {
-  id: string;
-  text: string;
-  senderId: string;
-  senderName: string;
-  senderImage?: string;
-  timestamp: any;
-  replyTo?: {
-    id: string;
-    text: string;
-    senderName: string;
-  };
-}
-
-export interface CareerApplication {
-  id?: string;
-  userId: string;
-  userName: string;
-  userEmail: string;
-  userPhotoURL?: string;
-  role: 'mentor' | 'expert' | 'contributor';
-  expertise: string[];
-  bio: string;
-  resumeUrl: string;
-  status: 'pending' | 'approved' | 'rejected';
-  createdAt: number;
-}
-
-export interface JobPosting {
-  id?: string;
-  title: string;
-  company: string;
-  location: string;
-  type: 'full-time' | 'part-time' | 'contract' | 'freelance';
-  description: string;
-  requirements?: string;
-  contactEmail: string;
-  postedBy: string;
-  postedAt: number;
-}
-
-export type ToolType = 'select' | 'pen' | 'eraser' | 'rect' | 'circle' | 'line' | 'arrow' | 'text' | 'pan' | 'triangle' | 'star' | 'curve';
-export type LineStyle = 'solid' | 'dashed' | 'dotted' | 'dash-dot' | 'long-dash';
-export type BrushType = 'standard' | 'pencil' | 'marker' | 'calligraphy-pen' | 'writing-brush' | 'airbrush' | 'oil' | 'watercolor' | 'crayon';
-
-export interface WhiteboardElement {
-  id: string;
-  type: ToolType;
-  points?: { x: number; y: number }[];
-  x: number; y: number;
-  width?: number; height?: number;
-  endX?: number; endY?: number;
-  text?: string;
-  color: string;
-  strokeWidth: number;
-  lineStyle?: LineStyle;
-  brushType?: BrushType;
-  fontSize?: number;
-  fontFamily?: string;
-  borderRadius?: number;
-  rotation?: number;
-  startArrow?: boolean;
-  endArrow?: boolean;
-}
-
-export interface CloudItem {
-  name: string;
-  fullPath: string;
-  url?: string;
-  isFolder: boolean;
-  size?: number;
-  timeCreated?: string;
-  contentType?: string;
-}
-
-export interface GlobalStats {
-  totalLogins: number;
-  uniqueUsers: number;
-}
-
-export interface NotebookCell {
-  id: string;
-  type: 'markdown' | 'code';
-  content: string;
-  language?: 'python' | 'javascript' | 'sql' | 'json';
-  output?: string;
-  isExecuting?: boolean;
-}
-
-export interface Notebook {
-  id: string;
-  title: string;
-  author: string;
-  description: string;
-  ownerId?: string;
-  kernel: 'python' | 'javascript';
-  cells: NotebookCell[];
-  createdAt: number;
-  updatedAt: number;
-  tags: string[];
-}
-
-export interface AgentMemory {
-  id?: string;        
-  ownerId?: string;   
-  recipientName: string;
-  senderName: string;
-  occasion: string;
-  cardMessage: string;
-  theme: 'festive' | 'cozy' | 'minimal' | 'thanks' | 'chinese-poem';
-  customThemePrompt?: string;
-  userImages: string[];
-  coverImageUrl?: string;
-  backImageUrl?: string;
-  googlePhotosUrl?: string;
-  generatedAt: string;
-  voiceMessageUrl?: string; 
-  songUrl?: string;         
-  songLyrics?: string;
-  fontFamily?: string;
-  fontSizeScale?: number;
-}
-
-export type SubscriptionTier = 'free' | 'pro';

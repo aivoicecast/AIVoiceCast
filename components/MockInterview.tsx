@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel } from '../types';
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
-import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
+import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage, getUserInterviews, updateInterviewMetadata } from '../services/firestoreService';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -50,6 +50,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [language, setLanguage] = useState('TypeScript');
   const [jobDesc, setJobDesc] = useState('');
   const [resumeText, setResumeText] = useState('');
+  const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   
   // File Upload State
   const [isParsingFile, setIsParsingFile] = useState<string | null>(null);
@@ -72,18 +73,36 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const videoBlobRef = useRef<Blob | null>(null);
   const interviewIdRef = useRef(generateSecureId());
+  
+  // Ref for local camera stream to fix black box issue
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const activeStreamRef = useRef<MediaStream | null>(null);
 
   const currentUser = auth?.currentUser;
 
+  // Ensure camera feed is attached when view changes to 'interview'
+  useEffect(() => {
+      if (view === 'interview' && activeStreamRef.current && localVideoRef.current) {
+          localVideoRef.current.srcObject = activeStreamRef.current;
+      }
+  }, [view]);
+
   useEffect(() => {
     loadInterviews();
-  }, []);
+  }, [currentUser]);
 
   const loadInterviews = async () => {
     setLoading(true);
     try {
-      const data = await getPublicInterviews();
-      setInterviews(data);
+      const [publicData, userData] = await Promise.all([
+        getPublicInterviews(),
+        currentUser ? getUserInterviews(currentUser.uid) : Promise.resolve([])
+      ]);
+      
+      const combined = [...publicData, ...userData];
+      const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+      
+      setInterviews(unique.sort((a, b) => b.timestamp - a.timestamp));
     } finally {
       setLoading(false);
     }
@@ -162,33 +181,40 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           ];
           setInitialStudioFiles(files);
 
-          // 2. Setup Recording
+          // 2. Setup Recording & Video Feedback
           const camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
           
-          const videoFeedback = document.getElementById('local-camera-feedback') as HTMLVideoElement;
-          if (videoFeedback) videoFeedback.srcObject = camStream;
+          activeStreamRef.current = camStream;
 
           const canvas = document.createElement('canvas');
           canvas.width = 1920; canvas.height = 1080;
           const ctx = canvas.getContext('2d')!;
           
           const camVideo = document.createElement('video');
-          camVideo.srcObject = camStream; camVideo.play();
+          camVideo.srcObject = camStream; 
+          camVideo.muted = true;
+          camVideo.play();
+          
           const screenVideo = document.createElement('video');
-          screenVideo.srcObject = screenStream; screenVideo.play();
+          screenVideo.srcObject = screenStream; 
+          screenVideo.muted = true;
+          screenVideo.play();
           
           const drawFrame = () => {
-              if (view !== 'interview' && !isStarting) return;
+              // Only draw if we're in interview view or starting
+              if (!isRecording && !isStarting) return;
               ctx.fillStyle = '#020617';
               ctx.fillRect(0, 0, canvas.width, canvas.height);
               ctx.drawImage(screenVideo, 0, 0, 1920, 1080);
+              
+              // Floating cam overlay
               ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 10;
               ctx.strokeRect(1500, 750, 380, 280);
               ctx.drawImage(camVideo, 1500, 750, 380, 280);
-              if (view === 'interview' || isStarting) requestAnimationFrame(drawFrame);
+              
+              requestAnimationFrame(drawFrame);
           };
-          requestAnimationFrame(drawFrame);
           
           const combinedStream = canvas.captureStream(30);
           camStream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
@@ -198,8 +224,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           recorder.ondataavailable = e => chunks.push(e.data);
           recorder.onstop = () => { videoBlobRef.current = new Blob(chunks, { type: 'video/webm' }); };
           mediaRecorderRef.current = recorder;
+          
+          // Switch to interview view first so element exists
+          setView('interview');
           recorder.start();
           setIsRecording(true);
+          requestAnimationFrame(drawFrame);
           
           // 3. Connect AI with ACTIVE LISTENING protocols
           const persona = mode === 'coding' ? 'Senior Technical Interviewer' : mode === 'system_design' ? 'Principal System Architect' : 'Hiring Manager';
@@ -207,9 +237,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           MISSION: Conduct a team-collaboration mock interview.
           
           ACTIVE LISTENING PROTOCOL:
-          - DO NOT let the conversation go cold. If the user stops talking, acknowledge it with "I see," "Go on," or "Okay."
-          - If the user is silent for more than 5 seconds, ask "Are you still working on the [section]?" or "Would you like a hint to get past this hurdle?"
-          - Explicitly check for completion: "Are you done with this part, or should we keep refining it?"
+          - DO NOT let the conversation go cold. If the user stops talking for a few seconds, provide a short verbal acknowledgment like "I see," "Go on," or "Okay, that makes sense."
+          - If the user is silent for more than 7 seconds, ask a checking question: "Are you still working through that logic?" or "Would you like a hint on this part?"
+          - Explicitly check for completion: "Are you done with this part, or should we keep refining it before moving on?"
+          - NEVER repeat the same filler word twice in a row.
           
           PHASES:
           1. INTRO: Start with a quick mutual introduction. Mention you are here as a peer/team-mate.
@@ -241,10 +272,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           });
 
           setIsCodeStudioOpen(true);
-          setView('interview');
       } catch (e) {
           console.error(e);
           alert("Permissions required for Mock Interview (Camera + Screen Share).");
+          setView('prep');
       } finally {
           setIsStarting(false);
       }
@@ -254,6 +285,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       mediaRecorderRef.current?.stop();
       liveServiceRef.current?.disconnect();
       setIsRecording(false);
+      
+      // Stop stream tracks
+      activeStreamRef.current?.getTracks().forEach(t => t.stop());
+      activeStreamRef.current = null;
       
       setIsGeneratingReport(true);
       try {
@@ -295,6 +330,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           setReport(reportData);
           setView('report');
 
+          // Wait for video blob to finalize
           let attempts = 0;
           while (!videoBlobRef.current && attempts < 50) {
               await new Promise(r => setTimeout(r, 100));
@@ -367,6 +403,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           const folderId = await ensureCodeStudioFolder(token);
           const driveId = await uploadToDrive(token, folderId, `Interview_${new Date().toISOString()}.webm`, videoBlob);
           
+          // CRITICAL: Ensure only plain data is sent to save function to avoid circular errors
           const recording: MockInterviewRecording = {
               id: interviewIdRef.current,
               userId: currentUser?.uid || 'guest',
@@ -375,8 +412,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               mode, language, jobDescription: jobDesc,
               timestamp: Date.now(),
               videoUrl: `drive://${driveId}`,
-              transcript,
-              feedback: JSON.stringify(finalReport)
+              transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
+              feedback: JSON.stringify(finalReport),
+              visibility: visibility
           };
           
           await saveInterviewRecording(recording);
@@ -385,6 +423,28 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           console.error("Sync failed", e);
       } finally {
           setIsUploading(false);
+      }
+  };
+
+  const handleDeleteRecording = async (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      if (!confirm("Permanently delete this interview recording?")) return;
+      try {
+          await deleteInterview(id);
+          setInterviews(prev => prev.filter(i => i.id !== id));
+      } catch (err) {
+          alert("Delete failed.");
+      }
+  };
+
+  const handleToggleVisibility = async (e: React.MouseEvent, rec: MockInterviewRecording) => {
+      e.stopPropagation();
+      const newVisibility = rec.visibility === 'private' ? 'public' : 'private';
+      try {
+          await updateInterviewMetadata(rec.id, { visibility: newVisibility });
+          setInterviews(prev => prev.map(i => i.id === rec.id ? { ...i, visibility: newVisibility } : i));
+      } catch (err) {
+          alert("Update failed.");
       }
   };
 
@@ -458,13 +518,34 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                               <Video size={48} className="mx-auto opacity-20"/>
                               <p>No interviews in the archive yet.</p>
                           </div>
-                      ) : filteredInterviews.map(rec => (
+                      ) : filteredInterviews.map(rec => {
+                          const isMine = currentUser && rec.userId === currentUser.uid;
+                          return (
                           <div key={rec.id} className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden hover:border-indigo-500/50 transition-all group flex flex-col shadow-xl">
                               <div className="aspect-video relative bg-black">
                                   <div className="absolute inset-0 flex items-center justify-center">
                                       <Play size={40} className="text-white opacity-40 group-hover:opacity-100 transition-opacity" fill="white" />
                                   </div>
-                                  <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-black text-white uppercase border border-white/10 tracking-widest">VERIFIED</div>
+                                  <div className="absolute bottom-4 right-4 flex gap-2">
+                                      {isMine && (
+                                          <button 
+                                            onClick={(e) => handleToggleVisibility(e, rec)}
+                                            className={`bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-black uppercase border border-white/10 tracking-widest flex items-center gap-1.5 transition-all hover:bg-white hover:text-black ${rec.visibility === 'private' ? 'text-amber-400' : 'text-emerald-400'}`}
+                                          >
+                                              {rec.visibility === 'private' ? <Lock size={10}/> : <Globe size={10}/>}
+                                              {rec.visibility || 'public'}
+                                          </button>
+                                      )}
+                                      <div className="bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-[10px] font-black text-white uppercase border border-white/10 tracking-widest">VERIFIED</div>
+                                  </div>
+                                  {isMine && (
+                                      <button 
+                                        onClick={(e) => handleDeleteRecording(e, rec.id)}
+                                        className="absolute top-4 right-4 p-2 bg-slate-900/80 rounded-lg text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                      >
+                                          <Trash2 size={16}/>
+                                      </button>
+                                  )}
                               </div>
                               <div className="p-6 space-y-4 flex-1 flex flex-col">
                                   <div className="flex items-center gap-3">
@@ -491,7 +572,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                   }} className="w-full py-3 bg-slate-800 hover:bg-indigo-600 text-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Review Report</button>
                               </div>
                           </div>
-                      ))}
+                      )})}
                   </div>
               </div>
           )}
@@ -591,6 +672,28 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                   )}
                               </div>
 
+                              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
+                                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                      <Globe size={14}/> Archive Visibility
+                                  </h3>
+                                  <div className="grid grid-cols-2 gap-2">
+                                      <button onClick={() => setVisibility('public')} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${visibility === 'public' ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>
+                                          <div className="flex flex-col">
+                                              <span className="text-xs font-bold uppercase">Public Gallery</span>
+                                              <span className="text-[8px] opacity-60">Visible to all users</span>
+                                          </div>
+                                          {visibility === 'public' && <CheckCircle size={16}/>}
+                                      </button>
+                                      <button onClick={() => setVisibility('private')} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${visibility === 'private' ? 'bg-amber-600 border-amber-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>
+                                          <div className="flex flex-col">
+                                              <span className="text-xs font-bold uppercase">Private Solo</span>
+                                              <span className="text-[8px] opacity-60">Visible only to me</span>
+                                          </div>
+                                          {visibility === 'private' && <CheckCircle size={16}/>}
+                                      </button>
+                                  </div>
+                              </div>
+
                               <div className="p-6 bg-indigo-900/10 border border-indigo-500/20 rounded-3xl flex gap-4">
                                   <Sparkles className="text-indigo-400 shrink-0" size={24}/>
                                   <p className="text-xs text-indigo-200 leading-relaxed">
@@ -614,7 +717,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           )}
 
           {view === 'interview' && (
-              <div className="h-full flex overflow-hidden">
+              <div className="h-full flex overflow-hidden relative">
                   <div className={`flex flex-col border-r border-slate-800 transition-all ${isCodeStudioOpen ? 'w-[400px]' : 'flex-1'}`}>
                       <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
                           <div className="flex items-center gap-3">
@@ -662,8 +765,15 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       </div>
                   )}
 
-                  <div className="absolute bottom-24 right-8 w-64 aspect-video rounded-3xl overflow-hidden border-4 border-slate-800 shadow-2xl z-50 group">
-                      <video id="local-camera-feedback" autoPlay muted playsInline className="w-full h-full object-cover bg-black" />
+                  {/* Camera Feedback: Fixed with useRef and playsInline */}
+                  <div className="absolute bottom-24 right-8 w-64 aspect-video rounded-3xl overflow-hidden border-4 border-slate-800 shadow-2xl z-50 group bg-black">
+                      <video 
+                        ref={localVideoRef}
+                        autoPlay 
+                        muted 
+                        playsInline 
+                        className="w-full h-full object-cover" 
+                      />
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                           <Camera size={24} className="text-white opacity-60"/>
                       </div>
@@ -845,8 +955,3 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     </div>
   );
 };
-
-interface Settings2IconProps { size?: number, className?: string }
-const Settings2 = ({ size = 20, className = "" }: Settings2IconProps) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
-);

@@ -44,19 +44,41 @@ const INTERVIEWS_COLLECTION = 'mock_interviews';
 
 export const ADMIN_EMAILS = ['shengliang.song.ai@gmail.com'];
 export const ADMIN_EMAIL = ADMIN_EMAILS[0];
-const sanitizeData = (data: any) => { const cleaned = JSON.parse(JSON.stringify(data)); cleaned.adminOwnerEmail = ADMIN_EMAIL; return cleaned; };
+
+/**
+ * Robustly sanitizes data for Firestore, stripping non-serializable fields
+ * and preventing circular reference errors.
+ */
+const sanitizeData = (data: any) => { 
+    if (!data) return data;
+    // Strip functions, complex prototypes, and circular refs by creating a fresh JSON clone
+    const cleaned = JSON.parse(JSON.stringify(data, (key, value) => {
+        if (value instanceof HTMLElement || value instanceof MediaStream || value instanceof AudioContext) return undefined;
+        return value;
+    }));
+    cleaned.adminOwnerEmail = ADMIN_EMAIL; 
+    return cleaned; 
+};
 
 // --- Mock Interviews ---
 export async function saveInterviewRecording(recording: MockInterviewRecording): Promise<string> {
     if (!db) return recording.id;
     const id = recording.id || generateSecureId();
-    await setDoc(doc(db, INTERVIEWS_COLLECTION, id), sanitizeData({ ...recording, id }));
+    // Ensure transcript is clean
+    const cleanTranscript = recording.transcript?.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })) || [];
+    const payload = { ...recording, id, transcript: cleanTranscript, visibility: recording.visibility || 'public' };
+    await setDoc(doc(db, INTERVIEWS_COLLECTION, id), sanitizeData(payload));
     return id;
+}
+
+export async function updateInterviewMetadata(id: string, data: Partial<MockInterviewRecording>): Promise<void> {
+    if (!db) return;
+    await updateDoc(doc(db, INTERVIEWS_COLLECTION, id), sanitizeData(data));
 }
 
 export async function getPublicInterviews(): Promise<MockInterviewRecording[]> {
     if (!db) return [];
-    const q = query(collection(db, INTERVIEWS_COLLECTION), orderBy('timestamp', 'desc'), limit(100));
+    const q = query(collection(db, INTERVIEWS_COLLECTION), where('visibility', '==', 'public'), orderBy('timestamp', 'desc'), limit(100));
     const snap = await getDocs(q);
     return snap.docs.map(d => d.data() as MockInterviewRecording);
 }
