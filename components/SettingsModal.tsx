@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile } from '../types';
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck } from 'lucide-react';
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check } from 'lucide-react';
 import { logUserActivity, getBillingHistory, createStripePortalSession, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
-import { signOut } from '../services/authService';
+import { signOut, getDriveToken, connectGoogleDrive } from '../services/authService';
 import { clearAudioCache } from '../services/tts';
 import { TOPIC_CATEGORIES } from '../utils/initialData';
 import { Whiteboard } from './Whiteboard';
 import { GoogleGenAI } from '@google/genai';
+import { ensureFolder, uploadToDrive } from '../services/googleDriveService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -31,7 +32,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [headline, setHeadline] = useState(user.headline || '');
   const [company, setCompany] = useState(user.company || '');
   const [resumeText, setResumeText] = useState(user.resumeText || '');
-  const [isParsingResume, setIsParsingResume] = useState(false);
+  const [resumeUploadStatus, setResumeUploadStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
+  const [resumeStatusMsg, setResumeStatusMsg] = useState('');
   const resumeInputRef = useRef<HTMLInputElement>(null);
 
   // Banking Profile State
@@ -90,6 +92,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setHeadline(user.headline || '');
           setCompany(user.company || '');
           setResumeText(user.resumeText || '');
+          setResumeUploadStatus('idle');
+          setResumeStatusMsg('');
       }
   }, [isOpen, user]);
 
@@ -97,8 +101,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const file = e.target.files?.[0];
       if (!file) return;
       
-      setIsParsingResume(true);
+      setResumeUploadStatus('processing');
+      setResumeStatusMsg('Neural Prism scanning PDF...');
+      
       try {
+          // 1. Parse Text with Gemini
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const base64 = await new Promise<string>((resolve) => {
               const reader = new FileReader();
@@ -115,15 +122,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ]
               }
           });
-          setResumeText(response.text || "");
+          const parsedText = response.text || "";
+          setResumeText(parsedText);
           
-          // Also upload the original file to storage
-          const url = await uploadFileToStorage(`users/${user.uid}/resume.pdf`, file);
-          updateUserProfile(user.uid, { resumeUrl: url });
+          setResumeStatusMsg('Syncing to Cloud Storage...');
+          // 2. Upload to Firebase Storage for public Talent Pool access
+          const firebaseResumeUrl = await uploadFileToStorage(`users/${user.uid}/resume.pdf`, file);
+          
+          // 3. Optional: Backup to Google Drive
+          try {
+            setResumeStatusMsg('Backing up to Google Drive...');
+            const token = getDriveToken() || await connectGoogleDrive();
+            if (token) {
+                const studioFolderId = await ensureFolder(token, 'CodeStudio');
+                const resumesFolderId = await ensureFolder(token, 'Resumes', studioFolderId);
+                await uploadToDrive(token, resumesFolderId, `Resume_${user.displayName.replace(/\s/g, '_')}.pdf`, file);
+            }
+          } catch(driveErr) {
+            console.warn("Drive backup skipped or failed", driveErr);
+          }
+
+          // 4. Update Profile with new URL and parsed text
+          await updateUserProfile(user.uid, { 
+              resumeUrl: firebaseResumeUrl,
+              resumeText: parsedText 
+          });
+
+          if (onUpdateProfile) {
+              onUpdateProfile({ ...user, resumeUrl: firebaseResumeUrl, resumeText: parsedText });
+          }
+
+          setResumeUploadStatus('success');
+          setResumeStatusMsg('Resume verified and synced!');
+          setTimeout(() => setResumeUploadStatus('idle'), 3000);
       } catch (err) {
-          alert("Could not parse PDF. Try copying and pasting your resume text.");
-      } finally {
-          setIsParsingResume(false);
+          console.error(err);
+          setResumeUploadStatus('error');
+          setResumeStatusMsg('Upload failed. Please try again.');
       }
   };
 
@@ -288,10 +323,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     placeholder="Click upload or paste your resume details here..."
                                     className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-slate-300 focus:ring-1 focus:ring-indigo-500 outline-none leading-relaxed resize-none shadow-inner"
                                 />
-                                {isParsingResume && (
-                                    <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center gap-3">
-                                        <Loader2 className="animate-spin text-indigo-400" size={32}/>
-                                        <span className="text-[10px] font-black text-white uppercase tracking-widest">Neural Parsing PDF...</span>
+                                {resumeUploadStatus !== 'idle' && (
+                                    <div className={`absolute inset-0 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center gap-3 transition-all ${
+                                        resumeUploadStatus === 'success' ? 'bg-emerald-950/80' : 
+                                        resumeUploadStatus === 'error' ? 'bg-red-950/80' : 'bg-slate-950/60'
+                                    }`}>
+                                        {resumeUploadStatus === 'processing' && <Loader2 className="animate-spin text-indigo-400" size={32}/>}
+                                        {resumeUploadStatus === 'success' && <div className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-lg"><Check size={24} strokeWidth={4}/></div>}
+                                        {resumeUploadStatus === 'error' && <div className="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center text-white shadow-lg"><X size={24} strokeWidth={4}/></div>}
+                                        <span className="text-xs font-black text-white uppercase tracking-widest">{resumeStatusMsg}</span>
+                                        {resumeUploadStatus !== 'processing' && (
+                                            <button onClick={() => setResumeUploadStatus('idle')} className="mt-2 text-[10px] font-bold text-white/60 hover:text-white underline uppercase">Dismiss</button>
+                                        )}
                                     </div>
                                 )}
                             </div>
