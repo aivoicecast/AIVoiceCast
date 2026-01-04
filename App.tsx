@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } 
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, Video
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewState } from './types';
@@ -43,6 +43,7 @@ import { CheckDesigner } from './components/CheckDesigner';
 import { FirestoreInspector } from './components/FirestoreInspector';
 import { BrandLogo } from './components/BrandLogo';
 import { CoinWallet } from './components/CoinWallet';
+import { MockInterview } from './components/MockInterview';
 
 import { getCurrentUser, getDriveToken } from './services/authService';
 import { auth, db } from './services/firebaseConfig';
@@ -137,7 +138,8 @@ const UI_TEXT = {
     shipping: "Shipping Lab",
     checks: "Check Designer",
     fullscreen: "Toggle Fullscreen",
-    wallet: "Coin Wallet"
+    wallet: "Coin Wallet",
+    mockInterview: "Mock Interview"
   },
   zh: {
     appTitle: "AI 播客",
@@ -171,7 +173,8 @@ const UI_TEXT = {
     shipping: "物流实验室",
     checks: "支票设计器",
     fullscreen: "全屏切换",
-    wallet: "虚拟钱包"
+    wallet: "虚拟钱包",
+    mockInterview: "模拟面试"
   }
 };
 
@@ -232,6 +235,7 @@ const App: React.FC = () => {
 
   const allApps = [
     { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); setActiveTab('categories'); }, color: 'text-indigo-400' },
+    { id: 'mock_interview', label: t.mockInterview, icon: Video, action: () => handleSetViewState('mock_interview'), color: 'text-red-500' },
     { id: 'wallet', label: t.wallet, icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400' },
     { id: 'docs', label: t.docs, icon: FileText, action: () => handleSetViewState('docs'), color: 'text-emerald-400' },
     { id: 'check_designer', label: t.checks, icon: Wallet, action: () => handleSetViewState('check_designer'), color: 'text-orange-400' },
@@ -495,6 +499,7 @@ const App: React.FC = () => {
             {viewState === 'mission' && ( <MissionManifesto onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('directory')} user={userProfile} /> )}
+            {viewState === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('directory')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} /> )}
         </main>
 
         <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setCreateModalInitialDate(null); }} onCreate={handleCreateChannel} currentUser={currentUser} initialDate={createModalInitialDate} />

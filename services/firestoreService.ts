@@ -11,7 +11,7 @@ import {
   GeneratedLecture, CommunityDiscussion, Booking, Invitation, RecordingSession, CodeProject, 
   CodeFile, CursorPosition, CloudItem, WhiteboardElement, Blog, BlogPost, JobPosting, 
   CareerApplication, Notebook, AgentMemory, GlobalStats, SubscriptionTier, Chapter, 
-  TranscriptItem, ChannelVisibility, GeneratedIcon, BankingCheck, ShippingLabel, CoinTransaction, TodoItem, OfflinePaymentToken
+  TranscriptItem, ChannelVisibility, GeneratedIcon, BankingCheck, ShippingLabel, CoinTransaction, TodoItem, OfflinePaymentToken, MockInterviewRecording
 } from '../types';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { generateSecureId } from '../utils/idUtils';
@@ -40,10 +40,38 @@ const TRANSACTIONS_COLLECTION = 'coin_transactions';
 const TASKS_COLLECTION = 'tasks';
 const NOTEBOOKS_COLLECTION = 'notebooks';
 const INVITATIONS_COLLECTION = 'invitations';
+const INTERVIEWS_COLLECTION = 'mock_interviews';
 
 export const ADMIN_EMAILS = ['shengliang.song.ai@gmail.com'];
 export const ADMIN_EMAIL = ADMIN_EMAILS[0];
 const sanitizeData = (data: any) => { const cleaned = JSON.parse(JSON.stringify(data)); cleaned.adminOwnerEmail = ADMIN_EMAIL; return cleaned; };
+
+// --- Mock Interviews ---
+export async function saveInterviewRecording(recording: MockInterviewRecording): Promise<string> {
+    if (!db) return recording.id;
+    const id = recording.id || generateSecureId();
+    await setDoc(doc(db, INTERVIEWS_COLLECTION, id), sanitizeData({ ...recording, id }));
+    return id;
+}
+
+export async function getPublicInterviews(): Promise<MockInterviewRecording[]> {
+    if (!db) return [];
+    const q = query(collection(db, INTERVIEWS_COLLECTION), orderBy('timestamp', 'desc'), limit(100));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as MockInterviewRecording);
+}
+
+export async function getUserInterviews(uid: string): Promise<MockInterviewRecording[]> {
+    if (!db) return [];
+    const q = query(collection(db, INTERVIEWS_COLLECTION), where('userId', '==', uid), orderBy('timestamp', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as MockInterviewRecording);
+}
+
+export async function deleteInterview(id: string): Promise<void> {
+    if (!db) return;
+    await deleteDoc(doc(db, INTERVIEWS_COLLECTION, id));
+}
 
 // --- Coins & Wallet ---
 

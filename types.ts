@@ -260,6 +260,20 @@ export interface CommunityDiscussion {
   groupIds?: string[];
 }
 
+export interface MockInterviewRecording {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhoto?: string;
+  mode: 'coding' | 'system_design' | 'behavioral';
+  language?: string;
+  jobDescription: string;
+  timestamp: number;
+  videoUrl: string; // Drive Link
+  transcript?: TranscriptItem[];
+  feedback?: string;
+}
+
 export type ViewState = 
   | 'directory' 
   | 'podcast_detail' 
@@ -291,7 +305,8 @@ export type ViewState =
   | 'recordings'
   | 'mentorship'
   | 'docs'
-  | 'firestore_debug';
+  | 'firestore_debug'
+  | 'mock_interview';
 
 export interface AudioState {
   isConnected: boolean;
