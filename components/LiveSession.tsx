@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2 } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
@@ -57,7 +57,8 @@ const UI_TEXT = {
     saveAndLink: "Save & Link to Segment",
     start: "Start Session",
     saveSession: "Save Session",
-    localPreview: "Local Preview"
+    localPreview: "Local Preview",
+    diagnostics: "Neural Diagnostics"
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -87,7 +88,8 @@ const UI_TEXT = {
     saveAndLink: "保存并链接到段落",
     start: "开始会话",
     saveSession: "保存会话",
-    localPreview: "本地预览"
+    localPreview: "本地预览",
+    diagnostics: "神经诊断"
   }
 };
 
@@ -105,7 +107,6 @@ const saveContentTool: FunctionDeclaration = {
   }
 };
 
-// Restore Memoized suggestion bar
 const SuggestionsBar = React.memo(({ suggestions, welcomeMessage, showWelcome, uiText }: { 
   suggestions: string[], 
   welcomeMessage?: string,
@@ -144,10 +145,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
   const [synthesisProgress, setSynthesisProgress] = useState(0);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [logs, setLogs] = useState<{time: string, msg: string, type: 'info' | 'error' | 'warn'}[]>([]);
   
-  // Action Progress States
   const [isAppending, setIsAppending] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
   const [isSavingLesson, setIsSavingLesson] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
   
@@ -168,6 +169,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   const [suggestions] = useState<string[]>(channel.starterPrompts?.slice(0, 4) || []);
   
+  const addLog = useCallback((msg: string, type: 'info' | 'error' | 'warn' = 'info') => {
+      const time = new Date().toLocaleTimeString();
+      setLogs(prev => [{ time, msg, type }, ...prev].slice(0, 100));
+  }, []);
+
   useEffect(() => { 
       transcriptRef.current = transcript; 
       mountedRef.current = true;
@@ -177,31 +183,37 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
-  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song@gmail.com' || currentUser.email === 'shengliang.song.ai@gmail.com');
+  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com' || currentUser.email === 'shengliang.song.ai@gmail.com');
 
   const handleStartSession = async () => {
       setError(null);
+      addLog("Initializing neural environment...");
       try {
-          // 1. Capture Hardware IMMEDIATELY on User Interaction
           if (recordingEnabled) {
               if (videoEnabled) {
+                  addLog("Requesting screen capture...");
                   screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
                       video: { cursor: "always" } as any,
                       audio: false 
                   });
+                  addLog("Screen capture active.");
               }
               if (cameraEnabled) {
+                  addLog("Requesting camera capture...");
                   cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
                       video: true, 
                       audio: false 
                   });
+                  addLog("Camera capture active.");
               }
           }
           setHasStarted(true);
           await connect();
       } catch (e: any) {
           console.error("Hardware denied", e);
-          setError(e.name === 'NotAllowedError' ? "Hardware access denied. Please allow screen/camera sharing and try again." : "Hardware initialization failed.");
+          const msg = e.name === 'NotAllowedError' ? "Hardware access denied. Please allow permissions." : "Hardware initialization failed.";
+          setError(msg);
+          addLog(msg, "error");
           setHasStarted(false);
       }
   };
@@ -248,7 +260,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               else {
                   ctx.fillStyle = '#1e293b'; ctx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
                   ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 30px sans-serif'; ctx.textAlign = 'center';
-                  ctx.fillText('Interactive Audio Session', canvas.width / 2, canvas.height / 2);
+                  ctx.fillText('Interactive AI Session', canvas.width / 2, canvas.height / 2);
               }
 
               if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
@@ -287,7 +299,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   const recId = `session-${timestamp}`;
 
                   setSynthesisProgress(30);
-                  // CRITICAL FAIL-SAFE: Always save to IndexedDB first
                   await saveLocalRecording({
                       id: recId,
                       userId: currentUser.uid,
@@ -316,7 +327,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                                   privacyStatus: 'unlisted'
                               });
                               videoUrl = getYouTubeVideoUrl(ytId);
-                          } catch (ytErr) { console.warn("YT Upload fail", ytErr); }
+                              addLog(`Published to YouTube: ${videoUrl}`);
+                          } catch (ytErr) { 
+                              addLog("YouTube upload failed, using local/drive storage only.", "warn");
+                          }
                       }
 
                       setSynthesisProgress(85);
@@ -333,7 +347,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       await saveRecordingReference(sessionData);
                   }
                   setSynthesisProgress(100);
-              } catch(e) { console.error("Cloud sync failed", e); } finally { 
+              } catch(e) { 
+                  console.error("Cloud sync failed", e); 
+                  addLog("Cloud sync failed. Data remains in local browser storage.", "error");
+              } finally { 
                   setIsUploadingRecording(false); 
                   onEndSession();
               }
@@ -344,8 +361,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           };
           mediaRecorderRef.current = recorder;
           recorder.start(1000);
-      } catch(e) { console.warn("Recording start failure", e); }
-  }, [recordingEnabled, channel, currentUser, onEndSession]);
+      } catch(e) { 
+          console.warn("Recording start failure", e); 
+          addLog("Recording subsystem failed.", "error");
+      }
+  }, [recordingEnabled, channel, currentUser, onEndSession, addLog]);
 
   const connect = useCallback(async () => {
     let service = serviceRef.current || new GeminiLiveService();
@@ -361,10 +381,23 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           effectiveInstruction += `\n\n[USER CONTEXT]: ${initialContext}`;
       }
 
+      addLog("Connecting to WebSocket...");
       await service.connect(channel.voiceName, effectiveInstruction, {
-          onOpen: () => { setIsConnected(true); if (recordingEnabled) startRecording(); },
-          onClose: () => { setIsConnected(false); setHasStarted(false); },
-          onError: (err) => { setIsConnected(false); setError(err); },
+          onOpen: () => { 
+              setIsConnected(true); 
+              addLog("WebSocket Open - Handshake complete.");
+              if (recordingEnabled) startRecording(); 
+          },
+          onClose: (reason) => { 
+              setIsConnected(false); 
+              setHasStarted(false); 
+              addLog(`WebSocket Closed: ${reason}`, "warn");
+          },
+          onError: (err) => { 
+              setIsConnected(false); 
+              setError(err); 
+              addLog(`API Error: ${err}`, "error");
+          },
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
               const role = isUser ? 'user' : 'ai';
@@ -375,6 +408,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           },
           onToolCall: async (toolCall: any) => {
               for (const fc of toolCall.functionCalls) {
+                  addLog(`AI calling function: ${fc.name}`);
                   if (fc.name === 'save_content') {
                       const { filename, content } = fc.args;
                       setTranscript(h => [...h, { role: 'ai', text: `*[System]: Generated artifact '${filename}' saved to project.*`, timestamp: Date.now() }]);
@@ -386,10 +420,14 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               }
           }
       }, [{ functionDeclarations: [saveContentTool] }]);
-    } catch (e) { setError("AI initialization failed."); }
-  }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, recordingEnabled, startRecording, onCustomToolCall]);
+    } catch (e: any) { 
+        setError("AI initialization failed."); 
+        addLog(`Link Init Failure: ${e.message}`, "error");
+    }
+  }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, recordingEnabled, startRecording, onCustomToolCall, addLog]);
 
   const handleDisconnect = async () => {
+      addLog("Ending session...");
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
       } else { 
@@ -496,6 +534,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     <span>{t.recording}</span>
                 </div>
             )}
+            <button onClick={() => setShowDiagnostics(!showDiagnostics)} className={`p-2 rounded-lg transition-colors ${showDiagnostics ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title={t.diagnostics}>
+                <Activity size={18}/>
+            </button>
             <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">End Session</button>
          </div>
       </div>
@@ -513,6 +554,26 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 playsInline 
                 className="w-full h-full object-cover mirror"
               />
+          </div>
+      )}
+
+      {/* Diagnostics Panel Overlay */}
+      {showDiagnostics && (
+          <div className="absolute top-16 right-4 w-80 max-h-[70%] z-[100] bg-slate-900/95 border border-slate-700 rounded-2xl shadow-2xl flex flex-col animate-fade-in-down backdrop-blur-md">
+              <div className="p-3 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
+                  <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><Terminal size={14}/> {t.diagnostics}</span>
+                  <button onClick={() => setShowDiagnostics(false)} className="text-slate-500 hover:text-white"><X size={16}/></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-[10px]">
+                  {logs.length === 0 ? (
+                      <p className="text-slate-600 italic">No events recorded...</p>
+                  ) : logs.map((log, i) => (
+                      <div key={i} className={`flex gap-2 ${log.type === 'error' ? 'text-red-400' : log.type === 'warn' ? 'text-amber-400' : 'text-slate-400'}`}>
+                          <span className="opacity-40 shrink-0">[{log.time}]</span>
+                          <span className="break-words">{log.msg}</span>
+                      </div>
+                  ))}
+              </div>
           </div>
       )}
 

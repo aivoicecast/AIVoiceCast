@@ -1,9 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel, TranscriptItem } from '../types';
 import { getUserRecordings, deleteRecordingReference } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
+import { getYouTubeEmbedUrl } from '../services/youtubeService';
 
 interface RecordingListProps {
   onBack?: () => void;
@@ -46,12 +48,9 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     setLoading(true);
     try {
       let all: RecordingSession[] = [];
-      
-      // 1. Always load Local Recordings (Sovereign Data)
       const local = await getLocalRecordings();
       all = [...local];
       
-      // 2. Load Cloud Recordings if user is authenticated
       if (currentUser?.uid) {
           try {
               const cloud = await getUserRecordings(currentUser.uid);
@@ -61,7 +60,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           }
       }
       
-      // Deduplicate by ID and sort by timestamp descending
       const unique = Array.from(new Map(all.map(item => [item.id, item])).values());
       setRecordings(unique.sort((a, b) => b.timestamp - a.timestamp));
     } catch (e) {
@@ -71,6 +69,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     }
   };
 
+  const isYouTubeUrl = (url: string) => url?.includes('youtube.com') || url?.includes('youtu.be');
+
   const handleDelete = async (rec: RecordingSession) => {
     if (!confirm("Permanently delete this recording? This cannot be undone.")) return;
     try {
@@ -79,7 +79,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
       } else if (currentUser) {
           await deleteRecordingReference(rec.id, rec.mediaUrl, rec.transcriptUrl);
       } else {
-          // Fallback if local but URL isn't a blob for some reason
           await deleteLocalRecording(rec.id);
       }
       setRecordings(prev => prev.filter(r => r.id !== rec.id));
@@ -92,7 +91,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
       if (!meetingTitle.trim() || !onStartLiveSession) return;
       
       const systemPrompt = recorderMode === 'silent' 
-        ? `You are a professional interpreter. Your task is to transcribe the conversation and provide real-time translation of the user's speech into ${targetLanguage}. Speak only the translations clearly. Do not engage in conversation unless requested for technical help.`
+        ? `You are a professional interpreter. Your task is to transcribe the conversation and provide real-time translation of the user's speech into ${targetLanguage}. Speak only the translations clearly.`
         : "You are a helpful meeting assistant. Participate in the discussion, take notes, and answer questions when asked.";
 
       const newChannel: Channel = {
@@ -104,10 +103,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           visibility: 'private',
           voiceName: 'Zephyr',
           systemInstruction: systemPrompt,
-          likes: 0, 
-          dislikes: 0, 
-          comments: [],
-          tags: ['Meeting', 'Recording'],
+          likes: 0, dislikes: 0, comments: [], tags: ['Meeting', 'Recording'],
           imageUrl: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?w=600&q=80',
           createdAt: Date.now()
       };
@@ -163,18 +159,20 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             const isVideo = rec.mediaType?.includes('video');
             const isPlaying = activeMediaId === rec.id;
             const isLocal = rec.mediaUrl.startsWith('blob:') || rec.mediaUrl.startsWith('data:');
+            const isYoutube = isYouTubeUrl(rec.mediaUrl);
 
             return (
               <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : 'border-slate-800'} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl`}>
                 <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                   
                   <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:scale-105 ${isVideo ? 'bg-indigo-900/20 border-indigo-500/50 text-indigo-400' : 'bg-pink-900/20 border-pink-500/50 text-pink-400'}`}>
-                       {isVideo ? <Video size={24} /> : <Mic size={24} />}
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:scale-105 ${isYoutube ? 'bg-red-900/20 border-red-500/50 text-red-500' : isVideo ? 'bg-indigo-900/20 border-indigo-500/50 text-indigo-400' : 'bg-pink-900/20 border-pink-500/50 text-pink-400'}`}>
+                       {isYoutube ? <Youtube size={24} /> : isVideo ? <Video size={24} /> : <Mic size={24} />}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold text-white text-lg truncate">{rec.channelTitle}</h3>
+                        {isYoutube && <span className="bg-red-950 text-red-400 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-red-500/30 flex items-center gap-1"><Youtube size={8}/> YouTube</span>}
                         {isLocal && <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700" title="Device Storage Only">Local</span>}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
@@ -197,9 +195,21 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <FileText size={20} />
                     </a>
 
-                    <a href={rec.mediaUrl} target="_blank" rel="noreferrer" download={`${rec.channelTitle.replace(/\s/g, '_')}_Session.webm`} className="p-2.5 bg-slate-800 text-slate-400 hover:text-emerald-400 rounded-xl border border-slate-700 transition-colors" title="Download Media">
-                      <HardDriveDownload size={20} />
-                    </a>
+                    <div className="relative group">
+                        <a href={rec.mediaUrl} target="_blank" rel="noreferrer" download={`${rec.channelTitle.replace(/\s/g, '_')}_Session.webm`} className="p-2.5 bg-slate-800 text-slate-400 hover:text-emerald-400 rounded-xl border border-slate-700 transition-colors flex items-center justify-center">
+                            <HardDriveDownload size={20} />
+                        </a>
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-slate-300 text-[10px] rounded-lg border border-slate-700 w-48 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-2xl z-50">
+                            <p className="font-bold flex items-center gap-1 mb-1"><HelpCircle size={10}/> Playback Tip</p>
+                            WebM files play best in <strong>VLC Media Player</strong> or Chrome/Edge if Windows Media Player lacks codecs.
+                        </div>
+                    </div>
+
+                    {isYoutube && (
+                        <a href={rec.mediaUrl} target="_blank" rel="noreferrer" className="p-2.5 bg-red-950/20 text-red-500 hover:bg-red-600 hover:text-white rounded-xl border border-red-500/20 transition-colors" title="View on YouTube">
+                            <ExternalLink size={20} />
+                        </a>
+                    )}
 
                     <button onClick={() => handleDelete(rec)} className="p-2.5 bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors" title="Permanent Delete">
                       <Trash2 size={20} />
@@ -209,7 +219,18 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
                 {isPlaying && (
                   <div className="mt-6 pt-6 border-t border-slate-800 animate-fade-in">
-                    {isVideo ? (
+                    {isYoutube ? (
+                        <div className="relative pt-[56.25%] w-full overflow-hidden rounded-2xl bg-black border border-slate-800 shadow-2xl">
+                             <iframe 
+                                className="absolute top-0 left-0 w-full h-full"
+                                src={getYouTubeEmbedUrl(rec.mediaUrl.split('v=')[1])}
+                                title="YouTube Video"
+                                frameBorder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                             />
+                        </div>
+                    ) : isVideo ? (
                       <video src={rec.mediaUrl} controls autoPlay className="w-full max-h-[500px] rounded-2xl bg-black border border-slate-800 shadow-2xl" />
                     ) : (
                       <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 flex items-center gap-6 shadow-inner">

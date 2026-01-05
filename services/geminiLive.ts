@@ -58,7 +58,7 @@ export class GeminiLiveService {
       const connectionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
-          responseModalities: [Modality.AUDIO],
+          responseModalalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: validVoice } } },
           systemInstruction,
           inputAudioTranscription: {},
@@ -101,12 +101,21 @@ export class GeminiLiveService {
             if (interrupted) { this.stopAllSources(); this.nextStartTime = 0; this.isPlayingResponse = false; }
           },
           onclose: (e: any) => {
-            const reason = e?.reason || (e?.code ? `Status Code: ${e.code}` : "Remote peer closed the link");
+            let reason = "Link closed by remote peer";
+            if (e?.code) {
+                switch(e.code) {
+                    case 1000: reason = "Clean shutdown (1000)"; break;
+                    case 1001: reason = "Endpoint going away (1001)"; break;
+                    case 1006: reason = "Abnormal closure (1006) - check network/VPN"; break;
+                    case 4003: reason = "API Quota exceeded (4003)"; break;
+                    default: reason = `WebSocket Code: ${e.code}${e.reason ? ` - ${e.reason}` : ''}`;
+                }
+            }
             this.cleanup();
             callbacks.onClose(reason);
           },
           onerror: (e: any) => {
-            const errorMsg = e?.message || JSON.stringify(e) || "WebSocket Logic Error";
+            const errorMsg = e?.message || "WebSocket Logical Error - Check console";
             this.cleanup();
             callbacks.onError(errorMsg);
           }
