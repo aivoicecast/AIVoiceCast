@@ -13,6 +13,9 @@ export interface YouTubeUploadMetadata {
  * Uploads a video blob to the user's YouTube channel using the resumable protocol.
  */
 export async function uploadToYouTube(accessToken: string, videoBlob: Blob, metadata: YouTubeUploadMetadata): Promise<string> {
+    console.log("[YouTube] Starting upload process for:", metadata.title);
+    console.log("[YouTube] Blob size:", (videoBlob.size / 1024 / 1024).toFixed(2), "MB");
+
     const initUrl = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
     
     const body = {
@@ -28,6 +31,7 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
         }
     };
 
+    console.log("[YouTube] Step 1: Initializing resumable session...");
     const initRes = await fetch(initUrl, {
         method: 'POST',
         headers: {
@@ -41,12 +45,17 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
 
     if (!initRes.ok) {
         const error = await initRes.json();
+        console.error("[YouTube] Initialization failed:", error);
         throw new Error(`YouTube initialization failed: ${error.error?.message || initRes.statusText}`);
     }
 
     const uploadUrl = initRes.headers.get('Location');
-    if (!uploadUrl) throw new Error("Did not receive a YouTube upload location header.");
+    if (!uploadUrl) {
+        console.error("[YouTube] No Location header received.");
+        throw new Error("Did not receive a YouTube upload location header.");
+    }
 
+    console.log("[YouTube] Step 2: Uploading binary data to location...");
     const uploadRes = await fetch(uploadUrl, {
         method: 'PUT',
         headers: {
@@ -57,15 +66,16 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
 
     if (!uploadRes.ok) {
         const error = await uploadRes.json();
+        console.error("[YouTube] Binary upload failed:", error);
         throw new Error(`YouTube upload failed: ${error.error?.message || uploadRes.statusText}`);
     }
 
     const data = await uploadRes.json();
+    console.log("[YouTube] Step 3: Upload successful! Video ID:", data.id);
     return data.id; 
 }
 
 export function getYouTubeVideoUrl(videoId: string): string {
-    // Return standard watch URL which is used for string-matching in RecordingList
     return `https://www.youtube.com/watch?v=${videoId}`;
 }
 

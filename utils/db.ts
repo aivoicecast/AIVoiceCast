@@ -6,8 +6,8 @@ const STORE_NAME = 'audio_segments';
 const TEXT_STORE_NAME = 'lecture_scripts';
 const CHANNELS_STORE_NAME = 'user_channels'; 
 const RECORDINGS_STORE_NAME = 'local_recordings';
-const IDENTITY_STORE_NAME = 'identity_keys'; // New store for crypto keys
-const VERSION = 6; // Bump version to 6 for new store
+const IDENTITY_STORE_NAME = 'identity_keys';
+const VERSION = 7; // Bumped version for reliability
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -15,45 +15,90 @@ function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve, reject) => {
+    console.log(`[IDB] Opening Database: ${DB_NAME} v${VERSION}`);
     const request = indexedDB.open(DB_NAME, VERSION);
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBRequest).result;
+      console.log("[IDB] Upgrade needed. Creating object stores...");
       
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-      if (!db.objectStoreNames.contains(TEXT_STORE_NAME)) {
-        db.createObjectStore(TEXT_STORE_NAME);
-      }
-      if (!db.objectStoreNames.contains(CHANNELS_STORE_NAME)) {
-        db.createObjectStore(CHANNELS_STORE_NAME, { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains(RECORDINGS_STORE_NAME)) {
-        db.createObjectStore(RECORDINGS_STORE_NAME, { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains(IDENTITY_STORE_NAME)) {
-        db.createObjectStore(IDENTITY_STORE_NAME);
-      }
+      if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+      if (!db.objectStoreNames.contains(TEXT_STORE_NAME)) db.createObjectStore(TEXT_STORE_NAME);
+      if (!db.objectStoreNames.contains(CHANNELS_STORE_NAME)) db.createObjectStore(CHANNELS_STORE_NAME, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(RECORDINGS_STORE_NAME)) db.createObjectStore(RECORDINGS_STORE_NAME, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(IDENTITY_STORE_NAME)) db.createObjectStore(IDENTITY_STORE_NAME);
     };
 
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+        console.log("[IDB] Connection established successfully.");
+        resolve(request.result);
+    };
     
     request.onerror = () => {
+      console.error("[IDB] Critical database error:", request.error);
       dbPromise = null;
       reject(request.error);
     };
 
     request.onblocked = () => {
+        console.warn("[IDB] Upgrade blocked by another tab.");
         dbPromise = null;
-        reject(new Error("Database upgrade blocked."));
     };
   });
 
   return dbPromise;
 }
 
-// --- Audio Functions ---
+export async function getLocalRecordings(): Promise<RecordingSession[]> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(RECORDINGS_STORE_NAME, 'readonly');
+            const store = transaction.objectStore(RECORDINGS_STORE_NAME);
+            const request = store.getAll();
+            request.onsuccess = () => {
+                const results = request.result || [];
+                console.log(`[IDB] Loaded ${results.length} local recordings.`);
+                resolve(results);
+            };
+            request.onerror = () => reject(request.error);
+        });
+    } catch(e) { 
+        console.error("[IDB] Failed to get recordings:", e);
+        return []; 
+    }
+}
+
+export async function saveLocalRecording(session: RecordingSession & { blob: Blob }): Promise<void> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(RECORDINGS_STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(RECORDINGS_STORE_NAME);
+            const request = store.put(session);
+            request.onsuccess = () => {
+                console.log(`[IDB] Successfully saved recording: ${session.id}`);
+                resolve();
+            };
+            request.onerror = () => reject(request.error);
+        });
+    } catch(e) {
+        console.error("[IDB] Save operation failed:", e);
+    }
+}
+
+export async function deleteLocalRecording(id: string): Promise<void> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(RECORDINGS_STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(RECORDINGS_STORE_NAME);
+            const request = store.delete(id);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    } catch(e) {}
+}
 
 export async function getCachedAudioBuffer(key: string): Promise<ArrayBuffer | undefined> {
   try {
@@ -65,9 +110,7 @@ export async function getCachedAudioBuffer(key: string): Promise<ArrayBuffer | u
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-  } catch (error) {
-    return undefined;
-  }
+  } catch (error) { return undefined; }
 }
 
 export async function cacheAudioBuffer(key: string, buffer: ArrayBuffer): Promise<void> {
@@ -93,12 +136,8 @@ export async function getAudioKeys(): Promise<string[]> {
       request.onsuccess = () => resolve(request.result as string[]);
       request.onerror = () => reject(request.error);
     });
-  } catch (error) {
-    return [];
-  }
+  } catch (error) { return []; }
 }
-
-// --- Text Content Functions (Lectures) ---
 
 export async function getCachedLectureScript(key: string): Promise<any | undefined> {
   try {
@@ -110,9 +149,7 @@ export async function getCachedLectureScript(key: string): Promise<any | undefin
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-  } catch (error) {
-    return undefined;
-  }
+  } catch (error) { return undefined; }
 }
 
 export async function cacheLectureScript(key: string, data: any): Promise<void> {
@@ -128,8 +165,6 @@ export async function cacheLectureScript(key: string, data: any): Promise<void> 
   } catch (error) {}
 }
 
-// --- User Channels Functions ---
-
 export async function getUserChannels(): Promise<Channel[]> {
   try {
     const db = await openDB();
@@ -140,9 +175,7 @@ export async function getUserChannels(): Promise<Channel[]> {
       request.onsuccess = () => resolve(request.result || []);
       request.onerror = () => reject(request.error);
     });
-  } catch (error) {
-    return [];
-  }
+  } catch (error) { return []; }
 }
 
 export async function saveUserChannel(channel: Channel): Promise<void> {
@@ -171,49 +204,6 @@ export async function deleteUserChannel(id: string): Promise<void> {
   } catch (error) {}
 }
 
-// --- Local Recordings Functions ---
-
-export async function getLocalRecordings(): Promise<RecordingSession[]> {
-    try {
-        const db = await openDB();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(RECORDINGS_STORE_NAME, 'readonly');
-            const store = transaction.objectStore(RECORDINGS_STORE_NAME);
-            const request = store.getAll();
-            request.onsuccess = () => resolve(request.result || []);
-            request.onerror = () => reject(request.error);
-        });
-    } catch(e) { return []; }
-}
-
-export async function saveLocalRecording(session: RecordingSession & { blob: Blob }): Promise<void> {
-    try {
-        const db = await openDB();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(RECORDINGS_STORE_NAME, 'readwrite');
-            const store = transaction.objectStore(RECORDINGS_STORE_NAME);
-            const request = store.put(session);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    } catch(e) {}
-}
-
-export async function deleteLocalRecording(id: string): Promise<void> {
-    try {
-        const db = await openDB();
-        return new Promise((resolve, reject) => {
-            const transaction = db.transaction(RECORDINGS_STORE_NAME, 'readwrite');
-            const store = transaction.objectStore(RECORDINGS_STORE_NAME);
-            const request = store.delete(id);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    } catch(e) {}
-}
-
-// --- Identity Keys Functions ---
-
 export async function getLocalPrivateKey(uid: string): Promise<CryptoKey | undefined> {
     try {
         const db = await openDB();
@@ -239,8 +229,6 @@ export async function saveLocalPrivateKey(uid: string, key: CryptoKey): Promise<
         });
     } catch(e) {}
 }
-
-// --- Backup & Restore Functions ---
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   let binary = '';
@@ -279,9 +267,7 @@ export async function exportFullDatabase(): Promise<string> {
       if (cursor) {
         exportData.lectures.push({ key: cursor.key, value: cursor.value });
         cursor.continue();
-      } else {
-        resolve();
-      }
+      } else { resolve(); }
     };
     request.onerror = () => reject(request.error);
   });
@@ -296,9 +282,7 @@ export async function exportFullDatabase(): Promise<string> {
         const base64 = arrayBufferToBase64(cursor.value);
         exportData.audio.push({ key: cursor.key, value: base64 });
         cursor.continue();
-      } else {
-        resolve();
-      }
+      } else { resolve(); }
     };
     request.onerror = () => reject(request.error);
   });
@@ -308,97 +292,65 @@ export async function exportFullDatabase(): Promise<string> {
 
 export async function exportMetadataOnly(): Promise<string> {
   const db = await openDB();
-  const exportData: any = {
-    lectures: [],
-    customChannels: []
-  };
-
+  const exportData: any = { lectures: [], customChannels: [] };
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(TEXT_STORE_NAME, 'readonly');
     const store = transaction.objectStore(TEXT_STORE_NAME);
     const request = store.openCursor();
     request.onsuccess = (event) => {
       const cursor = (event.target as IDBRequest).result;
-      if (cursor) {
-        exportData.lectures.push({ key: cursor.key, value: cursor.value });
-        cursor.continue();
-      } else {
-        resolve();
-      }
+      if (cursor) { exportData.lectures.push({ key: cursor.key, value: cursor.value }); cursor.continue(); } else { resolve(); }
     };
     request.onerror = () => reject(request.error);
   });
-
   await new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(CHANNELS_STORE_NAME, 'readonly');
     const store = transaction.objectStore(CHANNELS_STORE_NAME);
     const request = store.openCursor();
     request.onsuccess = (event) => {
       const cursor = (event.target as IDBRequest).result;
-      if (cursor) {
-        exportData.customChannels.push({ key: cursor.key, value: cursor.value });
-        cursor.continue();
-      } else {
-        resolve();
-      }
+      if (cursor) { exportData.customChannels.push({ key: cursor.key, value: cursor.value }); cursor.continue(); } else { resolve(); }
     };
     request.onerror = () => reject(request.error);
   });
-
   return JSON.stringify(exportData);
 }
 
 export async function importFullDatabase(jsonData: string): Promise<void> {
   const data = JSON.parse(jsonData);
   const db = await openDB();
-
   if (data.lectures && Array.isArray(data.lectures)) {
     const transaction = db.transaction(TEXT_STORE_NAME, 'readwrite');
     const store = transaction.objectStore(TEXT_STORE_NAME);
-    for (const item of data.lectures) {
-      store.put(item.value, item.key);
-    }
+    for (const item of data.lectures) store.put(item.value, item.key);
     await new Promise((resolve) => { transaction.oncomplete = resolve; });
   }
-
   if (data.audio && Array.isArray(data.audio)) {
     const transaction = db.transaction(STORE_NAME, 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
-    for (const item of data.audio) {
-      const buffer = base64ToArrayBuffer(item.value);
-      store.put(buffer, item.key);
-    }
+    for (const item of data.audio) { const buffer = base64ToArrayBuffer(item.value); store.put(buffer, item.key); }
     await new Promise((resolve) => { transaction.oncomplete = resolve; });
   }
 }
 
-export interface DebugEntry {
-  store: string;
-  key: string;
-  size: number;
-}
+export interface DebugEntry { store: string; key: string; size: number; }
 
 export async function getAllDebugEntries(): Promise<DebugEntry[]> {
   const db = await openDB();
   const entries: DebugEntry[] = [];
   const stores = [STORE_NAME, TEXT_STORE_NAME, CHANNELS_STORE_NAME, RECORDINGS_STORE_NAME, IDENTITY_STORE_NAME];
-
   for (const storeName of stores) {
     try {
       await new Promise<void>((resolve) => {
         const tx = db.transaction(storeName, 'readonly');
         const store = tx.objectStore(storeName);
         const request = store.openCursor();
-        
         request.onsuccess = (event) => {
           const cursor = (event.target as IDBRequest).result;
           if (cursor) {
             let size = 0;
-            if (storeName === STORE_NAME) { 
-               size = (cursor.value as ArrayBuffer).byteLength;
-            } else {
-               size = JSON.stringify(cursor.value).length;
-            }
+            if (storeName === STORE_NAME) size = (cursor.value as ArrayBuffer).byteLength;
+            else size = JSON.stringify(cursor.value).length;
             entries.push({ store: storeName, key: cursor.key as string, size: size });
             cursor.continue();
           } else { resolve(); }

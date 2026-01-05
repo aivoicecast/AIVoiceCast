@@ -172,6 +172,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const addLog = useCallback((msg: string, type: 'info' | 'error' | 'warn' = 'info') => {
       const time = new Date().toLocaleTimeString();
       setLogs(prev => [{ time, msg, type }, ...prev].slice(0, 100));
+      console.log(`[Neural Log] ${msg}`);
   }, []);
 
   useEffect(() => { 
@@ -238,8 +239,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           mixingAudioContextRef.current = mixCtx;
           const dest = mixCtx.createMediaStreamDestination();
           
-          const aiStream = null; 
-          
+          // No AI output stream mixing in this simple version, just user and system
           const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const userSource = mixCtx.createMediaStreamSource(userStream); 
           userSource.connect(dest);
@@ -299,7 +299,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   const timestamp = Date.now();
                   const recId = `session-${timestamp}`;
 
-                  addLog("[SYSTEM]: Syncing to local IndexedDB...");
+                  addLog("[SYSTEM]: Pushing to Local Persistence...");
                   setSynthesisProgress(30);
                   await saveLocalRecording({
                       id: recId,
@@ -317,28 +317,30 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   setSynthesisProgress(50);
                   const token = getDriveToken();
                   if (token) {
-                      addLog("[SYSTEM]: Token found. Starting Google Cloud & YouTube sync...");
+                      addLog("[SYSTEM]: Valid Cloud Token. Syncing to Google infrastructure...");
                       const folderId = await ensureCodeStudioFolder(token);
                       
                       let videoUrl = '';
                       if (isVideo) {
                           try {
                               setSynthesisProgress(70);
-                              addLog("[YOUTUBE_TRACE]: Initializing resumable upload...");
+                              addLog("[YOUTUBE_TRACE]: Initiating resumable multi-part upload...");
                               const ytId = await uploadToYouTube(token, videoBlob, {
                                   title: `${channel.title}: AI Session`,
                                   description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText.substring(0, 1000)}`,
                                   privacyStatus: 'unlisted'
                               });
                               videoUrl = getYouTubeVideoUrl(ytId);
-                              addLog(`[YOUTUBE_URI]: ${videoUrl}`, "info");
+                              addLog(`[YOUTUBE_TRACE]: SUCCESS. URI: ${videoUrl}`, "info");
                           } catch (ytErr: any) { 
-                              addLog(`[YOUTUBE_TRACE]: Upload rejected. Error: ${ytErr.message || 'Check channel status.'}`, "error");
+                              addLog(`[YOUTUBE_TRACE]: SKIPPED/FAILED. Error: ${ytErr.message || 'Check scopes'}`, "warn");
                           }
+                      } else {
+                          addLog("[SYSTEM]: No video stream detected. Skipping YouTube upload.");
                       }
 
                       setSynthesisProgress(85);
-                      addLog("[SYSTEM]: Pushing binaries to Google Drive...");
+                      addLog("[SYSTEM]: Pushing binary chunks to G-Drive...");
                       const driveFileId = await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob);
                       const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
                       
@@ -350,11 +352,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                           transcriptUrl: `drive://${tFileId}`
                       };
                       await saveRecordingReference(sessionData);
+                  } else {
+                      addLog("[SYSTEM]: No Cloud Token. Skipping cloud sync.", "warn");
                   }
                   setSynthesisProgress(100);
               } catch(e: any) { 
                   console.error("Cloud sync failed", e); 
-                  addLog(`Cloud sync aborted: ${e.message}. Media is safe in local storage.`, "error");
+                  addLog(`[ERROR]: Sync aborted: ${e.message}`, "error");
               } finally { 
                   setIsUploadingRecording(false); 
                   onEndSession();
@@ -368,9 +372,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           recorder.start(1000);
       } catch(e) { 
           console.warn("Recording start failure", e); 
-          addLog("Recording subsystem failed to initialize.", "error");
+          addLog("Recording subsystem failure.", "error");
       }
-  }, [recordingEnabled, channel, currentUser, onEndSession, addLog]);
+  }, [recordingEnabled, channel, currentUser, onEndSession, addLog, transcript]);
 
   const connect = useCallback(async () => {
     let service = serviceRef.current || new GeminiLiveService();
@@ -386,16 +390,16 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           effectiveInstruction += `\n\n[USER CONTEXT]: ${initialContext}`;
       }
 
-      addLog("Initializing AI Agent Link...");
+      addLog("Initializing Neural Link...");
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { 
               setIsConnected(true); 
-              addLog("Neural Handshake complete. WebSocket linked.");
+              addLog("Link Active.");
               if (recordingEnabled) startRecording(); 
           },
           onClose: (reason) => { 
               setIsConnected(false); 
-              addLog(`Link Terminated: ${reason}`, "warn");
+              addLog(`Link Closed: ${reason}`, "warn");
           },
           onError: (err) => { 
               setIsConnected(false); 
@@ -415,11 +419,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           },
           onToolCall: async (toolCall: any) => {
               for (const fc of toolCall.functionCalls) {
-                  addLog(`Agent tool invocation: ${fc.name}`);
+                  addLog(`Tool Invocation: ${fc.name}`);
                   if (fc.name === 'save_content') {
                       const { filename, content } = fc.args;
-                      setTranscript(h => [...h, { role: 'ai', text: `*[System]: Generated artifact '${filename}' saved to project.*`, timestamp: Date.now() }]);
-                      serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Document captured and saved." } }] });
+                      setTranscript(h => [...h, { role: 'ai', text: `*[System]: Generated artifact '${filename}' saved.*`, timestamp: Date.now() }]);
+                      serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Document captured." } }] });
                   } else if (onCustomToolCall) {
                       const result = await onCustomToolCall(fc.name, fc.args);
                       serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result } }] });
@@ -428,13 +432,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           }
       }, [{ functionDeclarations: [saveContentTool] }]);
     } catch (e: any) { 
-        setError("AI initialization failure."); 
-        addLog(`Link Init Exception: ${e.message}`, "error");
+        setError("AI init failure."); 
+        addLog(`Link exception: ${e.message}`, "error");
     }
-  }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, recordingEnabled, startRecording, onCustomToolCall, addLog]);
+  }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, recordingEnabled, startRecording, onCustomToolCall, addLog, initialTranscript]);
 
   const handleDisconnect = async () => {
-      addLog("Session shutdown sequence started...");
+      addLog("Closing Session...");
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
       } else { 
