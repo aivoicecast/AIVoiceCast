@@ -6,14 +6,14 @@ import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUse
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl, getYouTubeEmbedUrl } from '../services/youtubeService';
 import { GeminiLiveService } from '../services/geminiLive';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import { saveLocalRecording, deleteLocalRecording, getLocalRecordings } from '../utils/db';
 import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll } from 'lucide-react';
 
 interface MockInterviewProps {
   onBack: () => void;
@@ -51,6 +51,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [isUploading, setIsUploading] = useState(false);
   const [isAiConnected, setIsAiConnected] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
+  const [snapshotSaved, setSnapshotSaved] = useState(false);
   
   // Prep State
   const [mode, setMode] = useState<'coding' | 'system_design' | 'behavioral'>('coding');
@@ -359,7 +361,37 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       } finally { setIsStarting(false); }
   };
 
+  const handleSaveSnapshot = async () => {
+      if (transcript.length === 0) return;
+      setIsSavingSnapshot(true);
+      try {
+          const recording: MockInterviewRecording = {
+              id: interviewIdRef.current, 
+              userId: currentUser?.uid || 'guest', 
+              userName: currentUser?.displayName || 'Candidate', 
+              userPhoto: currentUser?.photoURL || '',
+              mode, language, jobDescription: jobDesc, timestamp: Date.now(), videoUrl: '',
+              transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
+              visibility: visibility
+          };
+          await saveInterviewRecording(recording);
+          setSnapshotSaved(true);
+          setTimeout(() => setSnapshotSaved(false), 2000);
+      } catch (e) {
+          console.error("Snapshot save failed", e);
+      } finally {
+          setIsSavingSnapshot(false);
+      }
+  };
+
   const handleEndInterview = async () => {
+      // 0. Safety Check
+      if (transcript.length < 3) {
+          alert("Not enough conversation captured to generate a meaningful report.");
+          setView('hub');
+          return;
+      }
+
       setIsGeneratingReport(true);
       
       // 1. Terminate all hardware streams immediately
@@ -375,7 +407,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           const blobPromise = new Promise<Blob>((resolve) => {
               const recorder = mediaRecorderRef.current!;
               recorder.onstop = () => {
-                  // Re-construct blob from all chunks collected
                   const chunks = (recorder as any)._chunks || [];
                   resolve(new Blob(chunks, { type: 'video/webm' }));
               };
@@ -390,19 +421,47 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
           
           const reportPrompt = `Analyze this interview transcript and provide a senior hiring panel report.
-          RESPOND ONLY IN VALID JSON: 
-          { "score": number, "technicalSkills": "string", "communication": "string", "collaboration": "string", "strengths": ["string"], "areasForImprovement": ["string"], "verdict": "Strong Hire", "summary": "string", "idealAnswers": [], "learningMaterial": "Markdown String", "todoList": [] } 
-          
-          Transcript:
+          TRANSCRIPT:
           ${transcriptText}`;
 
           const response = await ai.models.generateContent({
               model: 'gemini-3-pro-preview',
               contents: reportPrompt,
-              config: { responseMimeType: 'application/json' }
+              config: { 
+                  responseMimeType: 'application/json',
+                  responseSchema: {
+                      type: Type.OBJECT,
+                      properties: {
+                          score: { type: Type.NUMBER, description: "A score from 0-100" },
+                          technicalSkills: { type: Type.STRING },
+                          communication: { type: Type.STRING },
+                          collaboration: { type: Type.STRING },
+                          strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+                          areasForImprovement: { type: Type.ARRAY, items: { type: Type.STRING } },
+                          verdict: { type: Type.STRING, description: "Strong Hire, Hire, No Hire, or Strong No Hire" },
+                          summary: { type: Type.STRING, description: "Executive summary of performance" },
+                          idealAnswers: { 
+                              type: Type.ARRAY, 
+                              items: {
+                                  type: Type.OBJECT,
+                                  properties: {
+                                      question: { type: Type.STRING },
+                                      expectedAnswer: { type: Type.STRING },
+                                      rationale: { type: Type.STRING }
+                                  }
+                              }
+                          },
+                          learningMaterial: { type: Type.STRING, description: "Markdown string for learning path" },
+                          todoList: { type: Type.ARRAY, items: { type: Type.STRING } }
+                      },
+                      required: ["score", "technicalSkills", "communication", "strengths", "areasForImprovement", "verdict", "summary", "learningMaterial"]
+                  }
+              }
           });
 
-          let jsonStr = response.text || "{}";
+          let jsonStr = (response.text || "{}").trim();
+          
+          // Resilient parsing: strip any potential markdown artifacts
           if (jsonStr.includes('```')) {
               jsonStr = jsonStr.replace(/```json/g, '').replace(/```/g, '').trim();
           }
@@ -415,14 +474,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           const savedRec = await finalizeAndSave(blob, reportData);
           
           setActiveRecording(savedRec);
-          
-          // Selection for initial playback: local blob until YouTube transcode finishes
           if (blob.size > 0) setVideoPlaybackUrl(URL.createObjectURL(blob));
           
           setView('report');
       } catch (e) {
-          console.error("Critical Failure in Report Finalization:", e);
-          alert("Report synthesis failed. Check your history.");
+          console.error("Critical Failure in Report Synthesis:", e);
+          alert("We captured your recording, but AI synthesis failed due to a formatting error. You can review your recording in History.");
           setView('hub');
       } finally {
           setIsGeneratingReport(false);
@@ -463,16 +520,14 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           const videoId = await uploadToYouTube(token, videoBlob, {
               title: `Mock Interview: ${jobDesc.substring(0, 50)}...`,
               description: `Automated Mock Interview Session.\nMode: ${mode}\nCandidate: ${currentUser?.displayName || 'Guest'}\nVerdict: ${finalReport.verdict}`,
-              privacyStatus: youtubePrivacy // Use dynamically selected privacy status
+              privacyStatus: youtubePrivacy
           });
           recording.videoUrl = getYouTubeVideoUrl(videoId);
           
-          // C. CLEANUP: Once YouTube sync is confirmed, wipe heavy local blob to save disk space
+          // C. CLEANUP: Purge heavy local blob
           await deleteLocalRecording(recordingId);
-          console.log("YouTube Sync Complete. Purged local cache.");
       } catch (e) { 
           console.warn("YouTube broadcast failed. Keeping local safety copy.", e);
-          // If broadcast failed, the local blob URL remains in recording.videoUrl via metadata
       }
 
       // D. Save Metadata to Firestore
@@ -597,7 +652,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                   </select>
                               </div>
                               <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
-                                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Youtube size={14} className="text-red-500"/> YouTube Privacy</h3>
+                                  <h3 className="text-xs font-black text-slate-400 uppercase flex items-center gap-2"><Youtube size={14} className="text-red-500"/> YouTube Privacy</h3>
                                   <div className="flex p-1 bg-slate-900 rounded-xl border border-slate-700">
                                       <button onClick={() => setYoutubePrivacy('private')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all flex items-center justify-center gap-2 ${youtubePrivacy === 'private' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><Lock size={12}/> Private</button>
                                       <button onClick={() => setYoutubePrivacy('unlisted')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all flex items-center justify-center gap-2 ${youtubePrivacy === 'unlisted' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><EyeOff size={12}/> Unlisted</button>
@@ -626,7 +681,14 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           {view === 'interview' && (
               <div className="h-full flex overflow-hidden relative">
                   <div className={`flex flex-col border-r border-slate-800 transition-all ${isCodeStudioOpen ? 'w-[400px]' : 'flex-1'}`}>
-                      <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between"><span className="font-bold text-white uppercase tracking-tighter flex items-center gap-2"><Bot size={20} className="text-indigo-400"/> AI Panel</span><div className="flex gap-2"><button onClick={() => handleDownloadPdf(problemRef, 'Problem.pdf')} className="p-2 bg-slate-800 rounded-lg text-xs font-bold uppercase flex items-center gap-1"><FileDown size={14}/> PDF</button><button onClick={() => setIsCodeStudioOpen(!isCodeStudioOpen)} className="p-2 bg-slate-800 rounded-lg text-xs font-bold uppercase">{isCodeStudioOpen ? 'Hide' : 'Show'} Studio</button></div></div>
+                      <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between"><span className="font-bold text-white uppercase tracking-tighter flex items-center gap-2"><Bot size={20} className="text-indigo-400"/> AI Panel</span><div className="flex gap-2">
+                          <button onClick={handleSaveSnapshot} disabled={isSavingSnapshot} className={`p-2 rounded-lg text-xs font-bold uppercase flex items-center gap-1 transition-all ${snapshotSaved ? 'bg-emerald-600 text-white' : 'bg-slate-800 hover:bg-slate-700 text-indigo-400'}`}>
+                              {isSavingSnapshot ? <Loader2 size={14} className="animate-spin"/> : snapshotSaved ? <CheckCircle size={14}/> : <SaveAll size={14}/>} 
+                              {snapshotSaved ? 'Saved' : 'Snapshot'}
+                          </button>
+                          <button onClick={() => handleDownloadPdf(problemRef, 'Problem.pdf')} className="p-2 bg-slate-800 rounded-lg text-xs font-bold uppercase flex items-center gap-1"><FileDown size={14}/> PDF</button>
+                          <button onClick={() => setIsCodeStudioOpen(!isCodeStudioOpen)} className="p-2 bg-slate-800 rounded-lg text-xs font-bold uppercase">{isCodeStudioOpen ? 'Hide' : 'Show'} Studio</button>
+                      </div></div>
                       <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
                           <div ref={problemRef} className="bg-[#020617] p-8 rounded-2xl border border-slate-800 mb-8"><h1 className="text-2xl font-black text-indigo-400 mb-4 uppercase">Coding Challenge</h1><MarkdownView content={generatedProblemMd} /></div>
                           <div className="space-y-4">
