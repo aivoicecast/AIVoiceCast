@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel, TranscriptItem } from '../types';
 import { getUserRecordings, deleteRecordingReference } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getYouTubeEmbedUrl } from '../services/youtubeService';
 
@@ -30,7 +30,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const [loading, setLoading] = useState(true);
   const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
   
-  // Recorder Flow State
   const [isRecorderModalOpen, setIsRecorderModalOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('');
   const [recorderMode, setRecorderMode] = useState<'interactive' | 'silent'>('interactive');
@@ -124,7 +123,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         </div>
         
         <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500 font-mono hidden md:inline">{recordings.length} sessions in archive</span>
+            <span className="text-xs text-slate-500 font-mono hidden md:inline">{recordings.length} sessions archived</span>
             <button 
                 onClick={() => { setIsRecorderModalOpen(true); setRecordScreen(false); setRecordCamera(false); setMeetingTitle(''); }}
                 className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-all text-xs font-bold shadow-lg shadow-red-900/20 active:scale-95"
@@ -172,8 +171,12 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold text-white text-lg truncate">{rec.channelTitle}</h3>
-                        {isYoutube && <span className="bg-red-950 text-red-400 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-red-500/30 flex items-center gap-1"><Youtube size={8}/> YouTube</span>}
-                        {isLocal && <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700" title="Device Storage Only">Local</span>}
+                        {isYoutube && (
+                            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-600 rounded text-[9px] font-black text-white uppercase tracking-tighter">
+                                <ExternalLink size={8}/> YouTube
+                            </div>
+                        )}
+                        {isLocal && <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700" title="Device Storage Only">Local Only</span>}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
                         <span className="flex items-center gap-1"><Calendar size={12} /> {date.toLocaleDateString()}</span>
@@ -199,15 +202,16 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                         <a href={rec.mediaUrl} target="_blank" rel="noreferrer" download={`${rec.channelTitle.replace(/\s/g, '_')}_Session.webm`} className="p-2.5 bg-slate-800 text-slate-400 hover:text-emerald-400 rounded-xl border border-slate-700 transition-colors flex items-center justify-center">
                             <HardDriveDownload size={20} />
                         </a>
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-800 text-slate-300 text-[10px] rounded-lg border border-slate-700 w-48 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-2xl z-50">
-                            <p className="font-bold flex items-center gap-1 mb-1"><HelpCircle size={10}/> Playback Tip</p>
-                            WebM files play best in <strong>VLC Media Player</strong> or Chrome/Edge if Windows Media Player lacks codecs.
+                        <div className="absolute bottom-full right-0 mb-2 px-4 py-3 bg-slate-800 text-slate-300 text-[10px] rounded-2xl border border-slate-700 w-64 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-2xl z-50">
+                            <p className="font-bold flex items-center gap-1 mb-2 text-indigo-300"><Info size={12}/> File Notice</p>
+                            <p className="mb-2">This is a 200MB+ WebM file. Windows Media Player may fail to open it.</p>
+                            <p className="font-bold">Use VLC Media Player or open in Chrome/Edge for full seekable playback.</p>
                         </div>
                     </div>
 
                     {isYoutube && (
                         <a href={rec.mediaUrl} target="_blank" rel="noreferrer" className="p-2.5 bg-red-950/20 text-red-500 hover:bg-red-600 hover:text-white rounded-xl border border-red-500/20 transition-colors" title="View on YouTube">
-                            <ExternalLink size={20} />
+                            <Youtube size={20} />
                         </a>
                     )}
 
@@ -223,7 +227,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                         <div className="relative pt-[56.25%] w-full overflow-hidden rounded-2xl bg-black border border-slate-800 shadow-2xl">
                              <iframe 
                                 className="absolute top-0 left-0 w-full h-full"
-                                src={getYouTubeEmbedUrl(rec.mediaUrl.split('v=')[1])}
+                                src={getYouTubeEmbedUrl(rec.mediaUrl.split('v=')[1] || rec.mediaUrl.split('/').pop() || '')}
                                 title="YouTube Video"
                                 frameBorder="0"
                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

@@ -13,7 +13,6 @@ export interface YouTubeUploadMetadata {
  * Uploads a video blob to the user's YouTube channel using the resumable protocol.
  */
 export async function uploadToYouTube(accessToken: string, videoBlob: Blob, metadata: YouTubeUploadMetadata): Promise<string> {
-    // 1. Initial Request to get the Upload URL
     const initUrl = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
     
     const body = {
@@ -48,7 +47,6 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
     const uploadUrl = initRes.headers.get('Location');
     if (!uploadUrl) throw new Error("Did not receive a YouTube upload location header.");
 
-    // 2. The Actual Upload (PUT)
     const uploadRes = await fetch(uploadUrl, {
         method: 'PUT',
         headers: {
@@ -63,10 +61,11 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
     }
 
     const data = await uploadRes.json();
-    return data.id; // Return the YouTube Video ID
+    return data.id; 
 }
 
 export function getYouTubeVideoUrl(videoId: string): string {
+    // Return standard watch URL which is used for string-matching in RecordingList
     return `https://www.youtube.com/watch?v=${videoId}`;
 }
 

@@ -183,39 +183,42 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
-  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com' || currentUser.email === 'shengliang.song.ai@gmail.com');
+  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
+
+  const startHardware = async () => {
+    addLog("Requesting hardware permissions...");
+    try {
+        if (recordingEnabled) {
+            if (videoEnabled) {
+                screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
+                    video: { cursor: "always" } as any,
+                    audio: false 
+                });
+            }
+            if (cameraEnabled) {
+                cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: false 
+                });
+            }
+        }
+        return true;
+    } catch(e) {
+        addLog("Hardware access denied.", "error");
+        return false;
+    }
+  };
 
   const handleStartSession = async () => {
       setError(null);
-      addLog("Initializing neural environment...");
-      try {
-          if (recordingEnabled) {
-              if (videoEnabled) {
-                  addLog("Requesting screen capture...");
-                  screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
-                      video: { cursor: "always" } as any,
-                      audio: false 
-                  });
-                  addLog("Screen capture active.");
-              }
-              if (cameraEnabled) {
-                  addLog("Requesting camera capture...");
-                  cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
-                      video: true, 
-                      audio: false 
-                  });
-                  addLog("Camera capture active.");
-              }
-          }
-          setHasStarted(true);
-          await connect();
-      } catch (e: any) {
-          console.error("Hardware denied", e);
-          const msg = e.name === 'NotAllowedError' ? "Hardware access denied. Please allow permissions." : "Hardware initialization failed.";
-          setError(msg);
-          addLog(msg, "error");
-          setHasStarted(false);
+      const hwOk = await startHardware();
+      if (!hwOk) {
+          setError("Hardware access denied. Please allow permissions.");
+          return;
       }
+      
+      setHasStarted(true);
+      await connect();
   };
 
   useEffect(() => {
@@ -327,9 +330,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                                   privacyStatus: 'unlisted'
                               });
                               videoUrl = getYouTubeVideoUrl(ytId);
-                              addLog(`Published to YouTube: ${videoUrl}`);
+                              addLog(`Published to YouTube: ${videoUrl}`, "info");
                           } catch (ytErr) { 
-                              addLog("YouTube upload failed, using local/drive storage only.", "warn");
+                              addLog("YouTube upload failed, using local/drive fallback.", "warn");
                           }
                       }
 
@@ -349,7 +352,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   setSynthesisProgress(100);
               } catch(e) { 
                   console.error("Cloud sync failed", e); 
-                  addLog("Cloud sync failed. Data remains in local browser storage.", "error");
+                  addLog("Cloud sync failed. Data remains in local storage.", "error");
               } finally { 
                   setIsUploadingRecording(false); 
                   onEndSession();
@@ -385,12 +388,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { 
               setIsConnected(true); 
-              addLog("WebSocket Open - Handshake complete.");
+              addLog("WebSocket Open.");
               if (recordingEnabled) startRecording(); 
           },
           onClose: (reason) => { 
               setIsConnected(false); 
-              setHasStarted(false); 
               addLog(`WebSocket Closed: ${reason}`, "warn");
           },
           onError: (err) => { 
@@ -408,7 +410,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           },
           onToolCall: async (toolCall: any) => {
               for (const fc of toolCall.functionCalls) {
-                  addLog(`AI calling function: ${fc.name}`);
+                  addLog(`AI tool call: ${fc.name}`);
                   if (fc.name === 'save_content') {
                       const { filename, content } = fc.args;
                       setTranscript(h => [...h, { role: 'ai', text: `*[System]: Generated artifact '${filename}' saved to project.*`, timestamp: Date.now() }]);

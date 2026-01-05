@@ -34,6 +34,7 @@ export class GeminiLiveService {
   private outputDestination: MediaStreamAudioDestinationNode | null = null;
   private isPlayingResponse: boolean = false;
   private speakingTimer: any = null;
+  private isActive: boolean = false;
 
   public initializeAudio() {
     this.inputAudioContext = getGlobalAudioContext(16000);
@@ -49,10 +50,17 @@ export class GeminiLiveService {
 
   async connect(voiceName: string, systemInstruction: string, callbacks: LiveConnectionCallbacks, tools?: any[]) {
     try {
+      this.isActive = true;
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
       if (!this.inputAudioContext) this.initializeAudio();
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Ensure microphone is ready before starting the WebSocket
+      if (!this.stream) {
+        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+
       const validVoice = getValidLiveVoice(voiceName);
 
       const connectionPromise = ai.live.connect({
@@ -67,10 +75,12 @@ export class GeminiLiveService {
         },
         callbacks: {
           onopen: () => {
+            if (!this.isActive) return;
             this.startAudioInput(callbacks.onVolumeUpdate);
             callbacks.onOpen();
           },
           onmessage: async (message: LiveServerMessage) => {
+            if (!this.isActive) return;
             if (message.toolCall) callbacks.onToolCall?.(message.toolCall);
             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (base64Audio && this.outputAudioContext) {
@@ -101,40 +111,40 @@ export class GeminiLiveService {
             if (interrupted) { this.stopAllSources(); this.nextStartTime = 0; this.isPlayingResponse = false; }
           },
           onclose: (e: any) => {
+            if (!this.isActive) return;
             let reason = "Link closed by remote peer";
             if (e?.code) {
                 switch(e.code) {
                     case 1000: reason = "Clean shutdown (1000)"; break;
                     case 1001: reason = "Endpoint going away (1001)"; break;
-                    case 1006: reason = "Abnormal closure (1006) - check network/VPN"; break;
+                    case 1006: reason = "Abnormal closure (1006) - likely Network/VPN issue"; break;
                     case 4003: reason = "API Quota exceeded (4003)"; break;
-                    default: reason = `WebSocket Code: ${e.code}${e.reason ? ` - ${e.reason}` : ''}`;
+                    default: reason = `WS Code: ${e.code} ${e.reason || ''}`;
                 }
             }
             this.cleanup();
             callbacks.onClose(reason);
           },
           onerror: (e: any) => {
-            const errorMsg = e?.message || "WebSocket Logical Error - Check console";
+            if (!this.isActive) return;
+            const errorMsg = e?.message || "Logical Socket Error";
             this.cleanup();
             callbacks.onError(errorMsg);
           }
         }
       });
 
-      this.sessionPromise = Promise.race([
-        connectionPromise,
-        new Promise((_, r) => setTimeout(() => r(new Error("Link timed out (15s)")), 15000))
-      ]);
+      this.sessionPromise = connectionPromise;
       this.session = await this.sessionPromise;
     } catch (error: any) {
-      callbacks.onError(error?.message || "Auth Error");
+      this.isActive = false;
+      callbacks.onError(error?.message || "Auth/Permission Error");
       this.cleanup();
     }
   }
 
   public sendToolResponse(functionResponses: any) {
-    this.sessionPromise?.then((session) => { if (session) try { session.sendToolResponse({ functionResponses }); } catch(e) {} });
+    this.sessionPromise?.then((session) => { if (session && this.isActive) try { session.sendToolResponse({ functionResponses }); } catch(e) {} });
   }
 
   private startAudioInput(onVolume: (v: number) => void) {
@@ -142,12 +152,13 @@ export class GeminiLiveService {
     this.source = this.inputAudioContext.createMediaStreamSource(this.stream);
     this.processor = this.inputAudioContext.createScriptProcessor(4096, 1, 1);
     this.processor.onaudioprocess = (e) => {
+      if (!this.isActive) return;
       const inputData = e.inputBuffer.getChannelData(0);
       if (this.isPlayingResponse) { onVolume(0); return; }
       let sum = 0; for(let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
       onVolume(Math.sqrt(sum / inputData.length) * 5);
       const pcmBlob = createPcmBlob(inputData);
-      this.sessionPromise?.then(session => { if (session) try { session.sendRealtimeInput({ media: pcmBlob }); } catch(err) {} });
+      this.sessionPromise?.then(session => { if (session && this.isActive) try { session.sendRealtimeInput({ media: pcmBlob }); } catch(err) {} });
     };
     this.source.connect(this.processor);
     this.processor.connect(this.inputAudioContext.destination);
@@ -159,6 +170,7 @@ export class GeminiLiveService {
   }
 
   async disconnect() {
+    this.isActive = false;
     if (this.session) try { (this.session as any).close?.(); } catch(e) {}
     this.cleanup();
   }
