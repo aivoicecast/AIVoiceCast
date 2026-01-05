@@ -5,7 +5,8 @@ import {
   Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, Video
 } from 'lucide-react';
 
-import { Channel, UserProfile, ViewState } from './types';
+// Fix: Imported TranscriptItem from types to fix reference errors in liveSessionParams and handleStartLiveSession.
+import { Channel, UserProfile, ViewState, TranscriptItem } from './types';
 
 import { LiveSession } from './components/LiveSession';
 import { PodcastDetail } from './components/PodcastDetail';
@@ -230,6 +231,8 @@ const App: React.FC = () => {
     cameraEnabled?: boolean;
     bookingId?: string;
     activeSegment?: { index: number, lectureId: string };
+    initialTranscript?: TranscriptItem[];
+    existingDiscussionId?: string;
   } | null>(null);
 
   const allApps = [
@@ -268,8 +271,8 @@ const App: React.FC = () => {
     window.history.replaceState({}, '', url.toString());
   };
 
-  const handleStartLiveSession = (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => {
-    setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment });
+  const handleStartLiveSession = (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, initialTranscript?: TranscriptItem[], existingDiscussionId?: string) => {
+    setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId });
     handleSetViewState('live_session');
   };
 
@@ -479,7 +482,21 @@ const App: React.FC = () => {
         <main className="flex-1 overflow-hidden relative">
             {viewState === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice={globalVoice} currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={handleVote} /> )}
             {viewState === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} /> )}
-            {viewState === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState('directory')} language={language} recordingEnabled={liveSessionParams.recordingEnabled} /> )}
+            {viewState === 'live_session' && liveSessionParams && ( 
+              <LiveSession 
+                channel={liveSessionParams.channel} 
+                onEndSession={() => handleSetViewState('directory')} 
+                language={language} 
+                recordingEnabled={liveSessionParams.recordingEnabled}
+                videoEnabled={liveSessionParams.videoEnabled}
+                cameraEnabled={liveSessionParams.cameraEnabled}
+                initialContext={liveSessionParams.context}
+                lectureId={liveSessionParams.bookingId || liveSessionParams.activeSegment?.lectureId}
+                activeSegment={liveSessionParams.activeSegment}
+                initialTranscript={liveSessionParams.initialTranscript}
+                existingDiscussionId={liveSessionParams.existingDiscussionId}
+              /> 
+            )}
             {viewState === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><DocumentList onBack={() => handleSetViewState('directory')} /></div> )}
             {viewState === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={handleStartLiveSession} /> )}
             {viewState === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('directory')} /> )}
@@ -489,7 +506,6 @@ const App: React.FC = () => {
             {viewState === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice={globalVoice} t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={handleSchedulePodcast} /> )}
             {viewState === 'groups' && ( <div className="p-8 max-w-4xl mx-auto h-full overflow-y-auto scrollbar-hide"><GroupManager /></div> )}
             {viewState === 'mentorship' && ( <MentorBooking currentUser={currentUser} channels={allChannels} onStartLiveSession={handleStartLiveSession} /> )}
-            {viewState === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState('directory')} language={language} recordingEnabled={liveSessionParams.recordingEnabled} /> )}
             {viewState === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><RecordingList onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} /></div> )}
             {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} /> )}
             {(viewState === 'shipping_labels' || viewState === 'shipping_viewer') && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}
