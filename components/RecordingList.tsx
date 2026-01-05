@@ -7,7 +7,7 @@ import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDo
 import { auth } from '../services/firebaseConfig';
 import { getYouTubeEmbedUrl, uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
-import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
+import { ensureCodeStudioFolder, uploadToDrive, downloadDriveFileAsBlob } from '../services/googleDriveService';
 
 interface RecordingListProps {
   onBack?: () => void;
@@ -31,6 +31,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const [recordings, setRecordings] = useState<RecordingSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
+  const [resolvedMediaUrl, setResolvedMediaUrl] = useState<string | null>(null);
+  const [isResolving, setIsResolving] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   
   const [isRecorderModalOpen, setIsRecorderModalOpen] = useState(false);
@@ -84,6 +86,35 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
   const isYouTubeUrl = (url: string) => url?.includes('youtube.com') || url?.includes('youtu.be');
   const isDriveUrl = (url: string) => url?.startsWith('drive://') || url?.includes('drive.google.com');
+
+  const handlePlayback = async (rec: RecordingSession) => {
+      if (activeMediaId === rec.id) {
+          setActiveMediaId(null);
+          if (resolvedMediaUrl?.startsWith('blob:')) URL.revokeObjectURL(resolvedMediaUrl);
+          setResolvedMediaUrl(null);
+          return;
+      }
+
+      if (isDriveUrl(rec.mediaUrl)) {
+          setIsResolving(true);
+          try {
+              const token = getDriveToken();
+              if (!token) throw new Error("Google access required.");
+              const fileId = rec.mediaUrl.replace('drive://', '').split('&')[0];
+              const blob = await downloadDriveFileAsBlob(token, fileId);
+              const url = URL.createObjectURL(blob);
+              setResolvedMediaUrl(url);
+              setActiveMediaId(rec.id);
+          } catch (e: any) {
+              alert("Drive Access Denied: " + e.message);
+          } finally {
+              setIsResolving(false);
+          }
+      } else {
+          setResolvedMediaUrl(rec.mediaUrl);
+          setActiveMediaId(rec.id);
+      }
+  };
 
   const handleManualSync = async (rec: any) => {
     if (!currentUser || !rec.blob) return;
@@ -159,9 +190,16 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const handleStartRecorder = async () => {
       if (!meetingTitle.trim() || !onStartLiveSession) return;
       
+      const now = new Date();
+      const timeStr = now.toLocaleString(undefined, { 
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 
+          hour: '2-digit', minute: '2-digit' 
+      });
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
       const systemPrompt = recorderMode === 'silent' 
-        ? `You are a professional interpreter. Your task is to transcribe the conversation and provide real-time translation of the user's speech into ${targetLanguage}. Speak only the translations clearly.`
-        : "You are a helpful meeting assistant. Participate in the discussion, take notes, and answer questions when asked.";
+        ? `[SYSTEM_TIME_CONTEXT]: Today is ${timeStr} (${timeZone}). You are a professional interpreter. Your task is to transcribe the conversation and provide real-time translation of the user's speech into ${targetLanguage}. Speak only the translations clearly.`
+        : `[SYSTEM_TIME_CONTEXT]: Today is ${timeStr} (${timeZone}). You are a helpful meeting assistant. Participate in the discussion, take notes, and answer questions when asked.`;
 
       const newChannel: Channel = {
           id: `meeting-${Date.now()}`,
@@ -178,7 +216,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
       };
       
       setIsRecorderModalOpen(false);
-      onStartLiveSession(newChannel, meetingTitle, true, undefined, recordScreen, recordCamera);
+      // Always pass videoEnabled=true for meeting recorder to ensure YouTube compatibility
+      onStartLiveSession(newChannel, meetingTitle, true, undefined, true, recordCamera);
   };
 
   return (
@@ -280,10 +319,11 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                     )}
                     
                     <button 
-                      onClick={() => setActiveMediaId(isPlaying ? null : rec.id)}
+                      onClick={() => handlePlayback(rec)}
+                      disabled={isResolving}
                       className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95 ${isPlaying ? 'bg-red-600 text-white' : 'bg-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-slate-700'}`}
                     >
-                      {isPlaying ? <X size={16}/> : <Play size={16} fill="currentColor" />}
+                      {isResolving ? <Loader2 size={16} className="animate-spin" /> : isPlaying ? <X size={16}/> : <Play size={16} fill="currentColor" />}
                       <span>{isPlaying ? 'Close' : 'Playback'}</span>
                     </button>
                     
@@ -293,7 +333,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
                     {!isYoutube && (
                         <div className="relative group">
-                            <a href={rec.mediaUrl} target="_blank" rel="noreferrer" download={`${rec.channelTitle.replace(/\s/g, '_')}_Session.webm`} className="p-2.5 bg-slate-800 text-slate-400 hover:text-emerald-400 rounded-xl border border-slate-700 transition-colors flex items-center justify-center">
+                            <a href={resolvedMediaUrl || rec.mediaUrl} target="_blank" rel="noreferrer" download={`${rec.channelTitle.replace(/\s/g, '_')}_Session.webm`} className="p-2.5 bg-slate-800 text-slate-400 hover:text-emerald-400 rounded-xl border border-slate-700 transition-colors flex items-center justify-center">
                                 <HardDriveDownload size={20} />
                             </a>
                         </div>
@@ -305,7 +345,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                   </div>
                 </div>
 
-                {isPlaying && (
+                {isPlaying && resolvedMediaUrl && (
                   <div className="mt-6 pt-6 border-t border-slate-800 animate-fade-in">
                     {isYoutube ? (
                         <div className="relative pt-[56.25%] w-full overflow-hidden rounded-2xl bg-black border border-slate-800 shadow-2xl">
@@ -319,11 +359,11 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                              />
                         </div>
                     ) : isVideo ? (
-                      <video src={rec.mediaUrl} controls autoPlay className="w-full max-h-[500px] rounded-2xl bg-black border border-slate-800 shadow-2xl" />
+                      <video src={resolvedMediaUrl} controls autoPlay className="w-full max-h-[500px] rounded-2xl bg-black border border-slate-800 shadow-2xl" />
                     ) : (
                       <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 flex items-center gap-6 shadow-inner">
                           <div className="w-12 h-12 bg-indigo-600/10 text-indigo-400 rounded-full flex items-center justify-center border border-indigo-500/20"><Volume2 className="animate-pulse" /></div>
-                          <audio src={rec.mediaUrl} controls autoPlay className="flex-1" />
+                          <audio src={resolvedMediaUrl} controls autoPlay className="flex-1" />
                       </div>
                     )}
                   </div>
@@ -401,6 +441,13 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                                   <div><p className={`font-bold text-sm ${recordCamera ? 'text-red-200' : 'text-slate-400'}`}>Camera Video</p></div>
                               </div>
                               <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${recordCamera ? 'border-red-500 bg-red-500 text-white' : 'border-slate-700'}`}>{recordCamera && <CheckCircle size={12} />}</div>
+                          </div>
+                          
+                          <div className="p-3 bg-red-950/20 border border-red-900/30 rounded-xl flex items-start gap-3">
+                               <Youtube size={16} className="text-red-500 shrink-0 mt-0.5" />
+                               <div className="text-[10px] text-slate-400 leading-relaxed">
+                                   <strong>Always Video Ready:</strong> Meeting recordings will now automatically include a visual track so they can be published directly to YouTube.
+                               </div>
                           </div>
                       </div>
 

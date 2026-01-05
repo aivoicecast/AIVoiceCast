@@ -201,19 +201,31 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 addLog("Drive/YouTube token missing. Recording will be local-only.", "warn");
             }
             
-            if (videoEnabled) {
-                screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
-                    video: { cursor: "always" } as any,
-                    audio: false 
-                });
-                addLog("Screen capture active.");
+            // For meeting recorder (indicated by channel ID starting with 'meeting'),
+            // we ALWAYS try to get a stream to make YouTube happy, even if it's a black canvas.
+            const isMeeting = channel.id.startsWith('meeting');
+
+            if (videoEnabled || isMeeting) {
+                try {
+                    screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
+                        video: { cursor: "always" } as any,
+                        audio: false 
+                    });
+                    addLog("Screen capture active.");
+                } catch(e) {
+                    addLog("Screen capture declined. Proceeding with Audio-only composition.", "warn");
+                }
             }
             if (cameraEnabled) {
-                cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
-                    video: true, 
-                    audio: false 
-                });
-                addLog("Camera capture active.");
+                try {
+                    cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
+                        video: true, 
+                        audio: false 
+                    });
+                    addLog("Camera capture active.");
+                } catch(e) {
+                    addLog("Camera capture declined.", "warn");
+                }
             }
         }
         return true;
@@ -280,11 +292,17 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               if (!mountedRef.current) return;
               ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-              if (screenStreamRef.current && screenVideo.readyState >= 2) ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
-              else {
+              if (screenStreamRef.current && screenVideo.readyState >= 2) {
+                  ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+              } else {
+                  // Neural Branding Placeholder for YouTube
                   ctx.fillStyle = '#1e293b'; ctx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
-                  ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 30px sans-serif'; ctx.textAlign = 'center';
-                  ctx.fillText('Interactive AI Session', canvas.width / 2, canvas.height / 2);
+                  ctx.fillStyle = '#6366f1'; ctx.font = 'bold 40px sans-serif'; ctx.textAlign = 'center';
+                  ctx.fillText('AIVoiceCast Recording Session', canvas.width / 2, canvas.height / 2 - 40);
+                  ctx.fillStyle = '#94a3b8'; ctx.font = '24px sans-serif';
+                  ctx.fillText(channel.title, canvas.width / 2, canvas.height / 2 + 20);
+                  ctx.font = '16px monospace';
+                  ctx.fillText(new Date().toLocaleString(), canvas.width / 2, canvas.height / 2 + 60);
               }
 
               if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
@@ -311,8 +329,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           recorder.onstop = async () => {
               if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
               
-              const isVideo = !!(screenStreamRef.current || cameraStreamRef.current);
-              const videoBlob = new Blob(audioChunksRef.current, { type: isVideo ? 'video/webm' : 'audio/webm' });
+              // It's ALWAYS a video if we're using the compositor canvas
+              const isVideo = true; 
+              const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
               const transcriptText = transcriptRef.current.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
               const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
 
@@ -332,7 +351,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       channelImage: channel.imageUrl,
                       timestamp,
                       mediaUrl: URL.createObjectURL(videoBlob),
-                      mediaType: isVideo ? 'video/webm' : 'audio/webm',
+                      mediaType: 'video/webm',
                       transcriptUrl: URL.createObjectURL(transcriptBlob),
                       blob: videoBlob
                   });
@@ -344,22 +363,18 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       const folderId = await ensureCodeStudioFolder(token);
                       
                       let videoUrl = '';
-                      if (isVideo) {
-                          try {
-                              setSynthesisProgress(70);
-                              addLog("[YOUTUBE_TRACE]: Initiating resumable multi-part upload...");
-                              const ytId = await uploadToYouTube(token, videoBlob, {
-                                  title: `${channel.title}: AI Session`,
-                                  description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText.substring(0, 1000)}`,
-                                  privacyStatus: 'unlisted'
-                              });
-                              videoUrl = getYouTubeVideoUrl(ytId);
-                              addLog(`[YOUTUBE_TRACE]: SUCCESS. URI: ${videoUrl}`, "info");
-                          } catch (ytErr: any) { 
-                              addLog(`[YOUTUBE_TRACE]: SKIPPED/FAILED. Error: ${ytErr.message || 'Check scopes'}`, "warn");
-                          }
-                      } else {
-                          addLog("[SYSTEM]: No video stream detected. Skipping YouTube upload.");
+                      try {
+                          setSynthesisProgress(70);
+                          addLog("[YOUTUBE_TRACE]: Initiating resumable multi-part upload...");
+                          const ytId = await uploadToYouTube(token, videoBlob, {
+                              title: `${channel.title}: AI Session`,
+                              description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText.substring(0, 1000)}`,
+                              privacyStatus: 'unlisted'
+                          });
+                          videoUrl = getYouTubeVideoUrl(ytId);
+                          addLog(`[YOUTUBE_TRACE]: SUCCESS. URI: ${videoUrl}`, "info");
+                      } catch (ytErr: any) { 
+                          addLog(`[YOUTUBE_TRACE]: SKIPPED/FAILED. Error: ${ytErr.message || 'Check scopes'}`, "warn");
                       }
 
                       setSynthesisProgress(85);
@@ -371,7 +386,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                           id: recId, userId: currentUser.uid, channelId: channel.id,
                           channelTitle: channel.title, channelImage: channel.imageUrl,
                           timestamp, mediaUrl: videoUrl || `drive://${driveFileId}`,
-                          mediaType: isVideo ? 'video/webm' : 'audio/webm',
+                          mediaType: 'video/webm',
                           transcriptUrl: `drive://${tFileId}`
                       };
                       await saveRecordingReference(sessionData);
@@ -404,7 +419,16 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     serviceRef.current = service;
     service.initializeAudio();
     try {
-      let effectiveInstruction = channel.systemInstruction;
+      // INJECT LOCAL TIME CONTEXT
+      const now = new Date();
+      const timeStr = now.toLocaleString(undefined, { 
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 
+          hour: '2-digit', minute: '2-digit', second: '2-digit' 
+      });
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      
+      let effectiveInstruction = `[SYSTEM_TIME_CONTEXT]: Current Local Time is ${timeStr} (${timeZone}). Use this to answer temporal questions.\n\n${channel.systemInstruction}`;
+      
       const historyToInject = transcriptRef.current.length > 0 ? transcriptRef.current : (initialTranscript || []);
       if (historyToInject.length > 0) {
           effectiveInstruction += `\n\n[CONTEXT]:\n${historyToInject.map(t => `${t.role}: ${t.text}`).join('\n')}`;
