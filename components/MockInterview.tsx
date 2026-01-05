@@ -189,7 +189,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setTimeout(async () => {
       if (isEndingRef.current) return;
       const historyText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-      const timeContext = `SYSTEM ALERT: There are exactly ${formatTime(timeLeft)} remaining in this session.`;
+      const timeContext = `SYSTEM ALERT: There are exactly ${formatTime(timeLeft)} remaining in this session. TRUST ONLY THIS VALUE. DO NOT ATTEMPT TO COMPUTE TIME YOURSELF.`;
       const persona = mode.startsWith('assessment') ? 'Objective Technical Proctor' : 'Senior Software Interviewer';
       const prompt = `${timeContext} RESUMING ${mode.toUpperCase()} SESSION. Role: ${persona}. Stack: ${language}. RECAP HISTORY:\n${historyText}`;
       const service = new GeminiLiveService();
@@ -327,7 +327,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
       const persona = isAssessment ? 'Objective Technical Proctor' : 'Senior Software Interviewer';
-      const timeSync = `IMPORTANT: This is a ${duration/60} minute session. System clock starts now. Current time remaining: ${formatTime(duration)}.`;
+      const timeSync = `IMPORTANT: This is a ${duration/60} minute session. System clock starts now. Current time remaining: ${formatTime(duration)}. NEVER CALCULATE TIME MANUALLY. USE THE SYSTEM PROVIDER VALUE ONLY.`;
       
       await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', `${timeSync} Role: ${persona}. Job: ${jobDesc}. Mode: ${mode}.`, {
         onOpen: () => {
