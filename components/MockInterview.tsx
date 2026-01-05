@@ -14,6 +14,7 @@ import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug } from 'lucide-react';
+import { getGlobalAudioContext, getGlobalMediaStreamDest } from '../utils/audioUtils';
 
 interface MockInterviewProps {
   onBack: () => void;
@@ -228,8 +229,16 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
     try {
       logApi("Acquiring hardware locks...");
+      const ctx = getGlobalAudioContext();
+      const recordingDest = getGlobalMediaStreamDest();
+      
       const camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      
+      // Connect user mic to shared recording bus
+      const micSource = ctx.createMediaStreamSource(camStream);
+      micSource.connect(recordingDest);
+
       activeStreamRef.current = camStream;
       activeScreenStreamRef.current = screenStream;
 
@@ -259,24 +268,26 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       logApi("Flushing recorder pipeline...");
       const canvas = document.createElement('canvas');
       canvas.width = 1280; canvas.height = 720;
-      const ctx = canvas.getContext('2d', { alpha: false })!;
+      const drawCtx = canvas.getContext('2d', { alpha: false })!;
       const camVideo = document.createElement('video'); camVideo.srcObject = camStream; camVideo.muted = true; camVideo.play();
       const screenVideo = document.createElement('video'); screenVideo.srcObject = screenStream; screenVideo.muted = true; screenVideo.play();
 
       const drawFrame = () => {
         if (isEndingRef.current) return;
-        ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        if (screenVideo.readyState >= 2) ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+        drawCtx.fillStyle = '#020617'; drawCtx.fillRect(0, 0, canvas.width, canvas.height);
+        if (screenVideo.readyState >= 2) drawCtx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
         if (camVideo.readyState >= 2) {
-          ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 4;
-          ctx.strokeRect(940, 520, 320, 180); ctx.drawImage(camVideo, 940, 520, 320, 180);
+          drawCtx.strokeStyle = '#6366f1'; drawCtx.lineWidth = 4;
+          drawCtx.strokeRect(940, 520, 320, 180); drawCtx.drawImage(camVideo, 940, 520, 320, 180);
         }
         requestAnimationFrame(drawFrame);
       };
       drawFrame();
 
       const combinedStream = canvas.captureStream(30);
-      camStream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+      // Capture mixed audio (User + AI) from shared bus
+      recordingDest.stream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
+      
       const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 2500000 });
       recorder.ondataavailable = e => { if (e.data.size > 0) videoChunksRef.current.push(e.data); };
       mediaRecorderRef.current = recorder;

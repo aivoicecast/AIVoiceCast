@@ -11,6 +11,7 @@ import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalR
 import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, linkDiscussionToLectureSegment, syncUserProfile } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
+import { getGlobalAudioContext, getGlobalMediaStreamDest } from '../utils/audioUtils';
 
 interface LiveSessionProps {
   channel: Channel;
@@ -162,13 +163,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const mixingAudioContextRef = useRef<AudioContext | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
-  // Fix: replaced NodeJS.Timeout with any to resolve "Cannot find namespace 'NodeJS'" error on line 171.
   const reconnectTimeoutRef = useRef<any>(null);
 
   const [transcript, setTranscript] = useState<TranscriptItem[]>(initialTranscript || []);
@@ -206,8 +205,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 addLog("Drive/YouTube token missing. Recording will be local-only.", "warn");
             }
             
-            // For meeting recorder (indicated by channel ID starting with 'meeting'),
-            // we ALWAYS try to get a stream to make YouTube happy, even if it's a black canvas.
             const isMeeting = channel.id.startsWith('meeting');
 
             if (videoEnabled || isMeeting) {
@@ -276,17 +273,18 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       if (!recordingEnabled || !serviceRef.current || !currentUser) return;
       
       try {
-          const mixCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          mixingAudioContextRef.current = mixCtx;
-          const dest = mixCtx.createMediaStreamDestination();
+          // Use the global audio context and mixed destination bus
+          const ctx = getGlobalAudioContext();
+          const recordingDest = getGlobalMediaStreamDest();
           
+          // Capture user microphone and connect to the shared recording bus
           const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const userSource = mixCtx.createMediaStreamSource(userStream); 
-          userSource.connect(dest);
+          const userSource = ctx.createMediaStreamSource(userStream); 
+          userSource.connect(recordingDest);
 
           const canvas = document.createElement('canvas');
           canvas.width = 1280; canvas.height = 720;
-          const ctx = canvas.getContext('2d', { alpha: false })!;
+          const drawCtx = canvas.getContext('2d', { alpha: false })!;
           
           const screenVideo = document.createElement('video');
           if (screenStreamRef.current) { screenVideo.srcObject = screenStreamRef.current; screenVideo.muted = true; screenVideo.play(); }
@@ -295,33 +293,33 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
           const drawCompositor = () => {
               if (!mountedRef.current) return;
-              ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+              drawCtx.fillStyle = '#020617'; drawCtx.fillRect(0, 0, canvas.width, canvas.height);
 
               if (screenStreamRef.current && screenVideo.readyState >= 2) {
-                  ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+                  drawCtx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
               } else {
-                  // Neural Branding Placeholder for YouTube
-                  ctx.fillStyle = '#1e293b'; ctx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
-                  ctx.fillStyle = '#6366f1'; ctx.font = 'bold 40px sans-serif'; ctx.textAlign = 'center';
-                  ctx.fillText('AIVoiceCast Recording Session', canvas.width / 2, canvas.height / 2 - 40);
-                  ctx.fillStyle = '#94a3b8'; ctx.font = '24px sans-serif';
-                  ctx.fillText(channel.title, canvas.width / 2, canvas.height / 2 + 20);
-                  ctx.font = '16px monospace';
-                  ctx.fillText(new Date().toLocaleString(), canvas.width / 2, canvas.height / 2 + 60);
+                  drawCtx.fillStyle = '#1e293b'; drawCtx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
+                  drawCtx.fillStyle = '#6366f1'; drawCtx.font = 'bold 40px sans-serif'; drawCtx.textAlign = 'center';
+                  drawCtx.fillText('AIVoiceCast Recording Session', canvas.width / 2, canvas.height / 2 - 40);
+                  drawCtx.fillStyle = '#94a3b8'; drawCtx.font = '24px sans-serif';
+                  drawCtx.fillText(channel.title, canvas.width / 2, canvas.height / 2 + 20);
+                  drawCtx.font = '16px monospace';
+                  drawCtx.fillText(new Date().toLocaleString(), canvas.width / 2, canvas.height / 2 + 60);
               }
 
               if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
                   const pipW = 320, pipH = 180, m = 24;
-                  ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 4;
-                  ctx.strokeRect(canvas.width - pipW - m, canvas.height - pipH - m, pipW, pipH);
-                  ctx.drawImage(cameraVideo, canvas.width - pipW - m, canvas.height - pipH - m, pipW, pipH);
+                  drawCtx.strokeStyle = '#6366f1'; drawCtx.lineWidth = 4;
+                  drawCtx.strokeRect(canvas.width - pipW - m, canvas.height - pipH - m, pipW, pipH);
+                  drawCtx.drawImage(cameraVideo, canvas.width - pipW - m, canvas.height - pipH - m, pipW, pipH);
               }
               animationFrameRef.current = requestAnimationFrame(drawCompositor);
           };
           drawCompositor();
 
           const captureStream = canvas.captureStream(30);
-          dest.stream.getAudioTracks().forEach(track => captureStream.addTrack(track));
+          // Add tracks from the mixed recording destination (User + AI)
+          recordingDest.stream.getAudioTracks().forEach(track => captureStream.addTrack(track));
 
           const recorder = new MediaRecorder(captureStream, {
               mimeType: 'video/webm;codecs=vp8,opus',
@@ -334,8 +332,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           recorder.onstop = async () => {
               if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
               
-              // It's ALWAYS a video if we're using the compositor canvas
-              const isVideo = true; 
               const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
               const transcriptText = transcriptRef.current.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
               const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
@@ -409,7 +405,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               userStream.getTracks().forEach(t => t.stop());
               screenStreamRef.current?.getTracks().forEach(t => t.stop());
               cameraStreamRef.current?.getTracks().forEach(t => t.stop());
-              mixCtx.close();
+              // Do not close global context
           };
           mediaRecorderRef.current = recorder;
           recorder.start(1000);
@@ -423,7 +419,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     setIsConnected(false);
     setShowReconnectButton(false);
     
-    // Set a timeout to show the manual reconnect button if stuck for 8 seconds
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     reconnectTimeoutRef.current = setTimeout(() => {
         if (!isConnected && mountedRef.current) setShowReconnectButton(true);
@@ -433,7 +428,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     serviceRef.current = service;
     service.initializeAudio();
     try {
-      // INJECT LOCAL TIME CONTEXT
       const now = new Date();
       const timeStr = now.toLocaleString(undefined, { 
           weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 

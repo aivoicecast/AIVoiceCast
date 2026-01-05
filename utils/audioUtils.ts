@@ -119,6 +119,14 @@ export function getGlobalAudioContext(sampleRate: number = 24000): AudioContext 
   return mainAudioContext;
 }
 
+/**
+ * Returns the shared MediaStream destination for recording purposes.
+ */
+export function getGlobalMediaStreamDest(sampleRate?: number): MediaStreamAudioDestinationNode {
+    getGlobalAudioContext(sampleRate);
+    return mediaStreamDest!;
+}
+
 export function connectOutput(source: AudioNode, ctx: AudioContext) {
     source.connect(ctx.destination);
     if (mediaStreamDest) {

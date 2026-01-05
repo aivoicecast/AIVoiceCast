@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, LiveServerMessage } from '@google/genai';
-import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, coolDownAudioContext, registerAudioOwner } from '../utils/audioUtils';
+import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, coolDownAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
 
 export interface LiveConnectionCallbacks {
   onOpen: () => void;
@@ -36,8 +36,10 @@ export class GeminiLiveService {
   private isActive: boolean = false;
 
   public initializeAudio() {
+    // We use the global context for output to ensure it can be mixed with recorder
     this.inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-    this.outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    this.outputAudioContext = getGlobalAudioContext(24000);
+    
     warmUpAudioContext(this.inputAudioContext).catch(() => {});
     warmUpAudioContext(this.outputAudioContext).catch(() => {});
   }
@@ -104,7 +106,10 @@ export class GeminiLiveService {
                 const audioBuffer = await decodeRawPcm(bytes, this.outputAudioContext, 24000, 1);
                 const source = this.outputAudioContext.createBufferSource();
                 source.buffer = audioBuffer;
-                source.connect(this.outputAudioContext.destination);
+                
+                // CRITICAL: Connect using the global helper to ensure recording capturing
+                connectOutput(source, this.outputAudioContext);
+                
                 source.addEventListener('ended', () => {
                   this.sources.delete(source);
                   if (this.sources.size === 0) {
@@ -188,7 +193,7 @@ export class GeminiLiveService {
   private cleanup() {
     this.stopAllSources();
     this.isPlayingResponse = false;
-    coolDownAudioContext();
+    // We don't close the global context here as other components might need it
     if (this.speakingTimer) clearTimeout(this.speakingTimer);
     if (this.processor) { try { this.processor.disconnect(); this.processor.onaudioprocess = null; } catch(e) {} }
     if (this.source) try { this.source.disconnect(); } catch(e) {}
