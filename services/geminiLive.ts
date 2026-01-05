@@ -36,7 +36,6 @@ export class GeminiLiveService {
   private isActive: boolean = false;
 
   public initializeAudio() {
-    // We use the global context for output to ensure it can be mixed with recorder
     this.inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
     this.outputAudioContext = getGlobalAudioContext(24000);
     
@@ -49,6 +48,8 @@ export class GeminiLiveService {
       this.isActive = true;
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
+      console.log(`[LiveService] Initializing link for ${voiceName}...`);
       
       if (!this.inputAudioContext) this.initializeAudio();
       if (!this.stream) {
@@ -73,12 +74,14 @@ export class GeminiLiveService {
           config.tools = tools;
       }
 
+      console.log(`[LiveService] Requesting WebSocket connection...`);
       const connectionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config,
         callbacks: {
           onopen: () => {
             if (!this.isActive) return;
+            console.log(`[LiveService] WebSocket OPEN. Enabling input.`);
             this.startAudioInput(callbacks.onVolumeUpdate);
             callbacks.onOpen();
           },
@@ -101,13 +104,19 @@ export class GeminiLiveService {
               try {
                 this.isPlayingResponse = true;
                 if (this.speakingTimer) clearTimeout(this.speakingTimer);
+                
+                // Ensure context is not suspended
+                if (this.outputAudioContext.state === 'suspended') {
+                    await this.outputAudioContext.resume();
+                }
+
                 const bytes = base64ToBytes(base64Audio);
                 this.nextStartTime = Math.max(this.nextStartTime, this.outputAudioContext.currentTime);
                 const audioBuffer = await decodeRawPcm(bytes, this.outputAudioContext, 24000, 1);
                 const source = this.outputAudioContext.createBufferSource();
                 source.buffer = audioBuffer;
                 
-                // CRITICAL: Connect using the global helper to ensure recording capturing
+                // Connect to both Speakers AND Recorder Bus
                 connectOutput(source, this.outputAudioContext);
                 
                 source.addEventListener('ended', () => {
@@ -119,7 +128,9 @@ export class GeminiLiveService {
                 source.start(this.nextStartTime);
                 this.sources.add(source);
                 this.nextStartTime += audioBuffer.duration;
-              } catch (e) {}
+              } catch (e) {
+                  console.error("[LiveService] Audio playback error", e);
+              }
             }
 
             const interrupted = message.serverContent?.interrupted;
@@ -133,13 +144,13 @@ export class GeminiLiveService {
             if (!this.isActive) return;
             const code = e?.code || 1000;
             let reason = e?.reason || "Link closed";
-            if (code === 1007) reason = "Protocol Error (1007)";
-            if (code === 1006) reason = "Abnormal Disconnect (Network/Server)";
+            console.warn(`[LiveService] WebSocket CLOSED: ${reason} (${code})`);
             this.cleanup();
             callbacks.onClose(reason, code);
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
+            console.error(`[LiveService] WebSocket ERROR`, e);
             this.cleanup();
             callbacks.onError(e?.message || "Handshake Error");
           }
@@ -150,6 +161,7 @@ export class GeminiLiveService {
       this.session = await this.sessionPromise;
     } catch (error: any) {
       this.isActive = false;
+      console.error(`[LiveService] Connection exception`, error);
       callbacks.onError(error?.message || "Auth Error");
       this.cleanup();
     }
@@ -173,7 +185,9 @@ export class GeminiLiveService {
           onVolume(Math.sqrt(sum / inputData.length) * 5);
       }
       const pcmBlob = createPcmBlob(inputData);
-      this.sessionPromise?.then((session) => { session.sendRealtimeInput({ media: pcmBlob }); });
+      this.sessionPromise?.then((session) => { 
+          if (session && this.isActive) session.sendRealtimeInput({ media: pcmBlob }); 
+      });
     };
     this.source.connect(this.processor);
     this.processor.connect(this.inputAudioContext.destination);
@@ -186,6 +200,7 @@ export class GeminiLiveService {
 
   async disconnect() {
     this.isActive = false;
+    console.log(`[LiveService] Disconnecting...`);
     if (this.session) { try { (this.session as any).close?.(); } catch(e) {} }
     this.cleanup();
   }
@@ -193,7 +208,6 @@ export class GeminiLiveService {
   private cleanup() {
     this.stopAllSources();
     this.isPlayingResponse = false;
-    // We don't close the global context here as other components might need it
     if (this.speakingTimer) clearTimeout(this.speakingTimer);
     if (this.processor) { try { this.processor.disconnect(); this.processor.onaudioprocess = null; } catch(e) {} }
     if (this.source) try { this.source.disconnect(); } catch(e) {}

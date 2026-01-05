@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -448,8 +449,8 @@ const App: React.FC = () => {
         {isAppsMenuOpen && (
             <div className="fixed inset-0 z-[100] animate-fade-in">
                 <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setIsAppsMenuOpen(false)}></div>
-                <div className="absolute left-4 sm:left-6 top-20 w-[calc(100vw-2rem)] md:w-[640px] lg:w-[850px] bg-slate-900 border border-slate-700 rounded-[2.5rem] shadow-2xl overflow-hidden p-6 md:p-8 animate-fade-in-up">
-                    <div className="flex justify-between items-center mb-6 md:mb-8">
+                <div className="absolute left-4 sm:left-6 top-20 w-[calc(100vw-2rem)] md:w-[640px] lg:w-[850px] bg-slate-900 border border-slate-700 rounded-[2.5rem] shadow-2xl overflow-hidden p-6 md:p-8 animate-fade-in-up flex flex-col max-h-[calc(100vh-8rem)]">
+                    <div className="flex justify-between items-center mb-6 md:mb-8 shrink-0">
                         <div className="flex flex-col">
                             <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Neural OS</h3>
                             <p className="text-lg font-bold text-white">App Launcher</p>
@@ -458,20 +459,22 @@ const App: React.FC = () => {
                             <X size={20} className="text-slate-500 hover:text-white"/>
                         </button>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-                        {allApps.map(app => ( 
-                            <button 
-                                key={app.id} 
-                                onClick={app.action} 
-                                className="flex flex-col items-center gap-3 p-5 md:p-6 bg-slate-800/40 hover:bg-indigo-600/10 border border-slate-800 hover:border-indigo-500/40 rounded-3xl transition-all group relative overflow-hidden"
-                            > 
-                                <div className="absolute top-0 right-0 p-8 bg-white/5 blur-3xl rounded-full group-hover:bg-white/10 transition-colors pointer-events-none"></div>
-                                <app.icon className={`${app.color} group-hover:scale-110 transition-transform relative z-10`} size={28} /> 
-                                <span className="text-[10px] md:text-[11px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest relative z-10 text-center">{app.label}</span> 
-                            </button> 
-                        ))}
+                    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 pb-4">
+                          {allApps.map(app => ( 
+                              <button 
+                                  key={app.id} 
+                                  onClick={app.action} 
+                                  className="flex flex-col items-center gap-3 p-5 md:p-6 bg-slate-800/40 hover:bg-indigo-600/10 border border-slate-800 hover:border-indigo-500/40 rounded-3xl transition-all group relative overflow-hidden"
+                              > 
+                                  <div className="absolute top-0 right-0 p-8 bg-white/5 blur-3xl rounded-full group-hover:bg-white/10 transition-colors pointer-events-none"></div>
+                                  <app.icon className={`${app.color} group-hover:scale-110 transition-transform relative z-10`} size={28} /> 
+                                  <span className="text-[10px] md:text-[11px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest relative z-10 text-center">{app.label}</span> 
+                              </button> 
+                          ))}
+                      </div>
                     </div>
-                    <div className="mt-8 pt-6 border-t border-slate-800 flex justify-center">
+                    <div className="mt-4 pt-6 border-t border-slate-800 flex justify-center shrink-0">
                         <p className="text-[9px] font-bold text-slate-600 uppercase tracking-[0.3em]">AIVoiceCast Platform v4.2.0</p>
                     </div>
                 </div>

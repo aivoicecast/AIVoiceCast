@@ -3,7 +3,6 @@ import { Blob as GeminiBlob } from '@google/genai';
 
 let mainAudioContext: AudioContext | null = null;
 let mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
-let audioBridgeElement: HTMLAudioElement | null = null;
 let silentLoopElement: HTMLAudioElement | null = null;
 
 /**
@@ -49,15 +48,12 @@ export function isAnyAudioPlaying(): boolean {
  * Resets the global lock and increments the Atomic Generation.
  */
 export function stopAllPlatformAudio(sourceCaller: string = "Global") {
-    // 1. Increment Generation - This invalidates all pending async blocks globally
     globalAudioGeneration++;
     
-    // 2. Purge System Voice Aggressively
     if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
     }
 
-    // 3. Trigger the specific stop logic of the registered owner
     if (currentStopFn) {
         const fn = currentStopFn;
         currentStopFn = null; 
@@ -77,13 +73,9 @@ export function stopAllPlatformAudio(sourceCaller: string = "Global") {
  * Kills everyone else and returns the current valid generation.
  */
 export function registerAudioOwner(uniqueToken: string, stopFn: () => void): number {
-    // 1. Clear everything (Increments globalAudioGeneration)
     stopAllPlatformAudio(`Reg:${uniqueToken}`);
-    
-    // 2. Set new owner
     currentOwnerToken = uniqueToken;
     currentStopFn = stopFn;
-    
     logAudioEvent(uniqueToken, 'REGISTER', `Lock Acquired @ Gen ${globalAudioGeneration}`);
     return globalAudioGeneration;
 }
@@ -102,45 +94,33 @@ export function getGlobalAudioContext(sampleRate: number = 24000): AudioContext 
     mediaStreamDest = mainAudioContext.createMediaStreamDestination();
   }
   
-  if (!audioBridgeElement) {
-      audioBridgeElement = new Audio();
-      audioBridgeElement.id = 'web-audio-bg-bridge';
-      // CRITICAL: We mute this element to prevent the user from hearing an echo of their own mic.
-      // The bridge is only needed to "pull" data from the mediaStreamDest for the recorder.
-      audioBridgeElement.muted = true; 
-      audioBridgeElement.volume = 0;
-      audioBridgeElement.setAttribute('playsinline', 'true');
-      audioBridgeElement.setAttribute('autoplay', 'true');
-      document.body.appendChild(audioBridgeElement);
-  }
-
-  if (mediaStreamDest && audioBridgeElement.srcObject !== mediaStreamDest.stream) {
-      audioBridgeElement.srcObject = mediaStreamDest.stream;
-  }
-
   return mainAudioContext;
 }
 
 /**
  * Returns the shared MediaStream destination for recording purposes.
+ * This node receives mixed audio from all sources.
  */
 export function getGlobalMediaStreamDest(sampleRate?: number): MediaStreamAudioDestinationNode {
     getGlobalAudioContext(sampleRate);
     return mediaStreamDest!;
 }
 
+/**
+ * Connects an audio source to both the user's speakers and the recording bus.
+ */
 export function connectOutput(source: AudioNode, ctx: AudioContext) {
-    // This plays through the user's speakers
+    // 1. Connect to actual speakers
     source.connect(ctx.destination);
     
-    // This routes the audio to the "recording bus"
+    // 2. Connect to recording bus if available
     if (mediaStreamDest) {
         source.connect(mediaStreamDest);
     }
-    
-    // Ensure bridge is active but silent
-    if (audioBridgeElement && audioBridgeElement.paused) {
-        audioBridgeElement.play().catch(() => {});
+
+    // 3. Auto-resume context if it was suspended (prevents silence)
+    if (ctx.state === 'suspended') {
+        ctx.resume().catch(console.warn);
     }
 }
 
@@ -196,12 +176,6 @@ export async function warmUpAudioContext(ctx: AudioContext) {
     
     try {
         await silentLoopElement.play();
-        if (audioBridgeElement) {
-            if (mediaStreamDest && audioBridgeElement.srcObject !== mediaStreamDest.stream) {
-                audioBridgeElement.srcObject = mediaStreamDest.stream;
-            }
-            await audioBridgeElement.play();
-        }
     } catch(e) {
         console.warn("Background Audio failed to prime.", e);
     }
@@ -210,12 +184,6 @@ export async function warmUpAudioContext(ctx: AudioContext) {
 export function coolDownAudioContext() {
     if (silentLoopElement) {
         try { silentLoopElement.pause(); } catch(e) {}
-    }
-    if (audioBridgeElement) {
-        try {
-            audioBridgeElement.pause();
-            audioBridgeElement.srcObject = null;
-        } catch(e) {}
     }
 }
 
