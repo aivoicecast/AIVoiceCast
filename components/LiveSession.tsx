@@ -2,13 +2,13 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
-import { getDriveToken } from '../services/authService';
+import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
-import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, linkDiscussionToLectureSegment } from '../services/firestoreService';
+import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, linkDiscussionToLectureSegment, syncUserProfile } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
 
@@ -59,7 +59,8 @@ const UI_TEXT = {
     saveSession: "Save Session",
     localPreview: "Local Preview",
     diagnostics: "Neural Diagnostics",
-    cloudWarn: "Cloud Token Missing: Recording will be LOCAL ONLY."
+    cloudWarn: "Drive/YouTube Access Missing: Local Only.",
+    signIn: "Sign In"
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -91,7 +92,8 @@ const UI_TEXT = {
     saveSession: "保存会话",
     localPreview: "本地预览",
     diagnostics: "神经诊断",
-    cloudWarn: "云令牌丢失：录音将仅保存在本地设备。"
+    cloudWarn: "缺少 Drive/YouTube 权限：仅限本地。",
+    signIn: "登录"
   }
 };
 
@@ -196,7 +198,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             const token = getDriveToken();
             if (!token) {
                 setCloudWarning(true);
-                addLog("Cloud token missing. Recording will be local-only.", "warn");
+                addLog("Drive/YouTube token missing. Recording will be local-only.", "warn");
             }
             
             if (videoEnabled) {
@@ -231,6 +233,19 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       
       setHasStarted(true);
       await connect();
+  };
+
+  const handleSignInInPlace = async () => {
+      try {
+          const user = await signInWithGoogle();
+          if (user) {
+              await syncUserProfile(user);
+              setCloudWarning(false);
+              addLog("Cloud Token Acquired. Recordings will now sync to Drive/YouTube.");
+          }
+      } catch (e) {
+          console.error("Sign in failed", e);
+      }
   };
 
   useEffect(() => {
@@ -561,10 +576,17 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       </div>
 
       {cloudWarning && (
-          <div className="bg-amber-600/20 border-b border-amber-600/30 p-2 px-4 flex items-center justify-center gap-2 animate-fade-in z-20">
-              <ShieldAlert size={14} className="text-amber-400"/>
-              <span className="text-[10px] font-bold text-amber-300 uppercase tracking-widest">{t.cloudWarn}</span>
-              <button onClick={() => setCloudWarning(false)} className="ml-4 text-slate-500 hover:text-white"><X size={14}/></button>
+          <div className="bg-amber-600/20 border-b border-amber-600/30 p-2 px-4 flex items-center justify-between animate-fade-in z-20">
+              <div className="flex items-center gap-2">
+                <ShieldAlert size={14} className="text-amber-400"/>
+                <span className="text-[10px] font-bold text-amber-300 uppercase tracking-widest">{t.cloudWarn}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={handleSignInInPlace} className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black text-[10px] font-black uppercase rounded transition-colors flex items-center gap-1.5 shadow-lg">
+                    <LogIn size={10}/> {t.signIn}
+                </button>
+                <button onClick={() => setCloudWarning(false)} className="text-slate-500 hover:text-white"><X size={14}/></button>
+              </div>
           </div>
       )}
 

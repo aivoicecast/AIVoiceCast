@@ -3,10 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel, TranscriptItem } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getYouTubeEmbedUrl, uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
-import { getDriveToken } from '../services/authService';
+import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 
 interface RecordingListProps {
@@ -87,12 +87,20 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
   const handleManualSync = async (rec: any) => {
     if (!currentUser || !rec.blob) return;
-    const token = getDriveToken();
-    if (!token) return alert("Please sign in to Google to sync recordings.");
+    let token = getDriveToken();
+    if (!token) {
+        if (confirm("You need a Google Drive/YouTube token to sync. Sign in now?")) {
+            const user = await signInWithGoogle();
+            if (!user) return;
+            token = getDriveToken();
+        } else {
+            return;
+        }
+    }
 
     setSyncingId(rec.id);
     try {
-        const folderId = await ensureCodeStudioFolder(token);
+        const folderId = await ensureCodeStudioFolder(token!);
         const videoBlob = rec.blob;
         const transcriptText = `Neural Scribe Transcript for ${rec.channelTitle}\nTimestamp: ${new Date(rec.timestamp).toLocaleString()}`;
         const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
@@ -102,7 +110,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
         if (isVideo) {
             try {
-                const ytId = await uploadToYouTube(token, videoBlob, {
+                const ytId = await uploadToYouTube(token!, videoBlob, {
                     title: `${rec.channelTitle}: AI Session`,
                     description: `Recorded via AIVoiceCast.\n\nAutomated Cloud Sync.`,
                     privacyStatus: 'unlisted'
@@ -111,8 +119,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             } catch (ytErr) { console.warn("YouTube fallback to Drive", ytErr); }
         }
 
-        const driveFileId = await uploadToDrive(token, folderId, `${rec.id}.webm`, videoBlob);
-        const tFileId = await uploadToDrive(token, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
+        const driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
+        const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
         
         const sessionData: RecordingSession = {
             id: rec.id, userId: currentUser.uid, channelId: rec.channelId,
@@ -244,7 +252,12 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                                 <CheckCircle size={12}/> Drive Hosted
                             </div>
                         )}
-                        {isLocal && <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700" title="Device Storage Only">Local only</span>}
+                        {isLocal && (
+                            <div className="flex items-center gap-2">
+                                <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700" title="Device Storage Only">Local only</span>
+                                {!getDriveToken() && <span className="text-[8px] text-amber-500 font-bold animate-pulse">Sign in to fix</span>}
+                            </div>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
                         <span className="flex items-center gap-1"><Calendar size={12} /> {date.toLocaleDateString()}</span>
@@ -258,11 +271,11 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                         <button 
                             onClick={() => handleManualSync(rec)}
                             disabled={syncingId === rec.id}
-                            className="p-2.5 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl border border-indigo-500/20 transition-all flex items-center gap-2"
-                            title="Push to Cloud"
+                            className={`p-2.5 rounded-xl border transition-all flex items-center gap-2 ${!getDriveToken() ? 'bg-amber-600/10 border-amber-500/20 text-amber-500 hover:bg-amber-600 hover:text-white' : 'bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white'}`}
+                            title={!getDriveToken() ? "Sign in & Push to Cloud" : "Push to Cloud"}
                         >
-                            {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <CloudUpload size={18} />}
-                            <span className="text-[10px] font-black uppercase tracking-widest hidden lg:inline">Push to Cloud</span>
+                            {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : (!getDriveToken() ? <LogIn size={18}/> : <CloudUpload size={18} />)}
+                            <span className="text-[10px] font-black uppercase tracking-widest hidden lg:inline">{!getDriveToken() ? 'Fix Local Only' : 'Push to Cloud'}</span>
                         </button>
                     )}
                     
