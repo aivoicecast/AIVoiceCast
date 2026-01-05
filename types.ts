@@ -494,7 +494,7 @@ export interface MockInterviewRecording {
   userId: string;
   userName: string;
   userPhoto?: string;
-  mode: 'coding' | 'system_design' | 'behavioral';
+  mode: 'coding' | 'system_design' | 'behavioral' | 'quick_screen' | 'assessment_30' | 'assessment_60';
   language?: string;
   jobDescription: string;
   timestamp: number;
