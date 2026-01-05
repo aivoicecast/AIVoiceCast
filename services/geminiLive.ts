@@ -4,28 +4,24 @@ import { base64ToBytes, decodeRawPcm, createPcmBlob, getGlobalAudioContext, warm
 
 export interface LiveConnectionCallbacks {
   onOpen: () => void;
-  onClose: () => void;
+  onClose: (reason?: string) => void;
   onError: (error: string) => void;
   onVolumeUpdate: (volume: number) => void;
   onTranscript: (text: string, isUser: boolean) => void;
   onToolCall?: (toolCall: any) => void;
 }
 
-/**
- * Maps custom descriptive voice names or technical IDs to supported Gemini Live prebuilt voices.
- */
 function getValidLiveVoice(voiceName: string): string {
   const name = voiceName || '';
-  // Explicit ID Mapping for the specialized personas
   if (name.includes('0648937375') || name === 'Software Interview Voice') return 'Fenrir';
   if (name.includes('0375218270') || name === 'Linux Kernel Voice') return 'Puck';
   if (name.toLowerCase().includes('gem') || name === 'Default Gem') return 'Zephyr';
-  
   const validGemini = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
   return validGemini.includes(voiceName) ? voiceName : 'Puck';
 }
 
 export class GeminiLiveService {
+  public id: string = Math.random().toString(36).substring(7);
   private session: any = null;
   private inputAudioContext: AudioContext | null = null;
   private outputAudioContext: AudioContext | null = null;
@@ -35,90 +31,63 @@ export class GeminiLiveService {
   private nextStartTime: number = 0;
   private sources: Set<AudioBufferSourceNode> = new Set();
   private sessionPromise: Promise<any> | null = null;
-  
   private outputDestination: MediaStreamAudioDestinationNode | null = null;
   private isPlayingResponse: boolean = false;
   private speakingTimer: any = null;
 
   constructor() {
-      if (typeof window !== 'undefined') {
-          const resumeAudio = () => {
-              this.outputAudioContext?.resume().catch(() => {});
-              this.inputAudioContext?.resume().catch(() => {});
-          };
-          window.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') resumeAudio(); });
-          window.addEventListener('pageshow', resumeAudio);
-      }
+    if (typeof window !== 'undefined') {
+      const resumeAudio = () => {
+        this.outputAudioContext?.resume().catch(() => {});
+        this.inputAudioContext?.resume().catch(() => {});
+      };
+      window.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') resumeAudio(); });
+    }
   }
 
   public initializeAudio() {
     this.inputAudioContext = getGlobalAudioContext(16000);
     this.outputAudioContext = getGlobalAudioContext(24000);
-    
-    if (this.outputAudioContext) {
-        this.outputDestination = this.outputAudioContext.createMediaStreamDestination();
-    }
-
+    if (this.outputAudioContext) this.outputDestination = this.outputAudioContext.createMediaStreamDestination();
     warmUpAudioContext(this.inputAudioContext).catch(() => {});
     warmUpAudioContext(this.outputAudioContext).catch(() => {});
   }
 
   public getOutputMediaStream(): MediaStream | null {
-      return this.outputDestination ? this.outputDestination.stream : null;
+    return this.outputDestination ? this.outputDestination.stream : null;
   }
 
-  public sendVideo(base64Data: string, mimeType: string = 'image/jpeg') {
-      this.sessionPromise?.then((session) => {
-          if (session) {
-              try { session.sendRealtimeInput({ media: { mimeType, data: base64Data } }); } catch(e) {}
-          }
-      });
-  }
-
-  async connect(
-    voiceName: string, 
-    systemInstruction: string, 
-    callbacks: LiveConnectionCallbacks,
-    tools?: any[]
-  ) {
+  async connect(voiceName: string, systemInstruction: string, callbacks: LiveConnectionCallbacks, tools?: any[]) {
     try {
-      registerAudioOwner("GeminiLive", () => this.disconnect());
-
+      registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       if (!this.inputAudioContext) this.initializeAudio();
-
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const validVoice = getValidLiveVoice(voiceName);
 
       const connectionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
-          responseModalities: [Modality.AUDIO], 
+          responseModalities: [Modality.AUDIO],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: validVoice } } },
-          systemInstruction: systemInstruction,
-          inputAudioTranscription: {}, 
+          systemInstruction,
+          inputAudioTranscription: {},
           outputAudioTranscription: {},
-          tools: tools,
+          tools,
         },
         callbacks: {
           onopen: () => {
             this.startAudioInput(callbacks.onVolumeUpdate);
-            this.outputAudioContext?.resume();
             callbacks.onOpen();
           },
           onmessage: async (message: LiveServerMessage) => {
             if (message.toolCall) callbacks.onToolCall?.(message.toolCall);
-
             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (base64Audio && this.outputAudioContext) {
               try {
                 this.isPlayingResponse = true;
                 if (this.speakingTimer) clearTimeout(this.speakingTimer);
-                
                 const bytes = base64ToBytes(base64Audio);
-                let sum = 0; for (let i=0; i<bytes.length; i++) sum += Math.abs(bytes[i] - 128);
-                callbacks.onVolumeUpdate((sum / bytes.length) * 0.5);
-
                 this.nextStartTime = Math.max(this.nextStartTime, this.outputAudioContext.currentTime);
                 const audioBuffer = await decodeRawPcm(bytes, this.outputAudioContext, 24000, 1);
                 const source = this.outputAudioContext.createBufferSource();
@@ -134,7 +103,6 @@ export class GeminiLiveService {
                 this.nextStartTime += audioBuffer.duration;
               } catch (e) {}
             }
-
             const outputText = message.serverContent?.outputTranscription?.text;
             if (outputText) callbacks.onTranscript(outputText, false);
             const inputText = message.serverContent?.inputTranscription?.text;
@@ -142,38 +110,32 @@ export class GeminiLiveService {
             const interrupted = message.serverContent?.interrupted;
             if (interrupted) { this.stopAllSources(); this.nextStartTime = 0; this.isPlayingResponse = false; }
           },
-          onclose: () => { this.cleanup(); callbacks.onClose(); },
-          onerror: (e: any) => { 
-            // Relay the detailed error message for UI debugging
-            const errorMsg = e.message || JSON.stringify(e) || "WebSocket Connection Interrupted";
-            this.cleanup(); 
-            callbacks.onError(errorMsg); 
+          onclose: (e: any) => {
+            const reason = e?.reason || (e?.code ? `Close Code: ${e.code}` : "Remote peer terminated connection");
+            this.cleanup();
+            callbacks.onClose(reason);
+          },
+          onerror: (e: any) => {
+            const errorMsg = e?.message || "WebSocket encountered a critical error";
+            this.cleanup();
+            callbacks.onError(errorMsg);
           }
         }
       });
 
-      this.sessionPromise = Promise.race([connectionPromise, new Promise((_, r) => setTimeout(() => r(new Error("Establish connection timed out (15s)")), 15000))]);
+      this.sessionPromise = Promise.race([
+        connectionPromise,
+        new Promise((_, r) => setTimeout(() => r(new Error("Connection timed out (15s)")), 15000))
+      ]);
       this.session = await this.sessionPromise;
     } catch (error: any) {
-      callbacks.onError(error?.message || "Failed to initialize Gemini Live Session");
+      callbacks.onError(error?.message || "Initialization failed");
       this.cleanup();
     }
   }
 
-  public sendText(text: string) {
-    this.sessionPromise?.then((session) => {
-        if (session) {
-            try { session.send({ clientContent: { turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true } }); } catch(e) {}
-        }
-    });
-  }
-
   public sendToolResponse(functionResponses: any) {
-      this.sessionPromise?.then((session) => {
-          if (session) {
-              try { session.sendToolResponse({ functionResponses }); } catch(e) {}
-          }
-      });
+    this.sessionPromise?.then((session) => { if (session) try { session.sendToolResponse({ functionResponses }); } catch(e) {} });
   }
 
   private startAudioInput(onVolume: (v: number) => void) {
@@ -181,7 +143,6 @@ export class GeminiLiveService {
     this.source = this.inputAudioContext.createMediaStreamSource(this.stream);
     this.processor = this.inputAudioContext.createScriptProcessor(4096, 1, 1);
     this.processor.onaudioprocess = (e) => {
-      if (!this.inputAudioContext || !this.processor) return;
       const inputData = e.inputBuffer.getChannelData(0);
       if (this.isPlayingResponse) { onVolume(0); return; }
       let sum = 0; for(let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
@@ -213,8 +174,6 @@ export class GeminiLiveService {
     this.stream?.getTracks().forEach(track => track.stop());
     this.session = null;
     this.sessionPromise = null;
-    this.inputAudioContext = null;
-    this.outputAudioContext = null;
     this.stream = null;
     this.processor = null;
     this.source = null;
