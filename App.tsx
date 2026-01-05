@@ -233,6 +233,7 @@ const App: React.FC = () => {
     activeSegment?: { index: number, lectureId: string };
     initialTranscript?: TranscriptItem[];
     existingDiscussionId?: string;
+    returnTo?: ViewState;
   } | null>(null);
 
   const allApps = [
@@ -272,7 +273,8 @@ const App: React.FC = () => {
   };
 
   const handleStartLiveSession = (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, initialTranscript?: TranscriptItem[], existingDiscussionId?: string) => {
-    setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId });
+    // Store current viewState as returnTo context
+    setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId, returnTo: viewState });
     handleSetViewState('live_session');
   };
 
@@ -485,7 +487,7 @@ const App: React.FC = () => {
             {viewState === 'live_session' && liveSessionParams && ( 
               <LiveSession 
                 channel={liveSessionParams.channel} 
-                onEndSession={() => handleSetViewState('directory')} 
+                onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} 
                 language={language} 
                 recordingEnabled={liveSessionParams.recordingEnabled}
                 videoEnabled={liveSessionParams.videoEnabled}

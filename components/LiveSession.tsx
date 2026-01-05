@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2 } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
@@ -56,7 +56,8 @@ const UI_TEXT = {
     uploadComplete: "Upload Successful",
     saveAndLink: "Save & Link to Segment",
     start: "Start Session",
-    saveSession: "Save Session"
+    saveSession: "Save Session",
+    localPreview: "Local Preview"
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -85,7 +86,8 @@ const UI_TEXT = {
     uploadComplete: "上传成功",
     saveAndLink: "保存并链接到段落",
     start: "开始会话",
-    saveSession: "保存会话"
+    saveSession: "保存会话",
+    localPreview: "本地预览"
   }
 };
 
@@ -141,6 +143,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
+  const [synthesisProgress, setSynthesisProgress] = useState(0);
   
   // Action Progress States
   const [isAppending, setIsAppending] = useState(false);
@@ -153,6 +156,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const mixingAudioContextRef = useRef<AudioContext | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
 
@@ -201,6 +205,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           setHasStarted(false);
       }
   };
+
+  useEffect(() => {
+      if (cameraStreamRef.current && localVideoRef.current) {
+          localVideoRef.current.srcObject = cameraStreamRef.current;
+          localVideoRef.current.play().catch(console.error);
+      }
+  }, [hasStarted, cameraEnabled]);
 
   const startRecording = useCallback(async () => {
       if (!recordingEnabled || !serviceRef.current || !currentUser) return;
@@ -270,10 +281,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
 
               setIsUploadingRecording(true);
+              setSynthesisProgress(10);
               try {
                   const timestamp = Date.now();
                   const recId = `session-${timestamp}`;
 
+                  setSynthesisProgress(30);
                   // CRITICAL FAIL-SAFE: Always save to IndexedDB first
                   await saveLocalRecording({
                       id: recId,
@@ -288,6 +301,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       blob: videoBlob
                   });
 
+                  setSynthesisProgress(50);
                   const token = getDriveToken();
                   if (token) {
                       const folderId = await ensureCodeStudioFolder(token);
@@ -295,6 +309,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       let videoUrl = '';
                       if (isVideo) {
                           try {
+                              setSynthesisProgress(70);
                               const ytId = await uploadToYouTube(token, videoBlob, {
                                   title: `${channel.title}: AI Session`,
                                   description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText.substring(0, 1000)}`,
@@ -304,6 +319,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                           } catch (ytErr) { console.warn("YT Upload fail", ytErr); }
                       }
 
+                      setSynthesisProgress(85);
                       const driveFileId = await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob);
                       const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
                       
@@ -316,6 +332,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       };
                       await saveRecordingReference(sessionData);
                   }
+                  setSynthesisProgress(100);
               } catch(e) { console.error("Cloud sync failed", e); } finally { 
                   setIsUploadingRecording(false); 
                   onEndSession();
@@ -375,21 +392,23 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const handleDisconnect = async () => {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
-      } else { onEndSession(); }
-      serviceRef.current?.disconnect();
-      const fullTranscript = currentLine ? [...transcript, currentLine] : transcript;
-      if (currentUser && fullTranscript.length > 0) {
-          const discussion: CommunityDiscussion = { 
-              id: existingDiscussionId || '', 
-              lectureId: activeSegment?.lectureId || lectureId || channel.id, 
-              channelId: channel.id, userId: currentUser.uid, 
-              userName: currentUser.displayName || 'Anonymous', 
-              transcript: fullTranscript, createdAt: Date.now(), 
-              title: `${channel.title}: Live Session` 
-          };
-          if (existingDiscussionId) await updateDiscussion(existingDiscussionId, fullTranscript);
-          else await saveDiscussion(discussion);
+      } else { 
+          const fullTranscript = currentLine ? [...transcript, currentLine] : transcript;
+          if (currentUser && fullTranscript.length > 0) {
+              const discussion: CommunityDiscussion = { 
+                  id: existingDiscussionId || '', 
+                  lectureId: activeSegment?.lectureId || lectureId || channel.id, 
+                  channelId: channel.id, userId: currentUser.uid, 
+                  userName: currentUser.displayName || 'Anonymous', 
+                  transcript: fullTranscript, createdAt: Date.now(), 
+                  title: `${channel.title}: Live Session` 
+              };
+              if (existingDiscussionId) await updateDiscussion(existingDiscussionId, fullTranscript);
+              else await saveDiscussion(discussion);
+          }
+          onEndSession(); 
       }
+      serviceRef.current?.disconnect();
   };
 
   const handleAppendToLecture = async () => {
@@ -461,8 +480,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-slate-950">
-      <div className="p-4 flex items-center justify-between bg-slate-900 border-b border-slate-800 shrink-0">
+    <div className="w-full h-full flex flex-col bg-slate-950 relative">
+      <div className="p-4 flex items-center justify-between bg-slate-900 border-b border-slate-800 shrink-0 z-20">
          <div className="flex items-center space-x-3">
             <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" />
             <div>
@@ -480,6 +499,22 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">End Session</button>
          </div>
       </div>
+
+      {/* Local Preview Window (Self-View) */}
+      {hasStarted && cameraEnabled && (
+          <div className="absolute bottom-20 right-6 w-48 aspect-video md:w-64 bg-black border-2 border-indigo-500 rounded-2xl shadow-2xl z-40 overflow-hidden group">
+              <div className="absolute top-2 left-2 z-10 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded text-[8px] font-black text-white uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                  {t.localPreview}
+              </div>
+              <video 
+                ref={localVideoRef} 
+                autoPlay 
+                muted 
+                playsInline 
+                className="w-full h-full object-cover mirror"
+              />
+          </div>
+      )}
 
       {!hasStarted ? (
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6">
@@ -503,9 +538,20 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       ) : (
          <div className="flex-1 flex flex-col min-h-0 relative">
             {isUploadingRecording && (
-               <div className="absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-6 animate-fade-in">
-                  <div className="relative"><div className="w-24 h-24 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" /><Youtube className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-red-500" size={32}/></div>
-                  <div className="text-center"><span className="text-sm font-black text-white uppercase tracking-widest">{t.uploading}</span><p className="text-xs text-slate-500 mt-1">Exporting to YouTube & Drive...</p></div>
+               <div className="absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                  <div className="relative">
+                    <div className="w-32 h-32 border-4 border-indigo-500/10 rounded-full" />
+                    <div 
+                        className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" 
+                        style={{ clipPath: `conic-gradient(from 0deg, white ${synthesisProgress}%, transparent ${synthesisProgress}%)` }}
+                    />
+                    <Youtube className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-red-500" size={40}/>
+                    <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-xl font-black text-white">{synthesisProgress}%</div>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-sm font-black text-white uppercase tracking-widest">{t.uploading}</span>
+                    <p className="text-xs text-slate-500 mt-2 uppercase font-bold tracking-widest opacity-60">Optimizing Neural Stream</p>
+                  </div>
                </div>
             )}
             {!isConnected && <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-10 backdrop-blur-sm"><div className="flex flex-col items-center space-y-4"><Loader2 size={32} className="text-indigo-500 animate-spin" /><p className="text-sm font-medium text-indigo-300">{t.connecting}</p></div></div>}
@@ -538,7 +584,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                    </div>
                )}
             </div>
-            <div className="p-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between shrink-0">
+            <div className="p-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between shrink-0 z-20">
                 <div className="flex items-center space-x-2 text-slate-500 text-[10px] font-black uppercase tracking-widest"><ScrollText size={14} className="text-indigo-400"/><span>{t.transcript}</span></div>
                 <div className="flex items-center gap-2">
                     {activeSegment && (
