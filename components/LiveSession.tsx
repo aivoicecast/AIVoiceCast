@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -6,7 +7,7 @@ import { auth } from '../services/firebaseConfig';
 import { getDriveToken } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
-import { saveUserChannel, cacheLectureScript, getCachedLectureScript } from '../utils/db';
+import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
 import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, linkDiscussionToLectureSegment } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
@@ -270,11 +271,26 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
               setIsUploadingRecording(true);
               try {
+                  const timestamp = Date.now();
+                  const recId = `session-${timestamp}`;
+
+                  // CRITICAL FAIL-SAFE: Always save to IndexedDB first
+                  await saveLocalRecording({
+                      id: recId,
+                      userId: currentUser.uid,
+                      channelId: channel.id,
+                      channelTitle: channel.title,
+                      channelImage: channel.imageUrl,
+                      timestamp,
+                      mediaUrl: URL.createObjectURL(videoBlob),
+                      mediaType: isVideo ? 'video/webm' : 'audio/webm',
+                      transcriptUrl: URL.createObjectURL(transcriptBlob),
+                      blob: videoBlob
+                  });
+
                   const token = getDriveToken();
                   if (token) {
                       const folderId = await ensureCodeStudioFolder(token);
-                      const timestamp = Date.now();
-                      const recId = `session-${timestamp}`;
                       
                       let videoUrl = '';
                       if (isVideo) {
@@ -458,7 +474,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             {recordingEnabled && isConnected && (
                 <div className="flex items-center gap-2 px-2 py-1 bg-red-900/20 text-red-400 border border-red-500/20 rounded-full text-[10px] font-black uppercase tracking-widest animate-pulse">
                     <div className="w-1.5 h-1.5 bg-red-500 rounded-full" />
-                    <span>REC</span>
+                    <span>{t.recording}</span>
                 </div>
             )}
             <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">End Session</button>
@@ -532,7 +548,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     )}
                     {lectureId && <button onClick={handleAppendToLecture} disabled={isAppending} className="p-2 bg-indigo-900/40 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 rounded-lg transition-all" title={t.appendToLecture}>{isAppending ? <Loader2 size={16} className="animate-spin"/> : <FilePlus size={16}/>}</button>}
                     {isOwner && <button onClick={handleAddToCurriculum} disabled={isSavingLesson} className="p-2 bg-emerald-900/40 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/20 rounded-lg transition-all" title={t.saveToCourse}>{isSavingLesson ? <Loader2 size={16} className="animate-spin"/> : <BookPlus size={16}/>}</button>}
-                    <button onClick={handleDisconnect} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors" title="Save Session"><Save size={16}/></button>
+                    <button onClick={handleDisconnect} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors" title={t.saveSession}><Save size={16}/></button>
                 </div>
             </div>
          </div>
