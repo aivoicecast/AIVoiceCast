@@ -7,7 +7,7 @@ import { getDriveToken } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript } from '../utils/db';
-import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion } from '../services/firestoreService';
+import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, linkDiscussionToLectureSegment } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
 
@@ -102,6 +102,33 @@ const saveContentTool: FunctionDeclaration = {
   }
 };
 
+// Restore Memoized suggestion bar
+const SuggestionsBar = React.memo(({ suggestions, welcomeMessage, showWelcome, uiText }: { 
+  suggestions: string[], 
+  welcomeMessage?: string,
+  showWelcome: boolean,
+  uiText: any
+}) => (
+  <div className="w-full px-4 animate-fade-in-up py-2">
+      {showWelcome && welcomeMessage && (
+        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 mb-4 text-center shadow-lg">
+          <p className="text-slate-300 italic text-sm">"{welcomeMessage}"</p>
+        </div>
+      )}
+      <div className="text-center mb-2">
+         <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">{uiText.welcomePrefix}</span>
+      </div>
+      <div className="flex flex-wrap justify-center gap-2">
+        {suggestions.map((prompt, idx) => (
+          <div key={idx} className="px-4 py-1.5 rounded-full text-[10px] bg-slate-800/50 border border-slate-700 text-slate-400 font-bold hover:bg-slate-800 transition-colors cursor-default select-none flex items-center gap-2">
+            <MessageSquare size={10} className="text-slate-600" />
+            {prompt}
+          </div>
+        ))}
+      </div>
+  </div>
+));
+
 export const LiveSession: React.FC<LiveSessionProps> = ({ 
   channel, initialContext, lectureId, onEndSession, language, 
   recordingEnabled, videoEnabled, cameraEnabled, activeSegment, 
@@ -118,6 +145,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [isAppending, setIsAppending] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isSavingLesson, setIsSavingLesson] = useState(false);
+  const [isLinking, setIsLinking] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -130,17 +158,21 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [transcript, setTranscript] = useState<TranscriptItem[]>(initialTranscript || []);
   const [currentLine, setCurrentLine] = useState<TranscriptItem | null>(null);
   const transcriptRef = useRef<TranscriptItem[]>(initialTranscript || []);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [activeQuoteIndex, setActiveQuoteIndex] = useState<number | null>(null);
+
+  const [suggestions] = useState<string[]>(channel.starterPrompts?.slice(0, 4) || []);
   
   useEffect(() => { 
       transcriptRef.current = transcript; 
       mountedRef.current = true;
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       return () => { mountedRef.current = false; };
-  }, [transcript]);
+  }, [transcript, currentLine]);
 
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
-  // Fix: Defined isOwner to check if the current user has ownership or admin privileges for the channel.
-  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
+  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song@gmail.com' || currentUser.email === 'shengliang.song.ai@gmail.com');
 
   const handleStartSession = async () => {
       setError(null);
@@ -164,7 +196,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           await connect();
       } catch (e: any) {
           console.error("Hardware denied", e);
-          setError(e.name === 'NotAllowedError' ? "Hardware access denied. Refresh and try again." : "Hardware init failed.");
+          setError(e.name === 'NotAllowedError' ? "Hardware access denied. Please allow screen/camera sharing and try again." : "Hardware initialization failed.");
           setHasStarted(false);
       }
   };
@@ -292,6 +324,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       if (historyToInject.length > 0) {
           effectiveInstruction += `\n\n[CONTEXT]:\n${historyToInject.map(t => `${t.role}: ${t.text}`).join('\n')}`;
       }
+      if (initialContext) {
+          effectiveInstruction += `\n\n[USER CONTEXT]: ${initialContext}`;
+      }
+
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { setIsConnected(true); if (recordingEnabled) startRecording(); },
           onClose: () => { setIsConnected(false); setHasStarted(false); },
@@ -308,8 +344,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               for (const fc of toolCall.functionCalls) {
                   if (fc.name === 'save_content') {
                       const { filename, content } = fc.args;
-                      setTranscript(h => [...h, { role: 'ai', text: `*[System]: Saving artifact '${filename}' to history.*`, timestamp: Date.now() }]);
-                      serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Document saved." } }] });
+                      setTranscript(h => [...h, { role: 'ai', text: `*[System]: Generated artifact '${filename}' saved to project.*`, timestamp: Date.now() }]);
+                      serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Document captured and saved." } }] });
                   } else if (onCustomToolCall) {
                       const result = await onCustomToolCall(fc.name, fc.args);
                       serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result } }] });
@@ -318,7 +354,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           }
       }, [{ functionDeclarations: [saveContentTool] }]);
     } catch (e) { setError("AI initialization failed."); }
-  }, [channel.id, channel.voiceName, channel.systemInstruction, recordingEnabled, startRecording]);
+  }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, recordingEnabled, startRecording, onCustomToolCall]);
 
   const handleDisconnect = async () => {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -352,22 +388,60 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               if (newSections) {
                   currentLecture.sections.push(...newSections);
                   await cacheLectureScript(cacheKey, currentLecture);
-                  alert("Discussion appended to lecture script.");
+                  alert("Discussion summary appended to lecture script.");
               }
           }
       } catch(e) { alert("Append failed."); } finally { setIsAppending(false); }
   };
 
   const handleAddToCurriculum = async () => {
-      if (!currentUser) return;
+      if (!isOwner) return;
       const fullTranscript = currentLine ? [...transcript, currentLine] : transcript;
       setIsSavingLesson(true);
       try {
           const title = `Live Notes - ${new Date().toLocaleDateString()}`;
           const nb: GeneratedLecture = { topic: title, professorName: channel.voiceName, studentName: "User", sections: fullTranscript.map(t => ({ speaker: t.role === 'user' ? 'Student' : 'Teacher', text: t.text })) };
           await cacheLectureScript(`lecture_${channel.id}_live_${Date.now()}_${language}`, nb);
-          alert("Session saved as new curriculum item.");
+          alert("Session saved as a new curriculum item.");
       } catch (e) { alert("Save failed."); } finally { setIsSavingLesson(false); }
+  };
+
+  const handleSaveAndLink = async () => {
+      if (!activeSegment || !currentUser) return;
+      const fullTranscript = currentLine ? [...transcript, currentLine] : transcript;
+      setIsLinking(true);
+      try {
+          const discussion: CommunityDiscussion = { 
+              id: '', lectureId: activeSegment.lectureId, channelId: channel.id, 
+              userId: currentUser.uid, userName: currentUser.displayName || 'Anonymous', 
+              transcript: fullTranscript, createdAt: Date.now(), segmentIndex: activeSegment.index,
+              title: `${channel.title}: Linked Context`
+          };
+          const discussionId = await saveDiscussion(discussion);
+          await linkDiscussionToLectureSegment(channel.id, activeSegment.lectureId, activeSegment.index, discussionId);
+          alert("Discussion saved and linked to segment!");
+      } catch(e) { alert("Link failed."); } finally { setIsLinking(false); }
+  };
+
+  const renderMessageContent = (text: string) => {
+    const parts = text.split(/```/);
+    return parts.map((part, index) => {
+      if (index % 2 === 1) {
+        return (
+          <div key={index} className="my-3 rounded-lg overflow-hidden border border-slate-700 bg-slate-950 shadow-lg">
+             <div className="flex items-center justify-between px-4 py-1.5 bg-slate-800/80 border-b border-slate-700">
+               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Code Block</span>
+               <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(part); }} className="flex items-center space-x-1 text-[10px] font-bold text-slate-500 hover:text-indigo-400 transition-colors">
+                 <Copy size={10} /><span>Copy</span>
+               </button>
+             </div>
+             <pre className="p-4 text-sm font-mono text-indigo-200 overflow-x-auto whitespace-pre-wrap">{part}</pre>
+          </div>
+        );
+      } else {
+        return part.split(/\n\s*\n/).map((paragraph, pIndex) => paragraph.trim() ? <p key={`${index}-${pIndex}`} className="mb-3 last:mb-0 leading-relaxed">{paragraph}</p> : null);
+      }
+    });
   };
 
   return (
@@ -419,23 +493,43 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                </div>
             )}
             {!isConnected && <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-10 backdrop-blur-sm"><div className="flex flex-col items-center space-y-4"><Loader2 size={32} className="text-indigo-500 animate-spin" /><p className="text-sm font-medium text-indigo-300">{t.connecting}</p></div></div>}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
+            
+            <div className="shrink-0 bg-slate-950">
+               <SuggestionsBar suggestions={suggestions} welcomeMessage={channel.welcomeMessage} showWelcome={transcript.length === 0 && !currentLine && !initialContext} uiText={t} />
+            </div>
+
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
                {transcript.map((item, index) => (
                    <div key={index} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
                        <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : channel.voiceName}</span>
-                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{item.text}</div>
+                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed relative group ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>
+                           <div className={`absolute ${item.role === 'user' ? '-left-8' : '-right-8'} top-2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1`}>
+                               <button onClick={() => { navigator.clipboard.writeText(item.text); setActiveQuoteIndex(index); setTimeout(() => setActiveQuoteIndex(null), 1000); }} className="p-1.5 bg-slate-800 text-slate-400 hover:text-white rounded-full border border-slate-700 shadow-lg">
+                                   {activeQuoteIndex === index ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                               </button>
+                           </div>
+                           {renderMessageContent(item.text)}
+                       </div>
                    </div>
                ))}
                {currentLine && (
                    <div className={`flex flex-col ${currentLine.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in`}>
                        <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{currentLine.role === 'user' ? 'You' : channel.voiceName}</span>
-                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${currentLine.role === 'user' ? 'bg-indigo-600/80 text-white rounded-tr-sm' : 'bg-slate-800/80 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{currentLine.text}<span className="inline-block w-1.5 h-4 ml-1 align-middle bg-current opacity-50 animate-blink"></span></div>
+                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${currentLine.role === 'user' ? 'bg-indigo-600/80 text-white rounded-tr-sm' : 'bg-slate-800/80 text-slate-200 rounded-tl-sm border border-slate-700'}`}>
+                           {renderMessageContent(currentLine.text)}
+                           <span className="inline-block w-1.5 h-4 ml-1 align-middle bg-current opacity-50 animate-blink"></span>
+                       </div>
                    </div>
                )}
             </div>
             <div className="p-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between shrink-0">
                 <div className="flex items-center space-x-2 text-slate-500 text-[10px] font-black uppercase tracking-widest"><ScrollText size={14} className="text-indigo-400"/><span>{t.transcript}</span></div>
                 <div className="flex items-center gap-2">
+                    {activeSegment && (
+                        <button onClick={handleSaveAndLink} disabled={isLinking} className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all" title={t.saveAndLink}>
+                            {isLinking ? <Loader2 size={16} className="animate-spin" /> : <Link size={16} />}
+                        </button>
+                    )}
                     {lectureId && <button onClick={handleAppendToLecture} disabled={isAppending} className="p-2 bg-indigo-900/40 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/20 rounded-lg transition-all" title={t.appendToLecture}>{isAppending ? <Loader2 size={16} className="animate-spin"/> : <FilePlus size={16}/>}</button>}
                     {isOwner && <button onClick={handleAddToCurriculum} disabled={isSavingLesson} className="p-2 bg-emerald-900/40 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/20 rounded-lg transition-all" title={t.saveToCourse}>{isSavingLesson ? <Loader2 size={16} className="animate-spin"/> : <BookPlus size={16}/>}</button>}
                     <button onClick={handleDisconnect} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors" title="Save Session"><Save size={16}/></button>

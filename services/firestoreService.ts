@@ -396,6 +396,19 @@ export async function updateDiscussion(id: string, data: Partial<CommunityDiscus
     await updateDoc(doc(db, DISCUSSIONS_COLLECTION, id), sanitizeData(data));
 }
 
+/**
+ * Links a discussion to a specific lecture segment by updating its metadata in Firestore.
+ */
+export async function linkDiscussionToLectureSegment(channelId: string, lectureId: string, segmentIndex: number, discussionId: string) {
+    if (!db) return;
+    await updateDoc(doc(db, DISCUSSIONS_COLLECTION, discussionId), {
+        channelId,
+        lectureId,
+        segmentIndex,
+        updatedAt: Date.now()
+    });
+}
+
 export async function saveCard(card: AgentMemory, id?: string): Promise<string> {
     if (!db) return id || 'local';
     const finalId = id || generateSecureId();

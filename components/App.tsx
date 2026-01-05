@@ -5,8 +5,7 @@ import {
   Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, Video
 } from 'lucide-react';
 
-// Fix: Imported TranscriptItem from types to fix reference errors in liveSessionParams and handleStartLiveSession.
-import { Channel, UserProfile, ViewState, TranscriptItem } from './types';
+import { Channel, UserProfile, ViewState, TranscriptItem } from '../types';
 
 import { LiveSession } from './components/LiveSession';
 import { PodcastDetail } from './components/PodcastDetail';
@@ -45,15 +44,15 @@ import { BrandLogo } from './components/BrandLogo';
 import { CoinWallet } from './components/CoinWallet';
 import { MockInterview } from './components/MockInterview';
 
-import { getCurrentUser, getDriveToken } from './services/authService';
-import { auth, db } from './services/firebaseConfig';
+import { getCurrentUser, getDriveToken } from '../services/authService';
+import { auth, db } from '../services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { onSnapshot, doc } from 'firebase/firestore';
-import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from './services/googleDriveService';
-import { getUserChannels, saveUserChannel } from './utils/db';
-import { HANDCRAFTED_CHANNELS } from './utils/initialData';
-import { stopAllPlatformAudio } from './utils/audioUtils';
-import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, claimCoinCheck, syncUserProfile } from './services/firestoreService';
+import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from '../services/googleDriveService';
+import { getUserChannels, saveUserChannel } from '../utils/db';
+import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
+import { stopAllPlatformAudio } from '../utils/audioUtils';
+import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, claimCoinCheck, syncUserProfile } from '../services/firestoreService';
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
