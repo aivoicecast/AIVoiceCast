@@ -52,6 +52,8 @@ export class GeminiLiveService {
     try {
       this.isActive = true;
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
+      
+      // Mandatory: Create new GoogleGenAI instance inside the connect call
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       if (!this.inputAudioContext) this.initializeAudio();
@@ -62,8 +64,8 @@ export class GeminiLiveService {
 
       const validVoice = getValidLiveVoice(voiceName);
 
-      // Construct a very clean config to satisfy strict server validation and avoid 1007
-      const liveConfig: any = {
+      // Cleanest possible config to avoid 1007 Protocol Violations
+      const config: any = {
         responseModalalities: [Modality.AUDIO],
         speechConfig: { 
             voiceConfig: { 
@@ -71,15 +73,18 @@ export class GeminiLiveService {
             } 
         },
         systemInstruction,
+        // Include transcription objects as they are expected by message handlers
+        inputAudioTranscription: {},
+        outputAudioTranscription: {}
       };
 
       if (tools && tools.length > 0) {
-          liveConfig.tools = tools;
+          config.tools = tools;
       }
 
       const connectionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-        config: liveConfig,
+        config: config,
         callbacks: {
           onopen: () => {
             if (!this.isActive) return;
@@ -89,6 +94,7 @@ export class GeminiLiveService {
           onmessage: async (message: LiveServerMessage) => {
             if (!this.isActive) return;
             if (message.toolCall) callbacks.onToolCall?.(message.toolCall);
+            
             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (base64Audio && this.outputAudioContext) {
               try {
@@ -110,32 +116,30 @@ export class GeminiLiveService {
                 this.nextStartTime += audioBuffer.duration;
               } catch (e) {}
             }
+            
             const outputText = message.serverContent?.outputTranscription?.text;
             if (outputText) callbacks.onTranscript(outputText, false);
             const inputText = message.serverContent?.inputTranscription?.text;
             if (inputText) callbacks.onTranscript(inputText, true);
+            
             const interrupted = message.serverContent?.interrupted;
-            if (interrupted) { this.stopAllSources(); this.nextStartTime = 0; this.isPlayingResponse = false; }
+            if (interrupted) { 
+                this.stopAllSources(); 
+                this.nextStartTime = 0; 
+                this.isPlayingResponse = false; 
+            }
           },
           onclose: (e: any) => {
             if (!this.isActive) return;
-            let reason = "Link closed by remote peer";
-            if (e?.code) {
-                switch(e.code) {
-                    case 1000: reason = "Clean shutdown (1000)"; break;
-                    case 1001: reason = "Endpoint going away (1001)"; break;
-                    case 1006: reason = "Abnormal closure (1006) - likely Network/VPN issue"; break;
-                    case 4003: reason = "API Quota exceeded (4003)"; break;
-                    case 1007: reason = "Protocol Violation (1007) - Configuration mismatch"; break;
-                    default: reason = `WS Code: ${e.code} ${e.reason || ''}`;
-                }
-            }
+            let reason = "Link closed";
+            if (e?.code === 1007) reason = "Protocol Error (1007) - Possible config mismatch";
+            if (e?.code === 4003) reason = "API Quota exceeded";
             this.cleanup();
             callbacks.onClose(reason);
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
-            const errorMsg = e?.message || "Logical Handshake Error";
+            const errorMsg = e?.message || "Handshake Error";
             this.cleanup();
             callbacks.onError(errorMsg);
           }
@@ -146,7 +150,7 @@ export class GeminiLiveService {
       this.session = await this.sessionPromise;
     } catch (error: any) {
       this.isActive = false;
-      callbacks.onError(error?.message || "Permission/Init Error");
+      callbacks.onError(error?.message || "Auth Error");
       this.cleanup();
     }
   }

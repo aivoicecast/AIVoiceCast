@@ -386,11 +386,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           effectiveInstruction += `\n\n[USER CONTEXT]: ${initialContext}`;
       }
 
-      addLog("Initializing Neural Link...");
+      addLog("Initializing AI Agent Link...");
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { 
               setIsConnected(true); 
-              addLog("Handshake complete. Neural WebSocket linked.");
+              addLog("Neural Handshake complete. WebSocket linked.");
               if (recordingEnabled) startRecording(); 
           },
           onClose: (reason) => { 
@@ -400,7 +400,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onError: (err) => { 
               setIsConnected(false); 
               setError(err); 
-              addLog(`API Protocol Error: ${err}`, "error");
+              addLog(`Protocol Exception: ${err}`, "error");
           },
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
@@ -412,7 +412,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           },
           onToolCall: async (toolCall: any) => {
               for (const fc of toolCall.functionCalls) {
-                  addLog(`AI tool invocation: ${fc.name}`);
+                  addLog(`Agent tool invocation: ${fc.name}`);
                   if (fc.name === 'save_content') {
                       const { filename, content } = fc.args;
                       setTranscript(h => [...h, { role: 'ai', text: `*[System]: Generated artifact '${filename}' saved to project.*`, timestamp: Date.now() }]);
@@ -443,7 +443,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   channelId: channel.id, userId: currentUser.uid, 
                   userName: currentUser.displayName || 'Anonymous', 
                   transcript: fullTranscript, createdAt: Date.now(), 
-                  title: `${channel.title}: Live Session` 
+                  title: `${channel.title}: AI Session` 
               };
               if (existingDiscussionId) await updateDiscussion(existingDiscussionId, fullTranscript);
               else await saveDiscussion(discussion);
