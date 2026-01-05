@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash, ExternalLink } from 'lucide-react';
@@ -35,7 +34,7 @@ interface CodeStudioProps {
   onSessionStart: (id: string) => void;
   onSessionStop: (id: string) => void;
   onStartLiveSession: (channel: Channel, context?: string) => void;
-  initialFiles?: CodeFile[]; // New prop for pre-filling files
+  initialFiles?: CodeFile[];
 }
 
 function getLanguageFromExt(filename: string): CodeFile['language'] {
@@ -245,13 +244,14 @@ interface SlotProps {
     isLive: boolean;
     lockStatus: string;
     broadcastCursor: (line: number, col: number) => void;
+    isReadOnly?: boolean;
 }
 
 const Slot: React.FC<SlotProps> = ({ 
     idx, activeSlots, focusedSlot, setFocusedSlot, slotViewModes, toggleSlotViewMode,
     isFormattingSlots, terminalOutputs, setTerminalOutputs, isTerminalOpen, setIsTerminalOpen,
     isRunning, layoutMode, innerSplitRatio, handleRunCode, handleFormatCode,
-    handleCodeChangeInSlot, updateSlotFile, fontSize, indentMode, isLive, lockStatus, broadcastCursor
+    handleCodeChangeInSlot, updateSlotFile, fontSize, indentMode, isLive, lockStatus, broadcastCursor, isReadOnly = false
 }) => {
     const file = activeSlots[idx];
     const isFocused = focusedSlot === idx;
@@ -301,7 +301,7 @@ const Slot: React.FC<SlotProps> = ({
                       <div className="flex-1 overflow-hidden">
                           {vMode === 'preview' ? (
                               lang === 'whiteboard' ? (
-                                  <div className="w-full h-full"><Whiteboard isReadOnly={false} /></div>
+                                  <div className="w-full h-full"><Whiteboard isReadOnly={isReadOnly} /></div>
                               ) : lang === 'pdf' ? (
                                   <iframe src={file.path} className="w-full h-full border-none bg-white" title="PDF Viewer" />
                               ) : (
@@ -317,7 +317,7 @@ const Slot: React.FC<SlotProps> = ({
                                   language={file.language} 
                                   fontSize={fontSize} 
                                   indentMode={indentMode} 
-                                  readOnly={isLive && lockStatus === 'busy'}
+                                  readOnly={isReadOnly || (isLive && lockStatus === 'busy')}
                               />
                           )}
                       </div>
@@ -353,6 +353,8 @@ const Slot: React.FC<SlotProps> = ({
 };
 
 export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, userProfile, sessionId: propSessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession, initialFiles }) => {
+  // Fix: Move params definition to component scope so it's accessible in all hooks and during render, fixing the "Cannot find name 'params'" error
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const [githubLinkingError, setGithubLinkingError] = useState<string | null>(null);
   
   const defaultFile: CodeFile = {
@@ -373,7 +375,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const [focusedSlot, setFocusedSlot] = useState<number>(0);
   const [slotViewModes, setSlotViewModes] = useState<Record<number, 'code' | 'preview'>>({ 0: 'code' });
   
-  // Hydrate initial files
   useEffect(() => {
     if (initialFiles && initialFiles.length > 0) {
         const slots: (CodeFile | null)[] = [null, null, null, null];
@@ -440,13 +441,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const centerContainerRef = useRef<HTMLDivElement>(null);
   const activeFile = activeSlots[focusedSlot];
   const blobUrlsRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-      return () => {
-          blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
-          blobUrlsRef.current.clear();
-      };
-  }, []);
 
   const [isLive, setIsLive] = useState(false);
   const [lockStatus, setLockStatus] = useState<'free' | 'busy' | 'mine'>('free');
@@ -518,7 +512,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       try {
           const info = await fetchRepoInfo(owner, repo, token);
           const { files } = await fetchRepoContents(token, owner, repo, info.default_branch);
-          // Fix: cast type to 'file' | 'folder' to satisfy TreeNode interface.
           const tree: TreeNode[] = files.map(f => ({
               id: f.path || f.name,
               name: f.name.split('/').pop() || f.name,
@@ -543,7 +536,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       setIsGithubLoading(true);
       try {
           const { files } = await fetchRepoContents(githubToken, repo.owner.login, repo.name, repo.default_branch);
-          // Fix: cast type to 'file' | 'folder' to satisfy TreeNode interface.
           const tree: TreeNode[] = files.map(f => ({
               id: f.path || f.name,
               name: f.name.split('/').pop() || f.name,
@@ -564,7 +556,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   };
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    // Fix: Use the params defined at component scope instead of a locally shadowed version
     const pid = params.get('id');
 
     if (pid && pid !== 'init') {
@@ -587,7 +579,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
         });
         return () => unsubscribe();
     }
-  }, [clientId]);
+  }, [clientId, params]);
 
   const broadcastCursor = useCallback((line: number, col: number) => {
       if (!isLive || project.id === 'init') return;
@@ -620,6 +612,42 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
         console.error("Save failed", e);
         setSaveStatus('modified'); 
     }
+  };
+
+  const handleShare = async () => {
+      let projectId = project.id;
+      if (projectId === 'init') {
+          if (!currentUser) return alert("Please sign in to share projects.");
+          setIsExplorerLoading(true);
+          try {
+              const filesToSave = activeSlots.filter(s => s !== null) as CodeFile[];
+              const newId = generateSecureId();
+              const newProject: CodeProject = { 
+                  ...project, 
+                  id: newId, 
+                  files: filesToSave,
+                  lastModified: Date.now(),
+                  accessLevel: 'public'
+              };
+              projectId = await saveCodeProject(newProject);
+              setProject(newProject);
+              setIsLive(true);
+              const url = new URL(window.location.href);
+              url.searchParams.set('id', projectId);
+              window.history.replaceState({}, '', url.toString());
+          } catch(e) {
+              alert("Failed to create shared project.");
+              return;
+          } finally {
+              setIsExplorerLoading(false);
+          }
+      }
+      setShareUrl(`${window.location.origin}${window.location.pathname}?view=code_studio&id=${projectId}`);
+      setShowShareModal(true);
+  };
+
+  const handleUpdateAccess = async (uids: string[], isPublic: boolean, perm: 'read' | 'write') => {
+      await updateProjectAccess(project.id, isPublic ? 'public' : 'restricted', uids);
   };
 
   const refreshExplorer = async () => {
@@ -677,7 +705,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                   setGithubTree(prev => {
                       const updateRecursive = (list: TreeNode[]): TreeNode[] => list.map(n => {
                           if (n.id === node.id) return { ...n, isLoaded: true, children: childNodes };
-                          if (n.children) return { ...n, children: updateRecursive(n.children) };
+                          if (n.children) return { ...n, children: updateRecursive(prev) };
                           return n;
                       });
                       return updateRecursive(prev);
@@ -754,13 +782,12 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const prompt = `Act as a high-speed remote C++ / Multi-language execution engine. Execute: File: ${file.name}, Lang: ${file.language}, Code: ${file.content}. Respond ONLY with JSON: { "stdout": "string", "stderr": "string", "exitCode": number }`;
           
-          // Using gemini-3-flash-preview for low-latency simulation
           const resp = await ai.models.generateContent({ 
               model: 'gemini-3-flash-preview', 
               contents: prompt, 
               config: { 
                   responseMimeType: 'application/json',
-                  thinkingConfig: { thinkingBudget: 0 } // Priority: Speed
+                  thinkingConfig: { thinkingBudget: 0 } 
               } 
           });
           
@@ -847,6 +874,9 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       return githubRepos.filter(r => r.full_name.toLowerCase().includes(githubSearchQuery.toLowerCase()));
   }, [githubRepos, githubSearchQuery]);
 
+  // Fix: Using the params defined at component scope instead of a locally shadowed version
+  const isSharedViewOnly = isLive && (params.get('mode') === 'view');
+
   return (
     <div className="flex flex-col h-full bg-slate-950 text-slate-100 overflow-hidden">
       <header className="h-14 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-4 shrink-0 z-20">
@@ -861,7 +891,15 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                 <button onClick={() => handleSetLayout('split-h')} className={`p-1.5 rounded ${layoutMode === 'split-h' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`}><Rows size={16}/></button>
                 <button onClick={() => handleSetLayout('quad')} className={`p-1.5 rounded ${layoutMode === 'quad' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`}><Grid2X2 size={16}/></button>
             </div>
-            <button onClick={() => handleSmartSave()} disabled={lockStatus === 'busy'} className="flex items-center space-x-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold"><Save size={14}/><span>Save</span></button>
+            {!isSharedViewOnly && (
+                <>
+                    <button onClick={handleShare} className="flex items-center space-x-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all active:scale-95">
+                        <Share2 size={14}/>
+                        <span>Share</span>
+                    </button>
+                    <button onClick={() => handleSmartSave()} disabled={lockStatus === 'busy'} className="flex items-center space-x-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold"><Save size={14}/><span>Save</span></button>
+                </>
+            )}
             <button onClick={() => setIsRightOpen(!isRightOpen)} className={`p-2 rounded-lg ${isRightOpen ? 'bg-slate-800 text-white' : 'text-slate-50'}`}><PanelRightOpen size={20}/></button>
          </div>
       </header>
@@ -875,7 +913,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               <div className="flex-1 flex flex-col overflow-hidden">
                   <div className="p-3 border-b border-slate-800 flex gap-1.5 shrink-0 bg-slate-900/50">
                       <button onClick={refreshExplorer} disabled={isExplorerLoading} className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-colors" title="Refresh Explorer">{isExplorerLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}</button>
-                      <button onClick={handleCreateNewFile} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-1.5 shadow-lg transition-all active:scale-95"><FilePlus size={14}/> New File</button>
+                      {!isSharedViewOnly && <button onClick={handleCreateNewFile} className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center justify-center gap-1.5 shadow-lg transition-all active:scale-95"><FilePlus size={14}/> New File</button>}
                   </div>
                   
                   {activeTab === 'drive' && (driveToken ? <div className="flex-1 overflow-y-auto scrollbar-hide py-2">{driveTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path?.replace('drive://','')} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}</div> : <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4"><button onClick={handleConnectDrive} className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg">Connect G-Drive</button></div>)}
@@ -886,7 +924,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                       <div className="flex-1 flex flex-col overflow-hidden">
                           {!githubToken ? (
                               <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4">
-                                  <button onClick={handleGithubLogin} className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-2">
+                                  <button onClick={handleGithubLogin} className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-gap-2">
                                       <Github size={14}/> Connect GitHub
                                   </button>
                                   <div className="flex flex-col gap-2 mt-4 text-center">
@@ -974,7 +1012,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           <div onMouseDown={() => setIsDraggingLeft(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 z-30 shrink-0 bg-slate-800/20"></div>
           <div ref={centerContainerRef} className={`flex-1 bg-slate-950 flex min-w-0 relative ${layoutMode === 'quad' ? 'grid grid-cols-2 grid-rows-2' : layoutMode === 'split-v' ? 'flex-row' : layoutMode === 'split-h' ? 'flex-col' : 'flex-col'}`}>
               {[0, 1, 2, 3].map(i => (
-                  <Slot key={i} idx={i} activeSlots={activeSlots} focusedSlot={focusedSlot} setFocusedSlot={setFocusedSlot} slotViewModes={slotViewModes} toggleSlotViewMode={toggleSlotViewMode} isFormattingSlots={isFormattingSlots} terminalOutputs={terminalOutputs} setTerminalOutputs={setTerminalOutputs} isTerminalOpen={isTerminalOpen} setIsTerminalOpen={setIsTerminalOpen} isRunning={isRunning} layoutMode={layoutMode} innerSplitRatio={innerSplitRatio} handleRunCode={handleRunCode} handleFormatCode={handleFormatCode} handleCodeChangeInSlot={handleCodeChangeInSlot} updateSlotFile={updateSlotFile} fontSize={fontSize} indentMode={indentMode} isLive={isLive} lockStatus={lockStatus} broadcastCursor={broadcastCursor} />
+                  <Slot key={i} idx={i} activeSlots={activeSlots} focusedSlot={focusedSlot} setFocusedSlot={setFocusedSlot} slotViewModes={slotViewModes} toggleSlotViewMode={toggleSlotViewMode} isFormattingSlots={isFormattingSlots} terminalOutputs={terminalOutputs} setTerminalOutputs={setTerminalOutputs} isTerminalOpen={isTerminalOpen} setIsTerminalOpen={setIsTerminalOpen} isRunning={isRunning} layoutMode={layoutMode} innerSplitRatio={innerSplitRatio} handleRunCode={handleRunCode} handleFormatCode={handleFormatCode} handleCodeChangeInSlot={handleCodeChangeInSlot} updateSlotFile={updateSlotFile} fontSize={fontSize} indentMode={indentMode} isLive={isLive} lockStatus={lockStatus} broadcastCursor={broadcastCursor} isReadOnly={isSharedViewOnly} />
               ))}
           </div>
           <div onMouseDown={() => setIsDraggingRight(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 z-30 shrink-0 bg-slate-800/20"></div>
@@ -982,6 +1020,20 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               <AIChatPanel isOpen={true} onClose={() => setIsRightOpen(false)} messages={chatMessages} onSendMessage={handleSendMessage} isThinking={isChatThinking} currentInput={chatInput} onInputChange={setChatInput} />
           </div>
       </div>
+
+      {showShareModal && shareUrl && (
+          <ShareModal 
+            isOpen={true} 
+            onClose={() => setShowShareModal(false)}
+            onShare={handleUpdateAccess}
+            link={shareUrl} 
+            title={project.name}
+            currentAccess={project.accessLevel}
+            currentAllowedUsers={project.allowedUserIds}
+            currentUserUid={currentUser?.uid}
+            defaultPermission="write"
+          />
+      )}
 
       {showManualToken && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
