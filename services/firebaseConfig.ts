@@ -1,13 +1,8 @@
 
-import { initializeApp, getApps, getApp } from "firebase/app";
-import type { FirebaseApp } from "firebase/app";
-import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
-import type { Auth } from "firebase/auth";
-// Use getFirestore for standard initialization
-import { getFirestore, enableMultiTabIndexedDbPersistence } from "firebase/firestore";
-import type { Firestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-import type { FirebaseStorage } from "firebase/storage";
+import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
+import { getAuth, type Auth, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { initializeFirestore, type Firestore, enableMultiTabIndexedDbPersistence } from "firebase/firestore";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { firebaseKeys } from './private_keys';
 
 /**
@@ -20,6 +15,7 @@ const initializeFirebase = (): FirebaseApp | null => {
         }
 
         if (firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY") {
+            // Ensure authDomain is strictly the firebaseapp.com version to minimize cross-origin issues
             const config = {
                 ...firebaseKeys,
                 authDomain: `${firebaseKeys.projectId}.firebaseapp.com`
@@ -42,10 +38,10 @@ const appInstance = initializeFirebase();
 const initDb = (): Firestore | null => {
     if (!appInstance) return null;
     
-    // Fix: Using standard modular initialization for Firestore
-    const firestore = getFirestore(appInstance);
+    const firestore = initializeFirestore(appInstance, {
+        experimentalForceLongPolling: true,
+    });
 
-    // Fix: Handling persistence for multi-tab support
     enableMultiTabIndexedDbPersistence(firestore).catch((err) => {
         if (err.code === 'failed-precondition') {
             console.warn("[Firestore] Persistence failed: Multiple tabs open.");
@@ -59,7 +55,7 @@ const initDb = (): Firestore | null => {
 
 const authInstance: Auth | null = appInstance ? getAuth(appInstance) : null;
 
-// Fix: Explicitly set persistence to Local for consistent user sessions
+// Explicitly set persistence to Local to survive session storage clearing
 if (authInstance) {
     setPersistence(authInstance, browserLocalPersistence).catch((err) => {
         console.error("[Auth] Persistence setup failed:", err);
@@ -83,11 +79,7 @@ export const getFirebaseDiagnostics = () => {
         hasFirestore: !!db,
         projectId: firebaseKeys?.projectId || "Missing",
         apiKeyPresent: !!firebaseKeys?.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY",
-        configSource: localStorage.getItem('firebase_config') ? 'LocalStorage' : 'Static Keys',
-        // Fix: adding internal masked config for diagnostics view
-        activeConfig: {
-            apiKey: firebaseKeys?.apiKey ? `${firebaseKeys.apiKey.substring(0, 6)}...` : 'None'
-        }
+        configSource: localStorage.getItem('firebase_config') ? 'LocalStorage' : 'Static Keys'
     };
 };
 

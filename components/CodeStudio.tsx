@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash, ExternalLink } from 'lucide-react';
@@ -34,8 +35,7 @@ interface CodeStudioProps {
   onSessionStart: (id: string) => void;
   onSessionStop: (id: string) => void;
   onStartLiveSession: (channel: Channel, context?: string) => void;
-  initialFiles?: CodeFile[];
-  onFilesChange?: (files: (CodeFile | null)[]) => void;
+  initialFiles?: CodeFile[]; // New prop for pre-filling files
 }
 
 function getLanguageFromExt(filename: string): CodeFile['language'] {
@@ -352,7 +352,7 @@ const Slot: React.FC<SlotProps> = ({
     );
 };
 
-export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, userProfile, sessionId: propSessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession, initialFiles, onFilesChange }) => {
+export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, userProfile, sessionId: propSessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession, initialFiles }) => {
   const [githubLinkingError, setGithubLinkingError] = useState<string | null>(null);
   
   const defaultFile: CodeFile = {
@@ -373,11 +373,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const [focusedSlot, setFocusedSlot] = useState<number>(0);
   const [slotViewModes, setSlotViewModes] = useState<Record<number, 'code' | 'preview'>>({ 0: 'code' });
   
-  // Update parent when files change
-  useEffect(() => {
-    if (onFilesChange) onFilesChange(activeSlots);
-  }, [activeSlots, onFilesChange]);
-
   // Hydrate initial files
   useEffect(() => {
     if (initialFiles && initialFiles.length > 0) {
@@ -891,7 +886,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
                       <div className="flex-1 flex flex-col overflow-hidden">
                           {!githubToken ? (
                               <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4">
-                                  <button onClick={handleGithubLogin} className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-gap-2">
+                                  <button onClick={handleGithubLogin} className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-2">
                                       <Github size={14}/> Connect GitHub
                                   </button>
                                   <div className="flex flex-col gap-2 mt-4 text-center">
