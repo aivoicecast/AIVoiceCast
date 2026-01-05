@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken } from '../services/authService';
+import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
 import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment } from '../services/firestoreService';
-import { summarizeDiscussionAsSection } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
 
 interface LiveSessionProps {
@@ -47,11 +47,11 @@ const UI_TEXT = {
     saving: "Saving...",
     saveSuccess: "Saved!",
     sharedSuccess: "Shared to Community!",
-    tapToStart: "Tap to Start Session",
+    tapToStart: "Start Neural Session",
     tapDesc: "Click to enable audio and microphone access.",
     recording: "REC",
-    uploading: "Uploading Session Artifacts...",
-    uploadComplete: "Saved to Drive",
+    uploading: "Syncing Session to Cloud...",
+    uploadComplete: "Upload Successful",
     saveAndLink: "Save & Link to Segment",
     start: "Start Session",
     saveSession: "Save Session"
@@ -76,11 +76,11 @@ const UI_TEXT = {
     saving: "保存中...",
     saveSuccess: "已保存！",
     sharedSuccess: "已分享到社区！",
-    tapToStart: "点击开始会话",
+    tapToStart: "启动神经会话",
     tapDesc: "点击以启用音频和麦克风权限。",
     recording: "录音中",
-    uploading: "正在上传会话存档...",
-    uploadComplete: "已保存到 Drive",
+    uploading: "正在同步会话存档...",
+    uploadComplete: "上传成功",
     saveAndLink: "保存并链接到段落",
     start: "开始会话",
     saveSession: "保存会话"
@@ -106,35 +106,67 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const screenStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
 
   const [transcript, setTranscript] = useState<TranscriptItem[]>(initialTranscript || []);
   const [currentLine, setCurrentLine] = useState<TranscriptItem | null>(null);
   const transcriptRef = useRef<TranscriptItem[]>(initialTranscript || []);
   
-  useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
+  useEffect(() => { 
+      transcriptRef.current = transcript; 
+      mountedRef.current = true;
+      return () => { mountedRef.current = false; };
+  }, [transcript]);
 
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
+
+  /**
+   * CRITICAL: REQUESTING HARDWARE PERMISSIONS
+   * This must happen inside the direct user-click handler (handleStartSession)
+   * to satisfy browser security policies.
+   */
+  const handleStartSession = async () => {
+      setError(null);
+      
+      try {
+          // 1. Capture Hardware Streams IMMEDIATELY (Direct User Gesture)
+          if (recordingEnabled) {
+              if (videoEnabled) {
+                  // This triggers the "Choose what to share" popup
+                  // Fix: Added 'as any' to the video constraints to resolve the TypeScript error regarding the 'cursor' property, which is valid for getDisplayMedia but not standard in MediaTrackConstraints.
+                  screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
+                      video: { cursor: "always" } as any,
+                      audio: false 
+                  });
+              }
+              if (cameraEnabled) {
+                  cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
+                      video: true, 
+                      audio: false 
+                  });
+              }
+          }
+          
+          setHasStarted(true);
+          // 2. Initialize and Connect AI
+          await connect();
+      } catch (e: any) {
+          console.error("Hardware initialization failed", e);
+          if (e.name === 'NotAllowedError') {
+              setError("Hardware access denied. Please allow camera/screen access and try again.");
+          } else {
+              setError("Failed to initialize recording hardware.");
+          }
+          setHasStarted(false);
+      }
+  };
 
   const startRecording = useCallback(async () => {
       if (!recordingEnabled || !serviceRef.current || !currentUser) return;
       
       try {
-          // 1. Capture Hardware Streams (Triggers standard browser popups)
-          let screenStream: MediaStream | null = null;
-          let cameraStream: MediaStream | null = null;
-          
-          if (videoEnabled) {
-              screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-              screenStreamRef.current = screenStream;
-          }
-          
-          if (cameraEnabled) {
-              cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-              cameraStreamRef.current = cameraStream;
-          }
-
-          // 2. Setup Audio Mixing
+          // 1. Setup Audio Mixing
           const mixCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
           mixingAudioContextRef.current = mixCtx;
           const dest = mixCtx.createMediaStreamDestination();
@@ -145,49 +177,61 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               aiSource.connect(dest); 
           }
           
+          // Mixed user audio
           const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const userSource = mixCtx.createMediaStreamSource(userStream); 
           userSource.connect(dest);
 
-          // 3. Setup Video Compositor (Canvas)
+          // 2. Setup Video Compositor (Canvas)
           const canvas = document.createElement('canvas');
           canvas.width = 1280;
           canvas.height = 720;
           const ctx = canvas.getContext('2d', { alpha: false })!;
           
           const screenVideo = document.createElement('video');
-          if (screenStream) {
-              screenVideo.srcObject = screenStream;
+          if (screenStreamRef.current) {
+              screenVideo.srcObject = screenStreamRef.current;
               screenVideo.muted = true;
               screenVideo.play();
           }
 
           const cameraVideo = document.createElement('video');
-          if (cameraStream) {
-              cameraVideo.srcObject = cameraStream;
+          if (cameraStreamRef.current) {
+              cameraVideo.srcObject = cameraStreamRef.current;
               cameraVideo.muted = true;
               cameraVideo.play();
           }
 
           const drawCompositor = () => {
+              if (!mountedRef.current) return;
+              
               // Fill background
-              ctx.fillStyle = '#020617'; // slate-950
+              ctx.fillStyle = '#020617'; 
               ctx.fillRect(0, 0, canvas.width, canvas.height);
 
               // Draw Screen (Base layer)
-              if (screenStream && screenVideo.readyState >= 2) {
+              if (screenStreamRef.current && screenVideo.readyState >= 2) {
                   ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+              } else if (!screenStreamRef.current) {
+                  // Fallback visual if no screen
+                  ctx.fillStyle = '#1e293b';
+                  ctx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
+                  ctx.fillStyle = '#94a3b8';
+                  ctx.font = 'bold 40px sans-serif';
+                  ctx.textAlign = 'center';
+                  ctx.fillText('Audio-Only Session Recording', canvas.width / 2, canvas.height / 2);
               }
 
               // Draw Camera (PIP Overlay)
-              if (cameraStream && cameraVideo.readyState >= 2) {
-                  // Position bottom right
+              if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
                   const pipWidth = 320;
                   const pipHeight = 180;
-                  const margin = 20;
-                  ctx.strokeStyle = '#6366f1'; // indigo-500
+                  const margin = 24;
+                  // Border
+                  ctx.strokeStyle = '#6366f1';
                   ctx.lineWidth = 4;
                   ctx.strokeRect(canvas.width - pipWidth - margin, canvas.height - pipHeight - margin, pipWidth, pipHeight);
+                  // Video
                   ctx.drawImage(cameraVideo, canvas.width - pipWidth - margin, canvas.height - pipHeight - margin, pipWidth, pipHeight);
               }
 
@@ -195,9 +239,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           };
           drawCompositor();
 
-          // 4. Initialize Recorder
+          // 3. Initialize Recorder
           const captureStream = canvas.captureStream(30);
-          // Add combined mixed audio to the video stream
           dest.stream.getAudioTracks().forEach(track => captureStream.addTrack(track));
 
           const recorder = new MediaRecorder(captureStream, {
@@ -211,8 +254,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           recorder.onstop = async () => {
               if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
               
-              const isVideo = !!(screenStream || cameraStream);
-              const blob = new Blob(audioChunksRef.current, { type: isVideo ? 'video/webm' : 'audio/webm' });
+              const isVideo = !!(screenStreamRef.current || cameraStreamRef.current);
+              const videoBlob = new Blob(audioChunksRef.current, { type: isVideo ? 'video/webm' : 'audio/webm' });
               
               const fullTranscript = currentLine ? [...transcript, currentLine] : transcript;
               const transcriptText = fullTranscript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
@@ -225,9 +268,24 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       const folderId = await ensureCodeStudioFolder(token);
                       const timestamp = Date.now();
                       const recId = `session-${timestamp}`;
-                      const ext = isVideo ? 'webm' : 'webm';
                       
-                      const driveFileId = await uploadToDrive(token, folderId, `${recId}.${ext}`, blob);
+                      // 1. UPLOAD TO YOUTUBE
+                      let videoUrl = '';
+                      if (isVideo) {
+                          try {
+                              const ytId = await uploadToYouTube(token, videoBlob, {
+                                  title: `${channel.title}: AI Session`,
+                                  description: `Recorded via AIVoiceCast.\n\nTranscript Summary:\n${transcriptText.substring(0, 1000)}`,
+                                  privacyStatus: 'unlisted'
+                              });
+                              videoUrl = getYouTubeVideoUrl(ytId);
+                          } catch (ytErr) {
+                              console.warn("YouTube upload failed, using Drive fallback", ytErr);
+                          }
+                      }
+
+                      // 2. BACKUP TO DRIVE
+                      const driveFileId = await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob);
                       const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
                       
                       const sessionData: RecordingSession = {
@@ -237,36 +295,33 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                           channelTitle: channel.title,
                           channelImage: channel.imageUrl,
                           timestamp: timestamp,
-                          mediaUrl: `drive://${driveFileId}`,
+                          mediaUrl: videoUrl || `drive://${driveFileId}`,
                           mediaType: isVideo ? 'video/webm' : 'audio/webm',
                           transcriptUrl: `drive://${tFileId}`
                       };
                       await saveRecordingReference(sessionData);
                   }
               } catch(e) { 
-                  console.error("Drive upload failed", e); 
+                  console.error("Cloud upload failed", e); 
               } finally { 
                   setIsUploadingRecording(false); 
-                  onEndSession(); // Navigate away ONLY after upload finishes
+                  onEndSession();
               }
               
               userStream.getTracks().forEach(t => t.stop());
-              screenStream?.getTracks().forEach(t => t.stop());
-              cameraStream?.getTracks().forEach(t => t.stop());
+              screenStreamRef.current?.getTracks().forEach(t => t.stop());
+              cameraStreamRef.current?.getTracks().forEach(t => t.stop());
               mixCtx.close();
           };
 
           mediaRecorderRef.current = recorder;
           recorder.start(1000);
       } catch(e) { 
-          console.warn("Recording or Hardware initialization failed", e); 
-          setError("Hardware access denied or interrupted.");
+          console.warn("Recording pipeline failure", e); 
       }
-  }, [recordingEnabled, videoEnabled, cameraEnabled, channel, currentUser, transcript, currentLine, onEndSession]);
+  }, [recordingEnabled, channel, currentUser, transcript, currentLine, onEndSession]);
 
   const connect = useCallback(async () => {
-    setError(null);
-    setIsConnected(false);
     let service = serviceRef.current || new GeminiLiveService();
     serviceRef.current = service;
     service.initializeAudio();
@@ -310,24 +365,19 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           }
       });
     } catch (e) { 
-        setError("Failed to initialize session"); 
+        setError("AI connection failed. Ensure your API key is configured correctly."); 
     }
-  }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, initialTranscript, customTools, onCustomToolCall, recordingEnabled, startRecording]);
+  }, [channel.id, channel.voiceName, channel.systemInstruction, recordingEnabled, startRecording]);
 
   const handleDisconnect = async () => {
-      // 1. Stop Recording if active
+      // Trigger stop, which will trigger the upload logic in onstop
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          // The onstop handler will trigger onEndSession after uploading
           mediaRecorderRef.current.stop();
       } else {
-          // If not recording, just end
           onEndSession();
       }
-
-      // 2. Disconnect AI
       serviceRef.current?.disconnect();
-
-      // 3. Save Discussion Record
+      
       const fullTranscript = currentLine ? [...transcript, currentLine] : transcript;
       if (currentUser && fullTranscript.length > 0) {
           const discussion: CommunityDiscussion = { 
@@ -369,39 +419,41 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6">
              <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center animate-pulse"><Mic size={40} className="text-indigo-500" /></div>
              <div>
-                 <h3 className="text-xl font-bold text-white">Tap to Join the Session</h3>
-                 <p className="text-slate-400 text-sm mt-2 max-w-xs">
-                     {recordingEnabled ? 'This session will be recorded and synced to your Drive.' : 'Requires microphone access for real-time dialogue.'}
+                 <h3 className="text-xl font-bold text-white">{t.tapToStart}</h3>
+                 <p className="text-slate-400 text-sm mt-2 max-w-xs leading-relaxed">
+                     {recordingEnabled ? 'Neural recording is active. A system popup will appear to capture your screen/camera for documentation.' : t.tapDesc}
                  </p>
              </div>
-             <button onClick={() => { setHasStarted(true); connect(); }} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-full shadow-lg shadow-indigo-500/30 transition-transform hover:scale-105">{t.start}</button>
+             <button onClick={handleStartSession} className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-full shadow-2xl shadow-indigo-500/30 transition-transform hover:scale-105 active:scale-95">{t.start}</button>
          </div>
       ) : error ? (
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
-             <AlertCircle size={40} className="text-red-400" />
-             <p className="text-red-300 text-sm">{error}</p>
-             <button onClick={() => connect()} className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm rounded-lg"><RefreshCw size={14} /><span>{t.retry}</span></button>
+             <div className="p-4 bg-red-900/20 rounded-2xl border border-red-500/20">
+                <AlertCircle size={40} className="text-red-400 mx-auto" />
+                <p className="text-red-300 text-sm font-bold mt-3">{error}</p>
+             </div>
+             <button onClick={handleStartSession} className="flex items-center space-x-2 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-black uppercase rounded-lg border border-slate-700 transition-all"><RefreshCw size={14} /><span>{t.retry}</span></button>
          </div>
       ) : (
          <div className="flex-1 flex flex-col min-h-0 relative">
             {isUploadingRecording && (
-               <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-4 animate-fade-in">
+               <div className="absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-6 animate-fade-in">
                   <div className="relative">
-                    <div className="w-20 h-20 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
-                    <CloudUpload className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400" size={24}/>
+                    <div className="w-24 h-24 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+                    <Youtube className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-red-500 animate-pulse" size={32}/>
                   </div>
-                  <div className="text-center">
-                    <span className="text-sm font-bold text-white uppercase tracking-widest">{t.uploading}</span>
-                    <p className="text-xs text-slate-500 mt-1">Please do not close the window.</p>
+                  <div className="text-center space-y-2">
+                    <span className="text-sm font-black text-white uppercase tracking-[0.2em]">{t.uploading}</span>
+                    <p className="text-xs text-slate-500">Publishing to YouTube & Personal Drive...</p>
                   </div>
                </div>
             )}
-            {!isConnected && <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-10 backdrop-blur-sm"><div className="flex flex-col items-center space-y-4"><Loader2 size={32} className="text-indigo-500 animate-spin" /><p className="text-sm font-medium text-indigo-300">{t.connecting}</p></div></div>}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {!isConnected && <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-10 backdrop-blur-sm"><div className="flex flex-col items-center space-y-4"><Loader2 size={32} className="text-indigo-400 animate-spin" /><p className="text-sm font-medium text-indigo-300">{t.connecting}</p></div></div>}
+            <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
                {transcript.map((item, index) => (
                    <div key={index} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
                        <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : channel.voiceName}</span>
-                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{item.text}</div>
+                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-lg' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}>{item.text}</div>
                    </div>
                ))}
                {currentLine && (
@@ -412,9 +464,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                )}
             </div>
             <div className="p-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between shrink-0">
-                <div className="flex items-center space-x-2 text-slate-500 text-xs">
-                    <ScrollText size={14} />
-                    <span className="uppercase tracking-wider font-bold">{t.transcript}</span>
+                <div className="flex items-center space-x-2 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                    <ScrollText size={14} className="text-indigo-400"/>
+                    <span>{t.transcript}</span>
                 </div>
                 <div className="flex gap-2">
                     {videoEnabled && <Monitor size={14} className="text-indigo-400"/>}

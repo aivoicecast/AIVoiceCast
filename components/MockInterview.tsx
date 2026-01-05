@@ -321,6 +321,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       url.searchParams.set('id', projectId);
       window.history.replaceState({}, '', url.toString());
 
+      // REQUEST PERMISSIONS (Direct User Gesture)
       const camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       activeStreamRef.current = camStream;
@@ -421,6 +422,24 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       videoBlobRef.current = blob;
     }
 
+    setSynthesisStep('Syncing to YouTube...');
+    let videoUrl = "";
+    if (videoBlobRef.current && currentUser) {
+        try {
+            const token = getDriveToken();
+            if (token) {
+                const ytId = await uploadToYouTube(token, videoBlobRef.current, {
+                    title: `Mock Interview: ${mode} - ${currentUser.displayName}`,
+                    description: `Interview simulation results for ${jobDesc || 'Senior Software Engineer'}. Language: ${language}.`,
+                    privacyStatus: youtubePrivacy
+                });
+                videoUrl = getYouTubeVideoUrl(ytId);
+            }
+        } catch (e) {
+            console.warn("YouTube upload failed, using local fallback", e);
+        }
+    }
+
     setSynthesisStep('Retrieving code artifacts...');
     let candidateCode = "";
     if (activeCodeProjectId) {
@@ -428,7 +447,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             const project = await getCodeProject(activeCodeProjectId);
             if (project && project.files.length > 0) {
                 candidateCode = project.files[0].content;
-                // If candidate didn't change the placeholder, treat as empty
                 if (candidateCode.includes("// Write your solution below...") && candidateCode.length < 250) {
                     candidateCode = "";
                 }
@@ -437,78 +455,48 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     }
 
     setSynthesisStep('Synthesizing metrics...');
-    let retryCount = 0;
-    const maxRetries = 3;
     let reportData: InterviewReport | null = null;
-
-    while (retryCount < maxRetries && !reportData) {
-      try {
+    try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-        const jobContext = jobDesc.trim() ? `Job: ${jobDesc}` : "a general senior software engineering position";
+        const codeContext = candidateCode.trim() ? `CANDIDATE CODE:\n\`\`\`${language}\n${candidateCode}\n\`\`\`` : `[No code submitted]`;
         
-        const codeContext = candidateCode.trim() 
-            ? `CANDIDATE CODE SUBMISSION:\n\`\`\`${language}\n${candidateCode}\n\`\`\``
-            : `CANDIDATE CODE SUBMISSION: [No code found in the shared workspace]`;
-
-        const reportPrompt = `Analyze interview for ${jobContext}. 
-        
-        ${codeContext}
-        
-        TRANSCRIPT HISTORY:
-        ${transcriptText}
-
-        CRITICAL REQUIREMENT: If BOTH the transcript AND the code submission are empty or the candidate failed to provide a technical response, the "technicalSkills" field MUST contain the exact text: "code or response is not found".
-        
-        Return JSON ONLY.`;
-
         const response = await ai.models.generateContent({
-          model: 'gemini-3-pro-preview',
-          contents: reportPrompt,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                score: { type: Type.NUMBER },
-                technicalSkills: { type: Type.STRING },
-                communication: { type: Type.STRING },
-                strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
-                areasForImprovement: { type: Type.ARRAY, items: { type: Type.STRING } },
-                verdict: { type: Type.STRING },
-                summary: { type: Type.STRING },
-                learningMaterial: { type: Type.STRING }
-              },
-              required: ["score", "verdict", "summary", "learningMaterial"]
+            model: 'gemini-3-pro-preview',
+            contents: `Analyze interview for ${jobDesc}. ${codeContext} TRANSCRIPT:\n${transcriptText}. Return JSON.`,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        score: { type: Type.NUMBER },
+                        verdict: { type: Type.STRING },
+                        summary: { type: Type.STRING },
+                        strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        areasForImprovement: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        learningMaterial: { type: Type.STRING }
+                    },
+                    required: ["score", "verdict", "summary"]
+                }
             }
-          }
         });
         reportData = JSON.parse(response.text || "{}");
-      } catch (e: any) {
-        retryCount++;
-        logApi(`Synthesis Warning (Attempt ${retryCount}): ${e.message}`, "error");
-        if (retryCount < maxRetries) {
-          setSynthesisStep(`Retrying Synthesis (${retryCount}/${maxRetries})...`);
-          await new Promise(r => setTimeout(r, 3000 * retryCount));
-        } else {
-          setReportError(e.message || "Synthesis service unavailable (503).");
-        }
-      }
+    } catch (e: any) {
+        setReportError("Metrics synthesis failed.");
     }
 
     if (reportData) {
       setReport(reportData);
       const rec: MockInterviewRecording = {
         id: interviewIdRef.current, userId: currentUser?.uid || 'guest', userName: currentUser?.displayName || 'Guest',
-        mode, language, jobDescription: jobDesc, timestamp: Date.now(), videoUrl: '',
+        mode, language, jobDescription: jobDesc, timestamp: Date.now(), videoUrl: videoUrl,
         transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
         feedback: JSON.stringify(reportData), visibility
       };
+      await saveInterviewRecording(rec);
       setActiveRecording(rec);
       if (videoBlobRef.current) setVideoPlaybackUrl(URL.createObjectURL(videoBlobRef.current));
       setSynthesisPercent(100);
-      setView('report');
-    } else {
       setView('report');
     }
     setIsGeneratingReport(false);
@@ -603,7 +591,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                   ].map(m => (<button key={m.id} onClick={() => setMode(m.id as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}><div className="flex items-center gap-2"><m.icon size={14}/><span className="text-[10px] font-bold uppercase">{m.label}</span></div>{mode === m.id && <CheckCircle size={14}/>}</button>))}</div></div>
                 </div>
               </div>
-              <div className="pt-8 border-t border-slate-800 flex justify-end"><button onClick={handleStartInterview} disabled={isStarting} className="px-12 py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-30">{isStarting ? <Loader2 className="animate-spin" /> : 'Enter Simulation & Record'}</button></div>
+              <div className="pt-8 border-t border-slate-800 flex justify-end">
+                  <div className="flex items-center gap-3 mr-6">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">YouTube Privacy:</label>
+                      <select value={youtubePrivacy} onChange={e => setYoutubePrivacy(e.target.value as any)} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none">
+                          <option value="unlisted">Unlisted</option>
+                          <option value="private">Private</option>
+                          <option value="public">Public</option>
+                      </select>
+                  </div>
+                  <button onClick={handleStartInterview} disabled={isStarting} className="px-12 py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-30">{isStarting ? <Loader2 className="animate-spin" /> : 'Enter Simulation & Record'}</button>
+              </div>
             </div>
           </div>
         )}
@@ -624,7 +622,14 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             <div className="bg-slate-900 border border-slate-800 rounded-[3rem] overflow-hidden shadow-2xl p-10 flex flex-col items-center text-center space-y-6">
               <Trophy className="text-amber-500" size={64}/><h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Simulation Results</h2>
               {report ? (
-                <div className="flex gap-4"><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Score</p><p className="text-4xl font-black text-indigo-400">{report.score}/100</p></div><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p><p className={`text-xl font-black uppercase ${report.verdict.includes('Hire') || report.verdict.includes('Forward') ? 'text-emerald-400' : 'text-red-400'}`}>{report.verdict}</p></div></div>
+                <div className="flex flex-col items-center gap-6">
+                    <div className="flex gap-4"><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Score</p><p className="text-4xl font-black text-indigo-400">{report.score}/100</p></div><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p><p className={`text-xl font-black uppercase ${report.verdict.includes('Hire') || report.verdict.includes('Forward') ? 'text-emerald-400' : 'text-red-400'}`}>{report.verdict}</p></div></div>
+                    {activeRecording?.videoUrl && (
+                        <div className="flex items-center gap-2 text-indigo-400 bg-indigo-900/20 px-4 py-2 rounded-full border border-indigo-500/30 text-xs font-bold uppercase">
+                            <Youtube size={16}/> Published to YouTube: <a href={activeRecording.videoUrl} target="_blank" rel="noreferrer" className="underline ml-1">View Session</a>
+                        </div>
+                    )}
+                </div>
               ) : reportError ? (
                 <div className="bg-red-900/20 border border-red-900/50 p-6 rounded-2xl text-center"><ShieldAlert size={32} className="mx-auto text-red-500 mb-2"/><p className="text-sm text-red-300 font-bold">Metrics Synthesis Error</p><p className="text-xs text-slate-500 mt-1 max-w-xs">{reportError}</p><button onClick={handleEndInterview} className="mt-4 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-black uppercase flex items-center gap-2 mx-auto"><RefreshCw size={14}/> Retry Synthesis</button></div>
               ) : (
@@ -635,12 +640,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               <div className="bg-white rounded-[3rem] p-12 text-slate-950 shadow-2xl space-y-10">
                 <div><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">Summary</h3><p className="text-xl font-serif leading-relaxed text-slate-800 italic">"{report.summary}"</p></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10"><div><h3 className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><Star size={12} fill="currentColor"/> Strengths</h3><ul className="space-y-3">{report.strengths.map((s, i) => (<li key={i} className="flex gap-3 text-sm font-bold text-slate-700"><CheckCircle className="text-emerald-500 shrink-0" size={18}/><span>{s}</span></li>))}</ul></div><div><h3 className="text-[10px] font-black text-red-600 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><BarChart3 size={12}/> Growth</h3><ul className="space-y-3">{report.areasForImprovement.map((a, i) => (<li key={i} className="flex gap-3 text-sm font-bold text-slate-700"><Zap className="text-amber-500 shrink-0" size={18}/><span>{a}</span></li>))}</ul></div></div>
-                {report.technicalSkills === "code or response is not found" && (
-                    <div className="p-6 bg-red-50 border-2 border-red-200 rounded-3xl flex items-center gap-4 text-red-700">
-                        <AlertCircle size={24}/>
-                        <p className="font-bold uppercase tracking-tight">Warning: code or response is not found. Evaluation incomplete.</p>
-                    </div>
-                )}
               </div>
             )}
             <div className="space-y-6"><h3 className="text-xl font-bold text-white uppercase flex items-center gap-2 px-2"><GraduationCap className="text-indigo-400"/> Neural Growth Path</h3>{report && <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl"><MarkdownView content={report.learningMaterial} /></div>}</div>
