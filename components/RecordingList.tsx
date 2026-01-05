@@ -48,7 +48,19 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     try {
       let all: RecordingSession[] = [];
       const local = await getLocalRecordings();
-      all = [...local];
+      
+      // FIX: Re-hydrate dead object URLs from stored Blobs
+      const localWithFreshUrls = local.map(rec => {
+          if ((rec as any).blob instanceof Blob) {
+              return { 
+                  ...rec, 
+                  mediaUrl: URL.createObjectURL((rec as any).blob) 
+              };
+          }
+          return rec;
+      });
+      
+      all = [...localWithFreshUrls];
       
       if (currentUser?.uid) {
           try {

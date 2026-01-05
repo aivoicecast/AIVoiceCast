@@ -238,7 +238,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           mixingAudioContextRef.current = mixCtx;
           const dest = mixCtx.createMediaStreamDestination();
           
-          const aiStream = null; // Output media stream handling in geminiLive needs specific dest access
+          const aiStream = null; 
           
           const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const userSource = mixCtx.createMediaStreamSource(userStream); 
@@ -299,6 +299,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   const timestamp = Date.now();
                   const recId = `session-${timestamp}`;
 
+                  addLog("[SYSTEM]: Syncing to local IndexedDB...");
                   setSynthesisProgress(30);
                   await saveLocalRecording({
                       id: recId,
@@ -316,25 +317,28 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   setSynthesisProgress(50);
                   const token = getDriveToken();
                   if (token) {
+                      addLog("[SYSTEM]: Token found. Starting Google Cloud & YouTube sync...");
                       const folderId = await ensureCodeStudioFolder(token);
                       
                       let videoUrl = '';
                       if (isVideo) {
                           try {
                               setSynthesisProgress(70);
+                              addLog("[YOUTUBE_TRACE]: Initializing resumable upload...");
                               const ytId = await uploadToYouTube(token, videoBlob, {
                                   title: `${channel.title}: AI Session`,
                                   description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText.substring(0, 1000)}`,
                                   privacyStatus: 'unlisted'
                               });
                               videoUrl = getYouTubeVideoUrl(ytId);
-                              addLog(`YOUTUBE_URI: ${videoUrl}`, "info");
-                          } catch (ytErr) { 
-                              addLog("YouTube upload rejected, using local/drive fallback.", "warn");
+                              addLog(`[YOUTUBE_URI]: ${videoUrl}`, "info");
+                          } catch (ytErr: any) { 
+                              addLog(`[YOUTUBE_TRACE]: Upload rejected. Error: ${ytErr.message || 'Check channel status.'}`, "error");
                           }
                       }
 
                       setSynthesisProgress(85);
+                      addLog("[SYSTEM]: Pushing binaries to Google Drive...");
                       const driveFileId = await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob);
                       const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
                       
@@ -348,9 +352,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       await saveRecordingReference(sessionData);
                   }
                   setSynthesisProgress(100);
-              } catch(e) { 
+              } catch(e: any) { 
                   console.error("Cloud sync failed", e); 
-                  addLog("Cloud sync aborted. Data is safe in local browser storage.", "error");
+                  addLog(`Cloud sync aborted: ${e.message}. Media is safe in local storage.`, "error");
               } finally { 
                   setIsUploadingRecording(false); 
                   onEndSession();
@@ -402,7 +406,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onTranscript: (text, isUser) => {
               const role = isUser ? 'user' : 'ai';
               setCurrentLine(prev => {
-                  if (prev && prev.role !== role) { setTranscript(history => [...history, prev]); return { role, text, timestamp: Date.now() }; }
+                  if (prev && prev.role !== role) { 
+                      setTranscript(history => [...history, prev]); 
+                      return { role, text, timestamp: Date.now() }; 
+                  }
                   return { role, text: (prev ? prev.text : '') + text, timestamp: prev ? prev.timestamp : Date.now() };
               });
           },
