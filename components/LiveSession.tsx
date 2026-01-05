@@ -332,7 +332,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                                   privacyStatus: 'unlisted'
                               });
                               videoUrl = getYouTubeVideoUrl(ytId);
-                              addLog(`YouTube Push Successful: ${videoUrl}`, "info");
+                              addLog(`YOUTUBE_URI: ${videoUrl}`, "info");
                           } catch (ytErr) { 
                               addLog("YouTube upload rejected, using local/drive fallback.", "warn");
                           }
@@ -390,7 +390,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { 
               setIsConnected(true); 
-              addLog("Handshake complete. WebSocket linked.");
+              addLog("Handshake complete. Neural WebSocket linked.");
               if (recordingEnabled) startRecording(); 
           },
           onClose: (reason) => { 
@@ -400,7 +400,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onError: (err) => { 
               setIsConnected(false); 
               setError(err); 
-              addLog(`API Handshake Error: ${err}`, "error");
+              addLog(`API Protocol Error: ${err}`, "error");
           },
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
@@ -574,7 +574,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   ) : logs.map((log, i) => (
                       <div key={i} className={`flex gap-2 ${log.type === 'error' ? 'text-red-400' : log.type === 'warn' ? 'text-amber-400' : 'text-slate-400'}`}>
                           <span className="opacity-40 shrink-0">[{log.time}]</span>
-                          <span className="break-words">{log.msg}</span>
+                          <span className="break-words font-black">{log.msg}</span>
                       </div>
                   ))}
               </div>

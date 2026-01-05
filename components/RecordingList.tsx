@@ -306,7 +306,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                                       <div className="flex items-center gap-2 mb-1"><Sparkles size={16} className="text-indigo-400"/><span className="font-bold text-white text-sm">Active</span></div>
                                       <p className="text-[9px] text-slate-500 leading-tight">AI facilitates and answers questions.</p>
                                   </button>
-                                  <button onClick={() => setRecorderMode('silent')} className={`p-4 rounded-2xl border text-left transition-all ${recorderMode === 'silent' ? 'bg-emerald-900/30 border-emerald-500 ring-1 ring-emerald-500 shadow-lg' : 'bg-slate-950 border-slate-800 opacity-60 hover:opacity-100'}`}>
+                                  <button onClick={() => setRecorderMode('silent')} className={`p-4 rounded-2xl border text-left transition-all ${recorderMode === 'silent' ? 'bg-emerald-900/30 border-emerald-500 ring-1 emerald-500 shadow-lg' : 'bg-slate-950 border-slate-800 opacity-60 hover:opacity-100'}`}>
                                       <div className="flex items-center gap-2 mb-1"><Mic size={16} className="text-emerald-400"/><span className="font-bold text-white text-sm">Scribe</span></div>
                                       <p className="text-[9px] text-slate-500 leading-tight">AI translates and transcribes silently.</p>
                                   </button>

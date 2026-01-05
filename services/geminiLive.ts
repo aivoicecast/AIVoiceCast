@@ -62,29 +62,24 @@ export class GeminiLiveService {
 
       const validVoice = getValidLiveVoice(voiceName);
 
-      // Re-ordered and simplified config to satisfy strict server validation
+      // Construct a very clean config to satisfy strict server validation and avoid 1007
       const liveConfig: any = {
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-        config: {
-          responseModalalities: [Modality.AUDIO], // Use official enum for reliability
-          speechConfig: { 
-              voiceConfig: { 
-                  prebuiltVoiceConfig: { voiceName: validVoice } 
-              } 
-          },
-          systemInstruction,
-          inputAudioTranscription: {},
-          outputAudioTranscription: {}
-        }
+        responseModalalities: [Modality.AUDIO],
+        speechConfig: { 
+            voiceConfig: { 
+                prebuiltVoiceConfig: { voiceName: validVoice } 
+            } 
+        },
+        systemInstruction,
       };
 
       if (tools && tools.length > 0) {
-          liveConfig.config.tools = tools;
+          liveConfig.tools = tools;
       }
 
       const connectionPromise = ai.live.connect({
-        model: liveConfig.model,
-        config: liveConfig.config,
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        config: liveConfig,
         callbacks: {
           onopen: () => {
             if (!this.isActive) return;
@@ -140,7 +135,7 @@ export class GeminiLiveService {
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
-            const errorMsg = e?.message || "Logical Socket Error";
+            const errorMsg = e?.message || "Logical Handshake Error";
             this.cleanup();
             callbacks.onError(errorMsg);
           }
@@ -151,7 +146,7 @@ export class GeminiLiveService {
       this.session = await this.sessionPromise;
     } catch (error: any) {
       this.isActive = false;
-      callbacks.onError(error?.message || "Auth/Permission Error");
+      callbacks.onError(error?.message || "Permission/Init Error");
       this.cleanup();
     }
   }
