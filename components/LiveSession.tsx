@@ -182,7 +182,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { setIsConnected(true); if (recordingEnabled) startRecording(); },
           onClose: () => { setIsConnected(false); setHasStarted(false); },
-          onError: (err) => { setIsConnected(false); setError(err.message); },
+          // Fix: err is a string here, so setError(err.message) would fail.
+          onError: (err) => { setIsConnected(false); setError(err); },
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
               const role = isUser ? 'user' : 'ai';

@@ -125,7 +125,7 @@ const FileTreeItem = ({ node, depth, activeId, onSelect, onToggle, onDelete, onS
                             node={child} 
                             depth={depth + 1} 
                             activeId={activeId} 
-                            onSelect={onSelect} 
+                            onSelect={node.children ? onSelect : undefined} 
                             onToggle={onToggle}
                             onDelete={onDelete}
                             onShare={onShare}
@@ -208,13 +208,13 @@ const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking, cur
                 <div className="flex gap-2">
                     <input 
                         type="text" 
-                        value={currentInput} 
+                        value={chatInput} 
                         onChange={e => onInputChange(e.target.value)} 
-                        onKeyDown={e => { if(e.key === 'Enter') { onSendMessage(currentInput); onInputChange(''); } }} 
+                        onKeyDown={e => { if(e.key === 'Enter') { onSendMessage(chatInput); onInputChange(''); } }} 
                         className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500 placeholder-slate-600" 
                         placeholder="Ask AI to edit code..." 
                     />
-                    <button onClick={() => { onSendMessage(currentInput); onInputChange(''); }} className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"><Send size={16}/></button>
+                    <button onClick={() => { onSendMessage(chatInput); onInputChange(''); }} className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"><Send size={16}/></button>
                 </div>
             </div>
         </div>
@@ -455,10 +455,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     name: "update_active_file",
     description: "Updates the content of the currently focused file in the editor.",
     parameters: {
-      type: Type.OBJECT,
+      type: GenType.OBJECT,
       properties: {
-        new_content: { type: Type.STRING, description: "The complete new content of the file." },
-        summary: { type: Type.STRING, description: "A brief summary of what you changed." }
+        new_content: { type: GenType.STRING, description: "The complete new content of the file." },
+        summary: { type: GenType.STRING, description: "A brief summary of what you changed." }
       },
       required: ["new_content"]
     }
@@ -518,10 +518,11 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       try {
           const info = await fetchRepoInfo(owner, repo, token);
           const { files } = await fetchRepoContents(token, owner, repo, info.default_branch);
-          const tree = files.map(f => ({
+          // Fix: cast type to 'file' | 'folder' to satisfy TreeNode interface.
+          const tree: TreeNode[] = files.map(f => ({
               id: f.path || f.name,
               name: f.name.split('/').pop() || f.name,
-              type: f.isDirectory ? 'folder' : 'file',
+              type: (f.isDirectory ? 'folder' : 'file') as 'file' | 'folder',
               isLoaded: f.childrenFetched,
               data: f
           }));
@@ -542,10 +543,11 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       setIsGithubLoading(true);
       try {
           const { files } = await fetchRepoContents(githubToken, repo.owner.login, repo.name, repo.default_branch);
-          const tree = files.map(f => ({
+          // Fix: cast type to 'file' | 'folder' to satisfy TreeNode interface.
+          const tree: TreeNode[] = files.map(f => ({
               id: f.path || f.name,
               name: f.name.split('/').pop() || f.name,
-              type: f.isDirectory ? 'folder' : 'file',
+              type: (f.isDirectory ? 'folder' : 'file') as 'file' | 'folder',
               isLoaded: f.childrenFetched,
               data: f
           }));
@@ -671,7 +673,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
               } else if (activeTab === 'github' && project.github) {
                   const { owner, repo, branch } = project.github;
                   const children = await fetchRepoSubTree(githubToken, owner, repo, node.data.treeSha, node.id);
-                  const childNodes: TreeNode[] = children.map(f => ({ id: f.path || f.name, name: f.name.split('/').pop() || f.name, type: f.isDirectory ? 'folder' : 'file', isLoaded: f.childrenFetched, data: f }));
+                  const childNodes: TreeNode[] = children.map(f => ({ id: f.path || f.name, name: f.name.split('/').pop() || f.name, type: (f.isDirectory ? 'folder' : 'file') as 'file' | 'folder', isLoaded: f.childrenFetched, data: f }));
                   setGithubTree(prev => {
                       const updateRecursive = (list: TreeNode[]): TreeNode[] => list.map(n => {
                           if (n.id === node.id) return { ...n, isLoaded: true, children: childNodes };

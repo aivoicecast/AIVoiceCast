@@ -74,7 +74,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   // Prep State
   const [mode, setMode] = useState<'coding' | 'system_design' | 'behavioral' | 'quick_screen' | 'assessment_30' | 'assessment_60'>('coding');
-  const [language, setLanguage] = useState(userProfile?.defaultLanguage || 'TypeScript');
+  const [language, setLanguage] = useState(userProfile?.defaultLanguage || 'C++');
   const [jobDesc, setJobDesc] = useState('');
   const [resumeText, setResumeText] = useState(userProfile?.resumeText || '');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');

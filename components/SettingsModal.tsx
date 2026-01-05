@@ -34,7 +34,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [displayName, setDisplayName] = useState(user.displayName);
   const [defaultRepo, setDefaultRepo] = useState(user.defaultRepoUrl || '');
-  const [defaultLanguage, setDefaultLanguage] = useState(user.defaultLanguage || 'TypeScript');
+  const [defaultLanguage, setDefaultLanguage] = useState(user.defaultLanguage || 'C++');
   const [aiProvider, setAiProvider] = useState<'gemini' | 'openai'>(user.preferredAiProvider || 'gemini');
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(user.preferredReaderTheme || 'slate');
   const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
@@ -102,7 +102,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setNextCheckNumber(user.nextCheckNumber || 1001);
           setDisplayName(user.displayName);
           setDefaultRepo(user.defaultRepoUrl || '');
-          setDefaultLanguage(user.defaultLanguage || 'TypeScript');
+          setDefaultLanguage(user.defaultLanguage || 'C++');
           setHeadline(user.headline || '');
           setCompany(user.company || '');
           setLinkedinUrl(user.linkedinUrl || '');
