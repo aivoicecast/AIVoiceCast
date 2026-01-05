@@ -35,12 +35,17 @@ export class GeminiLiveService {
   private speakingTimer: any = null;
   private isActive: boolean = false;
 
-  public initializeAudio() {
-    this.inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+  public async initializeAudio() {
+    if (!this.inputAudioContext) {
+      this.inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+    }
     this.outputAudioContext = getGlobalAudioContext(24000);
     
-    warmUpAudioContext(this.inputAudioContext).catch(() => {});
-    warmUpAudioContext(this.outputAudioContext).catch(() => {});
+    // Explicitly await the resume/play chain to ensure the gesture is locked in
+    await Promise.all([
+      warmUpAudioContext(this.inputAudioContext),
+      warmUpAudioContext(this.outputAudioContext)
+    ]);
   }
 
   async connect(voiceName: string, systemInstruction: string, callbacks: LiveConnectionCallbacks, tools?: any[]) {
@@ -51,7 +56,10 @@ export class GeminiLiveService {
       
       console.log(`[LiveService] Initializing link for ${voiceName}...`);
       
-      if (!this.inputAudioContext) this.initializeAudio();
+      if (!this.inputAudioContext || this.inputAudioContext.state !== 'running') {
+        await this.initializeAudio();
+      }
+
       if (!this.stream) {
           this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
@@ -105,7 +113,7 @@ export class GeminiLiveService {
                 this.isPlayingResponse = true;
                 if (this.speakingTimer) clearTimeout(this.speakingTimer);
                 
-                // Ensure context is not suspended
+                // Secondary check for context state
                 if (this.outputAudioContext.state === 'suspended') {
                     await this.outputAudioContext.resume();
                 }
@@ -189,8 +197,15 @@ export class GeminiLiveService {
           if (session && this.isActive) session.sendRealtimeInput({ media: pcmBlob }); 
       });
     };
+    
     this.source.connect(this.processor);
-    this.processor.connect(this.inputAudioContext.destination);
+    
+    // CRITICAL: We connect the processor to a zero-gain node to keep it active
+    // without playing the user's microphone back through their speakers.
+    const silentGain = this.inputAudioContext.createGain();
+    silentGain.gain.value = 0;
+    this.processor.connect(silentGain);
+    silentGain.connect(this.inputAudioContext.destination);
   }
 
   private stopAllSources() {

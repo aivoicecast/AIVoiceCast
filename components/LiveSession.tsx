@@ -11,7 +11,7 @@ import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalR
 import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, linkDiscussionToLectureSegment, syncUserProfile } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
-import { getGlobalAudioContext, getGlobalMediaStreamDest } from '../utils/audioUtils';
+import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
 
 interface LiveSessionProps {
   channel: Channel;
@@ -239,6 +239,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   const handleStartSession = async () => {
       setError(null);
+      
+      // CRITICAL: Immediately resume the global audio context on click
+      // This ensures the user gesture is captured before any other async prompts.
+      const ctx = getGlobalAudioContext();
+      addLog("Warming up neural audio fabric...");
+      await warmUpAudioContext(ctx);
+
       const hwOk = await startHardware();
       if (!hwOk) {
           setError("Hardware access denied. Please allow permissions.");
@@ -426,7 +433,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
     let service = serviceRef.current || new GeminiLiveService();
     serviceRef.current = service;
-    service.initializeAudio();
+    await service.initializeAudio();
+    
     try {
       const now = new Date();
       const timeStr = now.toLocaleString(undefined, { 
@@ -445,7 +453,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           effectiveInstruction += `\n\n[USER CONTEXT]: ${initialContext}`;
       }
 
-      addLog("Initializing Neural Link...");
+      addLog("Establishing Neural Link...");
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { 
               setIsConnected(true); 
