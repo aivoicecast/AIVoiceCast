@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject } from '../types';
 import { auth } from '../services/firebaseConfig';
 import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage, getUserInterviews, updateInterviewMetadata, saveCodeProject, getCodeProject } from '../services/firestoreService';
-import { getDriveToken, connectGoogleDrive } from '../services/authService';
+import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl, getYouTubeEmbedUrl } from '../services/youtubeService';
 import { GeminiLiveService } from '../services/geminiLive';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -14,7 +14,7 @@ import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug } from 'lucide-react';
-import { getGlobalAudioContext, getGlobalMediaStreamDest } from '../utils/audioUtils';
+import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
 
 interface MockInterviewProps {
   onBack: () => void;
@@ -215,6 +215,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   }, []);
 
   const handleStartInterview = async () => {
+    // CRITICAL: Priming Audio Engine on Click
+    const audioCtx = getGlobalAudioContext();
+    await warmUpAudioContext(audioCtx);
+
     setIsStarting(true);
     isEndingRef.current = false;
     reconnectAttemptsRef.current = 0;
@@ -229,14 +233,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
     try {
       logApi("Acquiring hardware locks...");
-      const ctx = getGlobalAudioContext();
       const recordingDest = getGlobalMediaStreamDest();
       
       const camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       
-      // Connect user mic to shared recording bus
-      const micSource = ctx.createMediaStreamSource(camStream);
+      const micSource = audioCtx.createMediaStreamSource(camStream);
       micSource.connect(recordingDest);
 
       activeStreamRef.current = camStream;
@@ -285,7 +287,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       drawFrame();
 
       const combinedStream = canvas.captureStream(30);
-      // Capture mixed audio (User + AI) from shared bus
       recordingDest.stream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
       
       const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 2500000 });
@@ -388,7 +389,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',
-            contents: `Analyze this interview transcript: ${transcriptText}. Return valid JSON with: score (0-100), technischeSkills, communication, collaboration, strengths (list), areasForImprovement (list), verdict, summary, learningMaterial.`,
+            contents: `Analyze this interview transcript: ${transcriptText}. Return valid JSON with: score (0-100), technicalSkills, communication, collaboration, strengths (list), areasForImprovement (list), verdict, summary, learningMaterial.`,
             config: { responseMimeType: 'application/json' }
         });
         reportData = JSON.parse(response.text || "{}");
@@ -410,6 +411,20 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     }
     setIsGeneratingReport(false);
     if (synthesisIntervalRef.current) clearInterval(synthesisIntervalRef.current);
+  };
+
+  const handleManualSync = async (rec: any) => {
+    if (!currentUser || !rec.blob) return;
+    let token = getDriveToken();
+    if (!token) {
+        if (confirm("You need a Google Drive/YouTube token to sync. Sign in now?")) {
+            const user = await signInWithGoogle();
+            if (!user) return;
+            token = getDriveToken();
+        } else {
+            return;
+        }
+    }
   };
 
   return (

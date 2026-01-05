@@ -41,11 +41,13 @@ export class GeminiLiveService {
     }
     this.outputAudioContext = getGlobalAudioContext(24000);
     
-    // Explicitly await the resume/play chain to ensure the gesture is locked in
     await Promise.all([
       warmUpAudioContext(this.inputAudioContext),
       warmUpAudioContext(this.outputAudioContext)
     ]);
+    
+    // Reset the scheduler for a fresh connection
+    this.nextStartTime = this.outputAudioContext.currentTime;
   }
 
   async connect(voiceName: string, systemInstruction: string, callbacks: LiveConnectionCallbacks, tools?: any[]) {
@@ -53,8 +55,6 @@ export class GeminiLiveService {
       this.isActive = true;
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      console.log(`[LiveService] Initializing link for ${voiceName}...`);
       
       if (!this.inputAudioContext || this.inputAudioContext.state !== 'running') {
         await this.initializeAudio();
@@ -82,14 +82,12 @@ export class GeminiLiveService {
           config.tools = tools;
       }
 
-      console.log(`[LiveService] Requesting WebSocket connection...`);
       const connectionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config,
         callbacks: {
           onopen: () => {
             if (!this.isActive) return;
-            console.log(`[LiveService] WebSocket OPEN. Enabling input.`);
             this.startAudioInput(callbacks.onVolumeUpdate);
             callbacks.onOpen();
           },
@@ -107,42 +105,43 @@ export class GeminiLiveService {
                 callbacks.onTranscript(inTrans.text, true);
             }
             
-            const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-            if (base64Audio && this.outputAudioContext) {
-              try {
-                this.isPlayingResponse = true;
-                if (this.speakingTimer) clearTimeout(this.speakingTimer);
-                
-                // Secondary check for context state
-                if (this.outputAudioContext.state === 'suspended') {
-                    await this.outputAudioContext.resume();
-                }
+            const parts = message.serverContent?.modelTurn?.parts || [];
+            for (const part of parts) {
+                const base64Audio = part.inlineData?.data;
+                if (base64Audio && this.outputAudioContext) {
+                    try {
+                        this.isPlayingResponse = true;
+                        if (this.speakingTimer) clearTimeout(this.speakingTimer);
+                        
+                        // Critical check for context health
+                        if (this.outputAudioContext.state !== 'running') {
+                            await this.outputAudioContext.resume();
+                        }
 
-                const bytes = base64ToBytes(base64Audio);
-                this.nextStartTime = Math.max(this.nextStartTime, this.outputAudioContext.currentTime);
-                const audioBuffer = await decodeRawPcm(bytes, this.outputAudioContext, 24000, 1);
-                const source = this.outputAudioContext.createBufferSource();
-                source.buffer = audioBuffer;
-                
-                // Connect to both Speakers AND Recorder Bus
-                connectOutput(source, this.outputAudioContext);
-                
-                source.addEventListener('ended', () => {
-                  this.sources.delete(source);
-                  if (this.sources.size === 0) {
-                    this.speakingTimer = setTimeout(() => { this.isPlayingResponse = false; }, 500);
-                  }
-                });
-                source.start(this.nextStartTime);
-                this.sources.add(source);
-                this.nextStartTime += audioBuffer.duration;
-              } catch (e) {
-                  console.error("[LiveService] Audio playback error", e);
-              }
+                        const bytes = base64ToBytes(base64Audio);
+                        this.nextStartTime = Math.max(this.nextStartTime, this.outputAudioContext.currentTime);
+                        const audioBuffer = await decodeRawPcm(bytes, this.outputAudioContext, 24000, 1);
+                        const source = this.outputAudioContext.createBufferSource();
+                        source.buffer = audioBuffer;
+                        
+                        connectOutput(source, this.outputAudioContext);
+                        
+                        source.addEventListener('ended', () => {
+                            this.sources.delete(source);
+                            if (this.sources.size === 0) {
+                                this.speakingTimer = setTimeout(() => { this.isPlayingResponse = false; }, 500);
+                            }
+                        });
+                        source.start(this.nextStartTime);
+                        this.sources.add(source);
+                        this.nextStartTime += audioBuffer.duration;
+                    } catch (e) {
+                        console.error("[LiveService] Audio processing error", e);
+                    }
+                }
             }
 
-            const interrupted = message.serverContent?.interrupted;
-            if (interrupted) {
+            if (message.serverContent?.interrupted) {
                 this.stopAllSources();
                 this.nextStartTime = 0;
                 this.isPlayingResponse = false;
@@ -150,15 +149,11 @@ export class GeminiLiveService {
           },
           onclose: (e: any) => {
             if (!this.isActive) return;
-            const code = e?.code || 1000;
-            let reason = e?.reason || "Link closed";
-            console.warn(`[LiveService] WebSocket CLOSED: ${reason} (${code})`);
             this.cleanup();
-            callbacks.onClose(reason, code);
+            callbacks.onClose(e?.reason || "Link closed", e?.code || 1000);
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
-            console.error(`[LiveService] WebSocket ERROR`, e);
             this.cleanup();
             callbacks.onError(e?.message || "Handshake Error");
           }
@@ -169,7 +164,6 @@ export class GeminiLiveService {
       this.session = await this.sessionPromise;
     } catch (error: any) {
       this.isActive = false;
-      console.error(`[LiveService] Connection exception`, error);
       callbacks.onError(error?.message || "Auth Error");
       this.cleanup();
     }
@@ -199,9 +193,6 @@ export class GeminiLiveService {
     };
     
     this.source.connect(this.processor);
-    
-    // CRITICAL: We connect the processor to a zero-gain node to keep it active
-    // without playing the user's microphone back through their speakers.
     const silentGain = this.inputAudioContext.createGain();
     silentGain.gain.value = 0;
     this.processor.connect(silentGain);
@@ -215,7 +206,6 @@ export class GeminiLiveService {
 
   async disconnect() {
     this.isActive = false;
-    console.log(`[LiveService] Disconnecting...`);
     if (this.session) { try { (this.session as any).close?.(); } catch(e) {} }
     this.cleanup();
   }
