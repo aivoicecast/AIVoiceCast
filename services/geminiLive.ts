@@ -1,6 +1,6 @@
 
-import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
-import { base64ToBytes, decodeRawPcm, createPcmBlob, getGlobalAudioContext, warmUpAudioContext, coolDownAudioContext, registerAudioOwner } from '../utils/audioUtils';
+import { GoogleGenAI, LiveServerMessage } from '@google/genai';
+import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, coolDownAudioContext, registerAudioOwner } from '../utils/audioUtils';
 
 export interface LiveConnectionCallbacks {
   onOpen: () => void;
@@ -31,21 +31,17 @@ export class GeminiLiveService {
   private nextStartTime: number = 0;
   private sources: Set<AudioBufferSourceNode> = new Set();
   private sessionPromise: Promise<any> | null = null;
-  private outputDestination: MediaStreamAudioDestinationNode | null = null;
   private isPlayingResponse: boolean = false;
   private speakingTimer: any = null;
   private isActive: boolean = false;
 
   public initializeAudio() {
-    this.inputAudioContext = getGlobalAudioContext(16000);
-    this.outputAudioContext = getGlobalAudioContext(24000);
-    if (this.outputAudioContext) this.outputDestination = this.outputAudioContext.createMediaStreamDestination();
+    // Guidelines recommend separate contexts for different sample rates
+    this.inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+    this.outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    
     warmUpAudioContext(this.inputAudioContext).catch(() => {});
     warmUpAudioContext(this.outputAudioContext).catch(() => {});
-  }
-
-  public getOutputMediaStream(): MediaStream | null {
-    return this.outputDestination ? this.outputDestination.stream : null;
   }
 
   async connect(voiceName: string, systemInstruction: string, callbacks: LiveConnectionCallbacks, tools?: any[]) {
@@ -53,29 +49,26 @@ export class GeminiLiveService {
       this.isActive = true;
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       
-      // Mandatory: Create new GoogleGenAI instance inside the connect call
+      // Always create a new instance before connecting
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       if (!this.inputAudioContext) this.initializeAudio();
       
       if (!this.stream) {
-        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
 
       const validVoice = getValidLiveVoice(voiceName);
 
-      // Cleanest possible config to avoid 1007 Protocol Violations
+      // Cleanest possible configuration to prevent 1007 Protocol Violations
       const config: any = {
-        responseModalalities: [Modality.AUDIO],
-        speechConfig: { 
-            voiceConfig: { 
-                prebuiltVoiceConfig: { voiceName: validVoice } 
-            } 
-        },
-        systemInstruction,
-        // Include transcription objects as they are expected by message handlers
-        inputAudioTranscription: {},
-        outputAudioTranscription: {}
+          responseModalities: ['AUDIO'], // Using string literal for broad compatibility
+          speechConfig: {
+              voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: validVoice }
+              }
+          },
+          systemInstruction: systemInstruction.trim()
       };
 
       if (tools && tools.length > 0) {
@@ -84,7 +77,7 @@ export class GeminiLiveService {
 
       const connectionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-        config: config,
+        config,
         callbacks: {
           onopen: () => {
             if (!this.isActive) return;
@@ -93,53 +86,57 @@ export class GeminiLiveService {
           },
           onmessage: async (message: LiveServerMessage) => {
             if (!this.isActive) return;
+            
+            // Handle Tool Calls
             if (message.toolCall) callbacks.onToolCall?.(message.toolCall);
             
+            // Handle Audio Data
             const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (base64Audio && this.outputAudioContext) {
               try {
                 this.isPlayingResponse = true;
                 if (this.speakingTimer) clearTimeout(this.speakingTimer);
+                
                 const bytes = base64ToBytes(base64Audio);
                 this.nextStartTime = Math.max(this.nextStartTime, this.outputAudioContext.currentTime);
                 const audioBuffer = await decodeRawPcm(bytes, this.outputAudioContext, 24000, 1);
+                
                 const source = this.outputAudioContext.createBufferSource();
                 source.buffer = audioBuffer;
                 source.connect(this.outputAudioContext.destination);
-                if (this.outputDestination) source.connect(this.outputDestination);
+                
                 source.addEventListener('ended', () => {
                   this.sources.delete(source);
-                  if (this.sources.size === 0) this.speakingTimer = setTimeout(() => { this.isPlayingResponse = false; }, 500);
+                  if (this.sources.size === 0) {
+                    this.speakingTimer = setTimeout(() => { this.isPlayingResponse = false; }, 500);
+                  }
                 });
+                
                 source.start(this.nextStartTime);
                 this.sources.add(source);
                 this.nextStartTime += audioBuffer.duration;
               } catch (e) {}
             }
-            
-            const outputText = message.serverContent?.outputTranscription?.text;
-            if (outputText) callbacks.onTranscript(outputText, false);
-            const inputText = message.serverContent?.inputTranscription?.text;
-            if (inputText) callbacks.onTranscript(inputText, true);
-            
+
+            // Handle Interruptions
             const interrupted = message.serverContent?.interrupted;
-            if (interrupted) { 
-                this.stopAllSources(); 
-                this.nextStartTime = 0; 
-                this.isPlayingResponse = false; 
+            if (interrupted) {
+                this.stopAllSources();
+                this.nextStartTime = 0;
+                this.isPlayingResponse = false;
             }
           },
           onclose: (e: any) => {
             if (!this.isActive) return;
             let reason = "Link closed";
-            if (e?.code === 1007) reason = "Protocol Error (1007) - Possible config mismatch";
+            if (e?.code === 1007) reason = "Protocol Violation (1007) - Check config keys";
             if (e?.code === 4003) reason = "API Quota exceeded";
             this.cleanup();
             callbacks.onClose(reason);
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
-            const errorMsg = e?.message || "Handshake Error";
+            const errorMsg = e?.message || "Logical Socket Error";
             this.cleanup();
             callbacks.onError(errorMsg);
           }
@@ -156,34 +153,53 @@ export class GeminiLiveService {
   }
 
   public sendToolResponse(functionResponses: any) {
-    this.sessionPromise?.then((session) => { if (session && this.isActive) try { session.sendToolResponse({ functionResponses }); } catch(e) {} });
+      // Solely rely on promise resolution as per instructions
+      this.sessionPromise?.then((session) => {
+          if (session) session.sendToolResponse({ functionResponses });
+      });
   }
 
   private startAudioInput(onVolume: (v: number) => void) {
     if (!this.inputAudioContext || !this.stream || !this.sessionPromise) return;
+    
     this.source = this.inputAudioContext.createMediaStreamSource(this.stream);
     this.processor = this.inputAudioContext.createScriptProcessor(4096, 1, 1);
+    
     this.processor.onaudioprocess = (e) => {
-      if (!this.isActive) return;
       const inputData = e.inputBuffer.getChannelData(0);
-      if (this.isPlayingResponse) { onVolume(0); return; }
-      let sum = 0; for(let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
-      onVolume(Math.sqrt(sum / inputData.length) * 5);
+      
+      // Calculate Volume for UI
+      if (this.isPlayingResponse) {
+          onVolume(0);
+      } else {
+          let sum = 0;
+          for(let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
+          onVolume(Math.sqrt(sum / inputData.length) * 5);
+      }
+
+      // CRITICAL: Solely rely on sessionPromise resolution
       const pcmBlob = createPcmBlob(inputData);
-      this.sessionPromise?.then(session => { if (session && this.isActive) try { session.sendRealtimeInput({ media: pcmBlob }); } catch(err) {} });
+      this.sessionPromise?.then((session) => {
+          session.sendRealtimeInput({ media: pcmBlob });
+      });
     };
+    
     this.source.connect(this.processor);
     this.processor.connect(this.inputAudioContext.destination);
   }
 
   private stopAllSources() {
-    for (const source of this.sources) { try { source.stop(); source.disconnect(); } catch (e) {} }
+    for (const source of this.sources) {
+      try { source.stop(); source.disconnect(); } catch (e) {}
+    }
     this.sources.clear();
   }
 
   async disconnect() {
     this.isActive = false;
-    if (this.session) try { (this.session as any).close?.(); } catch(e) {}
+    if (this.session) {
+        try { (this.session as any).close?.(); } catch(e) {}
+    }
     this.cleanup();
   }
 
@@ -192,7 +208,9 @@ export class GeminiLiveService {
     this.isPlayingResponse = false;
     coolDownAudioContext();
     if (this.speakingTimer) clearTimeout(this.speakingTimer);
-    if (this.processor) { try { this.processor.disconnect(); this.processor.onaudioprocess = null; } catch(e) {} }
+    if (this.processor) {
+        try { this.processor.disconnect(); this.processor.onaudioprocess = null; } catch(e) {}
+    }
     if (this.source) try { this.source.disconnect(); } catch(e) {}
     this.stream?.getTracks().forEach(track => track.stop());
     this.session = null;
@@ -200,7 +218,6 @@ export class GeminiLiveService {
     this.stream = null;
     this.processor = null;
     this.source = null;
-    this.outputDestination = null;
     this.nextStartTime = 0;
   }
 }

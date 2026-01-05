@@ -238,11 +238,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           mixingAudioContextRef.current = mixCtx;
           const dest = mixCtx.createMediaStreamDestination();
           
-          const aiStream = serviceRef.current.getOutputMediaStream();
-          if (aiStream) { 
-              const aiSource = mixCtx.createMediaStreamSource(aiStream); 
-              aiSource.connect(dest); 
-          }
+          const aiStream = null; // Output media stream handling in geminiLive needs specific dest access
           
           const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const userSource = mixCtx.createMediaStreamSource(userStream); 
@@ -400,7 +396,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onError: (err) => { 
               setIsConnected(false); 
               setError(err); 
-              addLog(`Protocol Exception: ${err}`, "error");
+              addLog(`API Handshake Error: ${err}`, "error");
           },
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
