@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -191,7 +190,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const historyText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
       const timeContext = `SYSTEM ALERT: There are exactly ${formatTime(timeLeft)} remaining in this session. TRUST ONLY THIS VALUE. DO NOT ATTEMPT TO COMPUTE TIME YOURSELF.`;
       const persona = mode.startsWith('assessment') ? 'Objective Technical Proctor' : 'Senior Software Interviewer';
-      const prompt = `${timeContext} RESUMING ${mode.toUpperCase()} SESSION. Role: ${persona}. Stack: ${language}. RECAP HISTORY:\n${historyText}`;
+      const jobContext = jobDesc.trim() ? `Job: ${jobDesc}` : "Job: A general senior software engineering role";
+      const prompt = `${timeContext} RESUMING ${mode.toUpperCase()} SESSION. Role: ${persona}. Stack: ${language}. ${jobContext}. RECAP HISTORY:\n${historyText}`;
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
@@ -284,7 +284,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       - Do not provide hints. 
       - Only speak for technical clarification or time-checks (10m, 5m, 1m).` : '';
 
-      const problemPrompt = `Mode: ${mode}. Language: ${language}. Job: ${jobDesc}. ${assessmentRules} Generate one senior interview challenge in Markdown.`;
+      const jobContext = jobDesc.trim() ? `Job: ${jobDesc}` : "Job: A general senior software engineering role";
+      const problemPrompt = `Mode: ${mode}. Language: ${language}. ${jobContext}. ${assessmentRules} Generate one senior interview challenge in Markdown.`;
       const probResponse = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: problemPrompt });
       setGeneratedProblemMd(probResponse.text || "Challenge context lost...");
 
@@ -329,7 +330,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const persona = isAssessment ? 'Objective Technical Proctor' : 'Senior Software Interviewer';
       const timeSync = `IMPORTANT: This is a ${duration/60} minute session. System clock starts now. Current time remaining: ${formatTime(duration)}. NEVER CALCULATE TIME MANUALLY. USE THE SYSTEM PROVIDER VALUE ONLY.`;
       
-      await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', `${timeSync} Role: ${persona}. Job: ${jobDesc}. Mode: ${mode}.`, {
+      await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', `${timeSync} Role: ${persona}. ${jobContext}. Mode: ${mode}.`, {
         onOpen: () => {
           setIsAiConnected(true);
           // Start actual countdown on open
@@ -397,7 +398,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-        const reportPrompt = `Analyze interview for ${jobDesc}. Return JSON ONLY. Transcript: ${transcriptText}`;
+        const jobContext = jobDesc.trim() ? `Job: ${jobDesc}` : "a general senior software engineering position";
+        const reportPrompt = `Analyze interview for ${jobContext}. Return JSON ONLY. Transcript: ${transcriptText}`;
 
         const response = await ai.models.generateContent({
           model: 'gemini-3-pro-preview',
@@ -509,7 +511,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                     </div>
                     <div className="space-y-4">
                       <span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span>
-                      <p className="text-xs text-slate-400 line-clamp-2 italic leading-relaxed">"{rec.jobDescription}"</p>
+                      <p className="text-xs text-slate-400 line-clamp-2 italic leading-relaxed">"{rec.jobDescription || 'Standard Professional Context'}"</p>
                       <div className="pt-4 border-t border-slate-800 flex items-center justify-between"><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Review Report</span><ChevronRight size={16} className="text-slate-500 group-hover:translate-x-1 transition-transform" /></div>
                     </div>
                   </div>
@@ -529,7 +531,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                   <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Coding Language</h3><select value={language} onChange={e => setLanguage(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-bold text-white focus:ring-2 focus:ring-indigo-500 outline-none">{LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}</select></div>
                 </div>
                 <div className="space-y-6">
-                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><Building size={14}/> Job Context</h3><textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste JD..." className="w-full h-40 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"/></div>
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><Building size={14}/> Job Context (Optional)</h3><textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste JD or company context..." className="w-full h-40 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"/></div>
                   <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Interview Mode</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{[
                     { id: 'coding', icon: Code, label: 'Coding (45m)' },
                     { id: 'system_design', icon: Layers, label: 'Sys Design (45m)' },
@@ -540,7 +542,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                   ].map(m => (<button key={m.id} onClick={() => setMode(m.id as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}><div className="flex items-center gap-2"><m.icon size={14}/><span className="text-[10px] font-bold uppercase">{m.label}</span></div>{mode === m.id && <CheckCircle size={14}/>}</button>))}</div></div>
                 </div>
               </div>
-              <div className="pt-8 border-t border-slate-800 flex justify-end"><button onClick={handleStartInterview} disabled={isStarting || !jobDesc.trim()} className="px-12 py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-30">{isStarting ? <Loader2 className="animate-spin" /> : 'Enter Simulation & Record'}</button></div>
+              <div className="pt-8 border-t border-slate-800 flex justify-end"><button onClick={handleStartInterview} disabled={isStarting} className="px-12 py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-30">{isStarting ? <Loader2 className="animate-spin" /> : 'Enter Simulation & Record'}</button></div>
             </div>
           </div>
         )}
