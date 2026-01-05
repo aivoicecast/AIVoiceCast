@@ -105,8 +105,10 @@ export function getGlobalAudioContext(sampleRate: number = 24000): AudioContext 
   if (!audioBridgeElement) {
       audioBridgeElement = new Audio();
       audioBridgeElement.id = 'web-audio-bg-bridge';
-      audioBridgeElement.muted = false;
-      audioBridgeElement.volume = 1.0;
+      // CRITICAL: We mute this element to prevent the user from hearing an echo of their own mic.
+      // The bridge is only needed to "pull" data from the mediaStreamDest for the recorder.
+      audioBridgeElement.muted = true; 
+      audioBridgeElement.volume = 0;
       audioBridgeElement.setAttribute('playsinline', 'true');
       audioBridgeElement.setAttribute('autoplay', 'true');
       document.body.appendChild(audioBridgeElement);
@@ -128,10 +130,15 @@ export function getGlobalMediaStreamDest(sampleRate?: number): MediaStreamAudioD
 }
 
 export function connectOutput(source: AudioNode, ctx: AudioContext) {
+    // This plays through the user's speakers
     source.connect(ctx.destination);
+    
+    // This routes the audio to the "recording bus"
     if (mediaStreamDest) {
         source.connect(mediaStreamDest);
     }
+    
+    // Ensure bridge is active but silent
     if (audioBridgeElement && audioBridgeElement.paused) {
         audioBridgeElement.play().catch(() => {});
     }
