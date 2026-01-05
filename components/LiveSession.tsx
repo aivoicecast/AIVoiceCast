@@ -298,7 +298,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               drawCtx.fillStyle = '#020617'; drawCtx.fillRect(0, 0, canvas.width, canvas.height);
 
               if (screenStreamRef.current && screenVideo.readyState >= 2) {
-                  drawCtx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+                  // Fix: Proportional scaling (contain) to prevent skewing
+                  const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
+                  const w = screenVideo.videoWidth * scale;
+                  const h = screenVideo.videoHeight * scale;
+                  const x = (canvas.width - w) / 2;
+                  const y = (canvas.height - h) / 2;
+                  drawCtx.drawImage(screenVideo, x, y, w, h);
               } else {
                   drawCtx.fillStyle = '#1e293b'; drawCtx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
                   drawCtx.fillStyle = '#6366f1'; drawCtx.font = 'bold 40px sans-serif'; drawCtx.textAlign = 'center';
@@ -367,7 +373,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       const folderId = await ensureCodeStudioFolder(token);
                       
                       let videoUrl = '';
-                      // Always attempt YouTube if it is preferred OR if we want multi-backup
+                      // Fix: Strictly honor YouTube preference and only use Drive as fallback for the video file
                       if (pref === 'youtube' || channel.id.startsWith('meeting')) {
                           try {
                               setSynthesisProgress(70);
@@ -384,17 +390,25 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                           }
                       }
 
-                      setSynthesisProgress(85);
-                      addLog("[SYSTEM]: Pushing binary chunks to G-Drive...");
-                      const driveFileId = await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob);
-                      const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
+                      let tFileId = '';
+                      let driveFileId = '';
+                      
+                      // Always backup transcript to drive if token exists
+                      tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
+
+                      // Only upload video to Drive if it's the preferred target OR if YouTube failed
+                      if (pref === 'drive' || !videoUrl) {
+                          setSynthesisProgress(85);
+                          addLog("[SYSTEM]: Pushing binary chunks to G-Drive...");
+                          driveFileId = await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob);
+                      }
                       
                       const sessionData: RecordingSession = {
                           id: recId, userId: currentUser.uid, channelId: channel.id,
                           channelTitle: channel.title, channelImage: channel.imageUrl,
-                          timestamp, mediaUrl: videoUrl || `drive://${driveFileId}`,
+                          timestamp, mediaUrl: videoUrl || (driveFileId ? `drive://${driveFileId}` : ''),
                           mediaType: 'video/webm',
-                          transcriptUrl: `drive://${tFileId}`
+                          transcriptUrl: tFileId ? `drive://${tFileId}` : ''
                       };
                       await saveRecordingReference(sessionData);
                   } else {

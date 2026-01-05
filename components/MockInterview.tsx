@@ -21,12 +21,6 @@ interface MockInterviewProps {
   onStartLiveSession: (channel: Channel, context?: string) => void;
 }
 
-interface IdealAnswer {
-  question: string;
-  expectedAnswer: string;
-  rationale: string;
-}
-
 interface InterviewReport {
   score: number;
   technicalSkills: string;
@@ -36,7 +30,7 @@ interface InterviewReport {
   areasForImprovement: string[];
   verdict: 'Strong Hire' | 'Hire' | 'No Hire' | 'Strong No Hire' | 'Move Forward' | 'Reject';
   summary: string;
-  idealAnswers: IdealAnswer[];
+  idealAnswers: { question: string, expectedAnswer: string, rationale: string }[];
   learningMaterial: string; 
   todoList: string[];
   fitStatus?: 'underfit' | 'overfit' | 'match';
@@ -272,7 +266,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const drawFrame = () => {
         if (isEndingRef.current) return;
         drawCtx.fillStyle = '#020617'; drawCtx.fillRect(0, 0, canvas.width, canvas.height);
-        if (screenVideo.readyState >= 2) drawCtx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+        
+        if (screenVideo.readyState >= 2) {
+            // Fix: Proportional scaling (contain) for screen recording
+            const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
+            const w = screenVideo.videoWidth * scale;
+            const h = screenVideo.videoHeight * scale;
+            const x = (canvas.width - w) / 2;
+            const y = (canvas.height - h) / 2;
+            drawCtx.drawImage(screenVideo, x, y, w, h);
+        }
+
         if (camVideo.readyState >= 2) {
           drawCtx.strokeStyle = '#6366f1'; drawCtx.lineWidth = 4;
           drawCtx.strokeRect(940, 520, 320, 180); drawCtx.drawImage(camVideo, 940, 520, 320, 180);
@@ -285,7 +289,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       recordingDest.stream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
       
       const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 2500000 });
-      // Fix: Changed incorrect property name from onavailable to ondataavailable
       recorder.ondataavailable = e => { if (e.data.size > 0) videoChunksRef.current.push(e.data); };
       mediaRecorderRef.current = recorder;
       recorder.start(1000);
@@ -367,6 +370,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         const profile = await getUserProfile(currentUser.uid);
         const pref = profile?.preferredRecordingTarget || 'drive';
         
+        // Fix: Strictly honor YouTube preference
         if (pref === 'youtube' || mode.includes('assessment')) {
             try {
                 const token = getDriveToken();
@@ -379,7 +383,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                     videoUrl = getYouTubeVideoUrl(ytId);
                     logApi(`YouTube Upload Complete: ${videoUrl}`);
                 }
-            } catch (e) { logApi("Cloud sync failed. Video stored in local cache.", "warn"); }
+            } catch (e) { logApi("YouTube upload failed. Proceeding with local caching.", "warn"); }
+        }
+        
+        // Only upload to Drive if preferred OR if YouTube attempt failed
+        if (pref === 'drive' || (!videoUrl && getDriveToken())) {
+            // Logic for drive upload could be added here if we wanted to mirror the LiveSession drive logic
         }
     }
 
@@ -476,7 +485,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                     </div>
                     <div className="space-y-4">
                       <span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span>
-                      {rec.videoUrl && <span className="text-[9px] font-black uppercase bg-red-900/20 text-red-500 px-3 py-1 rounded-full border border-indigo-500/30 ml-2">YouTube Archive</span>}
+                      {rec.videoUrl && <span className="text-[9px] font-black uppercase bg-red-900/20 text-red-500 px-3 py-1 rounded-full border border-red-500/30 ml-2">YouTube Archive</span>}
                     </div>
                   </div>
                 ))}
