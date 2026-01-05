@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
@@ -39,6 +39,7 @@ const UI_TEXT = {
     copied: "Copied",
     listening: "Listening...",
     connecting: "Connecting to AI Agent...",
+    reconnect: "Manual Reconnect",
     you: "You",
     speaking: "Speaking...",
     retry: "Retry Connection",
@@ -72,6 +73,7 @@ const UI_TEXT = {
     copied: "已复制",
     listening: "正在聆听...",
     connecting: "连接到 AI 智能体...",
+    reconnect: "手动重连",
     you: "你",
     speaking: "正在说话...",
     retry: "重试连接",
@@ -146,6 +148,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const t = UI_TEXT[language];
   const [hasStarted, setHasStarted] = useState(false); 
   const [isConnected, setIsConnected] = useState(false);
+  const [showReconnectButton, setShowReconnectButton] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cloudWarning, setCloudWarning] = useState(false);
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
@@ -165,6 +168,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
+  // Fix: replaced NodeJS.Timeout with any to resolve "Cannot find namespace 'NodeJS'" error on line 171.
+  const reconnectTimeoutRef = useRef<any>(null);
 
   const [transcript, setTranscript] = useState<TranscriptItem[]>(initialTranscript || []);
   const [currentLine, setCurrentLine] = useState<TranscriptItem | null>(null);
@@ -415,6 +420,15 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   }, [recordingEnabled, channel, currentUser, onEndSession, addLog, transcript]);
 
   const connect = useCallback(async () => {
+    setIsConnected(false);
+    setShowReconnectButton(false);
+    
+    // Set a timeout to show the manual reconnect button if stuck for 8 seconds
+    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+    reconnectTimeoutRef.current = setTimeout(() => {
+        if (!isConnected && mountedRef.current) setShowReconnectButton(true);
+    }, 8000);
+
     let service = serviceRef.current || new GeminiLiveService();
     serviceRef.current = service;
     service.initializeAudio();
@@ -441,6 +455,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { 
               setIsConnected(true); 
+              setShowReconnectButton(false);
+              if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
               addLog("Link Active.");
               if (recordingEnabled) startRecording(); 
           },
@@ -482,10 +498,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         setError("AI init failure."); 
         addLog(`Link exception: ${e.message}`, "error");
     }
-  }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, recordingEnabled, startRecording, onCustomToolCall, addLog, initialTranscript]);
+  }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, recordingEnabled, startRecording, onCustomToolCall, addLog, initialTranscript, isConnected]);
 
   const handleDisconnect = async () => {
       addLog("Closing Session...");
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
       } else { 
@@ -688,7 +705,23 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   </div>
                </div>
             )}
-            {!isConnected && <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-10 backdrop-blur-sm"><div className="flex flex-col items-center space-y-4"><Loader2 size={32} className="text-indigo-500 animate-spin" /><p className="text-sm font-medium text-indigo-300">{t.connecting}</p></div></div>}
+            {!isConnected && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 z-10 backdrop-blur-sm space-y-6">
+                    <div className="flex flex-col items-center space-y-4">
+                        <Loader2 size={32} className="text-indigo-500 animate-spin" />
+                        <p className="text-sm font-medium text-indigo-300">{t.connecting}</p>
+                    </div>
+                    {showReconnectButton && (
+                        <button 
+                            onClick={connect}
+                            className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase rounded-xl shadow-xl shadow-indigo-500/20 animate-fade-in"
+                        >
+                            <RefreshCw size={14}/>
+                            <span>{t.reconnect}</span>
+                        </button>
+                    )}
+                </div>
+            )}
             
             <div className="shrink-0 bg-slate-950">
                <SuggestionsBar suggestions={suggestions} welcomeMessage={channel.welcomeMessage} showWelcome={transcript.length === 0 && !currentLine && !initialContext} uiText={t} />

@@ -32,7 +32,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const [loading, setLoading] = useState(true);
   const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
   const [resolvedMediaUrl, setResolvedMediaUrl] = useState<string | null>(null);
-  const [isResolving, setIsResolving] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   
   const [isRecorderModalOpen, setIsRecorderModalOpen] = useState(false);
@@ -96,7 +96,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
       }
 
       if (isDriveUrl(rec.mediaUrl)) {
-          setIsResolving(true);
+          setResolvingId(rec.id);
           try {
               const token = getDriveToken();
               if (!token) throw new Error("Google access required.");
@@ -108,7 +108,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           } catch (e: any) {
               alert("Drive Access Denied: " + e.message);
           } finally {
-              setIsResolving(false);
+              setResolvingId(null);
           }
       } else {
           setResolvedMediaUrl(rec.mediaUrl);
@@ -269,6 +269,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             const isLocal = rec.mediaUrl.startsWith('blob:') || rec.mediaUrl.startsWith('data:');
             const isYoutube = isYouTubeUrl(rec.mediaUrl);
             const isDrive = isDriveUrl(rec.mediaUrl);
+            const isThisResolving = resolvingId === rec.id;
 
             return (
               <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : (isYoutube ? 'border-red-500/30 shadow-red-900/5' : (isDrive ? 'border-indigo-500/20' : 'border-slate-800'))} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl`}>
@@ -320,10 +321,10 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                     
                     <button 
                       onClick={() => handlePlayback(rec)}
-                      disabled={isResolving}
+                      disabled={resolvingId !== null && !isThisResolving}
                       className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95 ${isPlaying ? 'bg-red-600 text-white' : 'bg-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-slate-700'}`}
                     >
-                      {isResolving ? <Loader2 size={16} className="animate-spin" /> : isPlaying ? <X size={16}/> : <Play size={16} fill="currentColor" />}
+                      {isThisResolving ? <Loader2 size={16} className="animate-spin" /> : isPlaying ? <X size={16}/> : <Play size={16} fill="currentColor" />}
                       <span>{isPlaying ? 'Close' : 'Playback'}</span>
                     </button>
                     

@@ -415,6 +415,16 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 <Timer size={14}/>
                 <span className="font-mono text-base font-black tabular-nums">{formatTime(timeLeft)}</span>
             </div>
+            {!isAiConnected && (
+                <button 
+                    onClick={() => handleReconnectAi()}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg animate-pulse"
+                    title="Reconnect AI"
+                >
+                    <RefreshCw size={14}/>
+                    <span>Reconnect AI</span>
+                </button>
+            )}
             <button onClick={() => setShowDebug(!showDebug)} className={`p-2 rounded-lg transition-colors ${showDebug ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`} title="Diagnostics"><Activity size={18}/></button>
             <button onClick={handleEndInterview} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold shadow-lg">End Session</button>
           </div>
@@ -499,7 +509,14 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         {view === 'interview' && (
           <div className="h-full flex overflow-hidden relative">
             <div className={`flex flex-col border-r border-slate-800 transition-all ${isCodeStudioOpen ? 'w-[400px]' : 'flex-1'}`}>
-              <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0"><span className="font-bold text-white uppercase tracking-tighter flex items-center gap-2"><Bot size={20} className="text-indigo-400"/> AI Agent</span><button onClick={() => setIsCodeStudioOpen(!isCodeStudioOpen)} className="p-2 bg-slate-800 rounded-lg text-xs font-bold uppercase">{isCodeStudioOpen ? 'Hide' : 'Show'} IDE</button></div>
+              <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
+                <span className="font-bold text-white uppercase tracking-tighter flex items-center gap-2">
+                    <Bot size={20} className="text-indigo-400"/> 
+                    AI Agent 
+                    {!isAiConnected && <span className="ml-2 text-[8px] px-1.5 py-0.5 bg-red-900/40 text-red-400 border border-red-500/30 rounded uppercase font-black tracking-widest">Disconnected</span>}
+                </span>
+                <button onClick={() => setIsCodeStudioOpen(!isCodeStudioOpen)} className="p-2 bg-slate-800 rounded-lg text-xs font-bold uppercase">{isCodeStudioOpen ? 'Hide' : 'Show'} IDE</button>
+              </div>
               <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide"><div ref={problemRef} className="bg-[#020617] p-8 rounded-2xl border border-slate-800 mb-8"><h1 className="text-2xl font-black text-indigo-400 mb-4 uppercase">Challenge</h1><MarkdownView content={generatedProblemMd} /></div><div className="space-y-4 pb-32">{transcript.map((item, idx) => (<div key={idx} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}><span className={`text-[9px] uppercase font-black mb-1 ${item.role === 'user' ? 'text-emerald-400' : 'text-indigo-400'}`}>{item.role === 'user' ? 'You' : 'Interviewer'}</span><div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{item.text}</div></div>))}</div></div>
             </div>
             {isCodeStudioOpen && <div className="flex-1 bg-slate-950"><CodeStudio onBack={() => setIsCodeStudioOpen(false)} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={onStartLiveSession} initialFiles={initialStudioFiles}/></div>}
