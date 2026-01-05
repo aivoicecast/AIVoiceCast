@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -54,9 +55,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [isUploading, setIsUploading] = useState(false);
   const [isAiConnected, setIsAiConnected] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
-  const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
-  const [snapshotSaved, setSnapshotSaved] = useState(false);
   
+  // Timer State
+  const [timeLeft, setTimeLeft] = useState<number>(0); // Seconds
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Stability & Debug State
   const [apiLogs, setApiLogs] = useState<{timestamp: number, msg: string, type: 'info' | 'error'}[]>([]);
   const [showDebug, setShowDebug] = useState(false);
@@ -79,7 +82,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   
   // Interview Logic
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
-  const [coachingTranscript, setCoachingTranscript] = useState<TranscriptItem[]>([]);
   const [isCodeStudioOpen, setIsCodeStudioOpen] = useState(false);
   const [initialStudioFiles, setInitialStudioFiles] = useState<CodeFile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -87,7 +89,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   // Node Refs
   const reportRef = useRef<HTMLDivElement>(null);
   const problemRef = useRef<HTMLDivElement>(null);
-  const bundleRef = useRef<HTMLDivElement>(null);
 
   // Active Session State
   const [activeRecording, setActiveRecording] = useState<MockInterviewRecording | null>(null);
@@ -96,7 +97,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [reportError, setReportError] = useState<string | null>(null);
   const [videoPlaybackUrl, setVideoPlaybackUrl] = useState<string | null>(null);
   const [generatedProblemMd, setGeneratedProblemMd] = useState('');
-  const [isFeedbackSessionActive, setIsFeedbackSessionActive] = useState(false);
   const [isExportingBundle, setIsExportingBundle] = useState(false);
 
   const liveServiceRef = useRef<GeminiLiveService | null>(null);
@@ -113,6 +113,20 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setApiLogs(prev => [{timestamp: Date.now(), msg, type}, ...prev].slice(0, 50));
   };
 
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getDurationSeconds = (m: string) => {
+    if (m === 'quick_screen') return 15 * 60;
+    if (m === 'behavioral') return 30 * 60;
+    if (m === 'assessment_30') return 30 * 60;
+    if (m === 'assessment_60') return 60 * 60;
+    return 45 * 60; // default for coding/system_design
+  };
+
   useEffect(() => {
     if (view === 'interview' && activeStreamRef.current && localVideoRef.current) {
       localVideoRef.current.srcObject = activeStreamRef.current;
@@ -121,6 +135,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   useEffect(() => {
     loadInterviews();
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [currentUser]);
 
   const loadInterviews = async () => {
@@ -169,29 +184,31 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     if (liveServiceRef.current) liveServiceRef.current.disconnect();
 
     const backoffTime = isAuto ? Math.min(2000 * Math.pow(2, reconnectAttemptsRef.current), 10000) : 0;
-    if (isAuto) logApi(`Waiting ${backoffTime}ms for exponential backoff...`);
+    if (isAuto) logApi(`Neural Link Waiting: ${backoffTime}ms backoff...`);
 
     setTimeout(async () => {
       if (isEndingRef.current) return;
       const historyText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-      const prompt = `RESUMING INTERVIEW. Current Stack: ${language}. Role: ${mode}. RECAP HISTORY:\n${historyText}`;
+      const timeContext = `SYSTEM ALERT: There are exactly ${formatTime(timeLeft)} remaining in this session.`;
+      const persona = mode.startsWith('assessment') ? 'Objective Technical Proctor' : 'Senior Software Interviewer';
+      const prompt = `${timeContext} RESUMING ${mode.toUpperCase()} SESSION. Role: ${persona}. Stack: ${language}. RECAP HISTORY:\n${historyText}`;
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
 
       try {
-        logApi(`Attempting Reconnection (Attempt: ${reconnectAttemptsRef.current + 1})`);
+        logApi(`Restoring Neural Link (Attempt: ${reconnectAttemptsRef.current + 1})`);
         await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', prompt, {
           onOpen: () => {
             if (activeServiceIdRef.current !== service.id) return;
             setIsAiConnected(true);
             reconnectAttemptsRef.current = 0;
-            logApi("Neural Link Restored");
+            logApi("Neural Link Active");
           },
           onClose: (r) => {
             if (activeServiceIdRef.current !== service.id) return;
             setIsAiConnected(false);
-            logApi(`Link Lost: ${r}`, "error");
+            logApi(`Link Dropped: ${r}`, "error");
             if (!isEndingRef.current && isAuto) {
               reconnectAttemptsRef.current++;
               handleReconnectAi(true);
@@ -200,7 +217,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           onError: (e) => {
             if (activeServiceIdRef.current !== service.id) return;
             setIsAiConnected(false);
-            logApi(`AI Logic Error: ${e}`, "error");
+            logApi(`Logic Sync Error: ${e}`, "error");
             if (!isEndingRef.current && isAuto) {
               reconnectAttemptsRef.current++;
               handleReconnectAi(true);
@@ -219,7 +236,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             });
           }
         });
-      } catch (err: any) { logApi(`Recovery Logic Failed: ${err.message}`, "error"); }
+      } catch (err: any) { logApi(`Neural Link Failure: ${err.message}`, "error"); }
     }, backoffTime);
   };
 
@@ -234,13 +251,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     }, 400);
   }, []);
 
-  // Fix: Added missing handleLoadResumeFromProfile function to provide functionality for loading resume from user profile.
   const handleLoadResumeFromProfile = () => {
     if (userProfile?.resumeText) {
       setResumeText(userProfile.resumeText);
       logApi("Loaded resume from profile.");
     } else {
-      alert("No resume found in your profile. Go to Settings > Professional to upload one.");
+      alert("No resume found in your profile.");
     }
   };
 
@@ -254,12 +270,23 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     videoChunksRef.current = [];
     interviewIdRef.current = generateSecureId();
 
+    const duration = getDurationSeconds(mode);
+    setTimeLeft(duration);
+
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      logApi("Setting up Socratic Problem Space...");
-      const problemPrompt = `Mode: ${mode}. Language: ${language}. Job: ${jobDesc}. Generate one senior interview challenge in Markdown.`;
+      logApi("Preparing Simulation Logic...");
+      
+      const isAssessment = mode.startsWith('assessment');
+      const assessmentRules = isAssessment ? `
+      SPECIAL INSTRUCTION: This is a strictly proctored assessment.
+      - Present exactly ONE challenge (for 30m) or TWO (for 60m).
+      - Do not provide hints. 
+      - Only speak for technical clarification or time-checks (10m, 5m, 1m).` : '';
+
+      const problemPrompt = `Mode: ${mode}. Language: ${language}. Job: ${jobDesc}. ${assessmentRules} Generate one senior interview challenge in Markdown.`;
       const probResponse = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: problemPrompt });
-      setGeneratedProblemMd(probResponse.text || "Problem loading...");
+      setGeneratedProblemMd(probResponse.text || "Challenge context lost...");
 
       const camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -272,8 +299,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const camVideo = document.createElement('video'); camVideo.srcObject = camStream; camVideo.muted = true; camVideo.playsInline = true;
       const screenVideo = document.createElement('video'); screenVideo.srcObject = screenStream; screenVideo.muted = true; screenVideo.playsInline = true;
       await Promise.all([
-        new Promise(r => { camVideo.onloadedmetadata = () => camVideo.play().then(r); }),
-        new Promise(r => { screenVideo.onloadedmetadata = () => screenVideo.play().then(r); })
+        new Promise(r => { camVideo.onloadedmetadata = () => { camVideo.play().then(r); }; }),
+        new Promise(r => { screenVideo.onloadedmetadata = () => { screenVideo.play().then(r); }; })
       ]);
 
       const drawFrame = () => {
@@ -299,8 +326,25 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
-      await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', `Job: ${jobDesc}. Mode: ${mode}.`, {
-        onOpen: () => setIsAiConnected(true),
+      const persona = isAssessment ? 'Objective Technical Proctor' : 'Senior Software Interviewer';
+      const timeSync = `IMPORTANT: This is a ${duration/60} minute session. System clock starts now. Current time remaining: ${formatTime(duration)}.`;
+      
+      await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', `${timeSync} Role: ${persona}. Job: ${jobDesc}. Mode: ${mode}.`, {
+        onOpen: () => {
+          setIsAiConnected(true);
+          // Start actual countdown on open
+          if (timerRef.current) clearInterval(timerRef.current);
+          timerRef.current = setInterval(() => {
+            setTimeLeft(prev => {
+                if (prev <= 1) {
+                    if (timerRef.current) clearInterval(timerRef.current);
+                    handleEndInterview();
+                    return 0;
+                }
+                return prev - 1;
+            });
+          }, 1000);
+        },
         onClose: (r) => { if (activeServiceIdRef.current === service.id) { setIsAiConnected(false); handleReconnectAi(true); } },
         onError: (e) => { if (activeServiceIdRef.current === service.id) { setIsAiConnected(false); handleReconnectAi(true); } },
         onVolumeUpdate: () => {},
@@ -318,7 +362,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       });
       setView('interview');
       setIsCodeStudioOpen(mode !== 'quick_screen');
-    } catch (e: any) { alert("Session failed to start. Check permissions."); setView('hub'); } finally { setIsStarting(false); }
+    } catch (e: any) { alert("Initialization failed. Check hardware permissions."); setView('hub'); } finally { setIsStarting(false); }
   };
 
   const handleEndInterview = async () => {
@@ -326,6 +370,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setIsGeneratingReport(true);
     setReportError(null);
     startSmoothProgress();
+    if (timerRef.current) clearInterval(timerRef.current);
 
     setSynthesisStep('Deactivating neural link...');
     liveServiceRef.current?.disconnect();
@@ -341,7 +386,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         rec.stop();
       });
       videoBlobRef.current = blob;
-      logApi(`Media Processed (${Math.round(blob.size / 1024)}KB)`);
     }
 
     setSynthesisStep('Synthesizing metrics...');
@@ -384,7 +428,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           setSynthesisStep(`Retrying Synthesis (${retryCount}/${maxRetries})...`);
           await new Promise(r => setTimeout(r, 3000 * retryCount));
         } else {
-          setReportError(e.message || "Remote service unavailable.");
+          setReportError(e.message || "Synthesis service unavailable (503).");
         }
       }
     }
@@ -415,14 +459,21 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           <button onClick={() => view === 'hub' ? onBack() : setView('hub')} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
           <h1 className="text-lg font-bold text-white flex items-center gap-2"><Video className="text-red-500" /> Mock Interview</h1>
         </div>
+        
         {view === 'interview' && (
-          <div className="flex items-center gap-3">
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${isAiConnected ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' : 'bg-red-900/20 border-red-500/30 text-red-400 animate-pulse'}`}>
-              {isAiConnected ? <Wifi size={14}/> : <WifiOff size={14}/>}
-              <span className="text-[10px] font-black uppercase tracking-widest">{isAiConnected ? 'Link Active' : 'Link Interrupted'}</span>
+          <div className="flex items-center gap-6">
+            <div className={`flex items-center gap-3 px-6 py-2 rounded-2xl border bg-slate-950/50 shadow-inner ${timeLeft < 300 ? 'border-red-500/50 text-red-400 animate-pulse' : 'border-indigo-500/30 text-indigo-400'}`}>
+                <Timer size={18}/>
+                <span className="font-mono text-xl font-black tabular-nums">{formatTime(timeLeft)}</span>
             </div>
-            <button onClick={() => setShowDebug(!showDebug)} className={`p-2 rounded-lg transition-colors ${showDebug ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}><Bug size={20}/></button>
-            <button onClick={handleEndInterview} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold shadow-lg">End Session</button>
+            <div className="flex items-center gap-3">
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${isAiConnected ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' : 'bg-red-900/20 border-red-500/30 text-red-400 animate-pulse'}`}>
+                {isAiConnected ? <Wifi size={14}/> : <WifiOff size={14}/>}
+                <span className="text-[10px] font-black uppercase tracking-widest">{isAiConnected ? 'Link Active' : 'Link Interrupted'}</span>
+                </div>
+                <button onClick={() => setShowDebug(!showDebug)} className={`p-2 rounded-lg transition-colors ${showDebug ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}><Bug size={20}/></button>
+                <button onClick={handleEndInterview} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold shadow-lg">End Session</button>
+            </div>
           </div>
         )}
       </header>
@@ -457,7 +508,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       <div className="p-2 bg-slate-950 rounded-xl text-indigo-400 group-hover:scale-110 transition-transform"><FileCheck size={20}/></div>
                     </div>
                     <div className="space-y-4">
-                      <span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode}</span>
+                      <span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span>
                       <p className="text-xs text-slate-400 line-clamp-2 italic leading-relaxed">"{rec.jobDescription}"</p>
                       <div className="pt-4 border-t border-slate-800 flex items-center justify-between"><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Review Report</span><ChevronRight size={16} className="text-slate-500 group-hover:translate-x-1 transition-transform" /></div>
                     </div>
@@ -474,15 +525,22 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               <div className="text-center"><h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">Simulation Setup</h2></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                 <div className="space-y-6">
-                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><div className="flex items-center justify-between"><h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Candidate</h3><button onClick={handleLoadResumeFromProfile} className="text-[10px] font-black text-indigo-400 uppercase hover:underline">From Profile</button></div><textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume..." className="w-full h-40 bg-slate-900 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"/></div>
-                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Coding Language</h3><select value={language} onChange={e => setLanguage(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-2xl p-4 text-xs font-bold text-white focus:ring-2 focus:ring-indigo-500 outline-none">{LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}</select></div>
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><div className="flex items-center justify-between"><h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Candidate</h3><button onClick={handleLoadResumeFromProfile} className="text-[10px] font-black text-indigo-400 uppercase hover:underline">From Profile</button></div><textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume..." className="w-full h-40 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"/></div>
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Coding Language</h3><select value={language} onChange={e => setLanguage(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-bold text-white focus:ring-2 focus:ring-indigo-500 outline-none">{LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}</select></div>
                 </div>
                 <div className="space-y-6">
-                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><Building size={14}/> Job Context</h3><textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste JD..." className="w-full h-40 bg-slate-900 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"/></div>
-                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Interview Mode</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{[{ id: 'coding', icon: Code, label: 'Coding' },{ id: 'system_design', icon: Layers, label: 'Sys Design' },{ id: 'behavioral', icon: MessageSquare, label: 'Behavioral' },{ id: 'quick_screen', icon: FastForward, label: 'Quick Screen' }].map(m => (<button key={m.id} onClick={() => setMode(m.id as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}><div className="flex items-center gap-2"><m.icon size={14}/><span className="text-[10px] font-bold uppercase">{m.label}</span></div>{mode === m.id && <CheckCircle size={14}/>}</button>))}</div></div>
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><Building size={14}/> Job Context</h3><textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste JD..." className="w-full h-40 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"/></div>
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Interview Mode</h3><div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{[
+                    { id: 'coding', icon: Code, label: 'Coding (45m)' },
+                    { id: 'system_design', icon: Layers, label: 'Sys Design (45m)' },
+                    { id: 'behavioral', icon: MessageSquare, label: 'Behavioral (30m)' },
+                    { id: 'quick_screen', icon: FastForward, label: 'Quick Screen (15m)' },
+                    { id: 'assessment_30', icon: ClipboardList, label: 'Assessment (30m)' },
+                    { id: 'assessment_60', icon: ClipboardList, label: 'Assessment (60m)' }
+                  ].map(m => (<button key={m.id} onClick={() => setMode(m.id as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}><div className="flex items-center gap-2"><m.icon size={14}/><span className="text-[10px] font-bold uppercase">{m.label}</span></div>{mode === m.id && <CheckCircle size={14}/>}</button>))}</div></div>
                 </div>
               </div>
-              <div className="pt-8 border-t border-slate-800 flex justify-end"><button onClick={handleStartInterview} disabled={isStarting || !jobDesc.trim()} className="px-12 py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-30">{isStarting ? <Loader2 className="animate-spin" /> : 'Enter Simulation'}</button></div>
+              <div className="pt-8 border-t border-slate-800 flex justify-end"><button onClick={handleStartInterview} disabled={isStarting || !jobDesc.trim()} className="px-12 py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-30">{isStarting ? <Loader2 className="animate-spin" /> : 'Enter Simulation & Record'}</button></div>
             </div>
           </div>
         )}
@@ -503,7 +561,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             <div className="bg-slate-900 border border-slate-800 rounded-[3rem] overflow-hidden shadow-2xl p-10 flex flex-col items-center text-center space-y-6">
               <Trophy className="text-amber-500" size={64}/><h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Simulation Results</h2>
               {report ? (
-                <div className="flex gap-4"><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Score</p><p className="text-4xl font-black text-indigo-400">{report.score}/100</p></div><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p><p className={`text-xl font-black uppercase ${report.verdict.includes('Hire') ? 'text-emerald-400' : 'text-red-400'}`}>{report.verdict}</p></div></div>
+                <div className="flex gap-4"><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Score</p><p className="text-4xl font-black text-indigo-400">{report.score}/100</p></div><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p><p className={`text-xl font-black uppercase ${report.verdict.includes('Hire') || report.verdict.includes('Forward') ? 'text-emerald-400' : 'text-red-400'}`}>{report.verdict}</p></div></div>
               ) : reportError ? (
                 <div className="bg-red-900/20 border border-red-900/50 p-6 rounded-2xl text-center"><ShieldAlert size={32} className="mx-auto text-red-500 mb-2"/><p className="text-sm text-red-300 font-bold">Metrics Synthesis Error</p><p className="text-xs text-slate-500 mt-1 max-w-xs">{reportError}</p><button onClick={handleEndInterview} className="mt-4 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-black uppercase flex items-center gap-2 mx-auto"><RefreshCw size={14}/> Retry Synthesis</button></div>
               ) : (

@@ -35,16 +35,6 @@ export class GeminiLiveService {
   private isPlayingResponse: boolean = false;
   private speakingTimer: any = null;
 
-  constructor() {
-    if (typeof window !== 'undefined') {
-      const resumeAudio = () => {
-        this.outputAudioContext?.resume().catch(() => {});
-        this.inputAudioContext?.resume().catch(() => {});
-      };
-      window.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') resumeAudio(); });
-    }
-  }
-
   public initializeAudio() {
     this.inputAudioContext = getGlobalAudioContext(16000);
     this.outputAudioContext = getGlobalAudioContext(24000);
@@ -111,12 +101,12 @@ export class GeminiLiveService {
             if (interrupted) { this.stopAllSources(); this.nextStartTime = 0; this.isPlayingResponse = false; }
           },
           onclose: (e: any) => {
-            const reason = e?.reason || (e?.code ? `Close Code: ${e.code}` : "Remote peer terminated connection");
+            const reason = e?.reason || (e?.code ? `Status Code: ${e.code}` : "Remote peer closed the link");
             this.cleanup();
             callbacks.onClose(reason);
           },
           onerror: (e: any) => {
-            const errorMsg = e?.message || "WebSocket encountered a critical error";
+            const errorMsg = e?.message || JSON.stringify(e) || "WebSocket Logic Error";
             this.cleanup();
             callbacks.onError(errorMsg);
           }
@@ -125,11 +115,11 @@ export class GeminiLiveService {
 
       this.sessionPromise = Promise.race([
         connectionPromise,
-        new Promise((_, r) => setTimeout(() => r(new Error("Connection timed out (15s)")), 15000))
+        new Promise((_, r) => setTimeout(() => r(new Error("Link timed out (15s)")), 15000))
       ]);
       this.session = await this.sessionPromise;
     } catch (error: any) {
-      callbacks.onError(error?.message || "Initialization failed");
+      callbacks.onError(error?.message || "Auth Error");
       this.cleanup();
     }
   }
