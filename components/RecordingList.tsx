@@ -1,14 +1,21 @@
-
 import React, { useState, useEffect } from 'react';
-import { RecordingSession, Channel } from '../types';
+import { RecordingSession, Channel, TranscriptItem } from '../types';
 import { getUserRecordings, deleteRecordingReference } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 
 interface RecordingListProps {
   onBack?: () => void;
-  onStartLiveSession?: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
+  onStartLiveSession?: (
+    channel: Channel, 
+    context?: string, 
+    recordingEnabled?: boolean, 
+    bookingId?: string, 
+    videoEnabled?: boolean, 
+    cameraEnabled?: boolean,
+    activeSegment?: { index: number, lectureId: string }
+  ) => void;
 }
 
 const TARGET_LANGUAGES = [
@@ -40,37 +47,44 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     try {
       let all: RecordingSession[] = [];
       
-      // 1. Load Local Recordings (Always accessible)
+      // 1. Always load Local Recordings (Sovereign Data)
       const local = await getLocalRecordings();
       all = [...local];
       
-      // 2. Load Cloud Recordings (If logged in)
+      // 2. Load Cloud Recordings if user is authenticated
       if (currentUser?.uid) {
-          const cloud = await getUserRecordings(currentUser.uid);
-          all = [...all, ...cloud];
+          try {
+              const cloud = await getUserRecordings(currentUser.uid);
+              all = [...all, ...cloud];
+          } catch (e) {
+              console.warn("Cloud recordings unavailable:", e);
+          }
       }
       
-      // Deduplicate and sort
+      // Deduplicate by ID and sort by timestamp descending
       const unique = Array.from(new Map(all.map(item => [item.id, item])).values());
       setRecordings(unique.sort((a, b) => b.timestamp - a.timestamp));
     } catch (e) {
-      console.error(e);
+      console.error("Failed to load recording archive:", e);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (rec: RecordingSession) => {
-    if (!confirm("Are you sure you want to delete this recording permanently?")) return;
+    if (!confirm("Permanently delete this recording? This cannot be undone.")) return;
     try {
-      if (rec.mediaUrl.startsWith('blob:')) {
+      if (rec.mediaUrl.startsWith('blob:') || rec.mediaUrl.startsWith('data:')) {
           await deleteLocalRecording(rec.id);
-      } else {
+      } else if (currentUser) {
           await deleteRecordingReference(rec.id, rec.mediaUrl, rec.transcriptUrl);
+      } else {
+          // Fallback if local but URL isn't a blob for some reason
+          await deleteLocalRecording(rec.id);
       }
       setRecordings(prev => prev.filter(r => r.id !== rec.id));
     } catch (e) {
-      alert("Failed to delete recording.");
+      alert("Deletion failed. Check connection.");
     }
   };
 
@@ -78,15 +92,15 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
       if (!meetingTitle.trim() || !onStartLiveSession) return;
       
       const systemPrompt = recorderMode === 'silent' 
-        ? `You are a professional interpreter. Your task is to transcribe the conversation and provide real-time translation of the user's speech into ${targetLanguage}. Speak only the translations clearly.`
+        ? `You are a professional interpreter. Your task is to transcribe the conversation and provide real-time translation of the user's speech into ${targetLanguage}. Speak only the translations clearly. Do not engage in conversation unless requested for technical help.`
         : "You are a helpful meeting assistant. Participate in the discussion, take notes, and answer questions when asked.";
 
       const newChannel: Channel = {
           id: `meeting-${Date.now()}`,
           title: meetingTitle,
           description: `Meeting Recording: ${meetingTitle}`,
-          author: currentUser?.displayName || 'User',
-          ownerId: currentUser?.uid || 'user',
+          author: currentUser?.displayName || 'Guest User',
+          ownerId: currentUser?.uid || 'guest',
           visibility: 'private',
           voiceName: 'Zephyr',
           systemInstruction: systemPrompt,
@@ -104,19 +118,20 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
   return (
     <div className="space-y-6 animate-fade-in-up">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <span className="w-2 h-6 bg-red-500 rounded-full"></span>
             <span>Studio Recordings</span>
-            </h2>
+          </h2>
+          <p className="text-xs text-slate-500 mt-1">Archive of your interactive AI sessions and recorded meetings.</p>
         </div>
         
         <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500 font-mono hidden sm:inline">{recordings.length} sessions</span>
+            <span className="text-xs text-slate-500 font-mono hidden md:inline">{recordings.length} sessions in archive</span>
             <button 
                 onClick={() => { setIsRecorderModalOpen(true); setRecordScreen(false); setRecordCamera(false); setMeetingTitle(''); }}
-                className="flex items-center space-x-2 px-3 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors text-xs font-bold shadow-md shadow-red-500/20"
+                className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-all text-xs font-bold shadow-lg shadow-red-900/20 active:scale-95"
             >
                 <Video size={14} />
                 <span>New Session</span>
@@ -125,16 +140,20 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
       </div>
 
       {loading ? (
-        <div className="py-20 flex flex-col items-center justify-center text-indigo-400 gap-4">
-          <Loader2 className="animate-spin" size={32} />
-          <span className="text-xs font-bold uppercase tracking-widest animate-pulse">Scanning Archive...</span>
+        <div className="py-24 flex flex-col items-center justify-center text-indigo-400 gap-4">
+          <Loader2 className="animate-spin" size={40} />
+          <span className="text-xs font-black uppercase tracking-[0.2em] animate-pulse">Syncing Local & Cloud Archive</span>
         </div>
       ) : recordings.length === 0 ? (
-        <div className="py-20 text-center text-slate-500 bg-slate-900/30 rounded-3xl border-2 border-dashed border-slate-800">
-          <Play size={48} className="mx-auto mb-4 opacity-10" />
-          <p className="font-medium text-slate-400">The archive is empty.</p>
-          <button onClick={() => setIsRecorderModalOpen(true)} className="mt-4 text-indigo-400 font-bold hover:text-white flex items-center gap-2 mx-auto">
-             <Video size={16}/> Start your first recording
+        <div className="py-32 text-center text-slate-500 bg-slate-900/30 rounded-[2.5rem] border-2 border-dashed border-slate-800">
+          <Play size={64} className="mx-auto mb-6 opacity-5" />
+          <p className="text-lg font-bold text-slate-400">The archive is empty.</p>
+          <p className="text-sm mt-2 opacity-60">Record meetings or save AI live sessions to see them here.</p>
+          <button 
+            onClick={() => setIsRecorderModalOpen(true)}
+            className="mt-8 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-indigo-400 font-bold rounded-xl transition-all border border-slate-700"
+          >
+             Start your first recording
           </button>
         </div>
       ) : (
@@ -143,23 +162,24 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             const date = new Date(rec.timestamp);
             const isVideo = rec.mediaType?.includes('video');
             const isPlaying = activeMediaId === rec.id;
-            const isLocal = rec.mediaUrl.startsWith('blob:');
+            const isLocal = rec.mediaUrl.startsWith('blob:') || rec.mediaUrl.startsWith('data:');
 
             return (
-              <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500' : 'border-slate-800'} rounded-2xl p-4 transition-all hover:border-indigo-500/30 group`}>
+              <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : 'border-slate-800'} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl`}>
                 <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                   
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border transition-transform group-hover:scale-105 ${isVideo ? 'bg-indigo-900/20 border-indigo-500/50 text-indigo-400' : 'bg-pink-900/20 border-pink-500/50 text-pink-400'}`}>
-                       {isVideo ? <Video size={20} /> : <Mic size={20} />}
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:scale-105 ${isVideo ? 'bg-indigo-900/20 border-indigo-500/50 text-indigo-400' : 'bg-pink-900/20 border-pink-500/50 text-pink-400'}`}>
+                       {isVideo ? <Video size={24} /> : <Mic size={24} />}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-white text-base line-clamp-1">{rec.channelTitle}</h3>
+                        <h3 className="font-bold text-white text-lg truncate">{rec.channelTitle}</h3>
+                        {isLocal && <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700" title="Device Storage Only">Local</span>}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
-                        <span className="flex items-center gap-1"><Calendar size={10} /> {date.toLocaleDateString()}</span>
-                        <span className="flex items-center gap-1"><Clock size={10} /> {date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                        <span className="flex items-center gap-1"><Calendar size={12} /> {date.toLocaleDateString()}</span>
+                        <span className="flex items-center gap-1"><Clock size={12} /> {date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                       </div>
                     </div>
                   </div>
@@ -167,33 +187,34 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                   <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                     <button 
                       onClick={() => setActiveMediaId(isPlaying ? null : rec.id)}
-                      className={`px-4 py-2 rounded-lg text-xs font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95 ${isPlaying ? 'bg-red-600 text-white' : 'bg-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white'}`}
+                      className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95 ${isPlaying ? 'bg-red-600 text-white' : 'bg-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-slate-700'}`}
                     >
-                      {isPlaying ? <X size={14}/> : <Play size={14} fill="currentColor" />}
+                      {isPlaying ? <X size={16}/> : <Play size={16} fill="currentColor" />}
                       <span>{isPlaying ? 'Close' : 'Playback'}</span>
                     </button>
                     
-                    <a href={rec.transcriptUrl} target="_blank" rel="noreferrer" className="p-2 bg-slate-800 text-slate-400 hover:text-white rounded-lg border border-slate-700 transition-colors" title="View Transcript">
-                      <FileText size={18} />
+                    <a href={rec.transcriptUrl} target="_blank" rel="noreferrer" className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors" title="View Transcript">
+                      <FileText size={20} />
                     </a>
 
-                    <a href={rec.mediaUrl} target="_blank" rel="noreferrer" download={`${rec.channelTitle}_Recording.webm`} className="p-2 bg-slate-800 text-slate-400 hover:text-emerald-400 rounded-lg border border-slate-700 transition-colors" title="Download Media">
-                      <HardDriveDownload size={18} />
+                    <a href={rec.mediaUrl} target="_blank" rel="noreferrer" download={`${rec.channelTitle.replace(/\s/g, '_')}_Session.webm`} className="p-2.5 bg-slate-800 text-slate-400 hover:text-emerald-400 rounded-xl border border-slate-700 transition-colors" title="Download Media">
+                      <HardDriveDownload size={20} />
                     </a>
 
-                    <button onClick={() => handleDelete(rec)} className="p-2 bg-slate-800 text-slate-400 hover:text-red-400 rounded-lg border border-slate-700 transition-colors" title="Delete Permanent">
-                      <Trash2 size={18} />
+                    <button onClick={() => handleDelete(rec)} className="p-2.5 bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors" title="Permanent Delete">
+                      <Trash2 size={20} />
                     </button>
                   </div>
                 </div>
 
                 {isPlaying && (
-                  <div className="mt-4 pt-4 border-t border-slate-800 animate-fade-in">
+                  <div className="mt-6 pt-6 border-t border-slate-800 animate-fade-in">
                     {isVideo ? (
-                      <video src={rec.mediaUrl} controls autoPlay className="w-full max-h-[500px] rounded-xl bg-black border border-slate-800 shadow-2xl" />
+                      <video src={rec.mediaUrl} controls autoPlay className="w-full max-h-[500px] rounded-2xl bg-black border border-slate-800 shadow-2xl" />
                     ) : (
-                      <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                          <audio src={rec.mediaUrl} controls autoPlay className="w-full" />
+                      <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 flex items-center gap-6 shadow-inner">
+                          <div className="w-12 h-12 bg-indigo-600/10 text-indigo-400 rounded-full flex items-center justify-center border border-indigo-500/20"><Volume2 className="animate-pulse" /></div>
+                          <audio src={rec.mediaUrl} controls autoPlay className="flex-1" />
                       </div>
                     )}
                   </div>
@@ -204,45 +225,54 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         </div>
       )}
 
+      {/* --- Recorder Selection Modal --- */}
       {isRecorderModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-sm">
-              <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl p-8 animate-fade-in-up">
-                  <div className="flex justify-between items-center mb-6">
-                      <h3 className="text-xl font-bold text-white flex items-center gap-2"><Video className="text-red-500"/> Capture Session</h3>
-                      <button onClick={() => setIsRecorderModalOpen(false)} className="p-1 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
+              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-md shadow-2xl p-8 animate-fade-in-up relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-24 bg-red-600/5 blur-[80px] rounded-full pointer-events-none"></div>
+                  
+                  <div className="flex justify-between items-center mb-8 relative z-10">
+                      <div>
+                          <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                              <div className="p-2 bg-red-600 rounded-xl shadow-lg shadow-red-900/20"><Video className="text-white" size={20}/></div>
+                              Capture Session
+                          </h3>
+                          <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-1">Configure neural recorder</p>
+                      </div>
+                      <button onClick={() => setIsRecorderModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
                   </div>
                   
-                  <div className="space-y-6">
+                  <div className="space-y-6 relative z-10">
                       <div>
-                          <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Meeting Title</label>
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 px-1">Session Identity</label>
                           <input 
                               type="text" 
                               value={meetingTitle} 
                               onChange={e => setMeetingTitle(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-red-500/50 transition-all"
-                              placeholder="e.g., Weekly Team Sync"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-red-500/50 transition-all shadow-inner"
+                              placeholder="e.g., Q1 Technical Strategy Review"
                           />
                       </div>
                       
                       <div className="space-y-4">
                           <div>
-                              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-3">AI Engine Mode</label>
+                              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-3 px-1">AI Participation Level</label>
                               <div className="grid grid-cols-2 gap-3">
                                   <button onClick={() => setRecorderMode('interactive')} className={`p-4 rounded-2xl border text-left transition-all ${recorderMode === 'interactive' ? 'bg-indigo-900/30 border-indigo-500 ring-1 ring-indigo-500 shadow-lg' : 'bg-slate-950 border-slate-800 opacity-60 hover:opacity-100'}`}>
-                                      <div className="flex items-center gap-2 mb-1"><Sparkles size={16} className="text-indigo-400"/><span className="font-bold text-white text-sm">Interactive</span></div>
-                                      <p className="text-[10px] text-slate-500 leading-tight">AI participates and answers questions.</p>
+                                      <div className="flex items-center gap-2 mb-1"><Sparkles size={16} className="text-indigo-400"/><span className="font-bold text-white text-sm">Active</span></div>
+                                      <p className="text-[9px] text-slate-500 leading-tight">AI facilitates and answers questions.</p>
                                   </button>
                                   <button onClick={() => setRecorderMode('silent')} className={`p-4 rounded-2xl border text-left transition-all ${recorderMode === 'silent' ? 'bg-emerald-900/30 border-emerald-500 ring-1 ring-emerald-500 shadow-lg' : 'bg-slate-950 border-slate-800 opacity-60 hover:opacity-100'}`}>
                                       <div className="flex items-center gap-2 mb-1"><Mic size={16} className="text-emerald-400"/><span className="font-bold text-white text-sm">Scribe</span></div>
-                                      <p className="text-[10px] text-slate-500 leading-tight">AI translates and transcribes silently.</p>
+                                      <p className="text-[9px] text-slate-500 leading-tight">AI translates and transcribes silently.</p>
                                   </button>
                               </div>
                           </div>
 
                           {recorderMode === 'silent' && (
                               <div className="animate-fade-in p-4 bg-slate-950 rounded-2xl border border-slate-800">
-                                  <label className="text-xs font-bold text-emerald-400 uppercase flex items-center gap-2 mb-2"><Languages size={14}/> Translate To</label>
-                                  <select value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-emerald-500">
+                                  <label className="text-[10px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2 mb-2"><Languages size={14}/> Real-time Translation</label>
+                                  <select value={targetLanguage} onChange={(e) => setTargetLanguage(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none focus:border-emerald-500 transition-colors">
                                       {TARGET_LANGUAGES.map(lang => <option key={lang} value={lang}>{lang}</option>)}
                                   </select>
                               </div>
@@ -251,23 +281,27 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                           <div onClick={() => setRecordScreen(!recordScreen)} className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${recordScreen ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-slate-950 border-slate-800 hover:bg-slate-900'}`}>
                               <div className="flex items-center gap-3">
                                   <div className={`p-2 rounded-lg ${recordScreen ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-800 text-slate-500'}`}><Monitor size={18} /></div>
-                                  <div><p className={`font-bold text-sm ${recordScreen ? 'text-indigo-200' : 'text-slate-400'}`}>Screen Share</p></div>
+                                  <div><p className={`font-bold text-sm ${recordScreen ? 'text-indigo-200' : 'text-slate-400'}`}>Shared Screen</p></div>
                               </div>
                               <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${recordScreen ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-700'}`}>{recordScreen && <CheckCircle size={12} />}</div>
                           </div>
 
                           <div onClick={() => setRecordCamera(!recordCamera)} className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${recordCamera ? 'bg-red-900/20 border-red-500/50' : 'bg-slate-950 border-slate-800 hover:bg-slate-900'}`}>
                               <div className="flex items-center gap-3">
-                                  <div className={`p-2 rounded-lg ${recordCamera ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-slate-800 text-slate-500'}`}><Video size={18} /></div>
+                                  <div className={`p-2 rounded-lg ${recordCamera ? 'bg-red-500 text-white shadow-lg shadow-red-900/20' : 'bg-slate-800 text-slate-500'}`}><Camera size={18} /></div>
                                   <div><p className={`font-bold text-sm ${recordCamera ? 'text-red-200' : 'text-slate-400'}`}>Camera Video</p></div>
                               </div>
                               <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${recordCamera ? 'border-red-500 bg-red-500 text-white' : 'border-slate-700'}`}>{recordCamera && <CheckCircle size={12} />}</div>
                           </div>
                       </div>
 
-                      <button onClick={handleStartRecorder} disabled={!meetingTitle} className="w-full py-4 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl shadow-red-900/20 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95">
+                      <button 
+                        onClick={handleStartRecorder} 
+                        disabled={!meetingTitle} 
+                        className="w-full py-5 bg-red-600 hover:bg-red-500 disabled:opacity-30 disabled:grayscale text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/20 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95"
+                      >
                           <Video size={20} fill="currentColor"/>
-                          <span>Start Recording</span>
+                          <span>Launch Recorder</span>
                       </button>
                   </div>
               </div>

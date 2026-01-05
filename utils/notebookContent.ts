@@ -1,4 +1,3 @@
-
 import { Notebook } from '../types';
 
 export const MOCK_NOTEBOOKS: Notebook[] = [
@@ -7,7 +6,6 @@ export const MOCK_NOTEBOOKS: Notebook[] = [
     title: 'Self-Correction & Agentic Loops',
     author: 'AIVoiceCast Research',
     description: 'An exploration into autonomous multi-step reasoning. In this lab, we test how Gemini 3 models can reflect on their own logic to minimize hallucinations.',
-    /* Fix: Type '"gemini-3-flash"' is not assignable to type '"python" | "javascript"'. Changing to 'python' to match interface definition. */
     kernel: 'python',
     tags: ['AI Agents', 'Reasoning', 'Reflexion'],
     createdAt: 1734000000000,
@@ -39,7 +37,6 @@ Then, analyze your own code for potential race conditions and provide a "Version
     title: 'OCI Acceleron Performance Lab',
     author: 'Systems Architect',
     description: 'Investigating the performance characteristics of multiplanar scale-out fabrics in Oracle Cloud Infrastructure (OCI).',
-    /* Fix: Type '"gemini-3-flash"' is not assignable to type '"python" | "javascript"'. Changing to 'python' to match interface definition. */
     kernel: 'python',
     tags: ['Networking', 'Cloud', 'OCI'],
     createdAt: 1734100000000,

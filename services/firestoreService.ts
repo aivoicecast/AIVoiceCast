@@ -1,4 +1,3 @@
-
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -365,6 +364,12 @@ export async function saveCodeProject(project: CodeProject): Promise<string> {
     return id;
 }
 
+export async function getCodeProject(id: string): Promise<CodeProject | null> {
+    if (!db) return null;
+    const snap = await getDoc(doc(db, CODE_PROJECTS_COLLECTION, id));
+    return snap.exists() ? (snap.data() as CodeProject) : null;
+}
+
 export async function saveWhiteboardSession(id: string, elements: WhiteboardElement[]) {
     if (!db) return;
     const finalId = id || generateSecureId();
@@ -384,6 +389,11 @@ export async function saveDiscussion(discussion: CommunityDiscussion): Promise<s
     const id = generateSecureId();
     await setDoc(doc(db, DISCUSSIONS_COLLECTION, id), sanitizeData({ ...discussion, id }));
     return id;
+}
+
+export async function updateDiscussion(id: string, data: Partial<CommunityDiscussion>) {
+    if (!db) return;
+    await updateDoc(doc(db, DISCUSSIONS_COLLECTION, id), sanitizeData(data));
 }
 
 export async function saveCard(card: AgentMemory, id?: string): Promise<string> {

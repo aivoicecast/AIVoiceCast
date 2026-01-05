@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -490,6 +489,7 @@ const App: React.FC = () => {
             {viewState === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice={globalVoice} t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={handleSchedulePodcast} /> )}
             {viewState === 'groups' && ( <div className="p-8 max-w-4xl mx-auto h-full overflow-y-auto scrollbar-hide"><GroupManager /></div> )}
             {viewState === 'mentorship' && ( <MentorBooking currentUser={currentUser} channels={allChannels} onStartLiveSession={handleStartLiveSession} /> )}
+            {viewState === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState('directory')} language={language} recordingEnabled={liveSessionParams.recordingEnabled} /> )}
             {viewState === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><RecordingList onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} /></div> )}
             {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} /> )}
             {(viewState === 'shipping_labels' || viewState === 'shipping_viewer') && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}
@@ -504,7 +504,7 @@ const App: React.FC = () => {
 
         <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setCreateModalInitialDate(null); }} onCreate={handleCreateChannel} currentUser={currentUser} initialDate={createModalInitialDate} />
         <VoiceCreateModal isOpen={isVoiceCreateOpen} onClose={() => setIsVoiceCreateOpen(false)} onCreate={handleCreateChannel} />
-        {currentUser && ( <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} user={userProfile || { uid: currentUser.uid, email: currentUser.email, displayName: currentUser.displayName, photoURL: currentUser.photoURL, groups: [], coinBalance: 0 }} onUpdateProfile={setUserProfile} /> )}
+        {currentUser && ( <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} user={userProfile || { uid: currentUser.uid, email: currentUser.email, displayName: currentUser.displayName, photoURL: currentUser.photoURL, groups: [], coinBalance: 0, createdAt: Date.now(), lastLogin: Date.now(), subscriptionTier: 'free', apiUsageCount: 0 } as UserProfile} onUpdateProfile={setUserProfile} /> )}
         {channelToComment && ( <CommentsModal isOpen={true} onClose={() => setChannelToComment(null)} channel={channelToComment} onAddComment={handleAddComment} onDeleteComment={(cid) => deleteCommentFromChannel(channelToComment.id, cid)} onEditComment={(cid, txt, att) => updateCommentInChannel(channelToComment.id, { id: cid, userId: currentUser.uid, user: currentUser.displayName || 'Anonymous', text: txt, timestamp: Date.now(), attachments: att })} currentUser={currentUser} /> )}
         {channelToEdit && ( <ChannelSettingsModal isOpen={true} onClose={() => setChannelToEdit(null)} channel={channelToEdit} onUpdate={handleUpdateChannel} /> )}
         {isPrivacyOpen && ( <div className="fixed inset-0 z-[100] animate-fade-in"> <PrivacyPolicy onBack={() => setIsPrivacyOpen(false)} /> </div> )}
