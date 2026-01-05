@@ -1,4 +1,3 @@
-
 export type SubscriptionTier = 'free' | 'pro';
 
 export type ChannelVisibility = 'public' | 'private' | 'group';
@@ -29,6 +28,7 @@ export interface UserProfile {
   itemCount?: number;
   preferredAiProvider?: 'gemini' | 'openai';
   preferredReaderTheme?: ReaderTheme;
+  preferredRecordingTarget?: 'youtube' | 'drive';
   interests?: string[];
   senderAddress?: string;
   savedSignatureUrl?: string;

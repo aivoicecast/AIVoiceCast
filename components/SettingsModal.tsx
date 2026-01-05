@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, ReaderTheme } from '../types';
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2 } from 'lucide-react';
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive } from 'lucide-react';
 import { logUserActivity, getBillingHistory, createStripePortalSession, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut, getDriveToken, connectGoogleDrive } from '../services/authService';
 import { clearAudioCache } from '../services/tts';
@@ -37,6 +36,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [defaultLanguage, setDefaultLanguage] = useState(user.defaultLanguage || 'C++');
   const [aiProvider, setAiProvider] = useState<'gemini' | 'openai'>(user.preferredAiProvider || 'gemini');
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(user.preferredReaderTheme || 'slate');
+  const [recordingTarget, setRecordingTarget] = useState<'youtube' | 'drive'>(user.preferredRecordingTarget || 'drive');
   const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
   
   // LinkedIn Profile Simulation
@@ -97,6 +97,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setSelectedInterests(user.interests || []);
           setAiProvider(user.preferredAiProvider || 'gemini');
           setReaderTheme(user.preferredReaderTheme || 'slate');
+          setRecordingTarget(user.preferredRecordingTarget || 'drive');
           setSenderAddress(user.senderAddress || '');
           setSignaturePreview(user.savedSignatureUrl || '');
           setNextCheckNumber(user.nextCheckNumber || 1001);
@@ -194,6 +195,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               interests: selectedInterests,
               preferredAiProvider: aiProvider,
               preferredReaderTheme: readerTheme,
+              preferredRecordingTarget: recordingTarget,
               senderAddress,
               savedSignatureUrl: finalSigUrl,
               nextCheckNumber,
@@ -294,6 +296,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                     </div>
                     
+                    <div className="space-y-4 pt-4">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><HardDrive size={16} className="text-indigo-400"/> Recording Destination</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${recordingTarget === 'drive' ? 'bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
+                                <div className="flex items-center gap-3">
+                                    <input type="radio" name="recordingTarget" checked={recordingTarget === 'drive'} onChange={() => setRecordingTarget('drive')} className="accent-indigo-500 w-4 h-4"/>
+                                    <div><p className="text-sm font-bold text-white">Google Drive</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Private Storage</p></div>
+                                </div>
+                                <HardDrive size={20} className={recordingTarget === 'drive' ? 'text-indigo-400' : 'text-slate-700'}/>
+                            </label>
+                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${recordingTarget === 'youtube' ? 'bg-red-900/20 border-red-500 ring-1 ring-red-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
+                                <div className="flex items-center gap-3">
+                                    <input type="radio" name="recordingTarget" checked={recordingTarget === 'youtube'} onChange={() => setRecordingTarget('youtube')} className="accent-red-500 w-4 h-4"/>
+                                    <div><p className="text-sm font-bold text-white">YouTube</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Social Video</p></div>
+                                </div>
+                                <Youtube size={20} className={recordingTarget === 'youtube' ? 'text-red-400' : 'text-slate-700'}/>
+                            </label>
+                        </div>
+                    </div>
+
                     <div className="space-y-4 pt-4">
                         <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Palette size={16}/> Preferred Reader Theme</h4>
                         <div className="grid grid-cols-2 gap-3">
@@ -502,7 +524,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </div>
                             <div>
                                 <h3 className="text-xl font-bold text-white uppercase tracking-tighter">{currentTier} Membership</h3>
-                                <p className="text-xs text-slate-400 mt-0.5">Status: <span className={isPaid ? 'text-emerald-400 font-bold' : 'text-slate-500'}>{user.subscriptionStatus || 'Active'}</span></p>
+                                <p className="text-xs text-slate-400 mt-0.5">Status: <span className={isPaid ? 'text-emerald-400 font-bold' : 'text-slate-50'}>{user.subscriptionStatus || 'Active'}</span></p>
                             </div>
                         </div>
                         <button 

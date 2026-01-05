@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject } from '../types';
 import { auth } from '../services/firebaseConfig';
-import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage, getUserInterviews, updateInterviewMetadata, saveCodeProject, getCodeProject } from '../services/firestoreService';
+import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage, getUserInterviews, updateInterviewMetadata, saveCodeProject, getCodeProject, getUserProfile } from '../services/firestoreService';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl, getYouTubeEmbedUrl } from '../services/youtubeService';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -92,7 +91,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [reportError, setReportError] = useState<string | null>(null);
   const [videoPlaybackUrl, setVideoPlaybackUrl] = useState<string | null>(null);
   const [generatedProblemMd, setGeneratedProblemMd] = useState('');
-  const [isExportingBundle, setIsExportingBundle] = useState(false);
 
   const liveServiceRef = useRef<GeminiLiveService | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -158,8 +156,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setTimeout(async () => {
       if (isEndingRef.current) return;
       const historyText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-      const persona = mode.startsWith('assessment') ? 'Objective Technical Proctor' : 'Senior Software Interviewer';
-      const jobContext = jobDesc.trim() ? `Job: ${jobDesc}` : "Job: A general senior software engineering role";
       const prompt = `RESUMING SESSION. History recap: ${historyText.substring(historyText.length - 2000)}`;
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
@@ -215,7 +211,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   }, []);
 
   const handleStartInterview = async () => {
-    // CRITICAL: Priming Audio Engine on Click
     const audioCtx = getGlobalAudioContext();
     await warmUpAudioContext(audioCtx);
 
@@ -290,6 +285,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       recordingDest.stream.getAudioTracks().forEach(t => combinedStream.addTrack(t));
       
       const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 2500000 });
+      // Fix: Changed incorrect property name from onavailable to ondataavailable
       recorder.ondataavailable = e => { if (e.data.size > 0) videoChunksRef.current.push(e.data); };
       mediaRecorderRef.current = recorder;
       recorder.start(1000);
@@ -368,18 +364,23 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setSynthesisStep('Syncing to Global Cloud & YouTube...');
     let videoUrl = "";
     if (videoBlobRef.current && currentUser) {
-        try {
-            const token = getDriveToken();
-            if (token) {
-                const ytId = await uploadToYouTube(token, videoBlobRef.current, {
-                    title: `Mock Interview: ${mode} - ${currentUser.displayName}`,
-                    description: `Automated Simulation via AIVoiceCast. Mode: ${mode}, Language: ${language}.`,
-                    privacyStatus: youtubePrivacy
-                });
-                videoUrl = getYouTubeVideoUrl(ytId);
-                logApi(`YouTube Upload Complete: ${videoUrl}`);
-            }
-        } catch (e) { logApi("Cloud sync failed. Video stored in local cache.", "warn"); }
+        const profile = await getUserProfile(currentUser.uid);
+        const pref = profile?.preferredRecordingTarget || 'drive';
+        
+        if (pref === 'youtube' || mode.includes('assessment')) {
+            try {
+                const token = getDriveToken();
+                if (token) {
+                    const ytId = await uploadToYouTube(token, videoBlobRef.current, {
+                        title: `Mock Interview: ${mode} - ${currentUser.displayName}`,
+                        description: `Automated Simulation via AIVoiceCast. Mode: ${mode}, Language: ${language}.`,
+                        privacyStatus: youtubePrivacy
+                    });
+                    videoUrl = getYouTubeVideoUrl(ytId);
+                    logApi(`YouTube Upload Complete: ${videoUrl}`);
+                }
+            } catch (e) { logApi("Cloud sync failed. Video stored in local cache.", "warn"); }
+        }
     }
 
     setSynthesisStep('Synthesizing technical metrics...');
@@ -411,20 +412,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     }
     setIsGeneratingReport(false);
     if (synthesisIntervalRef.current) clearInterval(synthesisIntervalRef.current);
-  };
-
-  const handleManualSync = async (rec: any) => {
-    if (!currentUser || !rec.blob) return;
-    let token = getDriveToken();
-    if (!token) {
-        if (confirm("You need a Google Drive/YouTube token to sync. Sign in now?")) {
-            const user = await signInWithGoogle();
-            if (!user) return;
-            token = getDriveToken();
-        } else {
-            return;
-        }
-    }
   };
 
   return (
@@ -489,7 +476,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                     </div>
                     <div className="space-y-4">
                       <span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span>
-                      {rec.videoUrl && <span className="text-[9px] font-black uppercase bg-red-900/20 text-red-500 px-3 py-1 rounded-full border border-red-500/30 ml-2">YouTube Archive</span>}
+                      {rec.videoUrl && <span className="text-[9px] font-black uppercase bg-red-900/20 text-red-500 px-3 py-1 rounded-full border border-indigo-500/30 ml-2">YouTube Archive</span>}
                     </div>
                   </div>
                 ))}

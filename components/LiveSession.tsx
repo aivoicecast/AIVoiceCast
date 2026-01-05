@@ -1,6 +1,5 @@
-
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment } from '../types';
+import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
 import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
@@ -8,7 +7,7 @@ import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
-import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, linkDiscussionToLectureSegment, syncUserProfile } from '../services/firestoreService';
+import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, linkDiscussionToLectureSegment, syncUserProfile, getUserProfile } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
@@ -240,8 +239,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const handleStartSession = async () => {
       setError(null);
       
-      // CRITICAL: Immediately resume the global audio context on click
-      // This ensures the user gesture is captured before any other async prompts.
       const ctx = getGlobalAudioContext();
       addLog("Warming up neural audio fabric...");
       await warmUpAudioContext(ctx);
@@ -280,11 +277,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       if (!recordingEnabled || !serviceRef.current || !currentUser) return;
       
       try {
-          // Use the global audio context and mixed destination bus
           const ctx = getGlobalAudioContext();
           const recordingDest = getGlobalMediaStreamDest();
           
-          // Capture user microphone and connect to the shared recording bus
           const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const userSource = ctx.createMediaStreamSource(userStream); 
           userSource.connect(recordingDest);
@@ -325,7 +320,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           drawCompositor();
 
           const captureStream = canvas.captureStream(30);
-          // Add tracks from the mixed recording destination (User + AI)
           recordingDest.stream.getAudioTracks().forEach(track => captureStream.addTrack(track));
 
           const recorder = new MediaRecorder(captureStream, {
@@ -367,22 +361,27 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   setSynthesisProgress(50);
                   const token = getDriveToken();
                   if (token) {
-                      addLog("[SYSTEM]: Valid Cloud Token. Syncing to Google infrastructure...");
+                      const profile = await getUserProfile(currentUser.uid);
+                      const pref = profile?.preferredRecordingTarget || 'drive';
+                      addLog(`[SYSTEM]: Preferred Sync: ${pref.toUpperCase()}`);
                       const folderId = await ensureCodeStudioFolder(token);
                       
                       let videoUrl = '';
-                      try {
-                          setSynthesisProgress(70);
-                          addLog("[YOUTUBE_TRACE]: Initiating resumable multi-part upload...");
-                          const ytId = await uploadToYouTube(token, videoBlob, {
-                              title: `${channel.title}: AI Session`,
-                              description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText.substring(0, 1000)}`,
-                              privacyStatus: 'unlisted'
-                          });
-                          videoUrl = getYouTubeVideoUrl(ytId);
-                          addLog(`[YOUTUBE_TRACE]: SUCCESS. URI: ${videoUrl}`, "info");
-                      } catch (ytErr: any) { 
-                          addLog(`[YOUTUBE_TRACE]: SKIPPED/FAILED. Error: ${ytErr.message || 'Check scopes'}`, "warn");
+                      // Always attempt YouTube if it is preferred OR if we want multi-backup
+                      if (pref === 'youtube' || channel.id.startsWith('meeting')) {
+                          try {
+                              setSynthesisProgress(70);
+                              addLog("[YOUTUBE_TRACE]: Initiating resumable multi-part upload...");
+                              const ytId = await uploadToYouTube(token, videoBlob, {
+                                  title: `${channel.title}: AI Session`,
+                                  description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText.substring(0, 1000)}`,
+                                  privacyStatus: 'unlisted'
+                              });
+                              videoUrl = getYouTubeVideoUrl(ytId);
+                              addLog(`[YOUTUBE_TRACE]: SUCCESS. URI: ${videoUrl}`, "info");
+                          } catch (ytErr: any) { 
+                              addLog(`[YOUTUBE_TRACE]: SKIPPED/FAILED. Error: ${ytErr.message || 'Check scopes'}`, "warn");
+                          }
                       }
 
                       setSynthesisProgress(85);
@@ -412,7 +411,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               userStream.getTracks().forEach(t => t.stop());
               screenStreamRef.current?.getTracks().forEach(t => t.stop());
               cameraStreamRef.current?.getTracks().forEach(t => t.stop());
-              // Do not close global context
           };
           mediaRecorderRef.current = recorder;
           recorder.start(1000);
@@ -589,7 +587,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           </div>
         );
       } else {
-        return part.split(/\n\s*\n/).map((paragraph, pIndex) => paragraph.trim() ? <p key={`${index}-${pIndex}`} className="mb-3 last:mb-0 leading-relaxed">{paragraph}</p> : null);
+        return part.split(/\n\s*\n/).map((paragraph, pIndex) => paragraph.trim() ? <p key={`${index}-${paragraph.substring(0,10)}`} className="mb-3 last:mb-0 leading-relaxed">{paragraph}</p> : null);
       }
     });
   };
@@ -598,7 +596,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     <div className="w-full h-full flex flex-col bg-slate-950 relative">
       <div className="p-4 flex items-center justify-between bg-slate-900 border-b border-slate-800 shrink-0 z-20">
          <div className="flex items-center space-x-3">
-            <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" />
+            <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" alt={channel.title} />
             <div>
                <h2 className="text-sm font-bold text-white leading-tight">{channel.title}</h2>
                <span className="text-xs text-indigo-400 font-medium">Neural Prism Studio</span>
@@ -633,7 +631,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           </div>
       )}
 
-      {/* Local Preview Window */}
       {hasStarted && cameraEnabled && (
           <div className="absolute bottom-20 right-6 w-48 aspect-video md:w-64 bg-black border-2 border-indigo-500 rounded-2xl shadow-2xl z-40 overflow-hidden group">
               <div className="absolute top-2 left-2 z-10 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded text-[8px] font-black text-white uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
@@ -649,7 +646,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           </div>
       )}
 
-      {/* Diagnostics Panel Overlay */}
       {showDiagnostics && (
           <div className="absolute top-16 right-4 w-80 max-h-[70%] z-[100] bg-slate-900/95 border border-slate-700 rounded-2xl shadow-2xl flex flex-col animate-fade-in-down backdrop-blur-md">
               <div className="p-3 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
