@@ -194,12 +194,14 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     video: { cursor: "always" } as any,
                     audio: false 
                 });
+                addLog("Screen capture active.");
             }
             if (cameraEnabled) {
                 cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
                     video: true, 
                     audio: false 
                 });
+                addLog("Camera capture active.");
             }
         }
         return true;
@@ -330,9 +332,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                                   privacyStatus: 'unlisted'
                               });
                               videoUrl = getYouTubeVideoUrl(ytId);
-                              addLog(`Published to YouTube: ${videoUrl}`, "info");
+                              addLog(`YouTube Push Successful: ${videoUrl}`, "info");
                           } catch (ytErr) { 
-                              addLog("YouTube upload failed, using local/drive fallback.", "warn");
+                              addLog("YouTube upload rejected, using local/drive fallback.", "warn");
                           }
                       }
 
@@ -352,7 +354,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   setSynthesisProgress(100);
               } catch(e) { 
                   console.error("Cloud sync failed", e); 
-                  addLog("Cloud sync failed. Data remains in local storage.", "error");
+                  addLog("Cloud sync aborted. Data is safe in local browser storage.", "error");
               } finally { 
                   setIsUploadingRecording(false); 
                   onEndSession();
@@ -366,7 +368,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           recorder.start(1000);
       } catch(e) { 
           console.warn("Recording start failure", e); 
-          addLog("Recording subsystem failed.", "error");
+          addLog("Recording subsystem failed to initialize.", "error");
       }
   }, [recordingEnabled, channel, currentUser, onEndSession, addLog]);
 
@@ -384,21 +386,21 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           effectiveInstruction += `\n\n[USER CONTEXT]: ${initialContext}`;
       }
 
-      addLog("Connecting to WebSocket...");
+      addLog("Initializing Neural Link...");
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { 
               setIsConnected(true); 
-              addLog("WebSocket Open.");
+              addLog("Handshake complete. WebSocket linked.");
               if (recordingEnabled) startRecording(); 
           },
           onClose: (reason) => { 
               setIsConnected(false); 
-              addLog(`WebSocket Closed: ${reason}`, "warn");
+              addLog(`Link Terminated: ${reason}`, "warn");
           },
           onError: (err) => { 
               setIsConnected(false); 
               setError(err); 
-              addLog(`API Error: ${err}`, "error");
+              addLog(`API Handshake Error: ${err}`, "error");
           },
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
@@ -410,7 +412,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           },
           onToolCall: async (toolCall: any) => {
               for (const fc of toolCall.functionCalls) {
-                  addLog(`AI tool call: ${fc.name}`);
+                  addLog(`AI tool invocation: ${fc.name}`);
                   if (fc.name === 'save_content') {
                       const { filename, content } = fc.args;
                       setTranscript(h => [...h, { role: 'ai', text: `*[System]: Generated artifact '${filename}' saved to project.*`, timestamp: Date.now() }]);
@@ -423,13 +425,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           }
       }, [{ functionDeclarations: [saveContentTool] }]);
     } catch (e: any) { 
-        setError("AI initialization failed."); 
-        addLog(`Link Init Failure: ${e.message}`, "error");
+        setError("AI initialization failure."); 
+        addLog(`Link Init Exception: ${e.message}`, "error");
     }
   }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, recordingEnabled, startRecording, onCustomToolCall, addLog]);
 
   const handleDisconnect = async () => {
-      addLog("Ending session...");
+      addLog("Session shutdown sequence started...");
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
       } else { 
@@ -463,7 +465,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               if (newSections) {
                   currentLecture.sections.push(...newSections);
                   await cacheLectureScript(cacheKey, currentLecture);
-                  alert("Discussion summary appended to lecture script.");
+                  alert("Summary appended to lecture script.");
               }
           }
       } catch(e) { alert("Append failed."); } finally { setIsAppending(false); }
@@ -477,7 +479,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           const title = `Live Notes - ${new Date().toLocaleDateString()}`;
           const nb: GeneratedLecture = { topic: title, professorName: channel.voiceName, studentName: "User", sections: fullTranscript.map(t => ({ speaker: t.role === 'user' ? 'Student' : 'Teacher', text: t.text })) };
           await cacheLectureScript(`lecture_${channel.id}_live_${Date.now()}_${language}`, nb);
-          alert("Session saved as a new curriculum item.");
+          alert("Session archived to curriculum.");
       } catch (e) { alert("Save failed."); } finally { setIsSavingLesson(false); }
   };
 
@@ -494,7 +496,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           };
           const discussionId = await saveDiscussion(discussion);
           await linkDiscussionToLectureSegment(channel.id, activeSegment.lectureId, activeSegment.index, discussionId);
-          alert("Discussion saved and linked to segment!");
+          alert("Linked to segment!");
       } catch(e) { alert("Link failed."); } finally { setIsLinking(false); }
   };
 
@@ -505,7 +507,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         return (
           <div key={index} className="my-3 rounded-lg overflow-hidden border border-slate-700 bg-slate-950 shadow-lg">
              <div className="flex items-center justify-between px-4 py-1.5 bg-slate-800/80 border-b border-slate-700">
-               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Code Block</span>
+               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Code Fragment</span>
                <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(part); }} className="flex items-center space-x-1 text-[10px] font-bold text-slate-500 hover:text-indigo-400 transition-colors">
                  <Copy size={10} /><span>Copy</span>
                </button>
@@ -526,7 +528,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" />
             <div>
                <h2 className="text-sm font-bold text-white leading-tight">{channel.title}</h2>
-               <span className="text-xs text-indigo-400 font-medium">Live Studio</span>
+               <span className="text-xs text-indigo-400 font-medium">Neural Prism Studio</span>
             </div>
          </div>
          <div className="flex items-center gap-3">
@@ -539,11 +541,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             <button onClick={() => setShowDiagnostics(!showDiagnostics)} className={`p-2 rounded-lg transition-colors ${showDiagnostics ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title={t.diagnostics}>
                 <Activity size={18}/>
             </button>
-            <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">End Session</button>
+            <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">Terminate</button>
          </div>
       </div>
 
-      {/* Local Preview Window (Self-View) */}
+      {/* Local Preview Window */}
       {hasStarted && cameraEnabled && (
           <div className="absolute bottom-20 right-6 w-48 aspect-video md:w-64 bg-black border-2 border-indigo-500 rounded-2xl shadow-2xl z-40 overflow-hidden group">
               <div className="absolute top-2 left-2 z-10 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded text-[8px] font-black text-white uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
@@ -568,7 +570,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-[10px]">
                   {logs.length === 0 ? (
-                      <p className="text-slate-600 italic">No events recorded...</p>
+                      <p className="text-slate-600 italic">Listening for neural events...</p>
                   ) : logs.map((log, i) => (
                       <div key={i} className={`flex gap-2 ${log.type === 'error' ? 'text-red-400' : log.type === 'warn' ? 'text-amber-400' : 'text-slate-400'}`}>
                           <span className="opacity-40 shrink-0">[{log.time}]</span>
@@ -586,11 +588,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                  <h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">{t.tapToStart}</h3>
                  <p className="text-slate-400 text-sm mt-2 max-w-xs leading-relaxed">{t.tapDesc}</p>
                  <div className="flex justify-center gap-4 mt-4">
-                     {videoEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-400 uppercase"><Monitor size={14}/> Screen</div>}
-                     {cameraEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-red-400 uppercase"><Camera size={14}/> Camera</div>}
+                     {videoEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-400 uppercase"><Monitor size={14}/> Desktop</div>}
+                     {cameraEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-red-400 uppercase"><Camera size={14}/> Optics</div>}
                  </div>
              </div>
-             <button onClick={handleStartSession} className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-full shadow-2xl shadow-indigo-500/30 transition-transform hover:scale-105">{t.start}</button>
+             <button onClick={handleStartSession} className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-full shadow-2xl shadow-indigo-500/30 transition-transform hover:scale-105">Link Prism</button>
          </div>
       ) : error ? (
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
@@ -613,7 +615,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   </div>
                   <div className="text-center">
                     <span className="text-sm font-black text-white uppercase tracking-widest">{t.uploading}</span>
-                    <p className="text-xs text-slate-500 mt-2 uppercase font-bold tracking-widest opacity-60">Optimizing Neural Stream</p>
+                    <p className="text-xs text-slate-500 mt-2 uppercase font-bold tracking-widest opacity-60">Pushing archive to channel</p>
                   </div>
                </div>
             )}

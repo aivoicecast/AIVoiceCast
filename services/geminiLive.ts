@@ -56,23 +56,33 @@ export class GeminiLiveService {
       
       if (!this.inputAudioContext) this.initializeAudio();
       
-      // Ensure microphone is ready before starting the WebSocket
       if (!this.stream) {
         this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
 
       const validVoice = getValidLiveVoice(voiceName);
 
+      // Construct config carefully to avoid 1007 "non-audio" error
+      const liveConfig: any = {
+        responseModalalities: ['AUDIO'], // Use string literal for robustness
+        speechConfig: { 
+            voiceConfig: { 
+                prebuiltVoiceConfig: { voiceName: validVoice } 
+            } 
+        },
+        systemInstruction,
+        inputAudioTranscription: {},
+        outputAudioTranscription: {}
+      };
+
+      // Only add tools if they are actually provided
+      if (tools && tools.length > 0) {
+          liveConfig.tools = tools;
+      }
+
       const connectionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-        config: {
-          responseModalalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: validVoice } } },
-          systemInstruction,
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          tools,
-        },
+        config: liveConfig,
         callbacks: {
           onopen: () => {
             if (!this.isActive) return;
@@ -119,6 +129,7 @@ export class GeminiLiveService {
                     case 1001: reason = "Endpoint going away (1001)"; break;
                     case 1006: reason = "Abnormal closure (1006) - likely Network/VPN issue"; break;
                     case 4003: reason = "API Quota exceeded (4003)"; break;
+                    case 1007: reason = "Protocol Violation (1007) - Possible config mismatch"; break;
                     default: reason = `WS Code: ${e.code} ${e.reason || ''}`;
                 }
             }

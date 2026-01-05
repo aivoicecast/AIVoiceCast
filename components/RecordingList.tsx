@@ -172,8 +172,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold text-white text-lg truncate">{rec.channelTitle}</h3>
                         {isYoutube && (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-600 rounded text-[9px] font-black text-white uppercase tracking-tighter">
-                                <ExternalLink size={8}/> YouTube
+                            <div className="flex items-center gap-1.5 px-3 py-1 bg-red-600 rounded-lg text-[10px] font-black text-white uppercase tracking-tighter shadow-lg shadow-red-900/20">
+                                <Youtube size={12} fill="currentColor"/> YouTube
                             </div>
                         )}
                         {isLocal && <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700" title="Device Storage Only">Local Only</span>}
