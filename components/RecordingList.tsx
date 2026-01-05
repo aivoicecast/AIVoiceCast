@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel, TranscriptItem } from '../types';
 import { getUserRecordings, deleteRecordingReference } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getYouTubeEmbedUrl } from '../services/youtubeService';
 
@@ -134,6 +134,15 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         </div>
       </div>
 
+      {!currentUser && (
+          <div className="p-4 bg-indigo-900/20 border border-indigo-500/30 rounded-2xl flex items-start gap-3">
+              <Info className="text-indigo-400 shrink-0 mt-0.5" size={18}/>
+              <p className="text-xs text-indigo-200">
+                  <strong>YouTube Notice:</strong> Videos are uploaded to the channel associated with the Google Account currently signed in. Ensure you are logged into <strong>shengliang.song.ai@gmail.com</strong> if you want videos on that channel.
+              </p>
+          </div>
+      )}
+
       {loading ? (
         <div className="py-24 flex flex-col items-center justify-center text-indigo-400 gap-4">
           <Loader2 className="animate-spin" size={40} />
@@ -161,19 +170,19 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             const isYoutube = isYouTubeUrl(rec.mediaUrl);
 
             return (
-              <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : 'border-slate-800'} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl`}>
+              <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : (isYoutube ? 'border-red-500/30 shadow-red-900/5' : 'border-slate-800')} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl`}>
                 <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                   
                   <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:scale-105 ${isYoutube ? 'bg-red-900/20 border-red-500/50 text-red-500' : isVideo ? 'bg-indigo-900/20 border-indigo-500/50 text-indigo-400' : 'bg-pink-900/20 border-pink-500/50 text-pink-400'}`}>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:scale-105 ${isYoutube ? 'bg-red-900/20 border-red-500/50 text-red-500 shadow-lg shadow-red-900/20' : isVideo ? 'bg-indigo-900/20 border-indigo-500/50 text-indigo-400' : 'bg-pink-900/20 border-pink-500/50 text-pink-400'}`}>
                        {isYoutube ? <Youtube size={24} /> : isVideo ? <Video size={24} /> : <Mic size={24} />}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold text-white text-lg truncate">{rec.channelTitle}</h3>
                         {isYoutube && (
-                            <div className="flex items-center gap-1.5 px-3 py-1 bg-red-600 rounded-lg text-[10px] font-black text-white uppercase tracking-tighter shadow-lg shadow-red-900/20">
-                                <Youtube size={12} fill="currentColor"/> YouTube
+                            <div className="flex items-center gap-1.5 px-3 py-1 bg-red-600 rounded-lg text-[10px] font-black text-white uppercase tracking-tighter shadow-lg shadow-red-900/20 animate-fade-in">
+                                <ExternalLink size={12}/> YouTube LIVE
                             </div>
                         )}
                         {isLocal && <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700" title="Device Storage Only">Local Only</span>}
@@ -181,6 +190,14 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
                         <span className="flex items-center gap-1"><Calendar size={12} /> {date.toLocaleDateString()}</span>
                         <span className="flex items-center gap-1"><Clock size={12} /> {date.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                        {isYoutube && (
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(rec.mediaUrl); alert("URL Copied!"); }}
+                                className="flex items-center gap-1 text-red-400 hover:text-white transition-colors"
+                            >
+                                <LinkIcon size={12}/> <span className="font-mono text-[10px] truncate max-w-[120px]">{rec.mediaUrl}</span>
+                            </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -198,19 +215,21 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <FileText size={20} />
                     </a>
 
-                    <div className="relative group">
-                        <a href={rec.mediaUrl} target="_blank" rel="noreferrer" download={`${rec.channelTitle.replace(/\s/g, '_')}_Session.webm`} className="p-2.5 bg-slate-800 text-slate-400 hover:text-emerald-400 rounded-xl border border-slate-700 transition-colors flex items-center justify-center">
-                            <HardDriveDownload size={20} />
-                        </a>
-                        <div className="absolute bottom-full right-0 mb-2 px-4 py-3 bg-slate-800 text-slate-300 text-[10px] rounded-2xl border border-slate-700 w-64 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-2xl z-50">
-                            <p className="font-bold flex items-center gap-1 mb-2 text-indigo-300"><Info size={12}/> File Notice</p>
-                            <p className="mb-2">This is a 200MB+ WebM file. Windows Media Player may fail to open it.</p>
-                            <p className="font-bold">Use VLC Media Player or open in Chrome/Edge for full seekable playback.</p>
+                    {!isYoutube && (
+                        <div className="relative group">
+                            <a href={rec.mediaUrl} target="_blank" rel="noreferrer" download={`${rec.channelTitle.replace(/\s/g, '_')}_Session.webm`} className="p-2.5 bg-slate-800 text-slate-400 hover:text-emerald-400 rounded-xl border border-slate-700 transition-colors flex items-center justify-center">
+                                <HardDriveDownload size={20} />
+                            </a>
+                            <div className="absolute bottom-full right-0 mb-2 px-4 py-3 bg-slate-800 text-slate-300 text-[10px] rounded-2xl border border-slate-700 w-64 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-2xl z-50">
+                                <p className="font-bold flex items-center gap-1 mb-2 text-indigo-300"><Info size={12}/> File Notice</p>
+                                <p className="mb-2">This is a 200MB+ WebM file. Windows Media Player may fail to open it.</p>
+                                <p className="font-bold">Use VLC Media Player or open in Chrome/Edge for full seekable playback.</p>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {isYoutube && (
-                        <a href={rec.mediaUrl} target="_blank" rel="noreferrer" className="p-2.5 bg-red-950/20 text-red-500 hover:bg-red-600 hover:text-white rounded-xl border border-red-500/20 transition-colors" title="View on YouTube">
+                        <a href={rec.mediaUrl} target="_blank" rel="noreferrer" className="p-2.5 bg-red-950/20 text-red-500 hover:bg-red-600 hover:text-white rounded-xl border border-red-500/20 transition-colors shadow-lg shadow-red-900/10" title="Watch on YouTube">
                             <Youtube size={20} />
                         </a>
                     )}

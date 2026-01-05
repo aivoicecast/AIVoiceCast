@@ -62,27 +62,29 @@ export class GeminiLiveService {
 
       const validVoice = getValidLiveVoice(voiceName);
 
-      // Construct config carefully to avoid 1007 "non-audio" error
+      // Re-ordered and simplified config to satisfy strict server validation
       const liveConfig: any = {
-        responseModalalities: ['AUDIO'], // Use string literal for robustness
-        speechConfig: { 
-            voiceConfig: { 
-                prebuiltVoiceConfig: { voiceName: validVoice } 
-            } 
-        },
-        systemInstruction,
-        inputAudioTranscription: {},
-        outputAudioTranscription: {}
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        config: {
+          responseModalalities: [Modality.AUDIO], // Use official enum for reliability
+          speechConfig: { 
+              voiceConfig: { 
+                  prebuiltVoiceConfig: { voiceName: validVoice } 
+              } 
+          },
+          systemInstruction,
+          inputAudioTranscription: {},
+          outputAudioTranscription: {}
+        }
       };
 
-      // Only add tools if they are actually provided
       if (tools && tools.length > 0) {
-          liveConfig.tools = tools;
+          liveConfig.config.tools = tools;
       }
 
       const connectionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-        config: liveConfig,
+        model: liveConfig.model,
+        config: liveConfig.config,
         callbacks: {
           onopen: () => {
             if (!this.isActive) return;
@@ -129,7 +131,7 @@ export class GeminiLiveService {
                     case 1001: reason = "Endpoint going away (1001)"; break;
                     case 1006: reason = "Abnormal closure (1006) - likely Network/VPN issue"; break;
                     case 4003: reason = "API Quota exceeded (4003)"; break;
-                    case 1007: reason = "Protocol Violation (1007) - Possible config mismatch"; break;
+                    case 1007: reason = "Protocol Violation (1007) - Configuration mismatch"; break;
                     default: reason = `WS Code: ${e.code} ${e.reason || ''}`;
                 }
             }
