@@ -4,7 +4,7 @@ import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, coolDow
 
 export interface LiveConnectionCallbacks {
   onOpen: () => void;
-  onClose: (reason?: string) => void;
+  onClose: (reason: string, code?: number) => void;
   onError: (error: string) => void;
   onVolumeUpdate: (volume: number) => void;
   onTranscript: (text: string, isUser: boolean) => void;
@@ -55,7 +55,6 @@ export class GeminiLiveService {
 
       const validVoice = getValidLiveVoice(voiceName);
 
-      // Transcription requires these objects to be present in config
       const config: any = {
           responseModalities: ['AUDIO'],
           speechConfig: {
@@ -86,7 +85,6 @@ export class GeminiLiveService {
             
             if (message.toolCall) callbacks.onToolCall?.(message.toolCall);
             
-            // Handle Transcripts (DISPLAY FIX)
             const outTrans = message.serverContent?.outputTranscription;
             if (outTrans?.text) {
                 callbacks.onTranscript(outTrans.text, false);
@@ -128,10 +126,12 @@ export class GeminiLiveService {
           },
           onclose: (e: any) => {
             if (!this.isActive) return;
-            let reason = "Link closed";
-            if (e?.code === 1007) reason = "Protocol Error (1007)";
+            const code = e?.code || 1000;
+            let reason = e?.reason || "Link closed";
+            if (code === 1007) reason = "Protocol Error (1007)";
+            if (code === 1006) reason = "Abnormal Disconnect (Network/Server)";
             this.cleanup();
-            callbacks.onClose(reason);
+            callbacks.onClose(reason, code);
           },
           onerror: (e: any) => {
             if (!this.isActive) return;

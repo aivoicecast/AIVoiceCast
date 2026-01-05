@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
@@ -58,7 +58,8 @@ const UI_TEXT = {
     start: "Start Session",
     saveSession: "Save Session",
     localPreview: "Local Preview",
-    diagnostics: "Neural Diagnostics"
+    diagnostics: "Neural Diagnostics",
+    cloudWarn: "Cloud Token Missing: Recording will be LOCAL ONLY."
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -89,7 +90,8 @@ const UI_TEXT = {
     start: "开始会话",
     saveSession: "保存会话",
     localPreview: "本地预览",
-    diagnostics: "神经诊断"
+    diagnostics: "神经诊断",
+    cloudWarn: "云令牌丢失：录音将仅保存在本地设备。"
   }
 };
 
@@ -143,6 +145,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [hasStarted, setHasStarted] = useState(false); 
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cloudWarning, setCloudWarning] = useState(false);
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
   const [synthesisProgress, setSynthesisProgress] = useState(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -190,6 +193,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     addLog("Requesting hardware permissions...");
     try {
         if (recordingEnabled) {
+            const token = getDriveToken();
+            if (!token) {
+                setCloudWarning(true);
+                addLog("Cloud token missing. Recording will be local-only.", "warn");
+            }
+            
             if (videoEnabled) {
                 screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
                     video: { cursor: "always" } as any,
@@ -239,7 +248,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           mixingAudioContextRef.current = mixCtx;
           const dest = mixCtx.createMediaStreamDestination();
           
-          // No AI output stream mixing in this simple version, just user and system
           const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const userSource = mixCtx.createMediaStreamSource(userStream); 
           userSource.connect(dest);
@@ -397,9 +405,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               addLog("Link Active.");
               if (recordingEnabled) startRecording(); 
           },
-          onClose: (reason) => { 
+          onClose: (reason, code) => { 
               setIsConnected(false); 
-              addLog(`Link Closed: ${reason}`, "warn");
+              addLog(`Link Closed: ${reason} (Code: ${code})`, code === 1000 ? "info" : "warn");
           },
           onError: (err) => { 
               setIsConnected(false); 
@@ -551,6 +559,14 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">Terminate</button>
          </div>
       </div>
+
+      {cloudWarning && (
+          <div className="bg-amber-600/20 border-b border-amber-600/30 p-2 px-4 flex items-center justify-center gap-2 animate-fade-in z-20">
+              <ShieldAlert size={14} className="text-amber-400"/>
+              <span className="text-[10px] font-bold text-amber-300 uppercase tracking-widest">{t.cloudWarn}</span>
+              <button onClick={() => setCloudWarning(false)} className="ml-4 text-slate-500 hover:text-white"><X size={14}/></button>
+          </div>
+      )}
 
       {/* Local Preview Window */}
       {hasStarted && cameraEnabled && (
