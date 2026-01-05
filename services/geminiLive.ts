@@ -5,7 +5,7 @@ import { base64ToBytes, decodeRawPcm, createPcmBlob, getGlobalAudioContext, warm
 export interface LiveConnectionCallbacks {
   onOpen: () => void;
   onClose: () => void;
-  onError: (error: Error) => void;
+  onError: (error: string) => void;
   onVolumeUpdate: (volume: number) => void;
   onTranscript: (text: string, isUser: boolean) => void;
   onToolCall?: (toolCall: any) => void;
@@ -143,14 +143,19 @@ export class GeminiLiveService {
             if (interrupted) { this.stopAllSources(); this.nextStartTime = 0; this.isPlayingResponse = false; }
           },
           onclose: () => { this.cleanup(); callbacks.onClose(); },
-          onerror: (e: any) => { this.cleanup(); callbacks.onError(new Error(e.message || "Connection failed")); }
+          onerror: (e: any) => { 
+            // Relay the detailed error message for UI debugging
+            const errorMsg = e.message || JSON.stringify(e) || "WebSocket Connection Interrupted";
+            this.cleanup(); 
+            callbacks.onError(errorMsg); 
+          }
         }
       });
 
-      this.sessionPromise = Promise.race([connectionPromise, new Promise((_, r) => setTimeout(() => r(new Error("Timeout")), 15000))]);
+      this.sessionPromise = Promise.race([connectionPromise, new Promise((_, r) => setTimeout(() => r(new Error("Establish connection timed out (15s)")), 15000))]);
       this.session = await this.sessionPromise;
-    } catch (error) {
-      callbacks.onError(error instanceof Error ? error : new Error("Failed to connect"));
+    } catch (error: any) {
+      callbacks.onError(error?.message || "Failed to initialize Gemini Live Session");
       this.cleanup();
     }
   }

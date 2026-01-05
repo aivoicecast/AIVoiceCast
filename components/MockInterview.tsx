@@ -13,7 +13,7 @@ import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug } from 'lucide-react';
 
 interface MockInterviewProps {
   onBack: () => void;
@@ -46,6 +46,8 @@ interface InterviewReport {
 const LANGUAGES = ['TypeScript', 'JavaScript', 'Python', 'C++', 'Java', 'Rust', 'Go', 'C#', 'Swift'];
 
 export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfile, onStartLiveSession }) => {
+  const currentUser = auth?.currentUser;
+
   const [view, setView] = useState<'hub' | 'prep' | 'interview' | 'report'>('hub');
   const [interviews, setInterviews] = useState<MockInterviewRecording[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +59,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [snapshotSaved, setSnapshotSaved] = useState(false);
   const [reconnectCount, setReconnectCount] = useState(0);
   
+  // Debug State
+  const [apiLogs, setApiLogs] = useState<{timestamp: number, msg: string, type: 'info' | 'error'}[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
+
   // Synthesis Progress State
   const [synthesisStep, setSynthesisStep] = useState<string>('');
   const [synthesisPercent, setSynthesisPercent] = useState(0);
@@ -102,7 +108,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const activeStreamRef = useRef<MediaStream | null>(null);
   const activeScreenStreamRef = useRef<MediaStream | null>(null);
 
-  const currentUser = auth?.currentUser;
+  const logApi = (msg: string, type: 'info' | 'error' = 'info') => {
+      setApiLogs(prev => [{timestamp: Date.now(), msg, type}, ...prev].slice(0, 50));
+  };
 
   useEffect(() => {
       if (view === 'interview' && activeStreamRef.current && localVideoRef.current) {
@@ -139,20 +147,47 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     }
   };
 
+  // Fixed Multi-page PDF logic
   const handleDownloadPdf = async (ref: React.RefObject<HTMLDivElement>, filename: string) => {
       if (!ref.current) return;
       try {
-          const canvas = await html2canvas(ref.current, { scale: 2, useCORS: true, backgroundColor: '#020617' });
+          setIsExportingBundle(true);
+          const element = ref.current;
+          const canvas = await html2canvas(element, { 
+              scale: 2, 
+              useCORS: true, 
+              backgroundColor: '#020617',
+              windowWidth: 1200 
+          });
+          
           const imgData = canvas.toDataURL('image/jpeg', 0.95);
           const pdf = new jsPDF('p', 'mm', 'a4');
-          const imgProps = pdf.getImageProperties(imgData);
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-          pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          const imgWidth = pageWidth;
+          const imgHeight = (canvas.height * pageWidth) / canvas.width;
+          
+          let heightLeft = imgHeight;
+          let position = 0;
+
+          // Add first page
+          pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+
+          // Add extra pages if needed
+          while (heightLeft > 0) {
+              position = heightLeft - imgHeight;
+              pdf.addPage();
+              pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+              heightLeft -= pageHeight;
+          }
+          
           pdf.save(filename);
       } catch (e) {
           console.error("PDF generation failed", e);
           alert("Failed to generate PDF.");
+      } finally {
+          setIsExportingBundle(false);
       }
   };
 
@@ -160,7 +195,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       if (!bundleRef.current) return;
       setIsExportingBundle(true);
       try {
-          const canvas = await html2canvas(bundleRef.current, { 
+          const element = bundleRef.current;
+          const canvas = await html2canvas(element, { 
               scale: 2, 
               useCORS: true, 
               backgroundColor: '#020617',
@@ -168,27 +204,27 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           });
           const imgData = canvas.toDataURL('image/jpeg', 0.9);
           const pdf = new jsPDF('p', 'mm', 'a4');
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const imgProps = pdf.getImageProperties(imgData);
-          const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-          
-          let heightLeft = pdfHeight;
-          let position = 0;
+          const pageWidth = pdf.internal.pageSize.getWidth();
           const pageHeight = pdf.internal.pageSize.getHeight();
+          const imgWidth = pageWidth;
+          const imgHeight = (canvas.height * pageWidth) / canvas.width;
+          
+          let heightLeft = imgHeight;
+          let position = 0;
 
-          pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
+          pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
           heightLeft -= pageHeight;
 
-          while (heightLeft >= 0) {
-              position = heightLeft - pdfHeight;
+          while (heightLeft > 0) {
+              position = heightLeft - imgHeight;
               pdf.addPage();
-              pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
+              pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
               heightLeft -= pageHeight;
           }
 
           pdf.save(`Neural_Career_Bundle_${activeRecording?.id || 'session'}.pdf`);
       } catch (e) {
-          console.error(e);
+          console.error("Bundle failed", e);
           alert("Bundle generation failed.");
       } finally {
           setIsExportingBundle(false);
@@ -248,18 +284,22 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const service = new GeminiLiveService();
       liveServiceRef.current = service;
       try {
+          logApi(`Reconnecting to Gemini Live Service (Auto: ${isAuto})`);
           await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice gen-lang-client-0648937375', prompt, {
               onOpen: () => {
                   setIsAiConnected(true);
+                  logApi("Neural Link Established Successfully");
                   if (isAuto) setReconnectCount(prev => prev + 1);
               },
               onClose: () => { 
                   setIsAiConnected(false); 
+                  logApi("Neural Link Closed by Remote Peer", "error");
                   if (!isEndingRef.current) setTimeout(() => handleReconnectAi(true), 2000);
               },
               onError: (e) => { 
                   console.error(e); 
                   setIsAiConnected(false); 
+                  logApi(`Gemini API Error: ${e}`, "error");
                   if (!isEndingRef.current) setTimeout(() => handleReconnectAi(true), 3000);
               },
               onVolumeUpdate: () => {},
@@ -274,7 +314,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                   });
               }
           });
-      } catch (err) { 
+      } catch (err: any) { 
+          logApi(`Fatal Reconnection Error: ${err?.message || "Unknown"}`, "error");
           if (!isAuto) alert("Reconnection failed."); 
       }
   };
@@ -308,10 +349,14 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setIsFeedbackSessionActive(true);
 
     try {
+        logApi("Starting Mentorship Voice Link");
         await service.connect('Kore', systemPrompt, {
             onOpen: () => setIsAiConnected(true),
             onClose: () => { setIsAiConnected(false); },
-            onError: (e) => { console.error(e); setIsAiConnected(false); },
+            onError: (e) => { 
+                logApi(`Mentorship Link Error: ${e}`, "error");
+                setIsAiConnected(false); 
+            },
             onVolumeUpdate: () => {},
             onTranscript: (text, isUser) => {
                 setCoachingTranscript(prev => {
@@ -336,11 +381,13 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       setReportError(null);
       setActiveRecording(null);
       setVideoPlaybackUrl(null);
+      setApiLogs([]);
       videoBlobRef.current = null;
       interviewIdRef.current = generateSecureId();
 
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          logApi("Initializing AI Context...");
           
           let scheduleMd = '';
           if (mode === 'coding') {
@@ -409,6 +456,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           ];
           setInitialStudioFiles(files);
 
+          logApi("Requesting Hardware Permissions...");
           const camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
           
@@ -416,7 +464,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           activeScreenStreamRef.current = screenStream;
 
           const canvas = document.createElement('canvas');
-          canvas.width = 1920; canvas.height = 1080;
+          canvas.width = 1280; canvas.height = 720; // Reduced resolution for bandwidth/perf
           const ctx = canvas.getContext('2d', { alpha: false })!;
           const camVideo = document.createElement('video'); camVideo.srcObject = camStream; camVideo.muted = true; camVideo.playsInline = true;
           const screenVideo = document.createElement('video'); screenVideo.srcObject = screenStream; screenVideo.muted = true; screenVideo.playsInline = true;
@@ -431,8 +479,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               ctx.fillStyle = '#020617'; ctx.fillRect(0, 0, canvas.width, canvas.height);
               if (screenVideo.readyState >= 2) ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
               if (camVideo.readyState >= 2) {
-                  ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 10;
-                  ctx.strokeRect(1500, 750, 380, 280); ctx.drawImage(camVideo, 1500, 750, 380, 280);
+                  ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 4;
+                  const w = 320; const h = 180;
+                  ctx.strokeRect(canvas.width - w - 20, canvas.height - h - 20, w, h); 
+                  ctx.drawImage(camVideo, canvas.width - w - 20, canvas.height - h - 20, w, h);
               }
               requestAnimationFrame(drawFrame);
           };
@@ -440,24 +490,19 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           
           const combinedStream = canvas.captureStream(30);
           camStream.getAudioTracks().forEach(track => combinedStream.addTrack(track));
-          const recorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 2500000 });
+          
+          const recorderOptions = { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 1500000 };
+          const recorder = new MediaRecorder(combinedStream, recorderOptions);
           const chunks: Blob[] = [];
           
           recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-          
-          const recordingFinished = new Promise<Blob>((resolve) => {
-              recorder.onstop = () => {
-                  const blob = new Blob(chunks, { type: 'video/webm' });
-                  videoBlobRef.current = blob;
-                  resolve(blob);
-              };
-          });
           
           mediaRecorderRef.current = recorder;
           
           setView('interview');
           recorder.start(1000); 
           setIsRecording(true);
+          logApi("Recorder Started");
           
           const persona = mode === 'coding' ? 'Senior Technical Interviewer' : mode === 'system_design' ? 'Principal System Architect' : mode === 'quick_screen' ? 'High-Velocity Technical Recruiter' : mode.startsWith('assessment') ? 'Objective Technical Proctor' : 'Hiring Manager';
           
@@ -502,6 +547,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
           const prompt = `You are a world-class ${persona}. ${timingInstruction} MISSION: Conduct mock interview. Context: Job: ${jobDesc}, Candidate: ${resumeText}, Stack: ${language}.`;
           
+          logApi("Establishing Neural Link...");
           const service = new GeminiLiveService();
           liveServiceRef.current = service;
           await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice gen-lang-client-0648937375', prompt, {
@@ -511,7 +557,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 if (!isEndingRef.current) handleReconnectAi(true);
               },
               onError: (e) => { 
-                console.error(e); 
+                logApi(`Gemini Live Error: ${e}`, "error");
                 setIsAiConnected(false); 
                 if (!isEndingRef.current) handleReconnectAi(true);
               },
@@ -528,8 +574,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               }
           });
           setIsCodeStudioOpen(mode !== 'quick_screen');
-      } catch (e) {
-          alert("Permissions required (Camera + Screen).");
+      } catch (e: any) {
+          logApi(`Session Start Failed: ${e.message}`, "error");
+          alert("Permissions required (Camera + Screen) or API Error. Check Debug Log.");
           setView('hub');
       } finally { setIsStarting(false); }
   };
@@ -580,25 +627,30 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       setReportError(null);
       startSmoothProgress();
       
-      // 1. Terminate Hardware Immediately
+      // 1. Terminate Hardware & Sync Audio
       setSynthesisStep('Shutting down neural link...');
       liveServiceRef.current?.disconnect();
       setIsRecording(false);
       activeStreamRef.current?.getTracks().forEach(t => t.stop());
       activeScreenStreamRef.current?.getTracks().forEach(t => t.stop());
 
-      // 2. Finalize Video and Save Locally First (Safety Checkpoint)
+      // 2. Finalize Video Recording (Awaited)
       setSynthesisStep('Finalizing local video buffer...');
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          const blobPromise = new Promise<Blob>((resolve) => {
+          const finalBlobPromise = new Promise<Blob>((resolve) => {
               const recorder = mediaRecorderRef.current!;
+              const chunks: Blob[] = [];
+              recorder.ondataavailable = e => chunks.push(e.data);
               recorder.onstop = () => {
-                  const chunks = (recorder as any)._chunks || [];
-                  resolve(new Blob(chunks, { type: 'video/webm' }));
+                  const blob = new Blob(chunks, { type: 'video/webm' });
+                  resolve(blob);
               };
               recorder.stop();
           });
-          videoBlobRef.current = await blobPromise;
+          
+          const blob = await finalBlobPromise;
+          videoBlobRef.current = blob;
+          logApi(`Recording finalized: ${Math.round(blob.size / 1024)} KB`);
           
           try {
               await saveLocalRecording({
@@ -607,15 +659,16 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                   channelId: 'mock-interview',
                   channelTitle: `Mock Interview: ${jobDesc}`,
                   timestamp: Date.now(),
-                  mediaUrl: URL.createObjectURL(videoBlobRef.current),
+                  mediaUrl: URL.createObjectURL(blob),
                   mediaType: 'video/webm',
                   transcriptUrl: '', 
-                  blob: videoBlobRef.current
+                  blob: blob
               });
-          } catch (e) { console.warn("Local checkpoint failed."); }
+          } catch (e) { logApi("Local persistent save failed", "error"); }
       }
       
       setSynthesisStep('Synthesizing performance metrics...');
+      logApi("Synthesizing Report via Gemini 3 Pro...");
       
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -637,6 +690,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               model: 'gemini-3-pro-preview',
               contents: reportPrompt,
               config: { 
+                  // responseMimeType: 'application/json' is supported
                   responseMimeType: 'application/json',
                   responseSchema: {
                       type: Type.OBJECT,
@@ -703,7 +757,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           setSynthesisPercent(100);
           setView('report');
       } catch (e: any) {
-          console.error("Synthesis failed:", e);
+          logApi(`Report Generation Failed: ${e.message}`, "error");
           setReportError(e.message || "Unknown error during analysis.");
           if (synthesisIntervalRef.current) clearInterval(synthesisIntervalRef.current);
           
@@ -723,6 +777,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   const backgroundBroadcast = async (blob: Blob, finalReport: InterviewReport, recording: MockInterviewRecording) => {
       setIsUploading(true);
+      logApi("Initiating YouTube Broadcast...");
       try {
           const token = getDriveToken() || await connectGoogleDrive();
           const videoId = await uploadToYouTube(token, blob, {
@@ -733,7 +788,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           recording.videoUrl = getYouTubeVideoUrl(videoId);
           await saveInterviewRecording(recording);
           await deleteLocalRecording(recording.id);
-      } catch (e) { 
+          logApi("Broadcast Success");
+      } catch (e: any) { 
+          logApi(`Broadcast Interrupted: ${e.message}`, "error");
           await saveInterviewRecording(recording);
       } finally {
           setIsUploading(false);
@@ -748,12 +805,13 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       setTranscript(rec.transcript || []);
       setCoachingTranscript(rec.coachingTranscript || []);
       setReportError(null);
+      setApiLogs([]);
       setView('report');
   };
 
   const renderVideoPlayer = () => {
     if (!videoPlaybackUrl) return (
-        <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 gap-4">
+        <div className="w-full h-full flex flex-col items-center justify-center text-slate-600 gap-4 bg-slate-950">
             <PlayCircle size={64} className="opacity-20"/>
             <p className="text-sm font-bold uppercase tracking-widest">Local Buffer Ready</p>
         </div>
@@ -762,7 +820,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         const videoId = videoPlaybackUrl.split('v=')[1];
         return <iframe src={getYouTubeEmbedUrl(videoId)} className="w-full h-full border-none" allowFullScreen />;
     }
-    return <video src={videoPlaybackUrl} controls className="w-full h-full object-contain" />;
+    return <video src={videoPlaybackUrl} controls className="w-full h-full object-contain bg-black" />;
   };
 
   return (
@@ -780,18 +838,38 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       {isAiConnected ? <Wifi size={14}/> : <WifiOff size={14}/>}
                       <span className="text-[10px] font-black uppercase tracking-widest">{isAiConnected ? 'Link Active' : 'Link Lost'}</span>
                   </div>
+                  <button onClick={() => setShowDebug(!showDebug)} className={`p-2 rounded-lg transition-colors ${showDebug ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`} title="Debug Logs"><Bug size={20}/></button>
                   <button onClick={handleEndInterview} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold shadow-lg">End Session</button>
               </div>
           )}
           {view === 'report' && (
               <div className="flex items-center gap-2">
                   <button onClick={handleDownloadCareerBundle} disabled={isExportingBundle} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-black shadow-lg transition-all uppercase tracking-widest">{isExportingBundle ? <Loader2 size={14} className="animate-spin"/> : <Package size={14}/>}Export Career Bundle</button>
-                  <button onClick={() => handleDownloadPdf(reportRef, `Report_${activeRecording?.id}.pdf`)} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-400"><FileDown size={18}/></button>
+                  <button onClick={() => handleDownloadPdf(reportRef, `Report_${activeRecording?.id}.pdf`)} disabled={isExportingBundle} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-400">
+                    {isExportingBundle ? <Loader2 size={18} className="animate-spin" /> : <FileDown size={18}/>}
+                  </button>
               </div>
           )}
       </header>
 
-      <main className="flex-1 overflow-y-auto scrollbar-hide">
+      <main className="flex-1 overflow-y-auto scrollbar-hide relative">
+          {showDebug && (
+              <div className="absolute top-4 left-4 right-4 max-h-[300px] z-[200] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-fade-in-down">
+                  <div className="p-3 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
+                      <span className="text-xs font-black text-indigo-400 uppercase tracking-widest">Neural Link Debugger</span>
+                      <button onClick={() => setShowDebug(false)} className="text-slate-500 hover:text-white"><X size={16}/></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-[10px]">
+                      {apiLogs.length === 0 ? <p className="text-slate-600 italic">No events recorded...</p> : apiLogs.map((log, i) => (
+                          <div key={i} className={`flex gap-2 ${log.type === 'error' ? 'text-red-400' : 'text-slate-400'}`}>
+                              <span className="opacity-40 shrink-0">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                              <span>{log.msg}</span>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
+
           {view === 'hub' && (
               <div className="max-w-6xl mx-auto p-8 space-y-12 animate-fade-in">
                   <div className="bg-indigo-600 rounded-[3rem] p-12 shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center gap-10">
@@ -844,7 +922,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                               </div>
                           </div>
                           <div className="space-y-6">
-                              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><Building size={14}/> Job Context</h3><textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste Job Description..." className="w-full h-40 bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"/></div>
+                              <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4"><h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><Building size={14}/> Job Context</h3><textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste Job Description..." className="w-full h-40 bg-slate-900 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"/></div>
                               <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
                                   <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Interview Mode</h3>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -886,6 +964,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                              <Loader2 size={16} className="animate-spin"/>
                              <span className="text-xs font-black uppercase tracking-widest">Restoring Signal...</span>
                           </div>
+                          <button onClick={() => handleReconnectAi()} className="mt-8 px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold">Force Reconnect</button>
                       </div>
                   )}
                   <div className={`flex flex-col border-r border-slate-800 transition-all ${isCodeStudioOpen ? 'w-[400px]' : 'flex-1'}`}>
@@ -899,9 +978,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       </div></div>
                       <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
                           <div ref={problemRef} className="bg-[#020617] p-8 rounded-2xl border border-slate-800 mb-8"><h1 className="text-2xl font-black text-indigo-400 mb-4 uppercase">Challenge Overview</h1><MarkdownView content={generatedProblemMd} /></div>
-                          <div className="space-y-4">
+                          <div className="space-y-4 pb-32">
                               {transcript.map((item, idx) => (
-                                  <div key={idx} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}><span className={`text-[9px] uppercase font-black mb-1 ${item.role === 'user' ? 'text-emerald-400' : 'text-indigo-400'}`}>{item.role === 'user' ? 'You' : 'Interviewer'}</span><div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{item.text}</div></div>
+                                  <div key={idx} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}><span className={`text-[9px] uppercase font-black mb-1 ${item.role === 'user' ? 'text-emerald-400' : 'text-indigo-400'}`}>{item.role === 'user' ? 'You' : 'Interviewer'}</span><div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-emerald-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>{item.text}</div></div>
                               ))}
                           </div>
                       </div>
@@ -926,13 +1005,24 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         <div>
                             <h2 className="text-3xl font-black uppercase text-indigo-400 mb-6">2. AI Assessment Report</h2>
                             {report ? (
-                                <>
+                                <div className="space-y-10">
                                     <div className="grid grid-cols-2 gap-10">
                                         <div className="bg-slate-900/50 p-10 rounded-[3rem] border border-white/10 text-center"><p className="text-xs text-slate-500 font-bold uppercase mb-2">Simulation Score</p><p className="text-7xl font-black text-indigo-400">{report.score}</p></div>
                                         <div className="bg-slate-900/50 p-10 rounded-[3rem] border border-white/10 text-center"><p className="text-xs text-slate-500 font-bold uppercase mb-2">Final Verdict</p><p className="text-3xl font-black text-emerald-400">{report.verdict}</p></div>
                                     </div>
-                                    <p className="mt-10 text-xl font-serif italic text-slate-400 leading-relaxed">"{report.summary}"</p>
-                                </>
+                                    <p className="text-xl font-serif italic text-slate-400 leading-relaxed">"{report.summary}"</p>
+                                    <div className="bg-slate-900 p-8 rounded-2xl border border-white/5">
+                                        <h3 className="text-xl font-bold uppercase mb-4 text-white">Ideal Problem Breakdown</h3>
+                                        <div className="space-y-6">
+                                            {report.idealAnswers?.map((ans, i) => (
+                                                <div key={i} className="border-l-2 border-indigo-500 pl-4">
+                                                    <p className="font-bold text-slate-200">{ans.question}</p>
+                                                    <p className="text-sm text-slate-400 mt-1">{ans.expectedAnswer}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
                             ) : <p className="text-amber-400">Metrics not available.</p>}
                         </div>
                         <div className="pt-20 border-t border-white/5 text-center text-[10px] text-slate-600 uppercase tracking-widest font-black">AIVoiceCast Platform v4.2.0 • End of Bundle</div>
