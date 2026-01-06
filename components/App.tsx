@@ -260,7 +260,7 @@ const App: React.FC = () => {
   ], [t]);
 
   const appsPerPage = useMemo(() => {
-    return (typeof window !== 'undefined' && window.innerWidth < 768) ? 8 : 10;
+    return (typeof window !== 'undefined' && window.innerWidth < 768) ? 12 : 16;
   }, []);
 
   const totalAppPages = Math.ceil(allApps.length / appsPerPage);
@@ -420,38 +420,38 @@ const App: React.FC = () => {
         <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 sm:px-6 shrink-0 z-50 backdrop-blur-xl">
            <div className="flex items-center gap-4">
               <button onClick={() => { setIsAppsMenuOpen(!isAppsMenuOpen); setAppLauncherPage(0); }} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
-                 <LayoutGrid size={22} />
+                 <LayoutGrid size={20} />
               </button>
               <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.location.href = window.location.origin}>
-                 <BrandLogo size={32} />
-                 <h1 className="text-xl font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400 transition-colors">AIVoiceCast</h1>
+                 <BrandLogo size={28} />
+                 <h1 className="text-lg font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400 transition-colors">AIVoiceCast</h1>
               </div>
            </div>
 
            <div className="flex-1 max-w-xl mx-8 hidden md:block">
               <div className="relative">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-                 <input type="text" placeholder={t.search} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all" />
+                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+                 <input type="text" placeholder={t.search} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-10 pr-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all" />
               </div>
            </div>
 
            <div className="flex items-center gap-2 sm:gap-4">
               {isDriveSyncing && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-900/20 text-indigo-400 rounded-full border border-indigo-500/30 animate-pulse">
-                      <Cloud size={14}/><span className="text-[10px] font-bold uppercase hidden lg:inline">Syncing Drive...</span>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-indigo-900/20 text-indigo-400 rounded-full border border-indigo-500/30 animate-pulse">
+                      <Cloud size={12}/><span className="text-[9px] font-bold uppercase hidden lg:inline">Syncing Drive...</span>
                   </div>
               )}
               {userProfile && (
-                  <button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex">
-                      <Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span>
+                  <button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex">
+                      <Coins size={14}/><span className="font-black text-[11px]">{userProfile.coinBalance || 0}</span>
                   </button>
               )}
               <Notifications />
-              <button onClick={() => setIsVoiceCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 group overflow-hidden relative">
+              <button onClick={() => setIsVoiceCreateOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold rounded-xl shadow-lg transition-all active:scale-95 group overflow-hidden relative">
                   <span className="relative z-10">{t.magic}</span>
               </button>
               <div className="relative">
-                 <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">
+                 <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="w-9 h-9 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">
                     <img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=Guest`} alt="Profile" className="w-full h-full object-cover" />
                  </button>
                  <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} setIsSyncModalOpen={() => {}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => setIsUserGuideOpen(true)} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => setIsPrivacyOpen(true)} t={t} channels={allChannels} language={language} setLanguage={setLanguage} />
@@ -462,65 +462,65 @@ const App: React.FC = () => {
         {isAppsMenuOpen && (
             <div className="fixed inset-0 z-[100] animate-fade-in">
                 <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setIsAppsMenuOpen(false)}></div>
-                <div className="absolute left-4 sm:left-6 top-20 w-[calc(100vw-2rem)] md:w-[640px] lg:w-[850px] bg-slate-900 border border-slate-700 rounded-[2.5rem] shadow-2xl overflow-hidden p-6 md:p-8 animate-fade-in-up flex flex-col">
-                    <div className="flex justify-between items-center mb-6 md:mb-8 shrink-0">
+                <div className="absolute left-4 sm:left-6 top-20 w-[calc(100vw-2rem)] md:w-[500px] lg:w-[680px] bg-slate-900 border border-slate-700 rounded-[2rem] shadow-2xl overflow-hidden p-4 md:p-6 animate-fade-in-up flex flex-col">
+                    <div className="flex justify-between items-center mb-4 shrink-0 px-2">
                         <div className="flex flex-col">
-                            <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Neural OS</h3>
-                            <p className="text-lg font-bold text-white">App Launcher</p>
+                            <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Neural OS</h3>
+                            <p className="text-base font-bold text-white">App Launcher</p>
                         </div>
-                        <button onClick={() => setIsAppsMenuOpen(false)} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
-                            <X size={20} className="text-slate-500 hover:text-white"/>
+                        <button onClick={() => setIsAppsMenuOpen(false)} className="p-1.5 hover:bg-slate-800 rounded-full transition-colors">
+                            <X size={18} className="text-slate-500 hover:text-white"/>
                         </button>
                     </div>
 
-                    <div className="flex-1 flex items-center justify-between relative">
+                    <div className="flex-1 flex items-center justify-between relative px-1">
                         <button 
                             onClick={() => setAppLauncherPage(p => Math.max(0, p - 1))}
                             disabled={appLauncherPage === 0}
-                            className={`p-3 rounded-full transition-all shrink-0 ${appLauncherPage === 0 ? 'opacity-10 cursor-not-allowed' : 'bg-slate-800 hover:bg-indigo-600 text-white shadow-xl'}`}
+                            className={`p-2 rounded-full transition-all shrink-0 ${appLauncherPage === 0 ? 'opacity-0 pointer-events-none' : 'bg-slate-800 hover:bg-indigo-600 text-white shadow-xl'}`}
                         >
-                            <ChevronLeft size={24} />
+                            <ChevronLeft size={20} />
                         </button>
 
-                        <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 px-4 py-2 animate-fade-in transition-all">
+                        <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 md:gap-3 px-2 py-1 animate-fade-in transition-all">
                             {currentAppSlice.map(app => ( 
                                 <button 
                                     key={app.id} 
                                     onClick={app.action} 
-                                    className="flex flex-col items-center gap-3 p-5 md:p-6 bg-slate-800/40 hover:bg-indigo-600/10 border border-slate-800 hover:border-indigo-500/40 rounded-3xl transition-all group relative overflow-hidden h-32 md:h-40"
+                                    className="flex flex-col items-center gap-2 p-3 md:p-4 bg-slate-800/30 hover:bg-indigo-600/10 border border-slate-800 hover:border-indigo-500/40 rounded-2xl transition-all group relative overflow-hidden h-24 md:h-28"
                                 > 
-                                    <div className="absolute top-0 right-0 p-8 bg-white/5 blur-3xl rounded-full group-hover:bg-white/10 transition-colors pointer-events-none"></div>
-                                    <app.icon className={`${app.color} group-hover:scale-110 transition-transform relative z-10`} size={28} /> 
-                                    <span className="text-[10px] md:text-[11px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest relative z-10 text-center">{app.label}</span> 
+                                    <div className="absolute top-0 right-0 p-6 bg-white/5 blur-3xl rounded-full group-hover:bg-white/10 transition-colors pointer-events-none"></div>
+                                    <app.icon className={`${app.color} group-hover:scale-110 transition-transform relative z-10`} size={22} /> 
+                                    <span className="text-[9px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest relative z-10 text-center leading-tight">{app.label}</span> 
                                 </button> 
                             ))}
                             {/* Empty placeholders to maintain grid shape if needed */}
                             {currentAppSlice.length < appsPerPage && Array.from({ length: appsPerPage - currentAppSlice.length }).map((_, i) => (
-                                <div key={`empty-${i}`} className="hidden md:block p-5 md:p-6 rounded-3xl border border-slate-800/20 opacity-0 h-32 md:h-40"></div>
+                                <div key={`empty-${i}`} className="hidden md:block p-3 md:p-4 rounded-2xl border border-slate-800/10 opacity-0 h-24 md:h-28"></div>
                             ))}
                         </div>
 
                         <button 
                             onClick={() => setAppLauncherPage(p => Math.min(totalAppPages - 1, p + 1))}
                             disabled={appLauncherPage === totalAppPages - 1}
-                            className={`p-3 rounded-full transition-all shrink-0 ${appLauncherPage === totalAppPages - 1 ? 'opacity-10 cursor-not-allowed' : 'bg-slate-800 hover:bg-indigo-600 text-white shadow-xl'}`}
+                            className={`p-2 rounded-full transition-all shrink-0 ${appLauncherPage === totalAppPages - 1 ? 'opacity-0 pointer-events-none' : 'bg-slate-800 hover:bg-indigo-600 text-white shadow-xl'}`}
                         >
-                            <ChevronRight size={24} />
+                            <ChevronRight size={20} />
                         </button>
                     </div>
 
-                    <div className="mt-8 flex flex-col items-center shrink-0">
-                        <div className="flex gap-2 mb-6">
+                    <div className="mt-4 flex flex-col items-center shrink-0">
+                        <div className="flex gap-1.5 mb-2">
                             {Array.from({ length: totalAppPages }).map((_, i) => (
                                 <button 
                                     key={i} 
                                     onClick={() => setAppLauncherPage(i)}
-                                    className={`w-2 h-2 rounded-full transition-all ${appLauncherPage === i ? 'bg-indigo-500 w-6' : 'bg-slate-700 hover:bg-slate-600'}`}
+                                    className={`w-1.5 h-1.5 rounded-full transition-all ${appLauncherPage === i ? 'bg-indigo-500 w-4' : 'bg-slate-700 hover:bg-slate-600'}`}
                                 />
                             ))}
                         </div>
-                        <div className="w-full pt-6 border-t border-slate-800 flex justify-center">
-                            <p className="text-[9px] font-bold text-slate-600 uppercase tracking-[0.3em]">AIVoiceCast Platform v4.2.0</p>
+                        <div className="w-full pt-4 border-t border-slate-800 flex justify-center">
+                            <p className="text-[8px] font-bold text-slate-600 uppercase tracking-[0.3em]">AIVoiceCast Platform v4.2.0</p>
                         </div>
                     </div>
                 </div>
