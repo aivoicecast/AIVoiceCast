@@ -220,7 +220,6 @@ const App: React.FC = () => {
   const [globalVoice, setGlobalVoice] = useState('Auto');
   const [channelToComment, setChannelToComment] = useState<Channel | null>(null);
   const [channelToEdit, setChannelToEdit] = useState<Channel | null>(null);
-  // Fix line 504: Added missing initialStudioFiles state which was being passed to CodeStudio but not declared
   const [initialStudioFiles, setInitialStudioFiles] = useState<CodeFile[]>([]);
 
   const [liveSessionParams, setLiveSessionParams] = useState<{
@@ -421,17 +420,18 @@ const App: React.FC = () => {
                 {isAppsMenuOpen && (
                   <>
                     <div className="fixed inset-0 z-[100]" onClick={() => setIsAppsMenuOpen(false)}></div>
-                    <div className="absolute left-0 top-full mt-2 w-64 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up z-[110] flex flex-col border-indigo-500/20">
+                    <div className="absolute left-0 top-full mt-2 w-72 md:w-[480px] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up z-[110] flex flex-col border-indigo-500/20">
                       <div className="p-3 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Neural OS Apps</span>
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Neural OS Apps ({allApps.length})</span>
                       </div>
-                      <div className="max-h-[70vh] overflow-y-auto p-1 space-y-0.5 scrollbar-hide">
-                        {allApps.map(app => (
+                      <div className="max-h-[80vh] md:max-h-none overflow-y-auto p-1 grid grid-cols-1 md:grid-cols-2 gap-0.5 scrollbar-hide">
+                        {allApps.map((app, idx) => (
                           <button 
                             key={app.id} 
                             onClick={() => { app.action(); setIsAppsMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-indigo-600/10 text-left transition-all group"
+                            className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-indigo-600/10 text-left transition-all group"
                           >
+                            <span className="text-[10px] font-mono text-slate-600 w-4 group-hover:text-indigo-400 transition-colors">{idx + 1}</span>
                             <div className={`p-1.5 rounded-lg bg-slate-800 border border-slate-700 group-hover:border-indigo-500/30 transition-colors`}>
                               <app.icon className={`${app.color}`} size={16} />
                             </div>
