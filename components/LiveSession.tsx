@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
@@ -62,7 +62,8 @@ const UI_TEXT = {
     localPreview: "Local Preview",
     diagnostics: "Neural Diagnostics",
     cloudWarn: "Drive/YouTube Access Missing: Local Only.",
-    signIn: "Sign In"
+    signIn: "Sign In",
+    forceStart: "Bypassing Landing Screen: Auto-Initializing..."
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -96,7 +97,8 @@ const UI_TEXT = {
     localPreview: "本地预览",
     diagnostics: "神经诊断",
     cloudWarn: "缺少 Drive/YouTube 权限：仅限本地。",
-    signIn: "登录"
+    signIn: "登录",
+    forceStart: "跳过着陆页：自动初始化..."
   }
 };
 
@@ -195,10 +197,18 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const currentUser = auth?.currentUser;
   const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
 
+  // NEW: Force start for meeting recorder mode
+  useEffect(() => {
+    if (channel.id.startsWith('meeting-force-start')) {
+        addLog("One-Click Meeting Mode Detected. Bypassing Landing Page...");
+        handleStartSession();
+    }
+  }, [channel.id]);
+
   const startHardwareSync = async () => {
     // CRITICAL: Request screen capture IMMEDIATELY to satisfy iOS user-gesture requirement
     if (recordingEnabled) {
-        const isMeeting = channel.id.startsWith('meeting');
+        const isMeeting = channel.id.includes('meeting');
         if (videoEnabled || isMeeting) {
             try {
                 screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
@@ -207,7 +217,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 });
                 addLog("Screen capture active.");
             } catch(e) {
-                addLog("Screen capture declined or not supported on this mobile browser.", "warn");
+                addLog("Screen capture declined.", "warn");
             }
         }
         
@@ -388,17 +398,21 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       const folderId = await ensureCodeStudioFolder(token);
                       
                       let videoUrl = '';
-                      if (pref === 'youtube' || channel.id.startsWith('meeting')) {
+                      // CRITICAL: Respect User Preference
+                      if (pref === 'youtube' || channel.id.includes('meeting')) {
                           try {
                               setSynthesisProgress(70);
+                              addLog(`Preferred Dest is YOUTUBE. Sending blob...`);
                               const ytId = await uploadToYouTube(token, videoBlob, {
                                   title: `${channel.title}: AI Session`,
                                   description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText.substring(0, 1000)}`,
                                   privacyStatus: 'unlisted'
                               });
                               videoUrl = getYouTubeVideoUrl(ytId);
+                              addLog(`YouTube Link Generated: ${ytId}`);
                           } catch (ytErr: any) { 
                               addLog(`YouTube Failed: ${ytErr.message}`, "warn");
+                              addLog(`Check your OAuth scopes for YouTube. Redirecting to Drive fallback...`, "warn");
                           }
                       }
 
@@ -406,6 +420,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       let driveFileId = '';
                       tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
 
+                      // ONLY upload video to Drive if YouTube failed OR if Drive is the preferred destination
                       if (pref === 'drive' || !videoUrl) {
                           setSynthesisProgress(85);
                           driveFileId = await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob);
@@ -418,10 +433,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                           mediaType: 'video/webm', transcriptUrl: tFileId ? `drive://${tFileId}` : ''
                       };
                       await saveRecordingReference(sessionData);
+                      addLog("Session Ledger Updated Successfully.", "info");
                   }
                   setSynthesisProgress(100);
               } catch(e: any) { 
                   console.error("Cloud sync failed", e); 
+                  addLog(`Ledger Update Error: ${e.message}`, "error");
               } finally { 
                   setIsUploadingRecording(false); 
                   onEndSession();
@@ -460,7 +477,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       
       let effectiveInstruction = `[SYSTEM_TIME_CONTEXT]: Current Local Time is ${timeStr} (${timeZone}).\n\n`;
       
-      if (channel.id.startsWith('meeting')) {
+      if (channel.id.includes('meeting')) {
           effectiveInstruction += `You are currently in a CO-WATCHING and RECORDING session. You will hear both the user's voice and the system audio. 
           TASK: Actively listen and summarize the shared content.\n\n`;
       }
@@ -688,16 +705,25 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
       {!hasStarted ? (
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6">
-             <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center animate-pulse"><Mic size={40} className="text-indigo-500" /></div>
-             <div>
-                 <h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">{t.tapToStart}</h3>
-                 <p className="text-slate-400 text-sm mt-2 max-w-xs leading-relaxed">{t.tapDesc}</p>
-                 <div className="flex justify-center gap-4 mt-4">
-                     {videoEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-400 uppercase"><Monitor size={14}/> Shared Screen</div>}
-                     {cameraEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-red-400 uppercase"><Camera size={14}/> User Camera</div>}
+             {channel.id.includes('force-start') ? (
+                 <div className="flex flex-col items-center gap-4">
+                     <Loader2 size={40} className="text-indigo-500 animate-spin" />
+                     <p className="text-sm font-black text-indigo-400 uppercase tracking-widest">{t.forceStart}</p>
                  </div>
-             </div>
-             <button onClick={handleStartSession} className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-full shadow-2xl shadow-indigo-500/30 transition-transform hover:scale-105">Link Neural Fabric</button>
+             ) : (
+                <>
+                    <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center animate-pulse"><Mic size={40} className="text-indigo-500" /></div>
+                    <div>
+                        <h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">{t.tapToStart}</h3>
+                        <p className="text-slate-400 text-sm mt-2 max-w-xs leading-relaxed">{t.tapDesc}</p>
+                        <div className="flex justify-center gap-4 mt-4">
+                            {videoEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-400 uppercase"><Monitor size={14}/> Shared Screen</div>}
+                            {cameraEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-red-400 uppercase"><Camera size={14}/> User Camera</div>}
+                        </div>
+                    </div>
+                    <button onClick={handleStartSession} className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-full shadow-2xl shadow-indigo-500/30 transition-transform hover:scale-105">Link Neural Fabric</button>
+                </>
+             )}
          </div>
       ) : error ? (
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">

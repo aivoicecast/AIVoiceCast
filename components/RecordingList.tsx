@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel, TranscriptItem, UserProfile } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getYouTubeEmbedUrl, uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
@@ -39,8 +39,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   
   const [isRecorderModalOpen, setIsRecorderModalOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('');
-  const [recordCamera, setRecordCamera] = useState(false);
-  const [recordScreen, setRecordScreen] = useState(false);
+  const [recordCamera, setRecordCamera] = useState(true);
+  const [recordScreen, setRecordScreen] = useState(true);
 
   // Diagnostic State
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
@@ -51,6 +51,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const addSyncLog = (msg: string, type: SyncLog['type'] = 'info') => {
       const time = new Date().toLocaleTimeString();
       setSyncLogs(prev => [{ time, msg, type }, ...prev].slice(0, 50));
+      console.log(`[Sync Diagnostic] ${msg}`);
   };
 
   useEffect(() => {
@@ -137,81 +138,67 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     
     setShowSyncLog(true);
     setSyncLogs([]);
-    addSyncLog(`Initiating Manual Sync for: ${rec.channelTitle}`, 'info');
+    addSyncLog(`Sync Target: ${rec.channelTitle}`, 'info');
 
     let token = getDriveToken();
     if (!token) {
-        addSyncLog("OAuth token expired or missing. Prompting login...", 'warn');
-        if (confirm("You need a Google token to sync. Sign in now?")) {
+        addSyncLog("OAuth missing. Requesting fresh session...", 'warn');
+        if (confirm("OAuth Token required for YouTube/Drive. Sign in?")) {
             const user = await signInWithGoogle();
             if (!user) {
-                addSyncLog("User cancelled login.", 'error');
+                addSyncLog("Login canceled.", 'error');
                 return;
             }
             token = getDriveToken();
-            addSyncLog("New OAuth Token acquired.", 'success');
-        } else { 
-            addSyncLog("Sync aborted by user.", 'warn');
-            return; 
-        }
+            addSyncLog("Authenticated.", 'success');
+        } else { return; }
     }
 
     setSyncingId(rec.id);
     try {
-        addSyncLog("Fetching User Profile settings...", 'info');
         const profile = await getUserProfile(currentUser.uid);
         const pref = profile?.preferredRecordingTarget || 'drive';
-        addSyncLog(`User Preference detected: ${pref.toUpperCase()}`, 'info');
+        addSyncLog(`Preferred Target: ${pref.toUpperCase()}`, 'info');
 
         const folderId = await ensureCodeStudioFolder(token!);
-        addSyncLog(`Drive Folder "CodeStudio" verified. (ID: ${folderId})`, 'info');
-
         const videoBlob = rec.blob;
-        const transcriptText = `Neural Transcript for ${rec.channelTitle}\nTimestamp: ${new Date(rec.timestamp).toLocaleString()}\nOriginal ID: ${rec.id}`;
+        const transcriptText = `Neural Transcript: ${rec.channelTitle}\nID: ${rec.id}`;
         const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
 
         const isVideo = rec.mediaType?.includes('video');
         let videoUrl = "";
 
-        // 1. YouTube Logic
-        if (isVideo && (pref === 'youtube' || rec.channelId?.startsWith('meeting'))) {
-            addSyncLog("Attempting YouTube Upload...", 'info');
+        // YouTube Logic - Forced if preference is YouTube
+        if (isVideo && pref === 'youtube') {
+            addSyncLog("Uploading to YouTube...", 'info');
             try {
                 const ytId = await uploadToYouTube(token!, videoBlob, {
-                    title: `${rec.channelTitle}: AI Session`,
-                    description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText}`,
+                    title: `${rec.channelTitle} (AI Archive)`,
+                    description: `Recorded on AIVoiceCast.\nOriginal Timestamp: ${new Date(rec.timestamp).toLocaleString()}`,
                     privacyStatus: 'unlisted'
                 });
                 videoUrl = getYouTubeVideoUrl(ytId);
-                addSyncLog(`YouTube Upload Success! Video ID: ${ytId}`, 'success');
+                addSyncLog(`YouTube Clear: ${ytId}`, 'success');
             } catch (ytErr: any) { 
-                const errMsg = ytErr.message || String(ytErr);
-                addSyncLog(`YouTube Failed: ${errMsg}`, 'error');
-                if (errMsg.includes('403')) {
-                    addSyncLog("Possible YouTube quota limit or scope missing. Try Signing Out and back in to refresh scopes.", 'warn');
-                }
-                addSyncLog("Falling back to Drive for media storage.", 'warn');
+                const msg = ytErr.message || String(ytErr);
+                addSyncLog(`YouTube ERROR: ${msg}`, 'error');
+                if (msg.includes('403')) addSyncLog("Hint: Re-login to ensure 'youtube.upload' scope is active.", 'warn');
+                addSyncLog("Critical: YouTube failed. Checking Drive fallback...", 'warn');
             }
-        } else if (!isVideo) {
-            addSyncLog("Skipping YouTube: Media is audio-only.", 'info');
-        } else {
-            addSyncLog("Skipping YouTube: Preference is DRIVE.", 'info');
         }
 
-        // 2. Transcript to Drive
-        addSyncLog("Syncing Transcript to Drive...", 'info');
+        // Transcript is always a Drive asset
+        addSyncLog("Backing up transcript to Drive...", 'info');
         const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
-        addSyncLog("Transcript saved to Drive.", 'success');
         
-        // 3. Media to Drive (if YouTube failed or is not preferred)
+        // Media Fallback
         let driveFileId = "";
-        if (!videoUrl || pref === 'drive') {
-            addSyncLog(`Syncing ${isVideo ? 'Video' : 'Audio'} to Drive...`, 'info');
+        if (!videoUrl) {
+            addSyncLog("Saving Media to Google Drive...", 'info');
             driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
-            addSyncLog("Media file saved to Drive.", 'success');
+            addSyncLog("Drive Backup Successful.", 'success');
         }
         
-        addSyncLog("Updating Cloud Record on Firestore...", 'info');
         const sessionData: RecordingSession = {
             id: rec.id, userId: currentUser.uid, channelId: rec.channelId,
             channelTitle: rec.channelTitle, channelImage: rec.channelImage,
@@ -222,18 +209,17 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         };
         
         await saveRecordingReference(sessionData);
-        addSyncLog("Cloud Sync Complete!", 'success');
+        addSyncLog("Ledger Updated.", 'success');
         
         setTimeout(() => {
             loadData();
             setSyncingId(null);
-        }, 1000);
+        }, 800);
         
     } catch (e: any) {
-        const errorMsg = e.message || "Unknown error";
-        addSyncLog(`CRITICAL SYNC FAILURE: ${errorMsg}`, 'error');
+        addSyncLog(`SYNC ERROR: ${e.message}`, 'error');
         setSyncingId(null);
-        alert("Sync Failed. Check the Diagnostic Console for details.");
+        alert("Sync failed. Check diagnostics.");
     }
   };
 
@@ -256,24 +242,23 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
       
       const now = new Date();
       const timeStr = now.toLocaleString();
-      const systemPrompt = `You are a helpful meeting assistant. Recorded at ${timeStr}.`;
-
+      // 'meeting-force-start' prefix tells LiveSession to bypass the Landing Page
       const newChannel: Channel = {
-          id: `meeting-${Date.now()}`,
+          id: `meeting-force-start-${Date.now()}`,
           title: meetingTitle,
-          description: `Meeting Recording: ${meetingTitle}`,
+          description: `Meeting: ${meetingTitle}`,
           author: currentUser?.displayName || 'Guest User',
           ownerId: currentUser?.uid || 'guest',
           visibility: 'private',
           voiceName: 'Zephyr',
-          systemInstruction: systemPrompt,
-          likes: 0, dislikes: 0, comments: [], tags: ['Meeting', 'Recording'],
+          systemInstruction: `You are a helpful meeting assistant. Context: ${meetingTitle}. Recorded at ${timeStr}.`,
+          likes: 0, dislikes: 0, comments: [], tags: ['Meeting'],
           imageUrl: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?w=600&q=80',
           createdAt: Date.now()
       };
       
       setIsRecorderModalOpen(false);
-      onStartLiveSession(newChannel, meetingTitle, true, undefined, true, recordCamera);
+      onStartLiveSession(newChannel, meetingTitle, true, undefined, recordScreen, recordCamera);
   };
 
   return (
@@ -296,11 +281,11 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                 <Terminal size={18}/>
             </button>
             <button 
-                onClick={() => { setIsRecorderModalOpen(true); setRecordScreen(false); setRecordCamera(false); setMeetingTitle(''); }}
+                onClick={() => { setIsRecorderModalOpen(true); setMeetingTitle(`Meeting ${new Date().toLocaleDateString()}`); }}
                 className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-all text-xs font-bold shadow-lg shadow-red-900/20 active:scale-95"
             >
-                <Video size={14} />
-                <span>New Session</span>
+                <Zap size={14} fill="currentColor" />
+                <span>One-Click Record</span>
             </button>
         </div>
       </div>
@@ -308,7 +293,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
       {loading ? (
         <div className="py-24 flex flex-col items-center justify-center text-indigo-400 gap-4">
           <Loader2 className="animate-spin" size={40} />
-          <span className="text-xs font-black uppercase tracking-[0.2em] animate-pulse">Syncing Knowledge Archive</span>
+          <span className="text-xs font-black uppercase tracking-[0.2em] animate-pulse">Scanning Neural Archives</span>
         </div>
       ) : recordings.length === 0 ? (
         <div className="py-32 text-center text-slate-500 bg-slate-900/30 rounded-[2.5rem] border-2 border-dashed border-slate-800">
@@ -349,7 +334,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                           <div className="mt-2 flex items-center gap-2 max-w-full">
                               <div className="flex items-center gap-1 text-[10px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-900/20 px-2 py-0.5 rounded border border-indigo-500/10">
                                 <LinkIcon size={10}/>
-                                <span>{isYoutube ? 'YouTube URI' : 'Drive URI'}</span>
+                                <span>{isYoutube ? 'YouTube' : 'Drive'} URI</span>
                               </div>
                               <code className="text-[10px] font-mono text-slate-400 truncate max-w-[200px]">
                                   {rec.mediaUrl}
@@ -429,7 +414,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         </div>
       )}
 
-      {/* Sync Log Diagnostic Console */}
       {showSyncLog && (
           <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-fade-in-up">
               <div className="p-4 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center shrink-0">
@@ -474,7 +458,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <div>
                           <h3 className="text-xl font-bold text-white flex items-center gap-3">
                               <div className="p-2 bg-red-600 rounded-xl shadow-lg"><Video className="text-white" size={20}/></div>
-                              Capture Session
+                              Session Configuration
                           </h3>
                       </div>
                       <button onClick={() => setIsRecorderModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white"><X size={20}/></button>
@@ -492,31 +476,25 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                           />
                       </div>
                       
-                      <div className="space-y-4">
-                          <div onClick={() => setRecordScreen(!recordScreen)} className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${recordScreen ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-slate-950 border-slate-800 hover:bg-slate-900'}`}>
-                              <div className="flex items-center gap-3">
-                                  <div className={`p-2 rounded-lg ${recordScreen ? 'bg-indigo-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}><Monitor size={18} /></div>
-                                  <p className={`font-bold text-sm ${recordScreen ? 'text-indigo-200' : 'text-slate-400'}`}>Shared Screen</p>
-                              </div>
-                              <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${recordScreen ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-700'}`}>{recordScreen && <CheckCircle size={12} />}</div>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div onClick={() => setRecordScreen(!recordScreen)} className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col items-center gap-2 ${recordScreen ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-slate-950 border-slate-800 hover:bg-slate-900'}`}>
+                              <div className={`p-2 rounded-lg ${recordScreen ? 'bg-indigo-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}><Monitor size={18} /></div>
+                              <p className={`font-bold text-[10px] uppercase ${recordScreen ? 'text-indigo-200' : 'text-slate-500'}`}>Screen</p>
                           </div>
 
-                          <div onClick={() => setRecordCamera(!recordCamera)} className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${recordCamera ? 'bg-red-900/20 border-red-500/50' : 'bg-slate-950 border-slate-800 hover:bg-slate-900'}`}>
-                              <div className="flex items-center gap-3">
-                                  <div className={`p-2 rounded-lg ${recordCamera ? 'bg-red-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}><Camera size={18} /></div>
-                                  <p className={`font-bold text-sm ${recordCamera ? 'text-red-200' : 'text-slate-400'}`}>Camera Video</p>
-                              </div>
-                              <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${recordCamera ? 'border-red-500 bg-red-500 text-white' : 'border-slate-700'}`}>{recordCamera && <CheckCircle size={12} />}</div>
+                          <div onClick={() => setRecordCamera(!recordCamera)} className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col items-center gap-2 ${recordCamera ? 'bg-red-900/20 border-red-500/50' : 'bg-slate-950 border-slate-800 hover:bg-slate-900'}`}>
+                              <div className={`p-2 rounded-lg ${recordCamera ? 'bg-red-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}><Camera size={18} /></div>
+                              <p className={`font-bold text-[10px] uppercase ${recordCamera ? 'text-red-200' : 'text-slate-500'}`}>Camera</p>
                           </div>
                       </div>
 
                       <button 
                         onClick={handleStartRecorder} 
                         disabled={!meetingTitle} 
-                        className="w-full py-5 bg-red-600 hover:bg-red-500 disabled:opacity-30 disabled:grayscale text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl transition-all hover:scale-[1.02] active:scale-95"
+                        className="w-full py-5 bg-red-600 hover:bg-red-500 disabled:opacity-30 disabled:grayscale text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
                       >
-                          <Video size={20} fill="currentColor"/>
-                          <span>Launch Recorder</span>
+                          <Zap size={20} fill="currentColor"/>
+                          <span>Authorize & Launch</span>
                       </button>
                   </div>
               </div>

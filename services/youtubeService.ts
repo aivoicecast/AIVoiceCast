@@ -44,9 +44,17 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
     });
 
     if (!initRes.ok) {
-        const error = await initRes.json();
-        console.error("[YouTube] Initialization failed:", error);
-        throw new Error(`YouTube initialization failed: ${error.error?.message || initRes.statusText}`);
+        let errorData: any = {};
+        try { errorData = await initRes.json(); } catch(e) {}
+        
+        console.error("[YouTube] Initialization failed:", errorData);
+        
+        // Specific check for insufficient scopes
+        if (initRes.status === 403 || (errorData.error?.errors?.[0]?.reason === 'insufficientPermissions')) {
+            throw new Error("403: Insufficient YouTube Permissions. You must sign out and sign in again to grant the 'youtube.upload' scope.");
+        }
+        
+        throw new Error(`YouTube initialization failed: ${errorData.error?.message || initRes.statusText}`);
     }
 
     const uploadUrl = initRes.headers.get('Location');
