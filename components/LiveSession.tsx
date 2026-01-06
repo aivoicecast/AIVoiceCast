@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -194,61 +195,45 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const currentUser = auth?.currentUser;
   const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
 
-  const startHardware = async () => {
-    addLog("Requesting hardware permissions...");
-    try {
-        if (recordingEnabled) {
-            const token = getDriveToken();
-            if (!token) {
-                setCloudWarning(true);
-                addLog("Drive/YouTube token missing. Recording will be local-only.", "warn");
-            }
-            
-            const isMeeting = channel.id.startsWith('meeting');
-
-            if (videoEnabled || isMeeting) {
-                try {
-                    // Fix: Enable audio: true for getDisplayMedia to capture system audio (YouTube)
-                    screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
-                        video: { cursor: "always" } as any,
-                        audio: true // Crucial for co-watching: AI can now hear what you hear
-                    });
-                    addLog("Screen capture active (with System Audio).");
-                } catch(e) {
-                    addLog("Screen capture declined. Proceeding with Audio-only composition.", "warn");
-                }
-            }
-            if (cameraEnabled) {
-                try {
-                    cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
-                        video: true, 
-                        audio: false 
-                    });
-                    addLog("Camera capture active.");
-                } catch(e) {
-                    addLog("Camera capture declined.", "warn");
-                }
+  const startHardwareSync = async () => {
+    // CRITICAL: Request screen capture IMMEDIATELY to satisfy iOS user-gesture requirement
+    if (recordingEnabled) {
+        const isMeeting = channel.id.startsWith('meeting');
+        if (videoEnabled || isMeeting) {
+            try {
+                screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
+                    video: { cursor: "always" } as any,
+                    audio: true 
+                });
+                addLog("Screen capture active.");
+            } catch(e) {
+                addLog("Screen capture declined or not supported on this mobile browser.", "warn");
             }
         }
-        return true;
-    } catch(e) {
-        addLog("Hardware access denied.", "error");
-        return false;
+        
+        if (cameraEnabled) {
+            try {
+                cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user" }, 
+                    audio: false 
+                });
+                addLog("Camera capture active.");
+            } catch(e) {
+                addLog("Camera capture declined.", "warn");
+            }
+        }
     }
   };
 
   const handleStartSession = async () => {
       setError(null);
       
+      // 1. Immediately request hardware to capture user gesture for iOS
+      await startHardwareSync();
+
       const ctx = getGlobalAudioContext();
       addLog("Warming up neural audio fabric...");
       await warmUpAudioContext(ctx);
-
-      const hwOk = await startHardware();
-      if (!hwOk) {
-          setError("Hardware access denied. Please allow permissions.");
-          return;
-      }
       
       setHasStarted(true);
       await connect();
@@ -260,7 +245,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           if (user) {
               await syncUserProfile(user);
               setCloudWarning(false);
-              addLog("Cloud Token Acquired. Recordings will now sync to Drive/YouTube.");
+              addLog("Cloud Token Acquired.");
           }
       } catch (e) {
           console.error("Sign in failed", e);
@@ -281,20 +266,20 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           const ctx = getGlobalAudioContext();
           const recordingDest = getGlobalMediaStreamDest();
           
-          // MIXER Logic: Combine Microphone and System Audio
           const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const userSource = ctx.createMediaStreamSource(userStream); 
           userSource.connect(recordingDest);
 
-          // If screen audio exists, mix it in too
           if (screenStreamRef.current && screenStreamRef.current.getAudioTracks().length > 0) {
               const systemAudioSource = ctx.createMediaStreamSource(screenStreamRef.current);
               systemAudioSource.connect(recordingDest);
-              addLog("Routing System Audio to AI Agent and Recording pipeline.");
+              addLog("Routing System Audio to AI Agent.");
           }
 
+          const isPortrait = window.innerHeight > window.innerWidth;
           const canvas = document.createElement('canvas');
-          canvas.width = 1280; canvas.height = 720;
+          canvas.width = isPortrait ? 720 : 1280;
+          canvas.height = isPortrait ? 1280 : 720;
           const drawCtx = canvas.getContext('2d', { alpha: false })!;
           
           const screenVideo = document.createElement('video');
@@ -307,7 +292,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               drawCtx.fillStyle = '#020617'; drawCtx.fillRect(0, 0, canvas.width, canvas.height);
 
               if (screenStreamRef.current && screenVideo.readyState >= 2) {
-                  // Fix: Proportional scaling (contain) to prevent skewing
                   const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
                   const w = screenVideo.videoWidth * scale;
                   const h = screenVideo.videoHeight * scale;
@@ -315,20 +299,34 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   const y = (canvas.height - h) / 2;
                   drawCtx.drawImage(screenVideo, x, y, w, h);
               } else {
-                  drawCtx.fillStyle = '#1e293b'; drawCtx.fillRect(40, 40, canvas.width - 80, canvas.height - 80);
+                  // If screen share is missing (common on iPhone), use a nice visual backdrop
+                  const gradient = drawCtx.createLinearGradient(0, 0, canvas.width, canvas.height);
+                  gradient.addColorStop(0, '#1e1b4b');
+                  gradient.addColorStop(1, '#020617');
+                  drawCtx.fillStyle = gradient;
+                  drawCtx.fillRect(0, 0, canvas.width, canvas.height);
+
                   drawCtx.fillStyle = '#6366f1'; drawCtx.font = 'bold 40px sans-serif'; drawCtx.textAlign = 'center';
-                  drawCtx.fillText('AIVoiceCast Recording Session', canvas.width / 2, canvas.height / 2 - 40);
+                  drawCtx.fillText('Neural Broadcast', canvas.width / 2, canvas.height / 2 - 40);
                   drawCtx.fillStyle = '#94a3b8'; drawCtx.font = '24px sans-serif';
                   drawCtx.fillText(channel.title, canvas.width / 2, canvas.height / 2 + 20);
-                  drawCtx.font = '16px monospace';
-                  drawCtx.fillText(new Date().toLocaleString(), canvas.width / 2, canvas.height / 2 + 60);
               }
 
               if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
-                  const pipW = 320, pipH = 180, m = 24;
+                  const pipW = isPortrait ? canvas.width * 0.5 : 320;
+                  const pipH = (pipW * cameraVideo.videoHeight) / cameraVideo.videoWidth;
+                  const m = 24;
+                  
+                  const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - m;
+                  const pipY = isPortrait ? canvas.height - pipH - 150 : canvas.height - pipH - m;
+
+                  drawCtx.save();
+                  drawCtx.shadowColor = 'rgba(0,0,0,0.5)';
+                  drawCtx.shadowBlur = 20;
                   drawCtx.strokeStyle = '#6366f1'; drawCtx.lineWidth = 4;
-                  drawCtx.strokeRect(canvas.width - pipW - m, canvas.height - pipH - m, pipW, pipH);
-                  drawCtx.drawImage(cameraVideo, canvas.width - pipW - m, canvas.height - pipH - m, pipW, pipH);
+                  drawCtx.strokeRect(pipX, pipY, pipW, pipH);
+                  drawCtx.drawImage(cameraVideo, pipX, pipY, pipW, pipH);
+                  drawCtx.restore();
               }
               animationFrameRef.current = requestAnimationFrame(drawCompositor);
           };
@@ -357,19 +355,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               try {
                   const timestamp = Date.now();
                   const recId = `session-${timestamp}`;
-
-                  addLog("[SYSTEM]: Pushing to Local Persistence...");
                   setSynthesisProgress(30);
                   await saveLocalRecording({
-                      id: recId,
-                      userId: currentUser.uid,
-                      channelId: channel.id,
-                      channelTitle: channel.title,
-                      channelImage: channel.imageUrl,
-                      timestamp,
-                      mediaUrl: URL.createObjectURL(videoBlob),
-                      mediaType: 'video/webm',
-                      transcriptUrl: URL.createObjectURL(transcriptBlob),
+                      id: recId, userId: currentUser.uid, channelId: channel.id,
+                      channelTitle: channel.title, channelImage: channel.imageUrl,
+                      timestamp, mediaUrl: URL.createObjectURL(videoBlob),
+                      mediaType: 'video/webm', transcriptUrl: URL.createObjectURL(transcriptBlob),
                       blob: videoBlob
                   });
 
@@ -378,37 +369,29 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   if (token) {
                       const profile = await getUserProfile(currentUser.uid);
                       const pref = profile?.preferredRecordingTarget || 'drive';
-                      addLog(`[SYSTEM]: Preferred Sync: ${pref.toUpperCase()}`);
                       const folderId = await ensureCodeStudioFolder(token);
                       
                       let videoUrl = '';
-                      // Fix: Strictly honor YouTube preference and only use Drive as fallback for the video file
                       if (pref === 'youtube' || channel.id.startsWith('meeting')) {
                           try {
                               setSynthesisProgress(70);
-                              addLog("[YOUTUBE_TRACE]: Initiating resumable multi-part upload...");
                               const ytId = await uploadToYouTube(token, videoBlob, {
                                   title: `${channel.title}: AI Session`,
                                   description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText.substring(0, 1000)}`,
                                   privacyStatus: 'unlisted'
                               });
                               videoUrl = getYouTubeVideoUrl(ytId);
-                              addLog(`[YOUTUBE_TRACE]: SUCCESS. URI: ${videoUrl}`, "info");
                           } catch (ytErr: any) { 
-                              addLog(`[YOUTUBE_TRACE]: SKIPPED/FAILED. Error: ${ytErr.message || 'Check scopes'}`, "warn");
+                              addLog(`YouTube Failed: ${ytErr.message}`, "warn");
                           }
                       }
 
                       let tFileId = '';
                       let driveFileId = '';
-                      
-                      // Always backup transcript to drive if token exists
                       tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
 
-                      // Only upload video to Drive if it's the preferred target OR if YouTube failed
                       if (pref === 'drive' || !videoUrl) {
                           setSynthesisProgress(85);
-                          addLog("[SYSTEM]: Pushing binary chunks to G-Drive...");
                           driveFileId = await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob);
                       }
                       
@@ -416,17 +399,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                           id: recId, userId: currentUser.uid, channelId: channel.id,
                           channelTitle: channel.title, channelImage: channel.imageUrl,
                           timestamp, mediaUrl: videoUrl || (driveFileId ? `drive://${driveFileId}` : ''),
-                          mediaType: 'video/webm',
-                          transcriptUrl: tFileId ? `drive://${tFileId}` : ''
+                          mediaType: 'video/webm', transcriptUrl: tFileId ? `drive://${tFileId}` : ''
                       };
                       await saveRecordingReference(sessionData);
-                  } else {
-                      addLog("[SYSTEM]: No Cloud Token. Skipping cloud sync.", "warn");
                   }
                   setSynthesisProgress(100);
               } catch(e: any) { 
                   console.error("Cloud sync failed", e); 
-                  addLog(`[ERROR]: Sync aborted: ${e.message}`, "error");
               } finally { 
                   setIsUploadingRecording(false); 
                   onEndSession();
@@ -439,7 +418,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           recorder.start(1000);
       } catch(e) { 
           console.warn("Recording start failure", e); 
-          addLog("Recording subsystem failure.", "error");
       }
   }, [recordingEnabled, channel, currentUser, onEndSession, addLog, transcript]);
 
@@ -464,13 +442,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       });
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       
-      // Fix: Specifically instruct the AI that it is co-watching and should summarize the shared audio context
-      let effectiveInstruction = `[SYSTEM_TIME_CONTEXT]: Current Local Time is ${timeStr} (${timeZone}). Use this to answer temporal questions.\n\n`;
+      let effectiveInstruction = `[SYSTEM_TIME_CONTEXT]: Current Local Time is ${timeStr} (${timeZone}).\n\n`;
       
       if (channel.id.startsWith('meeting')) {
-          effectiveInstruction += `You are currently in a CO-WATCHING and RECORDING session. You will hear both the user's voice and the system audio (from a YouTube video or Meeting). 
-          TASK: Actively listen to the shared content. Be ready to provide a complete summary of the meeting, including key points from the shared video or speakers. 
-          When asked for a summary, generate a structured Markdown report.\n\n`;
+          effectiveInstruction += `You are currently in a CO-WATCHING and RECORDING session. You will hear both the user's voice and the system audio. 
+          TASK: Actively listen and summarize the shared content.\n\n`;
       }
 
       effectiveInstruction += channel.systemInstruction;
@@ -494,12 +470,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           },
           onClose: (reason, code) => { 
               setIsConnected(false); 
-              addLog(`Link Closed: ${reason} (Code: ${code})`, code === 1000 ? "info" : "warn");
+              addLog(`Link Closed: ${reason}`);
           },
           onError: (err) => { 
               setIsConnected(false); 
               setError(err); 
-              addLog(`API Handshake Error: ${err}`, "error");
           },
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
@@ -514,10 +489,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           },
           onToolCall: async (toolCall: any) => {
               for (const fc of toolCall.functionCalls) {
-                  addLog(`Tool Invocation: ${fc.name}`);
                   if (fc.name === 'save_content') {
                       const { filename, content } = fc.args;
-                      setTranscript(h => [...h, { role: 'ai', text: `*[System]: Generated artifact '${filename}' saved.*`, timestamp: Date.now() }]);
+                      setTranscript(h => [...h, { role: 'ai', text: `*[System]: Artifact '${filename}' saved.*`, timestamp: Date.now() }]);
                       serviceRef.current?.sendToolResponse({ functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Document captured." } }] });
                   } else if (onCustomToolCall) {
                       const result = await onCustomToolCall(fc.name, fc.args);
@@ -528,7 +502,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       }, [{ functionDeclarations: [saveContentTool] }]);
     } catch (e: any) { 
         setError("AI init failure."); 
-        addLog(`Link exception: ${e.message}`, "error");
     }
   }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, recordingEnabled, startRecording, onCustomToolCall, addLog, initialTranscript, isConnected]);
 
@@ -568,7 +541,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               if (newSections) {
                   currentLecture.sections.push(...newSections);
                   await cacheLectureScript(cacheKey, currentLecture);
-                  alert("Summary appended to lecture script.");
+                  alert("Summary appended.");
               }
           }
       } catch(e) { alert("Append failed."); } finally { setIsAppending(false); }
@@ -582,7 +555,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           const title = `Live Notes - ${new Date().toLocaleDateString()}`;
           const nb: GeneratedLecture = { topic: title, professorName: channel.voiceName, studentName: "User", sections: fullTranscript.map(t => ({ speaker: t.role === 'user' ? 'Student' : 'Teacher', text: t.text })) };
           await cacheLectureScript(`lecture_${channel.id}_live_${Date.now()}_${language}`, nb);
-          alert("Session archived to curriculum.");
+          alert("Session archived.");
       } catch (e) { alert("Save failed."); } finally { setIsSavingLesson(false); }
   };
 
@@ -599,7 +572,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           };
           const discussionId = await saveDiscussion(discussion);
           await linkDiscussionToLectureSegment(channel.id, activeSegment.lectureId, activeSegment.index, discussionId);
-          alert("Linked to segment!");
+          alert("Linked!");
       } catch(e) { alert("Link failed."); } finally { setIsLinking(false); }
   };
 
@@ -704,11 +677,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                  <h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">{t.tapToStart}</h3>
                  <p className="text-slate-400 text-sm mt-2 max-w-xs leading-relaxed">{t.tapDesc}</p>
                  <div className="flex justify-center gap-4 mt-4">
-                     {videoEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-400 uppercase"><Monitor size={14}/> Desktop</div>}
-                     {cameraEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-red-400 uppercase"><Camera size={14}/> Optics</div>}
+                     {videoEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-indigo-400 uppercase"><Monitor size={14}/> Shared Screen</div>}
+                     {cameraEnabled && <div className="flex items-center gap-1.5 text-[10px] font-black text-red-400 uppercase"><Camera size={14}/> User Camera</div>}
                  </div>
              </div>
-             <button onClick={handleStartSession} className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-full shadow-2xl shadow-indigo-500/30 transition-transform hover:scale-105">Link Prism</button>
+             <button onClick={handleStartSession} className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-full shadow-2xl shadow-indigo-500/30 transition-transform hover:scale-105">Link Neural Fabric</button>
          </div>
       ) : error ? (
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
@@ -760,7 +733,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
                {transcript.map((item, index) => (
                    <div key={index} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : channel.voiceName}</span>
+                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : channel.author}</span>
                        <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed relative group ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>
                            <div className={`absolute ${item.role === 'user' ? '-left-8' : '-right-8'} top-2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1`}>
                                <button onClick={() => { navigator.clipboard.writeText(item.text); setActiveQuoteIndex(index); setTimeout(() => setActiveQuoteIndex(null), 1000); }} className="p-1.5 bg-slate-800 text-slate-400 hover:text-white rounded-full border border-slate-700 shadow-lg">
@@ -773,7 +746,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                ))}
                {currentLine && (
                    <div className={`flex flex-col ${currentLine.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in`}>
-                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{currentLine.role === 'user' ? 'You' : channel.voiceName}</span>
+                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{currentLine.role === 'user' ? 'You' : channel.author}</span>
                        <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${currentLine.role === 'user' ? 'bg-indigo-600/80 text-white rounded-tr-sm' : 'bg-slate-800/80 text-slate-200 rounded-tl-sm border border-slate-700'}`}>
                            {renderMessageContent(currentLine.text)}
                            <span className="inline-block w-1.5 h-4 ml-1 align-middle bg-current opacity-50 animate-blink"></span>

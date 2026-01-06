@@ -1,4 +1,4 @@
-import { GoogleGenAI, LiveServerMessage } from '@google/genai';
+import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, coolDownAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
 
 export interface LiveConnectionCallbacks {
@@ -6,7 +6,7 @@ export interface LiveConnectionCallbacks {
   onClose: (reason: string, code?: number) => void;
   onError: (error: string) => void;
   onVolumeUpdate: (volume: number) => void;
-  onTranscript: (text: string, isUser: boolean) => void;
+  onTranscript: (text: string, isUser) => void;
   onToolCall?: (toolCall: any) => void;
 }
 
@@ -66,7 +66,8 @@ export class GeminiLiveService {
       const validVoice = getValidLiveVoice(voiceName);
 
       const config: any = {
-          responseModalities: ['AUDIO'],
+          /* FIXED: Used Modality.AUDIO instead of raw string 'AUDIO' */
+          responseModalities: [Modality.AUDIO],
           speechConfig: {
               voiceConfig: {
                   prebuiltVoiceConfig: { voiceName: validVoice }
