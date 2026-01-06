@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -171,7 +172,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const mountedRef = useRef(true);
   const reconnectTimeoutRef = useRef<any>(null);
 
-  const [transcript, setTranscript] = useState<TranscriptItem[]>(initialTranscript || []);
+  const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [currentLine, setCurrentLine] = useState<TranscriptItem | null>(null);
   const transcriptRef = useRef<TranscriptItem[]>(initialTranscript || []);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -396,39 +397,38 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       const pref = profile?.preferredRecordingTarget || 'drive';
                       const folderId = await ensureCodeStudioFolder(token);
                       
-                      let videoUrl = '';
-                      // CRITICAL: Respect User Preference
+                      let ytVideoUrl = '';
+                      let driveVideoUrl = '';
+                      
+                      // 1. Upload to Drive first for safety
+                      driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
+                      setSynthesisProgress(70);
+
+                      // 2. Upload to YouTube if preferred
                       if (pref === 'youtube' || channel.id.includes('meeting')) {
                           try {
-                              setSynthesisProgress(70);
                               addLog(`Preferred Dest is YOUTUBE. Sending blob...`);
                               const ytId = await uploadToYouTube(token, videoBlob, {
                                   title: `${channel.title}: AI Session`,
                                   description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText.substring(0, 1000)}`,
                                   privacyStatus: 'unlisted'
                               });
-                              videoUrl = getYouTubeVideoUrl(ytId);
+                              ytVideoUrl = getYouTubeVideoUrl(ytId);
                               addLog(`YouTube Link Generated: ${ytId}`);
                           } catch (ytErr: any) { 
                               addLog(`YouTube Failed: ${ytErr.message}`, "warn");
-                              addLog(`Check your OAuth scopes for YouTube. Redirecting to Drive fallback...`, "warn");
                           }
                       }
 
                       let tFileId = '';
-                      let driveFileId = '';
                       tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
-
-                      // ONLY upload video to Drive if YouTube failed OR if Drive is the preferred destination
-                      if (pref === 'drive' || !videoUrl) {
-                          setSynthesisProgress(85);
-                          driveFileId = await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob);
-                      }
                       
                       const sessionData: RecordingSession = {
                           id: recId, userId: currentUser.uid, channelId: channel.id,
                           channelTitle: channel.title, channelImage: channel.imageUrl,
-                          timestamp, mediaUrl: videoUrl || (driveFileId ? `drive://${driveFileId}` : ''),
+                          timestamp, 
+                          mediaUrl: ytVideoUrl || driveVideoUrl, // Primary URI
+                          driveUrl: driveVideoUrl, // Fallback/Secondary URI
                           mediaType: 'video/webm', transcriptUrl: tFileId ? `drive://${tFileId}` : ''
                       };
                       await saveRecordingReference(sessionData);

@@ -1,13 +1,12 @@
-
 import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel, TranscriptItem, UserProfile } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
 import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap, Download, Share2 } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
-import { getYouTubeEmbedUrl, uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
+import { getYouTubeEmbedUrl, uploadToYouTube, getYouTubeVideoUrl, deleteYouTubeVideo } from '../services/youtubeService';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
-import { ensureCodeStudioFolder, uploadToDrive, downloadDriveFileAsBlob } from '../services/googleDriveService';
+import { ensureCodeStudioFolder, uploadToDrive, downloadDriveFileAsBlob, deleteDriveFile } from '../services/googleDriveService';
 import { ShareModal } from './ShareModal';
 
 interface RecordingListProps {
@@ -160,12 +159,21 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           return;
       }
 
-      if (isDriveUrl(rec.mediaUrl)) {
+      // Prioritize YouTube for immediate embed if it's the main mediaUrl
+      if (isYouTubeUrl(rec.mediaUrl)) {
+          setResolvedMediaUrl(rec.mediaUrl);
+          setActiveMediaId(rec.id);
+          return;
+      }
+
+      // Handle Drive resolution
+      if (isDriveUrl(rec.mediaUrl) || (rec.driveUrl && isDriveUrl(rec.driveUrl))) {
           setResolvingId(rec.id);
           try {
               const token = getDriveToken();
               if (!token) throw new Error("Google access required.");
-              const fileId = rec.mediaUrl.replace('drive://', '').split('&')[0];
+              const driveUri = isDriveUrl(rec.mediaUrl) ? rec.mediaUrl : rec.driveUrl!;
+              const fileId = driveUri.replace('drive://', '').split('&')[0];
               const blob = await downloadDriveFileAsBlob(token, fileId);
               const url = URL.createObjectURL(blob);
               setResolvedMediaUrl(url);
@@ -203,6 +211,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     try {
         let videoBlob: Blob;
         const isFromDrive = isDriveUrl(rec.mediaUrl);
+        const originalDriveUrl = isFromDrive ? rec.mediaUrl : rec.driveUrl;
         
         if (rec.blob instanceof Blob) {
             addSyncLog("Loading local buffer (Source: Local)...", 'info');
@@ -248,6 +257,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             ...rec,
             userId: currentUser.uid,
             mediaUrl: videoUrl,
+            driveUrl: originalDriveUrl // Preserve the drive URL
         };
         
         // Handle transcript sync if not already in cloud
@@ -303,6 +313,13 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
 
         let mediaUrl = "";
+        let driveUrl = "";
+
+        // Upload to Drive first for safety
+        addSyncLog("Syncing to Google Drive...", 'info');
+        const driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
+        driveUrl = `drive://${driveFileId}`;
+        addSyncLog("Drive Sync Success.", 'success');
 
         if (pref === 'youtube') {
             addSyncLog("Syncing to YouTube...", 'info');
@@ -315,16 +332,11 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                 mediaUrl = getYouTubeVideoUrl(ytId);
                 addSyncLog(`YouTube Success: ${ytId}`, 'success');
             } catch (ytErr: any) { 
-                addSyncLog(`YouTube Sync Failed. Checking Drive Fallback...`, 'warn');
+                addSyncLog(`YouTube Sync Failed. Using Drive as primary URI.`, 'warn');
             }
         }
 
-        if (!mediaUrl) {
-            addSyncLog("Syncing to Google Drive...", 'info');
-            const driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
-            mediaUrl = `drive://${driveFileId}`;
-            addSyncLog("Drive Sync Success.", 'success');
-        }
+        if (!mediaUrl) mediaUrl = driveUrl;
 
         addSyncLog("Archiving transcript...");
         const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
@@ -334,6 +346,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             channelTitle: rec.channelTitle, channelImage: rec.channelImage,
             timestamp: rec.timestamp, 
             mediaUrl: mediaUrl,
+            driveUrl: driveUrl,
             mediaType: rec.mediaType, 
             transcriptUrl: `drive://${tFileId}`
         };
@@ -350,17 +363,98 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   };
 
   const handleDelete = async (rec: RecordingSession) => {
-    if (!confirm("Permanently delete?")) return;
-    try {
-      if (rec.mediaUrl.startsWith('blob:') || rec.mediaUrl.startsWith('data:')) {
-          await deleteLocalRecording(rec.id);
-      } else if (currentUser) {
-          await deleteRecordingReference(rec.id, rec.mediaUrl, rec.transcriptUrl);
-      } else {
-          await deleteLocalRecording(rec.id);
-      }
-      setRecordings(prev => prev.filter(r => r.id !== rec.id));
-    } catch (e) { alert("Deletion failed."); }
+    if (!confirm(`Are you sure you want to permanently delete "${rec.channelTitle}"? This will remove the assets from both YouTube and Google Drive.`)) return;
+    
+    // We need to handle cloud asset deletion before deleting the ledger reference
+    const isCloud = !rec.mediaUrl.startsWith('blob:') && !rec.mediaUrl.startsWith('data:');
+    
+    if (isCloud && currentUser) {
+        setShowSyncLog(true);
+        setSyncLogs([]);
+        addSyncLog(`HARD DELETE STARTED: ${rec.channelTitle}`, 'warn');
+
+        let token = getDriveToken();
+        if (!token) {
+            addSyncLog("Authentication required for asset removal...", 'warn');
+            const user = await signInWithGoogle();
+            if (!user) {
+                addSyncLog("Deletion canceled: No permissions to delete assets.", 'error');
+                return;
+            }
+            token = getDriveToken();
+        }
+
+        setSyncingId(rec.id);
+        try {
+            // 1. Identify Assets
+            const ytUri = isYouTubeUrl(rec.mediaUrl) ? rec.mediaUrl : (isYouTubeUrl(rec.driveUrl || '') ? rec.driveUrl : '');
+            const driveUri = isDriveUrl(rec.mediaUrl) ? rec.mediaUrl : (isDriveUrl(rec.driveUrl || '') ? rec.driveUrl : '');
+            const transcriptUri = isDriveUrl(rec.transcriptUrl) ? rec.transcriptUrl : '';
+
+            // 2. Delete from YouTube
+            if (ytUri) {
+                const videoId = ytUri.split('v=')[1] || ytUri.split('/').pop() || '';
+                if (videoId) {
+                    addSyncLog(`Requesting YouTube to purge video: ${videoId}...`, 'info');
+                    try {
+                        await deleteYouTubeVideo(token!, videoId);
+                        addSyncLog("YouTube asset successfully removed.", 'success');
+                    } catch (ytErr: any) {
+                        addSyncLog(`YouTube deletion failed: ${ytErr.message}`, 'error');
+                        // Proceed anyway to cleanup other assets
+                    }
+                }
+            }
+
+            // 3. Delete from Google Drive
+            if (driveUri) {
+                const fileId = driveUri.replace('drive://', '').split('&')[0];
+                if (fileId) {
+                    addSyncLog(`Requesting Google Drive to purge file: ${fileId}...`, 'info');
+                    try {
+                        await deleteDriveFile(token!, fileId);
+                        addSyncLog("Google Drive asset successfully removed.", 'success');
+                    } catch (drErr: any) {
+                        addSyncLog(`Drive file deletion failed: ${drErr.message}`, 'error');
+                        // Proceed anyway to cleanup other assets
+                    }
+                }
+            }
+
+            // 4. Delete Transcript from Google Drive
+            if (transcriptUri) {
+                const tFileId = transcriptUri.replace('drive://', '').split('&')[0];
+                if (tFileId) {
+                    addSyncLog(`Purging transcript file: ${tFileId}...`, 'info');
+                    try {
+                        await deleteDriveFile(token!, tFileId);
+                        addSyncLog("Transcript asset successfully removed.", 'success');
+                    } catch (e) {}
+                }
+            }
+
+            // 5. Finalize Ledger Delete
+            addSyncLog("Updating neural ledger: Removing session reference...", 'info');
+            await deleteRecordingReference(rec.id, rec.mediaUrl, rec.transcriptUrl);
+            addSyncLog("Cloud session completely purged.", 'success');
+            
+            setRecordings(prev => prev.filter(r => r.id !== rec.id));
+            setTimeout(() => {
+                setShowSyncLog(false);
+                setSyncingId(null);
+            }, 1500);
+
+        } catch (e: any) {
+            addSyncLog(`CRITICAL DELETE ERROR: ${e.message}`, 'error');
+            setSyncingId(null);
+        }
+    } else {
+        // Local only or guest deletion
+        try {
+            await deleteLocalRecording(rec.id);
+            setRecordings(prev => prev.filter(r => r.id !== rec.id));
+        } catch (e) { alert("Local deletion failed."); }
+    }
   };
 
   const handleStartRecorder = async () => {
@@ -433,8 +527,14 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             const isVideo = rec.mediaType?.includes('video') || rec.mediaUrl.endsWith('.webm') || isYouTubeUrl(rec.mediaUrl);
             const isPlaying = activeMediaId === rec.id;
             const isLocal = rec.mediaUrl.startsWith('blob:') || rec.mediaUrl.startsWith('data:');
-            const isYoutube = isYouTubeUrl(rec.mediaUrl);
-            const isDrive = isDriveUrl(rec.mediaUrl);
+            
+            // Check for presence of both
+            const hasYoutube = isYouTubeUrl(rec.mediaUrl) || (rec.driveUrl && isYouTubeUrl(rec.mediaUrl));
+            const hasDrive = isDriveUrl(rec.mediaUrl) || (rec.driveUrl && isDriveUrl(rec.driveUrl));
+            
+            const ytUri = isYouTubeUrl(rec.mediaUrl) ? rec.mediaUrl : (isYouTubeUrl(rec.driveUrl || '') ? rec.driveUrl : '');
+            const driveUri = isDriveUrl(rec.mediaUrl) ? rec.mediaUrl : (isDriveUrl(rec.driveUrl || '') ? rec.driveUrl : '');
+
             const isThisResolving = resolvingId === rec.id;
             const isThisDownloading = downloadingId === rec.id;
             const isCopying = copyingId === rec.id;
@@ -443,37 +543,47 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
               <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : 'border-slate-800'} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl`}>
                 <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
                   <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:scale-105 ${isYoutube ? 'bg-red-900/20 border-red-500/50 text-red-500' : 'bg-slate-800 text-slate-500'}`}>
-                       {isYoutube ? <Youtube size={24} /> : isDrive ? <HardDrive size={24} /> : <Mic size={24} />}
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:scale-105 ${hasYoutube ? 'bg-red-900/20 border-red-500/50 text-red-500' : hasDrive ? 'bg-indigo-900/20 border-indigo-500/50 text-indigo-400' : 'bg-slate-800 text-slate-500'}`}>
+                       {hasYoutube ? <Youtube size={24} /> : hasDrive ? <HardDrive size={24} /> : <Mic size={24} />}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold text-white text-lg truncate">{rec.channelTitle}</h3>
-                        {isYoutube && <span className="bg-red-600 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded">YouTube</span>}
+                        {hasYoutube && <span className="bg-red-600 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded">YouTube</span>}
+                        {hasDrive && <span className="bg-indigo-600 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded">Drive</span>}
                         {isLocal && <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700">Local Only</span>}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
                         <span className="flex items-center gap-1"><Calendar size={12} /> {date.toLocaleDateString()}</span>
                         <span className="flex items-center gap-1"><Clock size={12} /> {date.toLocaleTimeString()}</span>
                       </div>
-                      {(isYoutube || isDrive) && (
-                          <div className="mt-2 flex items-center gap-2 max-w-full">
-                              <div className="flex items-center gap-1 text-[10px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-900/20 px-2 py-0.5 rounded border border-indigo-500/10">
-                                <LinkIcon size={10}/>
-                                <span>{isYoutube ? 'YouTube' : 'Drive'} URI</span>
+                      
+                      <div className="mt-2 flex flex-wrap items-center gap-3 max-w-full">
+                          {ytUri && (
+                              <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                                  <div className="flex items-center gap-1 text-[8px] font-bold text-red-400 uppercase tracking-widest bg-red-900/20 px-1.5 py-0.5 rounded border border-red-500/10">
+                                    <Youtube size={8}/>
+                                    <span>YT URI</span>
+                                  </div>
+                                  <code className="text-[9px] font-mono text-slate-500 truncate max-w-[120px]">{ytUri}</code>
+                                  <button onClick={() => handleCopyLink(ytUri, rec.id + '-yt')} className={`p-1 rounded hover:bg-slate-800 transition-colors ${copyingId === rec.id + '-yt' ? 'text-emerald-400' : 'text-slate-500'}`} title="Copy YouTube URI">
+                                      {copyingId === rec.id + '-yt' ? <Check size={10}/> : <Copy size={10}/>}
+                                  </button>
                               </div>
-                              <code className="text-[10px] font-mono text-slate-400 truncate max-w-[200px]">
-                                  {rec.mediaUrl}
-                              </code>
-                              <button 
-                                onClick={() => handleCopyLink(rec.mediaUrl, rec.id)}
-                                className={`p-1 rounded hover:bg-slate-800 transition-colors ${isCopying ? 'text-emerald-400' : 'text-slate-500'}`}
-                                title="Copy URI"
-                              >
-                                  {isCopying ? <Check size={12}/> : <Copy size={12}/>}
-                              </button>
-                          </div>
-                      )}
+                          )}
+                          {driveUri && (
+                              <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                                  <div className="flex items-center gap-1 text-[8px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-900/20 px-1.5 py-0.5 rounded border border-indigo-500/10">
+                                    <HardDrive size={8}/>
+                                    <span>DRIVE URI</span>
+                                  </div>
+                                  <code className="text-[9px] font-mono text-slate-500 truncate max-w-[120px]">{driveUri}</code>
+                                  <button onClick={() => handleCopyLink(driveUri, rec.id + '-dr')} className={`p-1 rounded hover:bg-slate-800 transition-colors ${copyingId === rec.id + '-dr' ? 'text-emerald-400' : 'text-slate-500'}`} title="Copy Drive URI">
+                                      {copyingId === rec.id + '-dr' ? <Check size={10}/> : <Copy size={10}/>}
+                                  </button>
+                              </div>
+                          )}
+                      </div>
                     </div>
                   </div>
 
@@ -482,12 +592,12 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                         <div className="flex items-center gap-2">
                             <button 
                                 onClick={() => handleForceYouTubeSync(rec)}
-                                disabled={syncingId === rec.id}
-                                className={`p-2.5 rounded-xl border transition-all shadow-lg active:scale-95 flex items-center gap-2 px-4 group ${isYoutube ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-red-600 hover:bg-red-500 text-white'}`}
-                                title="Sync to YouTube"
+                                disabled={syncingId === rec.id || hasYoutube}
+                                className={`p-2.5 rounded-xl border transition-all shadow-lg active:scale-95 flex items-center gap-2 px-4 group ${hasYoutube ? 'bg-slate-800 text-slate-600 cursor-not-allowed border-slate-700' : 'bg-red-600 hover:bg-red-500 text-white'}`}
+                                title={hasYoutube ? "Already on YouTube" : "Sync to YouTube"}
                             >
                                 {syncingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <Youtube size={16} />}
-                                <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:inline">Transfer to YT</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:inline">{hasYoutube ? 'Synced' : 'Transfer to YT'}</span>
                             </button>
                             {isLocal && (
                                 <button 
@@ -510,7 +620,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                         <Share2 size={20} />
                     </button>
 
-                    {!isYoutube && (
+                    {!hasYoutube && (
                         <button 
                             onClick={() => handleDownloadToDevice(rec)}
                             disabled={isThisDownloading}
@@ -534,15 +644,15 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <FileText size={20} />
                     </a>
 
-                    <button onClick={() => handleDelete(rec)} className="p-2.5 bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors" title="Delete Permanent">
-                      <Trash2 size={20} />
+                    <button onClick={() => handleDelete(rec)} disabled={syncingId === rec.id} className="p-2.5 bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors disabled:opacity-30" title="Delete Permanent">
+                      {syncingId === rec.id ? <Loader2 size={20} className="animate-spin" /> : <Trash2 size={20} />}
                     </button>
                   </div>
                 </div>
 
                 {isPlaying && resolvedMediaUrl && (
                   <div className="mt-6 pt-6 border-t border-slate-800 animate-fade-in flex justify-center">
-                    {isYoutube ? (
+                    {hasYoutube && isYouTubeUrl(rec.mediaUrl) ? (
                         <div className="relative pt-[56.25%] w-full overflow-hidden rounded-2xl bg-black border border-slate-800 shadow-2xl">
                              <iframe 
                                 className="absolute top-0 left-0 w-full h-full"

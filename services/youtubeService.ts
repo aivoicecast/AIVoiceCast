@@ -109,6 +109,21 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
     return data.id; 
 }
 
+/**
+ * Deletes a video from the user's YouTube channel.
+ */
+export async function deleteYouTubeVideo(accessToken: string, videoId: string): Promise<void> {
+    const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?id=${videoId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+
+    if (!res.ok && res.status !== 404) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(`YouTube Deletion Failed (${res.status}): ${errorData.error?.message || res.statusText}`);
+    }
+}
+
 export function getYouTubeVideoUrl(videoId: string): string {
     return `https://www.youtube.com/watch?v=${videoId}`;
 }

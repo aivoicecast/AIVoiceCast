@@ -1,3 +1,4 @@
+
 export type SubscriptionTier = 'free' | 'pro';
 
 export type ChannelVisibility = 'public' | 'private' | 'group';
@@ -146,6 +147,7 @@ export interface RecordingSession {
   channelImage?: string;
   timestamp: number;
   mediaUrl: string;
+  driveUrl?: string; // New field for fallback/dual-storage
   mediaType?: string;
   transcriptUrl: string;
 }
