@@ -65,7 +65,7 @@ const updateCardTool: FunctionDeclaration = {
 export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isViewer: initialIsViewer = false }) => {
   const [viewState, setViewState] = useState<'gallery' | 'editor'>(cardId ? 'editor' : 'gallery');
   const [memory, setMemory] = useState<AgentMemory>(DEFAULT_MEMORY);
-  const [activeTab, setActiveTab] = useState<'settings' | 'chat'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'settings'>('chat');
   const [activePage, setActivePage] = useState<number>(0); 
   const [isViewer, setIsViewer] = useState(initialIsViewer);
   
@@ -222,7 +222,6 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
           updatedMemory.voiceMessageUrl = await syncMedia(updatedMemory.voiceMessageUrl, `cards/${cid}/voice.wav`);
           updatedMemory.songUrl = await syncMedia(updatedMemory.songUrl, `cards/${cid}/song.wav`);
 
-          // Sync user images array
           if (updatedMemory.userImages && updatedMemory.userImages.length > 0) {
               const syncedImages = [];
               for (let i = 0; i < updatedMemory.userImages.length; i++) {
@@ -251,12 +250,18 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
 
   const generatePDFBlob = async (): Promise<Blob | null> => {
     try {
-        await new Promise(resolve => setTimeout(resolve, 800));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [330, 495] });
         for (let i = 0; i <= 3; i++) { 
             const el = document.getElementById(`export-card-page-${i}`);
             if (el) {
-                const canvas = await html2canvas(el, { scale: 3, useCORS: true, width: 330, height: 495 });
+                const canvas = await html2canvas(el, { 
+                    scale: 3, 
+                    useCORS: true, 
+                    width: 330, 
+                    height: 495,
+                    backgroundColor: '#ffffff'
+                });
                 if (i > 0) pdf.addPage();
                 pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 330, 495);
             }
@@ -285,11 +290,16 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
         
         const safeFetchBlob = async (url: string) => {
             const res = await fetch(url);
+            if (!res.ok) throw new Error("Fetch failed");
             return await res.blob();
         };
 
-        if (memory.voiceMessageUrl) folder?.file("voice_greeting.wav", await safeFetchBlob(memory.voiceMessageUrl));
-        if (memory.songUrl) folder?.file("holiday_song.wav", await safeFetchBlob(memory.songUrl));
+        if (memory.voiceMessageUrl) {
+            try { folder?.file("voice_greeting.wav", await safeFetchBlob(memory.voiceMessageUrl)); } catch(e) {}
+        }
+        if (memory.songUrl) {
+            try { folder?.file("holiday_song.wav", await safeFetchBlob(memory.songUrl)); } catch(e) {}
+        }
         
         const content = await zip.generateAsync({ type: "blob" });
         const a = document.createElement('a'); 
@@ -298,7 +308,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
         a.click();
     } catch (e) { 
         console.error("Zip failed", e);
-        alert("Package failed. Some assets might be missing or restricted."); 
+        alert("Package generation failed. Some assets might be missing or restricted."); 
     } finally { setIsExportingPackage(false); }
   };
 
@@ -365,7 +375,10 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
   };
 
   const renderCardPage = (page: number) => (
-      <div className={`w-full h-full flex flex-col relative overflow-hidden shadow-2xl rounded-xl ${memory.theme === 'chinese-poem' ? 'bg-[#f5f0e1]' : 'bg-white'} border border-slate-200`}>
+      <div 
+        className={`w-full h-full flex flex-col relative overflow-hidden shadow-2xl rounded-xl ${memory.theme === 'chinese-poem' ? 'bg-[#f5f0e1]' : 'bg-white'} border border-slate-200`}
+        style={{ width: '330px', height: '495px' }}
+      >
           {page === 0 && (
               <>
                 {memory.coverImageUrl ? (
@@ -395,7 +408,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                    <div className="grid grid-cols-2 gap-4 w-full h-full">
                        {[0,1,2,3].map(i => (
                            <div key={i} className="bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center text-slate-200 overflow-hidden aspect-square">
-                               {memory.userImages[i] ? <img src={memory.userImages[i]} className="w-full h-full object-cover rounded-lg"/> : <ImageIcon size={24}/>}
+                               {memory.userImages[i] ? <img src={memory.userImages[i]} className="w-full h-full object-cover rounded-lg" crossOrigin="anonymous"/> : <ImageIcon size={24}/>}
                            </div>
                        ))}
                    </div>
@@ -545,8 +558,8 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
             <div className="w-full md:w-[350px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-8 scrollbar-thin">
                 
                 <div className="flex p-1 bg-slate-950 rounded-xl border border-slate-800">
-                    <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${activeTab === 'chat' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Elf Assistant</button>
-                    <button onClick={() => setActiveTab('settings')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Manual Edit</button>
+                    <button onClick={() => setActiveTab('chat')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${activeTab === 'chat' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}>Assistant</button>
+                    <button onClick={() => setActiveTab('settings')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}>Settings</button>
                 </div>
 
                 {activeTab === 'chat' ? (
@@ -555,13 +568,13 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                             {transcript.length === 0 && (
                                 <div className="p-8 text-center text-slate-500 flex flex-col items-center gap-4">
                                     <Bot size={48} className="opacity-20"/>
-                                    <p className="text-xs font-medium leading-relaxed">I'm your Neural Design Elf. I can help you write messages, choose themes, and generate art using your voice.</p>
-                                    <button onClick={toggleLiveAgent} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl text-xs shadow-lg uppercase tracking-widest transition-transform hover:scale-105 active:scale-95">Talk to Elf</button>
+                                    <p className="text-xs font-medium leading-relaxed">I'm your Neural Design Assistant. I can help you write messages, choose themes, and generate art using your voice.</p>
+                                    <button onClick={toggleLiveAgent} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl text-xs shadow-lg uppercase tracking-widest transition-transform hover:scale-105 active:scale-95">Talk to Assistant</button>
                                 </div>
                             )}
                             {transcript.map((item, i) => (
                                 <div key={i} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                                    <span className={`text-[9px] font-black uppercase mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'Me' : 'Elf'}</span>
+                                    <span className={`text-[9px] font-black uppercase mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'Me' : 'AI'}</span>
                                     <div className={`px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-300 rounded-tl-sm border border-slate-700 shadow-lg'}`}>{item.text}</div>
                                 </div>
                             ))}
@@ -570,9 +583,9 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                             <div className="flex items-center gap-2">
                                 <button onClick={toggleLiveAgent} className={`flex-1 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95 ${isLiveActive ? 'bg-red-600 text-white animate-pulse shadow-red-900/20' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/20'}`}>
                                     {isLiveActive ? <MicOff size={18}/> : <Mic size={18}/>}
-                                    <span className="text-xs uppercase tracking-widest">{isLiveActive ? 'End Link' : 'Talk to Elf'}</span>
+                                    <span className="text-xs uppercase tracking-widest">{isLiveActive ? 'End Link' : 'Talk'}</span>
                                 </button>
-                                <button onClick={() => chatImageInputRef.current?.click()} className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors" title="Show Image to Elf">
+                                <button onClick={() => chatImageInputRef.current?.click()} className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors" title="Show Image to AI">
                                     <Camera size={18}/>
                                 </button>
                                 <input type="file" ref={chatImageInputRef} className="hidden" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const base64 = await resizeImage(e.target.files[0], 512, 0.7); liveServiceRef.current?.sendVideo(base64.split(',')[1], e.target.files[0].type); setTranscript(prev => [...prev, { role: 'user', text: '📷 [Shared Inspiration Image]', timestamp: Date.now() }]); } }}/>
@@ -582,15 +595,15 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                 ) : (
                     <div className="space-y-6 animate-fade-in">
                         <div className="space-y-4">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Settings: {getPageLabel(activePage)}</label>
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Active Page: {getPageLabel(activePage)}</label>
                             
                             <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Card Background Story / Context</label>
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Background Context</label>
                                 <textarea 
                                     rows={3} 
                                     value={memory.context || ''} 
                                     onChange={e => setMemory({...memory, context: e.target.value})} 
-                                    placeholder="Brief background or theme summary (e.g. 'A thank you card for a coworker who helped with a big launch'). This informs AI art and message generation."
+                                    placeholder="Brief background summary (e.g. 'A thank you card for a coworker who helped with a big launch'). This informs AI generation."
                                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 outline-none focus:border-indigo-500 resize-none shadow-inner"
                                 />
                             </div>
@@ -621,7 +634,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                                             <button onClick={() => setMemory({...memory, fontFamily: 'font-serif'})} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${memory.fontFamily === 'font-serif' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Serif</button>
                                         </div>
                                         <div className="px-1 py-2">
-                                            <div className="flex justify-between items-center mb-2"><span className="text-[9px] font-bold text-slate-600 uppercase">Text Scale</span><span className="text-[9px] font-mono text-indigo-400">x{memory.fontSizeScale?.toFixed(1)}</span></div>
+                                            <div className="flex justify-between items-center mb-2"><span className="text-[9px] font-bold text-slate-600 uppercase">Size</span><span className="text-[9px] font-mono text-indigo-400">x{memory.fontSizeScale?.toFixed(1)}</span></div>
                                             <input type="range" min="0.5" max="2.0" step="0.1" value={memory.fontSizeScale} onChange={e => setMemory({...memory, fontSizeScale: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
                                         </div>
                                     </div>
@@ -656,7 +669,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                                         <span>Generate Back Art</span>
                                     </button>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1"><Link size={10}/> Shared Album Link (QR)</label>
+                                        <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1"><Link size={10}/> Shared Album URI</label>
                                         <input type="text" placeholder="Photos Album URL..." value={memory.googlePhotosUrl || ''} onChange={e => setMemory({...memory, googlePhotosUrl: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white focus:border-indigo-500 outline-none shadow-inner"/>
                                     </div>
                                 </div>
@@ -678,10 +691,10 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                                 <div className="space-y-4 animate-fade-in">
                                     <button onClick={() => handleGenAudio('song')} disabled={isGeneratingSong} className="w-full py-4 bg-pink-600 hover:bg-pink-500 text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg">
                                         {isGeneratingSong ? <Loader2 size={18} className="animate-spin"/> : <Music size={18}/>}
-                                        <span>Synthesize Melodic Pattern</span>
+                                        <span>Synthesize Custom Song</span>
                                     </button>
                                     <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl max-h-40 overflow-y-auto scrollbar-hide shadow-inner">
-                                        <p className="text-[10px] text-slate-500 font-medium whitespace-pre-wrap">{memory.songLyrics || "Song lyrics not yet generated. Click button above to start AI synthesis."}</p>
+                                        <p className="text-[10px] text-slate-500 font-medium whitespace-pre-wrap">{memory.songLyrics || "Synthesizing melodic neural patterns..."}</p>
                                     </div>
                                 </div>
                             )}
@@ -705,7 +718,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                 )}
 
                 <div className="relative group perspective">
-                    <div className="w-[330px] h-[495px] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] transition-transform duration-500 transform-style-preserve-3d group-hover:rotate-y-6 overflow-hidden rounded-xl">
+                    <div className="w-[330px] h-[495px] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] transition-transform duration-500 transform-style-preserve-3d group-hover:rotate-y-6 overflow-hidden rounded-xl bg-white border border-slate-200">
                         {renderCardPage(activePage)}
                     </div>
                     <div className="absolute -left-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -738,7 +751,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                 {(isExporting || isExportingPackage) && (
                     <div style={{ position: 'absolute', left: '-9999px', top: '-9999px', opacity: 0 }}>
                         {[0, 1, 2, 3].map(pageNum => (
-                            <div key={pageNum} id={`export-card-page-${pageNum}`} style={{ width: '330px', height: '495px' }} className="overflow-hidden flex flex-col relative">
+                            <div key={pageNum} id={`export-card-page-${pageNum}`} style={{ width: '330px', height: '495px', overflow: 'hidden' }} className="flex flex-col relative">
                                 {renderCardPage(pageNum)}
                             </div>
                         ))}

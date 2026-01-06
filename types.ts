@@ -339,7 +339,7 @@ export interface AgentMemory {
   senderName: string;
   occasion: string;
   cardMessage: string;
-  context?: string; // New field for main theme/context
+  context?: string; 
   theme: string;
   customThemePrompt: string;
   userImages: string[];
@@ -348,10 +348,9 @@ export interface AgentMemory {
   fontFamily?: string;
   fontSizeScale?: number;
   coverImageUrl?: string;
-  voiceMessageUrl?: string;
-  // Added missing properties for holiday cards to fix build errors
-  songLyrics?: string;
   backImageUrl?: string;
+  voiceMessageUrl?: string;
+  songLyrics?: string;
   songUrl?: string;
 }
 
