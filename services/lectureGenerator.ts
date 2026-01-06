@@ -79,7 +79,7 @@ function getModelForVoice(voiceName: string = '', defaultModel: string): string 
         const id = parts.find(p => p.startsWith('gen-lang-client'));
         if (id) {
             const tunedId = id.startsWith('tunedModels/') ? id : `tunedModels/${id}`;
-            console.log(`[AI] Detected Tuned Model ID: ${tunedId}`);
+            console.log(`[Neural Router] Routing to Tuned Model: ${tunedId}`);
             return tunedId;
         }
     }
@@ -106,7 +106,7 @@ export async function generateLectureScript(
       ? 'Output Language: Simplified Chinese (Mandarin).' 
       : 'Output Language: English.';
 
-    const systemPrompt = `You are an expert educational content creator and podcast writer. ${langInstruction}`;
+    const systemInstruction = `You are an expert educational content creator and podcast writer. ${langInstruction}`;
     
     const userPrompt = `
       Topic: "${topic}"
@@ -132,8 +132,7 @@ export async function generateLectureScript(
     let text: string | null = null;
 
     if (activeProvider === 'openai') {
-        console.log(`[AI] Calling OpenAI for: ${topic}`);
-        text = await callOpenAI(systemPrompt, userPrompt, openaiKey);
+        text = await callOpenAI(systemInstruction, userPrompt, openaiKey);
     } else {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
@@ -141,11 +140,11 @@ export async function generateLectureScript(
         if (channelId === '1' || channelId === '2') modelName = 'gemini-3-pro-preview';
         modelName = getModelForVoice(voiceName, modelName);
 
-        console.log(`[AI] Calling Gemini (${modelName}) for: ${topic}`);
         const response = await ai.models.generateContent({
             model: modelName, 
-            contents: `${systemPrompt}\n\n${userPrompt}`,
+            contents: userPrompt,
             config: { 
+                systemInstruction: systemInstruction,
                 responseMimeType: 'application/json'
             }
         });
@@ -186,20 +185,23 @@ export async function generateBatchLectures(
     let activeProvider = provider;
     if (provider === 'openai' && !openaiKey) activeProvider = 'gemini';
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
-    const systemPrompt = `You are an expert educator. ${langInstruction}`;
+    const systemInstruction = `You are an expert educator. ${langInstruction}`;
     const userPrompt = `
       Generate short dialogues for these topics: ${JSON.stringify(subTopics.map(s => s.title))}.
       Return JSON: { "results": [ { "id": "...", "lecture": { "professorName": "...", "studentName": "...", "sections": [], "readingMaterial": "...", "homework": "..." } } ] }
     `;
     let text: string | null = null;
     if (activeProvider === 'openai') {
-        text = await callOpenAI(systemPrompt, userPrompt, openaiKey);
+        text = await callOpenAI(systemInstruction, userPrompt, openaiKey);
     } else {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview', 
-            contents: `${systemPrompt}\n\n${userPrompt}`,
-            config: { responseMimeType: 'application/json' }
+            contents: userPrompt,
+            config: { 
+                systemInstruction: systemInstruction,
+                responseMimeType: 'application/json' 
+            }
         });
         text = response.text || null;
     }
@@ -230,17 +232,20 @@ export async function summarizeDiscussionAsSection(
     let activeProvider = provider;
     if (provider === 'openai' && !openaiKey) activeProvider = 'gemini';
     const chatLog = transcript.map(t => `${t.role}: ${t.text}`).join('\n');
-    const systemPrompt = `Summarize Q&A into formal dialogue.`;
+    const systemInstruction = `Summarize Q&A into formal dialogue. Return JSON only.`;
     const userPrompt = `Context: ${currentLecture.topic}\nLog: ${chatLog}`;
     let text: string | null = null;
     if (activeProvider === 'openai') {
-        text = await callOpenAI(systemPrompt, userPrompt, openaiKey);
+        text = await callOpenAI(systemInstruction, userPrompt, openaiKey);
     } else {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview', 
-            contents: `${systemPrompt}\n\n${userPrompt}`,
-            config: { responseMimeType: 'application/json' }
+            contents: userPrompt,
+            config: { 
+                systemInstruction: systemInstruction,
+                responseMimeType: 'application/json' 
+            }
         });
         text = response.text || null;
     }
@@ -260,20 +265,21 @@ export async function generateDesignDocFromTranscript(
     let activeProvider = provider;
     if (provider === 'openai' && !openaiKey) activeProvider = 'gemini';
     const chatLog = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-    const systemPrompt = `You are a Senior Technical Writer.`;
+    const systemInstruction = `You are a Senior Technical Writer.`;
     const userPrompt = `Convert discussion to Design Doc: ${meta.topic}. Log: ${chatLog}`;
     let text: string | null = null;
     if (activeProvider === 'openai') {
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST", headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }] })
+            body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: "system", content: systemInstruction }, { role: "user", content: userPrompt }] })
         });
         if(response.ok) { const data = await response.json(); text = data.choices[0]?.message?.content || null; }
     } else {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview', 
-            contents: `${systemPrompt}\n\n${userPrompt}`
+            contents: userPrompt,
+            config: { systemInstruction: systemInstruction }
         });
         text = response.text || null;
     }

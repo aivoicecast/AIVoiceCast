@@ -190,7 +190,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
     let token = getDriveToken();
     if (!token) {
-        addSyncLog("OAuth missing. Requesting re-auth...", 'warn');
+        addSyncLog("OAuth missing. Requesting session...", 'warn');
         const user = await signInWithGoogle();
         if (!user) {
             addSyncLog("Login canceled.", 'error');
@@ -202,62 +202,65 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     setSyncingId(rec.id);
     try {
         let videoBlob: Blob;
+        const isFromDrive = isDriveUrl(rec.mediaUrl);
         
         if (rec.blob instanceof Blob) {
-            addSyncLog("Using local recording buffer...", 'info');
+            addSyncLog("Loading local buffer...", 'info');
             videoBlob = rec.blob;
-        } else if (isDriveUrl(rec.mediaUrl)) {
-            addSyncLog("Fetching recording from Google Drive...", 'info');
+        } else if (isFromDrive) {
+            addSyncLog("Fetching source recording from Google Drive...", 'info');
             const fileId = rec.mediaUrl.replace('drive://', '').split('&')[0];
             videoBlob = await downloadDriveFileAsBlob(token!, fileId);
-            addSyncLog("Drive fetch successful.", 'success');
+            addSyncLog("Drive source download successful.", 'success');
         } else {
-            throw new Error("Source recording not available (No local buffer or Drive link).");
+            throw new Error("Recording source not found locally or on Drive.");
         }
 
-        const transcriptText = `Neural Transcript: ${rec.channelTitle}\nOriginal ID: ${rec.id}\nForced YouTube Upload.`;
-        const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
-
-        const isVideo = rec.mediaType?.includes('video') || rec.mediaUrl.endsWith('.webm') || rec.mediaUrl.endsWith('.mp4');
-        if (!isVideo && !isDriveUrl(rec.mediaUrl)) {
-            throw new Error("Only video recordings can be exported to YouTube.");
-        }
-
+        addSyncLog("Step 1: Initiating YouTube Handshake...", 'info');
         let videoUrl = "";
-        addSyncLog("Initiating Direct YouTube Handshake...", 'info');
         try {
             const ytId = await uploadToYouTube(token!, videoBlob, {
                 title: `${rec.channelTitle} (Neural Archive)`,
-                description: `Recorded via AIVoiceCast.\n\n${transcriptText}`,
+                description: `Recorded via AIVoiceCast.\nOriginal Source: ${rec.mediaUrl}`,
                 privacyStatus: 'unlisted'
             });
             videoUrl = getYouTubeVideoUrl(ytId);
-            addSyncLog(`YouTube Success: ${ytId}`, 'success');
+            addSyncLog(`YouTube Transfer Success: ${ytId}`, 'success');
         } catch (ytErr: any) { 
             const msg = ytErr.message || String(ytErr);
             addSyncLog(`YouTube FAILED: ${msg}`, 'error');
-            if (msg.includes('Failed to fetch') || msg.includes('403')) {
-                addSyncLog("TIP: This error is common if scopes have expired. Try signing out and in again.", 'warn');
+            
+            if (isFromDrive) {
+                addSyncLog("Source is already on Drive. ABORTING transfer to avoid duplicate Drive storage.", 'warn');
+                setSyncingId(null);
+                return; // DO NOT fallback if it's already there
             }
-            throw ytErr;
+
+            addSyncLog("FALLBACK: Saving local buffer to Google Drive instead...", 'warn');
+            const folderId = await ensureCodeStudioFolder(token!);
+            const driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
+            videoUrl = `drive://${driveFileId}`;
+            addSyncLog(`Drive Fallback Successful: ${driveFileId}`, 'success');
         }
 
-        addSyncLog("Archiving ledger metadata...", 'info');
+        addSyncLog("Step 2: Updating neural ledger references...", 'info');
         const sessionData: RecordingSession = {
             ...rec,
             userId: currentUser.uid,
             mediaUrl: videoUrl,
         };
         
+        // Ensure transcript is also in cloud if it wasn't
         if (!isDriveUrl(rec.transcriptUrl)) {
-            addSyncLog("Uploading transcript to Drive...", 'info');
+            const transcriptText = `Neural Transcript: ${rec.channelTitle}\nID: ${rec.id}`;
+            const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
             const folderId = await ensureCodeStudioFolder(token!);
             const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
             sessionData.transcriptUrl = `drive://${tFileId}`;
         }
         
         await saveRecordingReference(sessionData);
-        addSyncLog("Ledger points to YouTube successfully.", 'success');
+        addSyncLog("Neural ledger synchronized with new URI.", 'success');
         
         setTimeout(() => {
             loadData();
@@ -265,7 +268,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         }, 800);
         
     } catch (e: any) {
-        addSyncLog(`FATAL ERROR: ${e.message}`, 'error');
+        addSyncLog(`CRITICAL SYNC ERROR: ${e.message}`, 'error');
         setSyncingId(null);
     }
   };
@@ -275,85 +278,73 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     
     setShowSyncLog(true);
     setSyncLogs([]);
-    addSyncLog(`Sync Target: ${rec.channelTitle}`, 'info');
+    addSyncLog(`Auto-Sync: ${rec.channelTitle}`, 'info');
 
     let token = getDriveToken();
     if (!token) {
-        addSyncLog("OAuth missing. Requesting fresh session...", 'warn');
-        if (confirm("OAuth Token required for YouTube/Drive. Sign in?")) {
-            const user = await signInWithGoogle();
-            if (!user) {
-                addSyncLog("Login canceled.", 'error');
-                return;
-            }
-            token = getDriveToken();
-            addSyncLog("Authenticated.", 'success');
-        } else { return; }
+        addSyncLog("OAuth missing. Re-authenticating...", 'warn');
+        const user = await signInWithGoogle();
+        if (!user) {
+            addSyncLog("Action canceled.", 'error');
+            return;
+        }
+        token = getDriveToken();
     }
 
     setSyncingId(rec.id);
     try {
         const profile = await getUserProfile(currentUser.uid);
         const pref = profile?.preferredRecordingTarget || 'drive';
-        addSyncLog(`Preferred Target: ${pref.toUpperCase()}`, 'info');
+        addSyncLog(`Target: ${pref.toUpperCase()}`, 'info');
 
         const folderId = await ensureCodeStudioFolder(token!);
         const videoBlob = rec.blob;
         const transcriptText = `Neural Transcript: ${rec.channelTitle}\nID: ${rec.id}`;
         const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
 
-        const isVideo = rec.mediaType?.includes('video');
-        let videoUrl = "";
+        let mediaUrl = "";
 
-        if (isVideo && pref === 'youtube') {
-            addSyncLog("Uploading to YouTube...", 'info');
+        if (pref === 'youtube') {
+            addSyncLog("Syncing to YouTube...", 'info');
             try {
                 const ytId = await uploadToYouTube(token!, videoBlob, {
-                    title: `${rec.channelTitle} (AI Archive)`,
-                    description: `Recorded on AIVoiceCast.\nOriginal Timestamp: ${new Date(rec.timestamp).toLocaleString()}`,
+                    title: `${rec.channelTitle} (AI)`,
+                    description: `Recorded via AIVoiceCast.`,
                     privacyStatus: 'unlisted'
                 });
-                videoUrl = getYouTubeVideoUrl(ytId);
-                addSyncLog(`YouTube Clear: ${ytId}`, 'success');
+                mediaUrl = getYouTubeVideoUrl(ytId);
+                addSyncLog(`YouTube Success: ${ytId}`, 'success');
             } catch (ytErr: any) { 
-                const msg = ytErr.message || String(ytErr);
-                addSyncLog(`YouTube ERROR: ${msg}`, 'error');
-                if (msg.includes('Failed to fetch') || msg.includes('403')) {
-                    addSyncLog("Hint: Re-login to ensure 'youtube.upload' scope is active.", 'warn');
-                }
-                addSyncLog("Critical: YouTube failed. Checking Drive fallback...", 'warn');
+                addSyncLog(`YouTube Sync Failed. Checking Drive Fallback...`, 'warn');
             }
         }
 
-        addSyncLog("Backing up transcript to Drive...", 'info');
-        const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
-        
-        let driveFileId = "";
-        if (!videoUrl) {
-            addSyncLog("Saving Media to Google Drive...", 'info');
-            driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
-            addSyncLog("Drive Backup Successful.", 'success');
+        if (!mediaUrl) {
+            addSyncLog("Syncing to Google Drive...", 'info');
+            const driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
+            mediaUrl = `drive://${driveFileId}`;
+            addSyncLog("Drive Sync Success.", 'success');
         }
+
+        addSyncLog("Archiving transcript...");
+        const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
         
         const sessionData: RecordingSession = {
             id: rec.id, userId: currentUser.uid, channelId: rec.channelId,
             channelTitle: rec.channelTitle, channelImage: rec.channelImage,
             timestamp: rec.timestamp, 
-            mediaUrl: videoUrl || `drive://${driveFileId}`,
+            mediaUrl: mediaUrl,
             mediaType: rec.mediaType, 
             transcriptUrl: `drive://${tFileId}`
         };
         
         await saveRecordingReference(sessionData);
-        addSyncLog("Ledger Updated.", 'success');
+        addSyncLog("Neural ledger updated.", 'success');
         
-        setTimeout(() => {
-            loadData();
-            setSyncingId(null);
-        }, 800);
+        setTimeout(() => { loadData(); setSyncingId(null); }, 800);
         
     } catch (e: any) {
-        addSyncLog(`SYNC ERROR: ${e.message}`, 'error');
+        addSyncLog(`SYNC FAILED: ${e.message}`, 'error');
         setSyncingId(null);
     }
   };
@@ -493,17 +484,17 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                                 onClick={() => handleForceYouTubeSync(rec)}
                                 disabled={syncingId === rec.id}
                                 className="p-2.5 rounded-xl border bg-red-600 hover:bg-red-500 text-white transition-all shadow-lg active:scale-95 flex items-center gap-2 px-4 group"
-                                title="Force Export to YouTube"
+                                title="Sync to Cloud (YouTube/Drive)"
                             >
                                 {syncingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <Youtube size={16} />}
-                                <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:inline">Export to YouTube</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:inline">Sync YouTube</span>
                             </button>
                             {isLocal && (
                                 <button 
                                     onClick={() => handleManualSync(rec)}
                                     disabled={syncingId === rec.id}
                                     className="p-2.5 rounded-xl border bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95"
-                                    title="Auto Sync (Respects Preference)"
+                                    title="Auto Sync"
                                 >
                                     {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <CloudUpload size={18} />}
                                 </button>
@@ -514,7 +505,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                     <button 
                         onClick={() => handleShare(rec)}
                         className="p-2.5 bg-slate-800 text-slate-400 hover:text-indigo-400 rounded-xl border border-slate-700 transition-colors" 
-                        title="Share with Community"
+                        title="Share Session"
                     >
                         <Share2 size={20} />
                     </button>
@@ -524,7 +515,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                             onClick={() => handleDownloadToDevice(rec)}
                             disabled={isThisDownloading}
                             className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors" 
-                            title="Download to Local Device"
+                            title="Download Local"
                         >
                             {isThisDownloading ? <Loader2 size={20} className="animate-spin text-indigo-400" /> : <Download size={20} />}
                         </button>
@@ -588,14 +579,14 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <Activity size={18} className="text-indigo-400"/>
                       <div>
                           <h3 className="text-sm font-bold text-white uppercase tracking-wider">Neural Sync Diagnostic Console</h3>
-                          <p className="text-[10px] text-slate-500 uppercase font-black">Monitoring Cloud Flow & OAuth Verification</p>
+                          <p className="text-[10px] text-slate-500 uppercase font-black">Monitoring Cloud Flow & Fallback Logic</p>
                       </div>
                   </div>
                   <button onClick={() => setShowSyncLog(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={18}/></button>
               </div>
               <div className="flex-1 max-h-[300px] overflow-y-auto p-4 space-y-2 font-mono text-[11px] bg-slate-950/50">
                   {syncLogs.length === 0 ? (
-                      <p className="text-slate-600 italic">No sync activity recorded. Trigger an upload to begin monitoring.</p>
+                      <p className="text-slate-600 italic">Listening for neural events...</p>
                   ) : syncLogs.map((log, i) => (
                       <div key={i} className={`flex gap-3 leading-relaxed ${
                           log.type === 'error' ? 'text-red-400' : 
@@ -612,72 +603,11 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       </div>
                   ))}
               </div>
-              <div className="p-3 border-t border-slate-800 bg-slate-900 flex justify-between items-center">
+              <div className="p-3 border-t border-slate-800 bg-slate-950 flex justify-between items-center">
                   <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">Protocol Version 4.2.1-SYN</p>
                   <button onClick={() => setSyncLogs([])} className="text-[10px] text-slate-500 hover:text-white underline font-bold uppercase">Clear Logs</button>
               </div>
           </div>
-      )}
-
-      {isRecorderModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
-              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-md shadow-2xl p-8 animate-fade-in-up relative overflow-hidden">
-                  <div className="flex justify-between items-center mb-8 relative z-10">
-                      <div>
-                          <h3 className="text-xl font-bold text-white flex items-center gap-3">
-                              <div className="p-2 bg-red-600 rounded-xl shadow-lg"><Video className="text-white" size={20}/></div>
-                              Session Configuration
-                          </h3>
-                      </div>
-                      <button onClick={() => setIsRecorderModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white"><X size={20}/></button>
-                  </div>
-                  
-                  <div className="space-y-6 relative z-10">
-                      <div>
-                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2 px-1">Session Identity</label>
-                          <input 
-                              type="text" 
-                              value={meetingTitle} 
-                              onChange={e => setMeetingTitle(e.target.value)} 
-                              className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white focus:outline-none focus:ring-2 focus:ring-red-500/50 transition-all shadow-inner"
-                              placeholder="e.g., Q1 Technical Strategy Review"
-                          />
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                          <div onClick={() => setRecordScreen(!recordScreen)} className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col items-center gap-2 ${recordScreen ? 'bg-indigo-900/20 border-indigo-500/50' : 'bg-slate-950 border-slate-800 hover:bg-slate-900'}`}>
-                              <div className={`p-2 rounded-lg ${recordScreen ? 'bg-indigo-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}><Monitor size={18} /></div>
-                              <p className={`font-bold text-[10px] uppercase ${recordScreen ? 'text-indigo-200' : 'text-slate-500'}`}>Screen</p>
-                          </div>
-
-                          <div onClick={() => setRecordCamera(!recordCamera)} className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col items-center gap-2 ${recordCamera ? 'bg-red-900/20 border-red-500/50' : 'bg-slate-950 border-slate-800 hover:bg-slate-900'}`}>
-                              <div className={`p-2 rounded-lg ${recordCamera ? 'bg-red-500 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}><Camera size={18} /></div>
-                              <p className={`font-bold text-[10px] uppercase ${recordCamera ? 'text-red-200' : 'text-slate-500'}`}>Camera</p>
-                          </div>
-                      </div>
-
-                      <button 
-                        onClick={handleStartRecorder} 
-                        disabled={!meetingTitle} 
-                        className="w-full py-5 bg-red-600 hover:bg-red-500 disabled:opacity-30 disabled:grayscale text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-3"
-                      >
-                          <Zap size={20} fill="currentColor"/>
-                          <span>Authorize & Launch</span>
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {showShareModal && shareUrl && (
-        <ShareModal 
-          isOpen={true} 
-          onClose={() => setShowShareModal(false)} 
-          link={shareUrl} 
-          title={sharingTitle} 
-          onShare={async () => {}} 
-          currentUserUid={currentUser?.uid} 
-        />
       )}
     </div>
   );
