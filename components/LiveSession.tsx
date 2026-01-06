@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -554,7 +553,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   transcript: fullTranscript, createdAt: Date.now(), 
                   title: `${channel.title}: AI Session` 
               };
-              if (existingDiscussionId) await updateDiscussion(existingDiscussionId, fullTranscript);
+              // FIXED: Pass transcript as part of an object to match Partial<CommunityDiscussion>
+              if (existingDiscussionId) await updateDiscussion(existingDiscussionId, { transcript: fullTranscript, updatedAt: Date.now() });
               else await saveDiscussion(discussion);
           }
           onEndSession(); 

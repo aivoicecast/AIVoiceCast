@@ -2,6 +2,7 @@
 /**
  * YouTube Data API v3 Resumable Upload Service
  */
+import { firebaseKeys } from './private_keys';
 
 export interface YouTubeUploadMetadata {
     title: string;
@@ -14,24 +15,27 @@ export interface YouTubeUploadMetadata {
  */
 export async function uploadToYouTube(accessToken: string, videoBlob: Blob, metadata: YouTubeUploadMetadata): Promise<string> {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
-    console.log("[YouTube] Handshake attempt from origin:", origin);
+    const clientId = firebaseKeys.googleClientId;
     
-    // NEW: Pre-flight Audit. Check if the token/origin is fundamentally blocked before starting upload.
+    console.log("[YouTube Debug] Handshake started.");
+    console.log("[YouTube Debug] Origin:", origin);
+    console.log("[YouTube Debug] Client ID:", clientId);
+    
+    // Step 0: Permission Audit
     try {
-        console.log("[YouTube] Audit: Verifying account permissions...");
         const auditRes = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true', {
             headers: { 'Authorization': `Bearer ${accessToken}` }
         });
-        if (!auditRes.ok) console.warn("[YouTube] Audit non-200, proceeding anyway...");
+        if (!auditRes.ok) console.warn("[YouTube Audit] Permission check non-200. Check scopes.");
     } catch (auditErr: any) {
         if (auditErr.message === 'Failed to fetch') {
-            throw new Error(`Audit Blocked: 'Failed to fetch'. 
+            throw new Error(`CORS BLOCK: 'Failed to fetch'. 
             
-CRITICAL: The browser blocked the connection before it reached Google. 
-1. Go to https://console.cloud.google.com/apis/credentials
-2. Select your OAuth 2.0 Client ID.
-3. ADD '${origin}' to 'Authorized JavaScript origins'.
-4. Wait 5 minutes for Google to propagate the change.`);
+The browser blocked the request before it left your computer.
+1. Visit Google Cloud Console.
+2. Select Client ID: ${clientId}
+3. Confirm '${origin}' is in 'Authorized JavaScript origins'.
+4. Ensure no ad-blockers are active.`);
         }
     }
 
@@ -42,7 +46,7 @@ CRITICAL: The browser blocked the connection before it reached Google.
         snippet: {
             title: metadata.title,
             description: metadata.description,
-            tags: ['AIVoiceCast', 'AI'],
+            tags: ['AIVoiceCast', 'NeuralArchive'],
             categoryId: '27' // Education
         },
         status: {
@@ -51,14 +55,12 @@ CRITICAL: The browser blocked the connection before it reached Google.
         }
     };
 
-    console.log("[YouTube] Phase 1: Requesting upload URL...");
+    console.log("[YouTube] Phase 1: Obtaining Upload Location...");
     
     let initRes: Response;
     try {
         initRes = await fetch(initUrl, {
             method: 'POST',
-            mode: 'cors',
-            credentials: 'omit',
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
                 'Content-Type': 'application/json; charset=UTF-8'
@@ -66,57 +68,50 @@ CRITICAL: The browser blocked the connection before it reached Google.
             body: JSON.stringify(body)
         });
     } catch (fetchErr: any) {
-        console.error("[YouTube] Handshake network error:", fetchErr);
-        if (fetchErr.message === 'Failed to fetch') {
-            throw new Error(`Handshake Blocked: 'Failed to fetch'. 
-            
-Ensure '${origin}' is authorized in Google Cloud Console.`);
-        }
-        throw fetchErr;
+        console.error("[YouTube Handshake Error]", fetchErr);
+        throw new Error(`Handshake Failed: ${fetchErr.message}`);
     }
 
     if (!initRes.ok) {
         let errorData: any = {};
         try { errorData = await initRes.json(); } catch(e) {}
-        console.error("[YouTube] Handshake failed:", errorData);
+        console.error("[YouTube Handshake Error Payload]", errorData);
         
         if (initRes.status === 403) {
-            throw new Error("403: Forbidden. Verify OAuth scopes (youtube.upload) and verify your channel exists.");
+            throw new Error("YouTube API 403: Verify 'youtube.upload' scope is granted and channel is initialized.");
         }
         
-        throw new Error(`YouTube error (${initRes.status}): ${errorData.error?.message || initRes.statusText}`);
+        throw new Error(`YouTube Handshake Error (${initRes.status}): ${errorData.error?.message || initRes.statusText}`);
     }
 
     const uploadUrl = initRes.headers.get('Location');
     if (!uploadUrl) {
-        throw new Error("No Location header returned from YouTube.");
+        throw new Error("Missing Location header from YouTube handshake.");
     }
 
-    console.log("[YouTube] Phase 2: Streaming binary data...");
+    console.log("[YouTube] Phase 2: Pushing Binary Stream...");
     
     let uploadRes: Response;
     try {
         uploadRes = await fetch(uploadUrl, {
             method: 'PUT',
-            mode: 'cors',
             headers: { 
-                'Content-Type': mimeType,
-                'Content-Length': videoBlob.size.toString()
+                'Content-Type': mimeType
             },
             body: videoBlob
         });
     } catch (uploadErr: any) {
-        console.error("[YouTube] Binary push error:", uploadErr);
-        throw new Error(`Upload stream failed: ${uploadErr.message}`);
+        console.error("[YouTube Binary Stream Error]", uploadErr);
+        throw new Error(`Binary Stream Failure: ${uploadErr.message}`);
     }
 
     if (!uploadRes.ok) {
         const error = await uploadRes.json().catch(() => ({}));
-        throw new Error(`YouTube finalization failed (${uploadRes.status}): ${error.error?.message || uploadRes.statusText}`);
+        throw new Error(`YouTube Finalization Failure (${uploadRes.status}): ${error.error?.message || uploadRes.statusText}`);
     }
 
     const data = await uploadRes.json();
-    console.log("[YouTube] Phase 3: Done! Video ID:", data.id);
+    console.log("[YouTube] Phase 3: Transfer Complete. ID:", data.id);
     return data.id; 
 }
 

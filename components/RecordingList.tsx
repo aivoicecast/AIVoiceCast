@@ -186,11 +186,11 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     
     setShowSyncLog(true);
     setSyncLogs([]);
-    addSyncLog(`FORCING YouTube Sync for: ${rec.channelTitle}`, 'info');
+    addSyncLog(`FORCING YouTube Transfer: ${rec.channelTitle}`, 'info');
 
     let token = getDriveToken();
     if (!token) {
-        addSyncLog("OAuth missing. Requesting session...", 'warn');
+        addSyncLog("OAuth missing. Requesting new session...", 'warn');
         const user = await signInWithGoogle();
         if (!user) {
             addSyncLog("Login canceled.", 'error');
@@ -205,13 +205,13 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         const isFromDrive = isDriveUrl(rec.mediaUrl);
         
         if (rec.blob instanceof Blob) {
-            addSyncLog("Loading local buffer...", 'info');
+            addSyncLog("Loading local buffer (Source: Local)...", 'info');
             videoBlob = rec.blob;
         } else if (isFromDrive) {
-            addSyncLog("Fetching source recording from Google Drive...", 'info');
+            addSyncLog("Downloading source from Google Drive...", 'info');
             const fileId = rec.mediaUrl.replace('drive://', '').split('&')[0];
             videoBlob = await downloadDriveFileAsBlob(token!, fileId);
-            addSyncLog("Drive source download successful.", 'success');
+            addSyncLog("Drive download successful.", 'success');
         } else {
             throw new Error("Recording source not found locally or on Drive.");
         }
@@ -221,26 +221,26 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         try {
             const ytId = await uploadToYouTube(token!, videoBlob, {
                 title: `${rec.channelTitle} (Neural Archive)`,
-                description: `Recorded via AIVoiceCast.\nOriginal Source: ${rec.mediaUrl}`,
+                description: `Transferred via AIVoiceCast.\nOriginal Source: ${rec.mediaUrl}`,
                 privacyStatus: 'unlisted'
             });
             videoUrl = getYouTubeVideoUrl(ytId);
-            addSyncLog(`YouTube Transfer Success: ${ytId}`, 'success');
+            addSyncLog(`YouTube Upload Success: ${ytId}`, 'success');
         } catch (ytErr: any) { 
             const msg = ytErr.message || String(ytErr);
             addSyncLog(`YouTube FAILED: ${msg}`, 'error');
             
             if (isFromDrive) {
-                addSyncLog("Source is already on Drive. ABORTING transfer to avoid duplicate Drive storage.", 'warn');
+                addSyncLog("ABORTING: Source is already on Drive. We will not create a duplicate.", 'warn');
                 setSyncingId(null);
-                return; // DO NOT fallback if it's already there
+                return; 
             }
 
-            addSyncLog("FALLBACK: Saving local buffer to Google Drive instead...", 'warn');
+            addSyncLog("FALLBACK: Saving local buffer to Drive instead...", 'warn');
             const folderId = await ensureCodeStudioFolder(token!);
             const driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
             videoUrl = `drive://${driveFileId}`;
-            addSyncLog(`Drive Fallback Successful: ${driveFileId}`, 'success');
+            addSyncLog(`Drive Fallback Success: ${driveFileId}`, 'success');
         }
 
         addSyncLog("Step 2: Updating neural ledger references...", 'info');
@@ -250,7 +250,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             mediaUrl: videoUrl,
         };
         
-        // Ensure transcript is also in cloud if it wasn't
+        // Handle transcript sync if not already in cloud
         if (!isDriveUrl(rec.transcriptUrl)) {
             const transcriptText = `Neural Transcript: ${rec.channelTitle}\nID: ${rec.id}`;
             const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
@@ -260,7 +260,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         }
         
         await saveRecordingReference(sessionData);
-        addSyncLog("Neural ledger synchronized with new URI.", 'success');
+        addSyncLog("Neural ledger updated to new URI.", 'success');
         
         setTimeout(() => {
             loadData();
@@ -484,17 +484,17 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                                 onClick={() => handleForceYouTubeSync(rec)}
                                 disabled={syncingId === rec.id}
                                 className="p-2.5 rounded-xl border bg-red-600 hover:bg-red-500 text-white transition-all shadow-lg active:scale-95 flex items-center gap-2 px-4 group"
-                                title="Sync to Cloud (YouTube/Drive)"
+                                title="Sync to YouTube (Source: Drive or Local)"
                             >
                                 {syncingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <Youtube size={16} />}
-                                <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:inline">Sync YouTube</span>
+                                <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:inline">Transfer to YT</span>
                             </button>
                             {isLocal && (
                                 <button 
                                     onClick={() => handleManualSync(rec)}
                                     disabled={syncingId === rec.id}
                                     className="p-2.5 rounded-xl border bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95"
-                                    title="Auto Sync"
+                                    title="Auto Sync to Drive"
                                 >
                                     {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <CloudUpload size={18} />}
                                 </button>
