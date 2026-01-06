@@ -29,6 +29,7 @@ import { BlogView } from './BlogView';
 import { WorkplaceChat } from './WorkplaceChat';
 import { LoginPage } from './LoginPage'; 
 import { SettingsModal } from './SettingsModal'; 
+import { PricingModal } from './PricingModal'; 
 import { CareerCenter } from './CareerCenter';
 import { UserManual } from './UserManual'; 
 import { PrivacyPolicy } from './PrivacyPolicy';
@@ -64,7 +65,6 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Fix line 67: Initialized state with valid values instead of using type names as property values
   state: ErrorBoundaryState = { hasError: false, error: null };
   declare props: ErrorBoundaryProps;
 
@@ -272,7 +272,6 @@ const App: React.FC = () => {
   };
 
   const handleStartLiveSession = (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, initialTranscript?: TranscriptItem[], existingDiscussionId?: string) => {
-    // Store current viewState as returnTo context
     setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId, returnTo: viewState });
     handleSetViewState('live_session');
   };
@@ -479,7 +478,7 @@ const App: React.FC = () => {
                  <button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">
                     <img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=Guest`} alt="Profile" className="w-full h-full object-cover" />
                  </button>
-                 <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} setIsSyncModalOpen={() => {}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => setIsUserGuideOpen(true)} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => setIsPrivacyOpen(true)} t={t} channels={allChannels} language={language} setLanguage={setLanguage} />
+                 <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} setIsSyncModalOpen={() => {}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => setIsUserGuideOpen(true)} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => setIsPrivacyOpen(true)} t={t} language={language} setLanguage={setLanguage} channels={allChannels} />
               </div>
            </div>
         </header>
