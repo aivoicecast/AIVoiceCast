@@ -1,12 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
 import { Channel, Group, Chapter } from '../types';
-import { X, Podcast, Sparkles, Lock, Globe, Users, FileText, Loader2, Clipboard, Crown, Calendar, Star } from 'lucide-react';
+import { X, Podcast, Sparkles, Lock, Globe, Users, FileText, Loader2, Clipboard, Crown, Calendar, Star, Zap, Cpu } from 'lucide-react';
 import { getUserGroups, getUserProfile } from '../services/firestoreService';
 import { generateChannelFromDocument } from '../services/channelGenerator';
 import { auth } from '../services/firebaseConfig';
 import { getCurrentUser } from '../services/authService';
-import { VOICES } from '../utils/initialData';
+import { VOICES, SPECIALIZED_VOICES } from '../utils/initialData';
 
 interface CreateChannelModalProps {
   isOpen: boolean;
@@ -138,8 +137,7 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
   };
 
   const isSpecializedVoice = (v: string) => {
-      const specializedNames = ['Software Interview Voice', 'Linux Kernel Voice', 'Default Gem'];
-      return specializedNames.some(name => v.includes(name));
+      return SPECIALIZED_VOICES.some(name => v.includes(name));
   };
 
   if (!effectiveUser) {
@@ -207,24 +205,60 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-400 mb-2">Voice Personality</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {VOICES.map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setVoice(v)}
-                      className={`relative px-3 py-2.5 rounded-xl text-left text-xs font-bold transition-all border flex items-center gap-2 group ${
-                        voice === v 
-                          ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg ring-2 ring-indigo-500/20' 
-                          : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
-                      }`}
-                    >
-                      {isSpecializedVoice(v) ? <Star size={14} className={voice === v ? 'text-amber-300' : 'text-indigo-400'} fill={voice === v ? "currentColor" : "none"} /> : <Podcast size={14} className="opacity-50" />}
-                      <span className="truncate">{v}</span>
-                      {isSpecializedVoice(v) && <span className="absolute top-0 right-0 -translate-y-1/2 translate-x-1/4 text-[8px] bg-amber-500 text-black px-1.5 rounded-full font-black uppercase tracking-tighter">Pro</span>}
-                    </button>
-                  ))}
+                <label className="block text-sm font-medium text-slate-400 mb-3 flex items-center gap-2"><Cpu size={16} className="text-indigo-400" /> Neural Persona Models</label>
+                <div className="space-y-4">
+                  {/* Tuned Models Section */}
+                  <div className="grid grid-cols-1 gap-2">
+                    {VOICES.filter(isSpecializedVoice).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setVoice(v)}
+                        className={`relative px-4 py-3 rounded-2xl text-left transition-all border flex items-center justify-between group ${
+                          voice === v 
+                            ? 'bg-indigo-600 border-indigo-500 text-white shadow-xl ring-4 ring-indigo-500/10 scale-[1.02]' 
+                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-indigo-500/30'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2 rounded-xl ${voice === v ? 'bg-indigo-500' : 'bg-slate-900'}`}>
+                            <Zap size={16} fill={voice === v ? 'currentColor' : 'none'} className={voice === v ? 'text-white' : 'text-indigo-500'} />
+                          </div>
+                          <div>
+                            <span className="text-xs font-black uppercase tracking-wider block">{v.split(' gen-')[0]}</span>
+                            <span className="text-[9px] opacity-60 font-mono">{v.includes('gen-') ? v.split('Voice ')[1] : 'Neural Standard'}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${voice === v ? 'bg-white text-indigo-600' : 'bg-indigo-900/30 text-indigo-400'}`}>TUNED</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="relative py-2 flex items-center justify-center">
+                    <div className="absolute inset-x-0 h-px bg-slate-800"></div>
+                    <span className="relative bg-slate-900 px-3 text-[10px] font-black text-slate-600 uppercase tracking-widest">Base Voices</span>
+                  </div>
+
+                  {/* Standard Voices Section */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {VOICES.filter(v => !isSpecializedVoice(v)).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setVoice(v)}
+                        className={`px-3 py-2.5 rounded-xl text-left text-[10px] font-bold transition-all border flex items-center gap-2 ${
+                          voice === v 
+                            ? 'bg-slate-700 border-slate-500 text-white shadow-lg' 
+                            : 'bg-slate-800/50 border-slate-800 text-slate-500 hover:bg-slate-800'
+                        }`}
+                      >
+                        <Podcast size={14} className="opacity-40" />
+                        <span className="truncate">{v}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </form>

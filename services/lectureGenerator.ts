@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedLecture, SubTopic, TranscriptItem } from '../types';
 import { incrementApiUsage, getUserProfile } from './firestoreService';
@@ -83,6 +82,10 @@ function getModelForVoice(voiceName: string = '', defaultModel: string): string 
             return tunedId;
         }
     }
+    // Default Gem maps to high-quality Pro model
+    if (voiceName === 'Default Gem') {
+        return 'gemini-3-pro-preview';
+    }
     return defaultModel;
 }
 
@@ -136,8 +139,11 @@ export async function generateLectureScript(
     } else {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
+        // Base model selection
         let modelName = 'gemini-3-flash-preview';
         if (channelId === '1' || channelId === '2') modelName = 'gemini-3-pro-preview';
+        
+        // Resolve to Tuned Model if applicable
         modelName = getModelForVoice(voiceName, modelName);
 
         const response = await ai.models.generateContent({

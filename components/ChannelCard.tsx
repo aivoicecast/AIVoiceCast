@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { Channel, ChannelStats } from '../types';
-import { Play, Heart, MessageSquare, Lock, Globe, Users, Edit, Share2, Bookmark, User } from 'lucide-react';
+import { Play, Heart, MessageSquare, Lock, Globe, Users, Edit, Share2, Bookmark, User, Zap } from 'lucide-react';
 import { OFFLINE_CHANNEL_ID } from '../utils/offlineContent';
 import { shareChannel, subscribeToChannelStats } from '../services/firestoreService';
+import { SPECIALIZED_VOICES } from '../utils/initialData';
 
 interface ChannelCardProps {
   channel: Channel;
@@ -37,8 +37,6 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
 
   useEffect(() => {
       // Subscribe to real-time updates for likes/shares
-      // This is crucial because the main 'channels' document is now read-only for non-owners
-      // We pass current channel stats as default so static channels don't flash to 0 if not in DB yet
       const unsubscribe = subscribeToChannelStats(channel.id, (newStats) => {
           setStats(prev => ({ ...prev, ...newStats }));
       }, { likes: channel.likes, dislikes: channel.dislikes, shares: channel.shares || 0 });
@@ -90,6 +88,8 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
       }
   };
 
+  const isTuned = SPECIALIZED_VOICES.some(v => channel.voiceName.includes(v));
+
   return (
     <div 
       onClick={() => handleChannelClick(channel.id)}
@@ -101,9 +101,18 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
           {channel.visibility === 'group' && <div className="bg-purple-900/80 p-1 rounded-full text-purple-400"><Users size={12}/></div>}
       </div>
       
+      {isTuned && (
+        <div className="absolute top-2 left-2 z-10">
+          <div className="flex items-center gap-1.5 bg-indigo-600 text-white px-2 py-0.5 rounded-full shadow-lg border border-indigo-400/50 animate-fade-in">
+            <Zap size={10} fill="currentColor" />
+            <span className="text-[8px] font-black uppercase tracking-widest">Neural Tuned</span>
+          </div>
+        </div>
+      )}
+      
       {/* Quick Edit Button for Owners */}
       {isOwner && (
-         <div className="absolute top-2 left-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+         <div className="absolute top-2 left-20 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
             <button 
                onClick={(e) => {
                   e.stopPropagation();
@@ -143,7 +152,7 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
           <div className="w-full">
             <h3 className="text-lg font-bold text-white group-hover:text-indigo-400 transition-colors line-clamp-1">{channel.title}</h3>
             <div className="flex justify-between items-center mt-1 w-full">
-                <p className="text-xs text-slate-500">{t.host}: <span className={globalVoice !== 'Auto' ? 'text-indigo-300 font-semibold' : ''}>{channel.voiceName}</span></p>
+                <p className="text-xs text-slate-500">{t.host}: <span className={isTuned ? 'text-indigo-300 font-black italic' : globalVoice !== 'Auto' ? 'text-indigo-300 font-semibold' : ''}>{channel.voiceName.split(' gen-')[0]}</span></p>
                 <button 
                     className="text-xs text-slate-400 hover:text-white hover:underline cursor-pointer transition-colors flex items-center gap-1 z-20"
                     onClick={(e) => {
