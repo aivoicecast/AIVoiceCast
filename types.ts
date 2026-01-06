@@ -348,6 +348,10 @@ export interface AgentMemory {
   fontSizeScale?: number;
   coverImageUrl?: string;
   voiceMessageUrl?: string;
+  // Added missing properties for holiday cards to fix build errors
+  songLyrics?: string;
+  backImageUrl?: string;
+  songUrl?: string;
 }
 
 export interface GlobalStats {

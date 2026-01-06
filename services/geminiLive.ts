@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, coolDownAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
 
@@ -173,6 +174,17 @@ export class GeminiLiveService {
       this.sessionPromise?.then((session) => {
           if (session) session.sendToolResponse({ functionResponses });
       });
+  }
+
+  // Added sendVideo method to support multimodal image input during real-time sessions
+  public sendVideo(base64Data: string, mimeType: string) {
+    this.sessionPromise?.then((session) => {
+      if (session && this.isActive) {
+        session.sendRealtimeInput({
+          media: { data: base64Data, mimeType }
+        });
+      }
+    });
   }
 
   private startAudioInput(onVolume: (v: number) => void) {
