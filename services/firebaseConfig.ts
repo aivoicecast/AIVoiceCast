@@ -1,8 +1,12 @@
 
-import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { initializeFirestore, type Firestore, enableMultiTabIndexedDbPersistence } from "firebase/firestore";
-import { getStorage, type FirebaseStorage } from "firebase/storage";
+import { initializeApp, getApps, getApp } from "@firebase/app";
+import type { FirebaseApp } from "@firebase/app";
+import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
+import type { Auth } from "@firebase/auth";
+import { initializeFirestore, enableMultiTabIndexedDbPersistence } from "@firebase/firestore";
+import type { Firestore } from "@firebase/firestore";
+import { getStorage } from "@firebase/storage";
+import type { FirebaseStorage } from "@firebase/storage";
 import { firebaseKeys } from './private_keys';
 
 /**

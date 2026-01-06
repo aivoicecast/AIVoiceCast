@@ -1,10 +1,10 @@
-
 import { GoogleGenAI, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, getGlobalAudioContext, hashString } from '../utils/audioUtils';
 import { getCachedAudioBuffer, cacheAudioBuffer } from '../utils/db';
 import { OPENAI_API_KEY } from './private_keys';
 import { auth, storage } from './firebaseConfig';
-import { ref, getDownloadURL } from 'firebase/storage';
+// FIXED: Using @firebase/ scoped packages
+import { ref, getDownloadURL } from '@firebase/storage';
 
 export type TtsErrorType = 'none' | 'quota' | 'network' | 'unknown' | 'auth';
 

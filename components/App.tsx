@@ -8,48 +8,47 @@ import {
 
 import { Channel, UserProfile, ViewState, TranscriptItem } from '../types';
 
-import { LiveSession } from './components/LiveSession';
-import { PodcastDetail } from './components/PodcastDetail';
-import { UserAuth } from './components/UserAuth';
-import { CreateChannelModal } from './components/CreateChannelModal';
-import { VoiceCreateModal } from './components/VoiceCreateModal';
-import { StudioMenu } from './components/StudioMenu';
-import { ChannelSettingsModal } from './components/ChannelSettingsModal';
-import { CommentsModal } from './components/CommentsModal';
-import { Notifications } from './components/Notifications';
-import { GroupManager } from './components/GroupManager';
-import { MentorBooking } from './components/MentorBooking';
-import { RecordingList } from './components/RecordingList';
-import { DocumentList } from './components/DocumentList';
-import { CalendarView } from './components/CalendarView';
-import { PodcastFeed } from './components/PodcastFeed'; 
-import { MissionManifesto } from './components/MissionManifesto';
-import { CodeStudio } from './components/CodeStudio';
-import { Whiteboard } from './components/Whiteboard';
-import { BlogView } from './components/BlogView';
-import { WorkplaceChat } from './components/WorkplaceChat';
-import { LoginPage } from './components/LoginPage'; 
-import { SettingsModal } from './components/SettingsModal'; 
-import { PricingModal } from './components/PricingModal'; 
-import { CareerCenter } from './components/CareerCenter';
-import { UserManual } from './components/UserManual'; 
-import { PrivacyPolicy } from './components/PrivacyPolicy';
-import { NotebookViewer } from './components/NotebookViewer'; 
-import { CardWorkshop } from './components/CardWorkshop';
-import { CardExplorer } from './components/CardExplorer';
-import { IconGenerator } from './components/IconGenerator';
-import { ShippingLabelApp } from './components/ShippingLabelApp';
-import { CheckDesigner } from './components/CheckDesigner';
-import { FirestoreInspector } from './components/FirestoreInspector';
-import { BrandLogo } from './components/BrandLogo';
-import { CoinWallet } from './components/CoinWallet';
-import { MockInterview } from './components/MockInterview';
+import { LiveSession } from './LiveSession';
+import { PodcastDetail } from './PodcastDetail';
+import { UserAuth } from './UserAuth';
+import { CreateChannelModal } from './CreateChannelModal';
+import { VoiceCreateModal } from './VoiceCreateModal';
+import { StudioMenu } from './StudioMenu';
+import { ChannelSettingsModal } from './ChannelSettingsModal';
+import { CommentsModal } from './CommentsModal';
+import { Notifications } from './Notifications';
+import { GroupManager } from './GroupManager';
+import { MentorBooking } from './MentorBooking';
+import { RecordingList } from './RecordingList';
+import { DocumentList } from './DocumentList';
+import { CalendarView } from './CalendarView';
+import { PodcastFeed } from './PodcastFeed'; 
+import { MissionManifesto } from './MissionManifesto';
+import { CodeStudio } from './CodeStudio';
+import { Whiteboard } from './Whiteboard';
+import { BlogView } from './BlogView';
+import { WorkplaceChat } from './WorkplaceChat';
+import { LoginPage } from './LoginPage'; 
+import { SettingsModal } from './SettingsModal'; 
+import { CareerCenter } from './CareerCenter';
+import { UserManual } from './UserManual'; 
+import { PrivacyPolicy } from './PrivacyPolicy';
+import { NotebookViewer } from './NotebookViewer'; 
+import { CardWorkshop } from './CardWorkshop';
+import { IconGenerator } from './IconGenerator';
+import { ShippingLabelApp } from './ShippingLabelApp';
+import { CheckDesigner } from './CheckDesigner';
+import { FirestoreInspector } from './FirestoreInspector';
+import { BrandLogo } from './BrandLogo';
+import { CoinWallet } from './CoinWallet';
+import { MockInterview } from './MockInterview';
 
 import { getCurrentUser, getDriveToken } from '../services/authService';
 import { auth, db } from '../services/firebaseConfig';
-import { onAuthStateChanged } from 'firebase/auth';
-import { onSnapshot, doc } from 'firebase/firestore';
-import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from '../services/googleDriveService';
+// FIXED: Using @firebase/ scoped packages for reliable resolution of modular exports
+import { onAuthStateChanged } from '@firebase/auth';
+import { onSnapshot, doc } from '@firebase/firestore';
+import { ensureCodeStudioFolder, loadAppStateFromDrive } from '../services/googleDriveService';
 import { getUserChannels, saveUserChannel } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { stopAllPlatformAudio } from '../utils/audioUtils';
@@ -67,10 +66,6 @@ interface ErrorBoundaryState {
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { hasError: false, error: null };
   declare props: ErrorBoundaryProps;
-
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-  }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
     return { hasError: true, error }; 
@@ -115,7 +110,6 @@ const UI_TEXT = {
     create: "New Podcast",
     magic: "Magic Creator",
     host: "Host",
-    listeners: "Listeners",
     featured: "Featured",
     categories: "Categories",
     all: "All Podcasts",
@@ -150,7 +144,6 @@ const UI_TEXT = {
     create: "创建播客",
     magic: "魔法创建",
     host: "主播",
-    listeners: "听众",
     featured: "精选",
     categories: "分类",
     all: "全部播客",
@@ -205,7 +198,6 @@ const App: React.FC = () => {
   
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
-  
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -234,6 +226,7 @@ const App: React.FC = () => {
     activeSegment?: { index: number, lectureId: string };
     initialTranscript?: TranscriptItem[];
     existingDiscussionId?: string;
+    returnTo?: ViewState;
   } | null>(null);
 
   const allApps = useMemo(() => [
@@ -273,7 +266,7 @@ const App: React.FC = () => {
   };
 
   const handleStartLiveSession = (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, initialTranscript?: TranscriptItem[], existingDiscussionId?: string) => {
-    setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId });
+    setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId, returnTo: viewState });
     handleSetViewState('live_session');
   };
 
@@ -405,15 +398,16 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <div className="h-screen flex flex-col bg-slate-950 text-slate-50 overflow-hidden">
-        <header className="h-14 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 shrink-0 z-50 backdrop-blur-xl">
+        <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 sm:px-6 shrink-0 z-50 backdrop-blur-xl">
            <div className="flex items-center gap-3">
               <div className="relative">
                 <button 
                   onClick={() => { setIsAppsMenuOpen(!isAppsMenuOpen); setIsUserMenuOpen(false); }} 
                   className={`p-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 ${isAppsMenuOpen ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  aria-label="App Launcher"
                 >
-                  <LayoutGrid size={18} />
-                  <ChevronDown size={12} className={`transition-transform duration-200 ${isAppsMenuOpen ? 'rotate-180' : ''}`} />
+                  <LayoutGrid size={20} />
+                  <ChevronDown size={14} className={`transition-transform duration-200 ${isAppsMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 {isAppsMenuOpen && (
@@ -423,7 +417,7 @@ const App: React.FC = () => {
                       <div className="p-3 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Neural OS Apps</span>
                       </div>
-                      <div className="max-h-96 overflow-y-auto p-1 space-y-0.5 scrollbar-hide">
+                      <div className="max-h-[70vh] overflow-y-auto p-1 space-y-0.5 scrollbar-hide">
                         {allApps.map(app => (
                           <button 
                             key={app.id} 
@@ -444,37 +438,37 @@ const App: React.FC = () => {
                   </>
                 )}
               </div>
-              
-              <div className="flex items-center gap-2.5 cursor-pointer group" onClick={() => window.location.href = window.location.origin}>
-                 <BrandLogo size={24} />
-                 <h1 className="text-base font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400 transition-colors">AIVoiceCast</h1>
+
+              <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.location.href = window.location.origin}>
+                 <BrandLogo size={32} />
+                 <h1 className="text-xl font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400 transition-colors">AIVoiceCast</h1>
               </div>
            </div>
 
-           <div className="flex-1 max-w-lg mx-6 hidden md:block">
+           <div className="flex-1 max-w-xl mx-8 hidden md:block">
               <div className="relative">
-                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
-                 <input type="text" placeholder={t.search} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-10 pr-4 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all" />
+                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                 <input type="text" placeholder={t.search} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all" />
               </div>
            </div>
 
-           <div className="flex items-center gap-2 sm:gap-3">
+           <div className="flex items-center gap-2 sm:gap-4">
               {isDriveSyncing && (
-                  <div className="flex items-center gap-2 px-3 py-1 bg-indigo-900/20 text-indigo-400 rounded-full border border-indigo-500/30 animate-pulse">
-                      <Cloud size={12}/><span className="text-[9px] font-bold uppercase hidden lg:inline">Syncing Drive...</span>
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-900/20 text-indigo-400 rounded-full border border-indigo-500/30 animate-pulse">
+                      <Cloud size={14}/><span className="text-[10px] font-bold uppercase hidden lg:inline">Syncing Drive...</span>
                   </div>
               )}
               {userProfile && (
-                  <button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-2.5 py-1 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex">
-                      <Coins size={14}/><span className="font-black text-[10px]">{userProfile.coinBalance || 0}</span>
+                  <button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex">
+                      <Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span>
                   </button>
               )}
               <Notifications />
-              <button onClick={() => setIsVoiceCreateOpen(true)} className="flex items-center gap-2 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase tracking-wider rounded-xl shadow-lg transition-all active:scale-95 group overflow-hidden relative">
+              <button onClick={() => setIsVoiceCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 group overflow-hidden relative">
                   <span className="relative z-10">{t.magic}</span>
               </button>
               <div className="relative">
-                 <button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-8 h-8 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">
+                 <button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">
                     <img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=Guest`} alt="Profile" className="w-full h-full object-cover" />
                  </button>
                  <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} setIsSyncModalOpen={() => {}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => setIsUserGuideOpen(true)} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => setIsPrivacyOpen(true)} t={t} channels={allChannels} language={language} setLanguage={setLanguage} />
@@ -488,7 +482,7 @@ const App: React.FC = () => {
             {viewState === 'live_session' && liveSessionParams && ( 
               <LiveSession 
                 channel={liveSessionParams.channel} 
-                onEndSession={() => handleSetViewState('directory')} 
+                onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} 
                 language={language} 
                 recordingEnabled={liveSessionParams.recordingEnabled}
                 videoEnabled={liveSessionParams.videoEnabled}

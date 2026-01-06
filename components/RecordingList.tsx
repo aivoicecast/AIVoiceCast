@@ -109,6 +109,22 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const isYouTubeUrl = (url: string) => url?.includes('youtube.com') || url?.includes('youtu.be');
   const isDriveUrl = (url: string) => url?.startsWith('drive://') || url?.includes('drive.google.com');
 
+  const extractYouTubeId = (url: string): string | null => {
+      try {
+          const urlObj = new URL(url);
+          if (urlObj.hostname.includes('youtube.com')) {
+              return urlObj.searchParams.get('v');
+          } else if (urlObj.hostname.includes('youtu.be')) {
+              return urlObj.pathname.slice(1);
+          }
+      } catch (e) {
+          // Regex fallback for non-standard or dirty strings
+          const match = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
+          return match ? match[1] : null;
+      }
+      return null;
+  };
+
   const handleCopyLink = (url: string, id: string) => {
     if (!url) return;
     navigator.clipboard.writeText(url);
@@ -380,16 +396,32 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     const transcriptUri = isDriveUrl(rec.transcriptUrl) ? rec.transcriptUrl : '';
 
     if (ytUri && token) {
-        const videoId = ytUri.split('v=')[1] || ytUri.split('/').pop() || '';
+        const videoId = extractYouTubeId(ytUri);
         if (videoId) {
-            try { await deleteYouTubeVideo(token, videoId); } catch (e) {}
+            try { 
+                addSyncLog(`Removing YouTube Asset: ${videoId}...`, 'info');
+                await deleteYouTubeVideo(token, videoId); 
+                addSyncLog(`YouTube asset purged.`, 'success');
+            } catch (e: any) {
+                if (e.message?.includes('403')) {
+                    addSyncLog(`YouTube Purge FAILED: Missing Scope. Re-login required.`, 'error');
+                } else {
+                    addSyncLog(`YouTube Purge FAILED: ${e.message}`, 'error');
+                }
+            }
         }
     }
 
     if (driveUri && token) {
         const fileId = driveUri.replace('drive://', '').split('&')[0];
         if (fileId) {
-            try { await deleteDriveFile(token, fileId); } catch (e) {}
+            try { 
+                addSyncLog(`Removing Drive Asset: ${fileId}...`, 'info');
+                await deleteDriveFile(token, fileId); 
+                addSyncLog(`Drive asset purged.`, 'success');
+            } catch (e: any) {
+                addSyncLog(`Drive Purge FAILED: ${e.message}`, 'error');
+            }
         }
     }
 
@@ -407,17 +439,27 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     if (!confirm(`Are you sure you want to permanently delete "${rec.channelTitle}"? This will remove the video from YouTube AND Google Drive.`)) return;
     
     setDeletingId(rec.id);
+    setShowSyncLog(true);
+    addSyncLog(`HARD DELETE INITIATED: ${rec.channelTitle}`, 'warn');
+    
     try {
         let token = getDriveToken();
         const isCloud = !rec.mediaUrl.startsWith('blob:') && !rec.mediaUrl.startsWith('data:');
         if (isCloud && !token) {
+            addSyncLog("Permissions required for cloud asset removal...", 'warn');
             const user = await signInWithGoogle();
-            if (!user) { setDeletingId(null); return; }
+            if (!user) { 
+                addSyncLog("Delete canceled: User declined authentication.", 'error');
+                setDeletingId(null); 
+                return; 
+            }
             token = getDriveToken();
         }
         await purgeRecordingAssets(rec, token);
         setRecordings(prev => prev.filter(r => r.id !== rec.id));
+        addSyncLog("Ledger record removed.", 'success');
     } catch (e: any) {
+        addSyncLog(`Delete FAILED: ${e.message}`, 'error');
         alert("Delete failed: " + e.message);
     } finally {
         setDeletingId(null);
@@ -721,7 +763,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                             <div className="relative pt-[56.25%] w-full overflow-hidden rounded-2xl bg-black border border-slate-800 shadow-2xl">
                                 <iframe 
                                     className="absolute top-0 left-0 w-full h-full"
-                                    src={getYouTubeEmbedUrl(rec.mediaUrl.split('v=')[1] || rec.mediaUrl.split('/').pop() || '')}
+                                    src={getYouTubeEmbedUrl(extractYouTubeId(rec.mediaUrl) || '')}
                                     frameBorder="0" allowFullScreen
                                 />
                             </div>

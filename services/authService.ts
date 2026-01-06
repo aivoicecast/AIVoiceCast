@@ -1,12 +1,11 @@
-
 import { 
     GoogleAuthProvider, 
     GithubAuthProvider,
     signInWithPopup, 
     linkWithPopup,
-    signOut as firebaseSignOut,
-    User
-} from 'firebase/auth';
+    signOut as firebaseSignOut
+} from '@firebase/auth';
+import type { User } from '@firebase/auth';
 import { auth } from './firebaseConfig';
 
 /**
@@ -17,7 +16,8 @@ export async function signInWithGoogle(): Promise<User | null> {
 
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/drive.file');
-    provider.addScope('https://www.googleapis.com/auth/youtube.upload'); // Added YouTube Scope
+    // force-ssl scope is required to DELETE videos, whereas .upload is write-only.
+    provider.addScope('https://www.googleapis.com/auth/youtube.force-ssl'); 
     provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
     provider.addScope('https://www.googleapis.com/auth/userinfo.email');
     

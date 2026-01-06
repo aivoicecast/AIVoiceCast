@@ -3,7 +3,8 @@ import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowU
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
 import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile, registerIdentity, claimOfflinePayment, DEFAULT_MONTHLY_GRANT } from '../services/firestoreService';
 import { auth, db, getDb } from '../services/firebaseConfig';
-import { onAuthStateChanged } from 'firebase/auth';
+// FIXED: Using @firebase/ scoped packages
+import { onAuthStateChanged } from '@firebase/auth';
 import { generateMemberIdentity, requestIdentityCertificate, verifyCertificateOffline, verifySignature, signPayment, AIVOICECAST_TRUST_PUBLIC_KEY } from '../utils/cryptoUtils';
 import { generateSecureId } from '../utils/idUtils';
 import { getLocalPrivateKey, saveLocalPrivateKey } from '../utils/db';
@@ -530,7 +531,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                                 onChange={e => setTransferAmount(e.target.value)}
                                                 placeholder="0"
                                                 readOnly={isAutoMode}
-                                                className={`w-full bg-slate-950 border ${!isRangeValid ? 'border-red-500 text-red-200 ring-2 ring-red-500/20' : (isAutoMode ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white')} rounded-2xl pl-12 pr-6 py-5 text-4xl font-black focus:outline-none focus:border-amber-500 transition-all`}
+                                                className={`w-full bg-slate-950 border ${!isRangeValid ? 'border-red-500 text-red-200 ring-2 ring-red-500/20' : (isAutoMode ? 'border-indigo-500/30 text-indigo-200' : 'border-slate-800 text-white')} rounded-2xl pl-12 pr-6 py-5 text-4xl font-black focus:outline-none focus:border-amber-500 transition-all placeholder-slate-900`}
                                             />
                                         </div>
                                         {!isAffordable && (
@@ -751,7 +752,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                   <h3 className="text-lg font-bold text-white mb-1 flex items-center justify-center md:justify-start gap-2">Identity Protocol {user?.certificate && <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest font-black">Trusted</span>}</h3>
                   <p className="text-sm text-slate-400 leading-relaxed">Initialize your cryptographic identity to support verified offline payments and peer-to-peer trust.</p>
               </div>
-              {!privateKey && (<button onClick={handleCreateIdentity} disabled={isCreatingIdentity} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 whitespace-nowrap active:scale-95">{isCreatingIdentity ? <Loader2 size={18} className="animate-spin"/> : <Key size={18}/>}{user?.certificate ? 'Restore Key' : 'Sign Identity'}</button>)}
+              {!privateKey && (<button onClick={handleCreateIdentity} disabled={isCreatingIdentity} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 whitespace-nowrap active:scale-95">{isCreatingIdentity ? 'Signing...' : 'Sign Identity'}</button>)}
               {privateKey && <div className="text-[10px] font-black text-emerald-500 border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 rounded-lg uppercase tracking-widest">Active Session Key</div>}
           </div>
 
@@ -891,7 +892,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
       {/* Send Modal (URI Input) */}
       {showTransfer && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-md overflow-hidden flex flex-col shadow-2xl animate-fade-in-up">
                   <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center gap-2"><Send size={18} className="text-indigo-400 rotate-[-20deg]"/> Analyze Invoice URI</h3>

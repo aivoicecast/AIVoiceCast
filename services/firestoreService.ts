@@ -2,8 +2,8 @@ import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
   Timestamp, writeBatch, documentId
-} from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, listAll, getMetadata, deleteObject } from 'firebase/storage';
+} from '@firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, listAll, getMetadata, deleteObject } from '@firebase/storage';
 import { db, auth, storage } from './firebaseConfig';
 import { 
   UserProfile, Channel, ChannelStats, Comment, Attachment, Group, ChatChannel, RealTimeMessage, 
