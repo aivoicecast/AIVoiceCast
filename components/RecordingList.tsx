@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel, TranscriptItem } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getYouTubeEmbedUrl, uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
@@ -34,6 +34,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const [resolvedMediaUrl, setResolvedMediaUrl] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
   
   const [isRecorderModalOpen, setIsRecorderModalOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('');
@@ -86,6 +87,13 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
   const isYouTubeUrl = (url: string) => url?.includes('youtube.com') || url?.includes('youtu.be');
   const isDriveUrl = (url: string) => url?.startsWith('drive://') || url?.includes('drive.google.com');
+
+  const handleCopyLink = (url: string, id: string) => {
+    if (!url) return;
+    navigator.clipboard.writeText(url);
+    setCopyingId(id);
+    setTimeout(() => setCopyingId(null), 2000);
+  };
 
   const handlePlayback = async (rec: RecordingSession) => {
       if (activeMediaId === rec.id) {
@@ -252,6 +260,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             const isYoutube = isYouTubeUrl(rec.mediaUrl);
             const isDrive = isDriveUrl(rec.mediaUrl);
             const isThisResolving = resolvingId === rec.id;
+            const isCopying = copyingId === rec.id;
 
             return (
               <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : 'border-slate-800'} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl`}>
@@ -270,6 +279,20 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                         <span className="flex items-center gap-1"><Calendar size={12} /> {date.toLocaleDateString()}</span>
                         <span className="flex items-center gap-1"><Clock size={12} /> {date.toLocaleTimeString()}</span>
                       </div>
+                      {(isYoutube || isDrive) && (
+                          <div className="mt-2 flex items-center gap-2 max-w-full">
+                              <code className="text-[10px] font-mono text-indigo-400 bg-indigo-900/20 px-2 py-0.5 rounded truncate max-w-[250px] border border-indigo-500/10">
+                                  {rec.mediaUrl}
+                              </code>
+                              <button 
+                                onClick={() => handleCopyLink(rec.mediaUrl, rec.id)}
+                                className={`p-1 rounded hover:bg-slate-800 transition-colors ${isCopying ? 'text-emerald-400' : 'text-slate-500'}`}
+                                title="Copy URI"
+                              >
+                                  {isCopying ? <Check size={12}/> : <Copy size={12}/>}
+                              </button>
+                          </div>
+                      )}
                     </div>
                   </div>
 
@@ -279,6 +302,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                             onClick={() => handleManualSync(rec)}
                             disabled={syncingId === rec.id}
                             className="p-2.5 rounded-xl border bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white"
+                            title="Sync to Cloud"
                         >
                             {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <CloudUpload size={18} />}
                         </button>
@@ -293,11 +317,11 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <span>{isPlaying ? 'Close' : 'Playback'}</span>
                     </button>
                     
-                    <a href={rec.transcriptUrl} target="_blank" rel="noreferrer" className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors">
+                    <a href={rec.transcriptUrl} target="_blank" rel="noreferrer" className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors" title="View Transcript">
                       <FileText size={20} />
                     </a>
 
-                    <button onClick={() => handleDelete(rec)} className="p-2.5 bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors">
+                    <button onClick={() => handleDelete(rec)} className="p-2.5 bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors" title="Delete Permanent">
                       <Trash2 size={20} />
                     </button>
                   </div>
@@ -314,7 +338,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                              />
                         </div>
                     ) : isVideo ? (
-                      // RESPONSIVE VIDEO PLAYER: Use object-fit and max-height for portrait/landscape support
                       <div className="w-full bg-black rounded-2xl overflow-hidden flex justify-center shadow-2xl border border-slate-800" style={{ maxHeight: '70vh' }}>
                         <video 
                             src={resolvedMediaUrl} 

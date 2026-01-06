@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -208,14 +209,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setIsStarting(true);
     isEndingRef.current = false;
     
-    // CRITICAL: Immediately request screen capture to capture the User Gesture for iOS pop-up
     let camStream: MediaStream | null = null;
     let screenStream: MediaStream | null = null;
     
     try {
         logApi("Capturing Screen (Priority Lock)...");
         screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        // Correcting the call to 'logApi' instead of 'addLog'.
         logApi("Screen captured.");
     } catch(e) {
         logApi("Screen capture declined or not supported. Using Camera-only mode.", "warn");
@@ -223,7 +222,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
     try {
         camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
-        // Correcting the call to 'logApi' instead of 'addLog'.
         logApi("Mic/Cam captured.");
     } catch(e) {
         alert("Camera and Microphone access is mandatory for interviews.");
@@ -274,8 +272,23 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       setActiveCodeProjectId(projectId);
       setInitialStudioFiles([solutionFile]);
 
-      // DYNAMIC CANVAS SIZE
-      const isPortrait = window.innerHeight > window.innerWidth;
+      // DYNAMIC CANVAS SIZE: IMPROVED LOGIC
+      const screenTrack = screenStream?.getVideoTracks()[0];
+      const camTrack = camStream?.getVideoTracks()[0];
+      let isPortrait = window.innerHeight > window.innerWidth;
+      
+      if (screenTrack) {
+          const settings = screenTrack.getSettings();
+          if (settings.width && settings.height) {
+              isPortrait = settings.height > settings.width;
+          }
+      } else if (camTrack) {
+          const settings = camTrack.getSettings();
+          if (settings.width && settings.height) {
+              isPortrait = settings.height > settings.width;
+          }
+      }
+
       const canvas = document.createElement('canvas');
       canvas.width = isPortrait ? 720 : 1280;
       canvas.height = isPortrait ? 1280 : 720;

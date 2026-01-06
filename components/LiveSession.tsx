@@ -276,7 +276,23 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               addLog("Routing System Audio to AI Agent.");
           }
 
-          const isPortrait = window.innerHeight > window.innerWidth;
+          // IMPROVED: Logic to determine aspect ratio based on available stream settings
+          const screenTrack = screenStreamRef.current?.getVideoTracks()[0];
+          const camTrack = cameraStreamRef.current?.getVideoTracks()[0];
+          let isPortrait = window.innerHeight > window.innerWidth;
+          
+          if (screenTrack) {
+              const settings = screenTrack.getSettings();
+              if (settings.width && settings.height) {
+                  isPortrait = settings.height > settings.width;
+              }
+          } else if (camTrack) {
+              const settings = camTrack.getSettings();
+              if (settings.width && settings.height) {
+                  isPortrait = settings.height > settings.width;
+              }
+          }
+
           const canvas = document.createElement('canvas');
           canvas.width = isPortrait ? 720 : 1280;
           canvas.height = isPortrait ? 1280 : 720;
