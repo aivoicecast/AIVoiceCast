@@ -236,10 +236,10 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: 'broadcom-smartnic',
     title: 'Broadcom SmartNIC & AI Networking',
-    description: 'Deep dive into the industry\'s first 800G AI Ethernet NIC, Stingray SmartNICs, and why networking is the bottleneck for large-scale AI.',
+    description: 'Deep dive into the industry\'s first 800G AI Ethernet NIC, Stringray SmartNICs, and why networking is the bottleneck for large-scale AI.',
     author: 'Network Hardware Expert',
     voiceName: 'Software Interview Voice gen-lang-client-0648937375',
-    systemInstruction: 'You are a Network Hardware Architect specializing in high-performance AI infrastructure. You explain Broadcom\'s networking solutions, including the 800G AI Ethernet NIC (Thor Ultra) and Stingray SmartNICs. You discuss the importance of high bandwidth, RoCEv2, congestion control, and low latency for scaling AI clusters (100K+ XPUs).',
+    systemInstruction: 'You are a Network Hardware Architect specializing in high-performance AI infrastructure. You explain Broadcom\'s networking solutions, including the 800G AI Ethernet NIC (Thor Ultra) and Stringray SmartNICs. You discuss the importance of high bandwidth, RoCEv2, congestion control, and low latency for scaling AI clusters (100K+ XPUs).',
     likes: 156,
     dislikes: 2,
     comments: [],

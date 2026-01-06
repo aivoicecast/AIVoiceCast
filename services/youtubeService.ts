@@ -13,19 +13,18 @@ export interface YouTubeUploadMetadata {
  * Uploads a video blob to the user's YouTube channel using the resumable protocol.
  */
 export async function uploadToYouTube(accessToken: string, videoBlob: Blob, metadata: YouTubeUploadMetadata): Promise<string> {
-    console.log("[YouTube] Starting upload process for:", metadata.title);
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
+    console.log("[YouTube] Starting upload process from origin:", origin);
+    console.log("[YouTube] Metadata:", metadata.title);
     
-    // Fallback for missing blob type
     const mimeType = videoBlob.type || 'video/webm';
-    console.log("[YouTube] Blob size:", (videoBlob.size / 1024 / 1024).toFixed(2), "MB", "Type:", mimeType);
-
     const initUrl = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
     
     const body = {
         snippet: {
             title: metadata.title,
             description: metadata.description,
-            tags: ['AIVoiceCast', 'MockInterview', 'AI'],
+            tags: ['AIVoiceCast', 'AI'],
             categoryId: '27' // Education
         },
         status: {
@@ -40,10 +39,9 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
     try {
         initRes = await fetch(initUrl, {
             method: 'POST',
-            mode: 'cors',
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json; charset=UTF-8',
+                'Content-Type': 'application/json',
                 'X-Upload-Content-Length': videoBlob.size.toString(),
                 'X-Upload-Content-Type': mimeType
             },
@@ -52,7 +50,11 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
     } catch (fetchErr: any) {
         console.error("[YouTube] Handshake network error:", fetchErr);
         if (fetchErr.message === 'Failed to fetch') {
-            throw new Error("Handshake Failed: 'Failed to fetch'. This usually means the 'youtube.upload' scope is missing or the Origin is not authorized. Try signing out and signing back in.");
+            throw new Error(`Handshake Failed: 'Failed to fetch'. 
+            
+1. Ensure the origin '${origin}' is added to 'Authorized JavaScript origins' in your Google Cloud Console for the OAuth Client ID.
+2. Verify 'YouTube Data API v3' is enabled in your GCP project.
+3. Check if an ad-blocker is blocking googleapis.com.`);
         }
         throw fetchErr;
     }
@@ -60,12 +62,10 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
     if (!initRes.ok) {
         let errorData: any = {};
         try { errorData = await initRes.json(); } catch(e) {}
-        
         console.error("[YouTube] Initialization failed:", errorData);
         
-        // Specific check for insufficient scopes
-        if (initRes.status === 403 || (errorData.error?.errors?.[0]?.reason === 'insufficientPermissions')) {
-            throw new Error("403: Insufficient YouTube Permissions. You must sign out and sign in again to grant the 'youtube.upload' scope.");
+        if (initRes.status === 403) {
+            throw new Error("403 Forbidden: Ensure your API key/token has 'youtube.upload' scope and the YouTube channel is set up.");
         }
         
         throw new Error(`YouTube initialization failed (${initRes.status}): ${errorData.error?.message || initRes.statusText}`);
@@ -73,35 +73,30 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
 
     const uploadUrl = initRes.headers.get('Location');
     if (!uploadUrl) {
-        console.error("[YouTube] No Location header received.");
-        throw new Error("Did not receive a YouTube upload location header. Check if the 'youtube.upload' scope is correctly authorized.");
+        throw new Error("No upload Location header received from YouTube.");
     }
 
-    console.log("[YouTube] Step 2: Uploading binary data to location...");
+    console.log("[YouTube] Step 2: Uploading binary data...");
     
     let uploadRes: Response;
     try {
         uploadRes = await fetch(uploadUrl, {
             method: 'PUT',
-            mode: 'cors',
-            headers: {
-                'Content-Type': mimeType
-            },
+            headers: { 'Content-Type': mimeType },
             body: videoBlob
         });
     } catch (uploadErr: any) {
-        console.error("[YouTube] Binary upload network error:", uploadErr);
-        throw new Error(`Binary upload failed: ${uploadErr.message}. Check your internet connection or file size limits.`);
+        console.error("[YouTube] Binary upload error:", uploadErr);
+        throw new Error(`Binary upload failed: ${uploadErr.message}`);
     }
 
     if (!uploadRes.ok) {
         const error = await uploadRes.json().catch(() => ({}));
-        console.error("[YouTube] Binary upload failed:", error);
         throw new Error(`YouTube upload failed (${uploadRes.status}): ${error.error?.message || uploadRes.statusText}`);
     }
 
     const data = await uploadRes.json();
-    console.log("[YouTube] Step 3: Upload successful! Video ID:", data.id);
+    console.log("[YouTube] Step 3: Success! ID:", data.id);
     return data.id; 
 }
 

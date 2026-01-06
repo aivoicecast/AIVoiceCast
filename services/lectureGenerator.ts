@@ -78,8 +78,9 @@ function getModelForVoice(voiceName: string = '', defaultModel: string): string 
         const parts = voiceName.split(/\s+/);
         const id = parts.find(p => p.startsWith('gen-lang-client'));
         if (id) {
-            // Tuned models often require the 'tunedModels/' prefix for generateContent calls.
-            return id.startsWith('tunedModels/') ? id : `tunedModels/${id}`;
+            const tunedId = id.startsWith('tunedModels/') ? id : `tunedModels/${id}`;
+            console.log(`[AI] Detected Tuned Model ID: ${tunedId}`);
+            return tunedId;
         }
     }
     return defaultModel;
@@ -131,15 +132,16 @@ export async function generateLectureScript(
     let text: string | null = null;
 
     if (activeProvider === 'openai') {
+        console.log(`[AI] Calling OpenAI for: ${topic}`);
         text = await callOpenAI(systemPrompt, userPrompt, openaiKey);
     } else {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
-        // Priority: Tuned Model ID > Specific Channel Model > Default Flash
         let modelName = 'gemini-3-flash-preview';
         if (channelId === '1' || channelId === '2') modelName = 'gemini-3-pro-preview';
         modelName = getModelForVoice(voiceName, modelName);
 
+        console.log(`[AI] Calling Gemini (${modelName}) for: ${topic}`);
         const response = await ai.models.generateContent({
             model: modelName, 
             contents: `${systemPrompt}\n\n${userPrompt}`,
