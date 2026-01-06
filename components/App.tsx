@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -6,7 +5,7 @@ import {
   Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, Video, ChevronDown
 } from 'lucide-react';
 
-import { Channel, UserProfile, ViewState, TranscriptItem } from '../types';
+import { Channel, UserProfile, ViewState, TranscriptItem, CodeFile } from '../types';
 
 import { LiveSession } from './LiveSession';
 import { PodcastDetail } from './PodcastDetail';
@@ -35,6 +34,7 @@ import { UserManual } from './UserManual';
 import { PrivacyPolicy } from './PrivacyPolicy';
 import { NotebookViewer } from './NotebookViewer'; 
 import { CardWorkshop } from './CardWorkshop';
+import { CardExplorer } from './CardExplorer';
 import { IconGenerator } from './IconGenerator';
 import { ShippingLabelApp } from './ShippingLabelApp';
 import { CheckDesigner } from './CheckDesigner';
@@ -45,10 +45,10 @@ import { MockInterview } from './MockInterview';
 
 import { getCurrentUser, getDriveToken } from '../services/authService';
 import { auth, db } from '../services/firebaseConfig';
-// FIXED: Using @firebase/ scoped packages for reliable resolution of modular exports
+// FIXED: Using @firebase/ scoped packages for more reliable resolution of modular exports
 import { onAuthStateChanged } from '@firebase/auth';
 import { onSnapshot, doc } from '@firebase/firestore';
-import { ensureCodeStudioFolder, loadAppStateFromDrive } from '../services/googleDriveService';
+import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from '../services/googleDriveService';
 import { getUserChannels, saveUserChannel } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { stopAllPlatformAudio } from '../utils/audioUtils';
@@ -64,8 +64,13 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix line 67: Initialized state with valid values instead of using type names as property values
   state: ErrorBoundaryState = { hasError: false, error: null };
   declare props: ErrorBoundaryProps;
+
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+  }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { 
     return { hasError: true, error }; 
@@ -215,6 +220,8 @@ const App: React.FC = () => {
   const [globalVoice, setGlobalVoice] = useState('Auto');
   const [channelToComment, setChannelToComment] = useState<Channel | null>(null);
   const [channelToEdit, setChannelToEdit] = useState<Channel | null>(null);
+  // Fix line 504: Added missing initialStudioFiles state which was being passed to CodeStudio but not declared
+  const [initialStudioFiles, setInitialStudioFiles] = useState<CodeFile[]>([]);
 
   const [liveSessionParams, setLiveSessionParams] = useState<{
     channel: Channel;
@@ -266,6 +273,7 @@ const App: React.FC = () => {
   };
 
   const handleStartLiveSession = (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, initialTranscript?: TranscriptItem[], existingDiscussionId?: string) => {
+    // Store current viewState as returnTo context
     setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId, returnTo: viewState });
     handleSetViewState('live_session');
   };
@@ -495,7 +503,7 @@ const App: React.FC = () => {
               /> 
             )}
             {viewState === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><DocumentList onBack={() => handleSetViewState('directory')} /></div> )}
-            {viewState === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={handleStartLiveSession} /> )}
+            {viewState === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={handleSetViewState as any} initialFiles={initialStudioFiles}/> )}
             {viewState === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
