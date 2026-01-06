@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { RecordingSession, Channel, TranscriptItem } from '../types';
-import { getUserRecordings, deleteRecordingReference, saveRecordingReference } from '../services/firestoreService';
+import { RecordingSession, Channel, TranscriptItem, UserProfile } from '../types';
+import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
 import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
@@ -137,37 +137,50 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
     setSyncingId(rec.id);
     try {
+        const profile = await getUserProfile(currentUser.uid);
+        const pref = profile?.preferredRecordingTarget || 'drive';
         const folderId = await ensureCodeStudioFolder(token!);
         const videoBlob = rec.blob;
-        const transcriptText = `Neural Transcript for ${rec.channelTitle}\nTimestamp: ${new Date(rec.timestamp).toLocaleString()}`;
+        const transcriptText = `Neural Transcript for ${rec.channelTitle}\nTimestamp: ${new Date(rec.timestamp).toLocaleString()}\nOriginal ID: ${rec.id}`;
         const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
 
         const isVideo = rec.mediaType?.includes('video');
         let videoUrl = "";
 
-        if (isVideo) {
+        // 1. Prioritize YouTube if it is the preferred destination
+        if (isVideo && (pref === 'youtube' || rec.channelId?.startsWith('meeting'))) {
             try {
                 const ytId = await uploadToYouTube(token!, videoBlob, {
                     title: `${rec.channelTitle}: AI Session`,
-                    description: `Recorded via AIVoiceCast.`,
+                    description: `Recorded via AIVoiceCast.\n\nSummary:\n${transcriptText}`,
                     privacyStatus: 'unlisted'
                 });
                 videoUrl = getYouTubeVideoUrl(ytId);
-            } catch (ytErr) { console.warn("YouTube fallback", ytErr); }
+            } catch (ytErr: any) { 
+                console.warn("YouTube upload failed, will fallback to Drive for media source.", ytErr); 
+            }
         }
 
-        const driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
+        // 2. Always upload transcript to Drive for long-term storage
         const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
+        
+        // 3. Upload Video to Drive only if YouTube failed OR if Drive is the preferred target
+        let driveFileId = "";
+        if (!videoUrl || pref === 'drive') {
+            driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
+        }
         
         const sessionData: RecordingSession = {
             id: rec.id, userId: currentUser.uid, channelId: rec.channelId,
             channelTitle: rec.channelTitle, channelImage: rec.channelImage,
-            timestamp: rec.timestamp, mediaUrl: videoUrl || `drive://${driveFileId}`,
-            mediaType: rec.mediaType, transcriptUrl: `drive://${tFileId}`
+            timestamp: rec.timestamp, 
+            mediaUrl: videoUrl || `drive://${driveFileId}`,
+            mediaType: rec.mediaType, 
+            transcriptUrl: `drive://${tFileId}`
         };
         
         await saveRecordingReference(sessionData);
-        alert("Upload Successful!");
+        alert(videoUrl ? "Session synced to YouTube and Cloud!" : "Session synced to Cloud Drive!");
         loadData();
     } catch (e: any) {
         alert("Sync Failed: " + e.message);
