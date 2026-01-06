@@ -3,11 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel, TranscriptItem, UserProfile } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap, Download, Share2 } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getYouTubeEmbedUrl, uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive, downloadDriveFileAsBlob } from '../services/googleDriveService';
+import { ShareModal } from './ShareModal';
 
 interface RecordingListProps {
   onBack?: () => void;
@@ -35,12 +36,18 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const [resolvedMediaUrl, setResolvedMediaUrl] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   
   const [isRecorderModalOpen, setIsRecorderModalOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('');
   const [recordCamera, setRecordCamera] = useState(true);
   const [recordScreen, setRecordScreen] = useState(true);
+
+  // Sharing State
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [sharingTitle, setSharingTitle] = useState('');
 
   // Diagnostic State
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
@@ -104,6 +111,48 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     setTimeout(() => setCopyingId(null), 2000);
   };
 
+  const handleShare = (rec: RecordingSession) => {
+    // If it's a YouTube link, share that directly. Otherwise share a deep link to this app's recording view.
+    const url = isYouTubeUrl(rec.mediaUrl) ? rec.mediaUrl : `${window.location.origin}${window.location.pathname}?view=recordings&id=${rec.id}`;
+    setShareUrl(url);
+    setSharingTitle(rec.channelTitle);
+    setShowShareModal(true);
+  };
+
+  const handleDownloadToDevice = async (rec: any) => {
+      setDownloadingId(rec.id);
+      try {
+          let blob: Blob;
+          if (rec.blob instanceof Blob) {
+              blob = rec.blob;
+          } else if (isDriveUrl(rec.mediaUrl)) {
+              const token = getDriveToken() || await signInWithGoogle().then(() => getDriveToken());
+              if (!token) throw new Error("Google access required.");
+              const fileId = rec.mediaUrl.replace('drive://', '').split('&')[0];
+              blob = await downloadDriveFileAsBlob(token, fileId);
+          } else if (isYouTubeUrl(rec.mediaUrl)) {
+              window.open(rec.mediaUrl, '_blank');
+              setDownloadingId(null);
+              return;
+          } else {
+              throw new Error("Source file not available for direct download.");
+          }
+
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${rec.channelTitle.replace(/\s+/g, '_')}_${rec.id}.webm`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+      } catch (e: any) {
+          alert("Download failed: " + e.message);
+      } finally {
+          setDownloadingId(null);
+      }
+  };
+
   const handlePlayback = async (rec: RecordingSession) => {
       if (activeMediaId === rec.id) {
           setActiveMediaId(null);
@@ -131,6 +180,80 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           setResolvedMediaUrl(rec.mediaUrl);
           setActiveMediaId(rec.id);
       }
+  };
+
+  const handleForceYouTubeSync = async (rec: any) => {
+    if (!currentUser || !rec.blob) return;
+    
+    setShowSyncLog(true);
+    setSyncLogs([]);
+    addSyncLog(`FORCING YouTube Sync for: ${rec.channelTitle}`, 'info');
+
+    let token = getDriveToken();
+    if (!token) {
+        addSyncLog("OAuth missing. Requesting re-auth...", 'warn');
+        const user = await signInWithGoogle();
+        if (!user) {
+            addSyncLog("Login canceled.", 'error');
+            return;
+        }
+        token = getDriveToken();
+    }
+
+    setSyncingId(rec.id);
+    try {
+        const folderId = await ensureCodeStudioFolder(token!);
+        const videoBlob = rec.blob;
+        const transcriptText = `Neural Transcript: ${rec.channelTitle}\nOriginal ID: ${rec.id}\nForced YouTube Upload.`;
+        const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
+
+        const isVideo = rec.mediaType?.includes('video');
+        if (!isVideo) {
+            throw new Error("Cannot force upload audio to YouTube. YouTube only supports video formats.");
+        }
+
+        let videoUrl = "";
+        addSyncLog("Initiating Direct YouTube Handshake...", 'info');
+        try {
+            const ytId = await uploadToYouTube(token!, videoBlob, {
+                title: `${rec.channelTitle} (Neural Archive)`,
+                description: `Recorded via AIVoiceCast.\n\n${transcriptText}`,
+                privacyStatus: 'unlisted'
+            });
+            videoUrl = getYouTubeVideoUrl(ytId);
+            addSyncLog(`YouTube Success: ${ytId}`, 'success');
+        } catch (ytErr: any) { 
+            const msg = ytErr.message || String(ytErr);
+            addSyncLog(`YouTube FORCE FAILED: ${msg}`, 'error');
+            if (msg.includes('403')) addSyncLog("Scope 'youtube.upload' likely missing from current session.", 'warn');
+            throw ytErr;
+        }
+
+        addSyncLog("Archiving transcript to Drive...", 'info');
+        const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
+        
+        const sessionData: RecordingSession = {
+            id: rec.id, userId: currentUser.uid, channelId: rec.channelId,
+            channelTitle: rec.channelTitle, channelImage: rec.channelImage,
+            timestamp: rec.timestamp, 
+            mediaUrl: videoUrl,
+            mediaType: rec.mediaType, 
+            transcriptUrl: `drive://${tFileId}`
+        };
+        
+        await saveRecordingReference(sessionData);
+        addSyncLog("Ledger points to YouTube successfully.", 'success');
+        
+        setTimeout(() => {
+            loadData();
+            setSyncingId(null);
+        }, 800);
+        
+    } catch (e: any) {
+        addSyncLog(`FORCE SYNC FATAL ERROR: ${e.message}`, 'error');
+        setSyncingId(null);
+        alert("Forced upload failed. Check the Neural Diagnostic Console.");
+    }
   };
 
   const handleManualSync = async (rec: any) => {
@@ -275,7 +398,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         <div className="flex items-center gap-2">
             <button 
                 onClick={() => setShowSyncLog(!showSyncLog)}
-                className={`p-2 rounded-lg transition-colors ${showSyncLog ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                className={`p-2 rounded-lg transition-colors ${showSyncLog ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
                 title="Sync Diagnostics"
             >
                 <Terminal size={18}/>
@@ -311,6 +434,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             const isYoutube = isYouTubeUrl(rec.mediaUrl);
             const isDrive = isDriveUrl(rec.mediaUrl);
             const isThisResolving = resolvingId === rec.id;
+            const isThisDownloading = downloadingId === rec.id;
             const isCopying = copyingId === rec.id;
 
             return (
@@ -353,13 +477,42 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
                   <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                     {isLocal && currentUser && (
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => handleForceYouTubeSync(rec)}
+                                disabled={syncingId === rec.id}
+                                className="p-2.5 rounded-xl border bg-red-600/10 border-red-500/20 text-red-500 hover:bg-red-600 hover:text-white transition-all shadow-lg active:scale-95"
+                                title="Force YouTube Upload"
+                            >
+                                {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <Youtube size={18} />}
+                            </button>
+                            <button 
+                                onClick={() => handleManualSync(rec)}
+                                disabled={syncingId === rec.id}
+                                className="p-2.5 rounded-xl border bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95"
+                                title="Auto Sync (Respects Preference)"
+                            >
+                                {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <CloudUpload size={18} />}
+                            </button>
+                        </div>
+                    )}
+
+                    <button 
+                        onClick={() => handleShare(rec)}
+                        className="p-2.5 bg-slate-800 text-slate-400 hover:text-indigo-400 rounded-xl border border-slate-700 transition-colors" 
+                        title="Share with Community"
+                    >
+                        <Share2 size={20} />
+                    </button>
+
+                    {!isYoutube && (
                         <button 
-                            onClick={() => handleManualSync(rec)}
-                            disabled={syncingId === rec.id}
-                            className="p-2.5 rounded-xl border bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95"
-                            title="Sync to Cloud"
+                            onClick={() => handleDownloadToDevice(rec)}
+                            disabled={isThisDownloading}
+                            className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors" 
+                            title="Download to Local Device"
                         >
-                            {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <CloudUpload size={18} />}
+                            {isThisDownloading ? <Loader2 size={20} className="animate-spin text-indigo-400" /> : <Download size={20} />}
                         </button>
                     )}
                     
@@ -499,6 +652,17 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                   </div>
               </div>
           </div>
+      )}
+
+      {showShareModal && (
+        <ShareModal 
+          isOpen={true} 
+          onClose={() => setShowShareModal(false)} 
+          link={shareUrl} 
+          title={sharingTitle} 
+          onShare={async () => {}} 
+          currentUserUid={currentUser?.uid} 
+        />
       )}
     </div>
   );
