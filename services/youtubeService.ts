@@ -17,29 +17,22 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
     const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
     const clientId = firebaseKeys.googleClientId;
     
-    console.log("[YouTube Debug] Handshake started.");
-    console.log("[YouTube Debug] Origin:", origin);
-    console.log("[YouTube Debug] Client ID:", clientId);
+    console.log("[YouTube] Resumable upload started.");
     
-    // Step 0: Permission Audit
+    // Step 0: Permission Audit (Optional, but helps debug)
     try {
         const auditRes = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true', {
             headers: { 'Authorization': `Bearer ${accessToken}` }
         });
-        if (!auditRes.ok) console.warn("[YouTube Audit] Permission check non-200. Check scopes.");
-    } catch (auditErr: any) {
-        if (auditErr.message === 'Failed to fetch') {
-            throw new Error(`CORS BLOCK: 'Failed to fetch'. 
-            
-The browser blocked the request before it left your computer.
-1. Visit Google Cloud Console.
-2. Select Client ID: ${clientId}
-3. Confirm '${origin}' is in 'Authorized JavaScript origins'.
-4. Ensure no ad-blockers are active.`);
+        if (!auditRes.ok) {
+            console.warn("[YouTube Audit] User might not have a YouTube channel initialized.");
         }
+    } catch (auditErr: any) {
+        console.warn("[YouTube Audit] Pre-check failed, proceeding anyway:", auditErr.message);
     }
 
     const mimeType = videoBlob.type || 'video/webm';
+    const size = videoBlob.size;
     const initUrl = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
     
     const body = {
@@ -59,34 +52,34 @@ The browser blocked the request before it left your computer.
     
     let initRes: Response;
     try {
+        // CRITICAL: Resumable uploads require X-Upload headers in the initiation request
         initRes = await fetch(initUrl, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json; charset=UTF-8'
+                'Content-Type': 'application/json; charset=UTF-8',
+                'X-Upload-Content-Type': mimeType,
+                'X-Upload-Content-Length': size.toString()
             },
             body: JSON.stringify(body)
         });
     } catch (fetchErr: any) {
         console.error("[YouTube Handshake Error]", fetchErr);
+        if (fetchErr.message === 'Failed to fetch') {
+            throw new Error(`YouTube Handshake Failed: Network Error or CORS Block. Check if '${origin}' is authorized for Client ID ${clientId} in Google Cloud Console.`);
+        }
         throw new Error(`Handshake Failed: ${fetchErr.message}`);
     }
 
     if (!initRes.ok) {
-        let errorData: any = {};
-        try { errorData = await initRes.json(); } catch(e) {}
+        const errorData = await initRes.json().catch(() => ({}));
         console.error("[YouTube Handshake Error Payload]", errorData);
-        
-        if (initRes.status === 403) {
-            throw new Error("YouTube API 403: Verify 'youtube.upload' scope is granted and channel is initialized.");
-        }
-        
         throw new Error(`YouTube Handshake Error (${initRes.status}): ${errorData.error?.message || initRes.statusText}`);
     }
 
     const uploadUrl = initRes.headers.get('Location');
     if (!uploadUrl) {
-        throw new Error("Missing Location header from YouTube handshake.");
+        throw new Error("Missing Location header from YouTube handshake response.");
     }
 
     console.log("[YouTube] Phase 2: Pushing Binary Stream...");
@@ -96,7 +89,8 @@ The browser blocked the request before it left your computer.
         uploadRes = await fetch(uploadUrl, {
             method: 'PUT',
             headers: { 
-                'Content-Type': mimeType
+                'Content-Type': mimeType,
+                'Content-Length': size.toString()
             },
             body: videoBlob
         });
@@ -111,7 +105,7 @@ The browser blocked the request before it left your computer.
     }
 
     const data = await uploadRes.json();
-    console.log("[YouTube] Phase 3: Transfer Complete. ID:", data.id);
+    console.log("[YouTube] Phase 3: Transfer Complete. Video ID:", data.id);
     return data.id; 
 }
 

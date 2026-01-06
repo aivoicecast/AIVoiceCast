@@ -231,7 +231,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             addSyncLog(`YouTube FAILED: ${msg}`, 'error');
             
             if (isFromDrive) {
-                addSyncLog("ABORTING: Source is already on Drive. We will not create a duplicate.", 'warn');
+                addSyncLog("RETENTION POLICY: Source is already on Drive. If YouTube fails, we keep the original Drive link active.", 'warn');
                 setSyncingId(null);
                 return; 
             }
@@ -478,13 +478,13 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                   </div>
 
                   <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-                    {currentUser && !isYoutube && (
+                    {currentUser && (
                         <div className="flex items-center gap-2">
                             <button 
                                 onClick={() => handleForceYouTubeSync(rec)}
                                 disabled={syncingId === rec.id}
-                                className="p-2.5 rounded-xl border bg-red-600 hover:bg-red-500 text-white transition-all shadow-lg active:scale-95 flex items-center gap-2 px-4 group"
-                                title="Sync to YouTube (Source: Drive or Local)"
+                                className={`p-2.5 rounded-xl border transition-all shadow-lg active:scale-95 flex items-center gap-2 px-4 group ${isYoutube ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-red-600 hover:bg-red-500 text-white'}`}
+                                title="Sync to YouTube"
                             >
                                 {syncingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <Youtube size={16} />}
                                 <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:inline">Transfer to YT</span>
@@ -608,6 +608,66 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                   <button onClick={() => setSyncLogs([])} className="text-[10px] text-slate-500 hover:text-white underline font-bold uppercase">Clear Logs</button>
               </div>
           </div>
+      )}
+
+      {/* Manual Recorder Form */}
+      {isRecorderModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
+            <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up">
+                <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2"><Zap className="text-indigo-400" size={18}/> One-Click Meeting Recorder</h3>
+                    <button onClick={() => setIsRecorderModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
+                </div>
+                <div className="p-8 space-y-6">
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2 px-1">Meeting Purpose</label>
+                            <input 
+                                type="text" 
+                                value={meetingTitle} 
+                                onChange={e => setMeetingTitle(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                placeholder="Sync with Team, Lecture Notes..."
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <label className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${recordScreen ? 'bg-indigo-900/20 border-indigo-500' : 'bg-slate-950 border-slate-800'}`}>
+                                <div className="flex flex-col gap-1">
+                                    <Monitor size={16} className={recordScreen ? 'text-indigo-400' : 'text-slate-600'}/>
+                                    <span className="text-[10px] font-bold uppercase">Screen</span>
+                                </div>
+                                <input type="checkbox" checked={recordScreen} onChange={e => setRecordScreen(e.target.checked)} className="hidden"/>
+                                {recordScreen && <CheckCircle size={14} className="text-indigo-400"/>}
+                            </label>
+                            <label className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${recordCamera ? 'bg-indigo-900/20 border-indigo-500' : 'bg-slate-950 border-slate-800'}`}>
+                                <div className="flex flex-col gap-1">
+                                    <Camera size={16} className={recordCamera ? 'text-indigo-400' : 'text-slate-600'}/>
+                                    <span className="text-[10px] font-bold uppercase">Camera</span>
+                                </div>
+                                <input type="checkbox" checked={recordCamera} onChange={e => setRecordCamera(e.target.checked)} className="hidden"/>
+                                {recordCamera && <CheckCircle size={14} className="text-indigo-400"/>}
+                            </label>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={handleStartRecorder}
+                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3"
+                    >
+                        <Zap size={18} fill="currentColor"/>
+                        Start Recording
+                    </button>
+                    <p className="text-[10px] text-slate-500 text-center uppercase font-bold tracking-tighter">AI Host will listen and summarize silently</p>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {showShareModal && shareUrl && (
+          <ShareModal 
+            isOpen={true} onClose={() => setShowShareModal(false)}
+            link={shareUrl} title={`Session: ${sharingTitle}`}
+            onShare={async () => {}} currentUserUid={currentUser?.uid}
+          />
       )}
     </div>
   );
