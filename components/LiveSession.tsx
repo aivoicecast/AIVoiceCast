@@ -208,11 +208,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
             if (videoEnabled || isMeeting) {
                 try {
+                    // Fix: Enable audio: true for getDisplayMedia to capture system audio (YouTube)
                     screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
                         video: { cursor: "always" } as any,
-                        audio: false 
+                        audio: true // Crucial for co-watching: AI can now hear what you hear
                     });
-                    addLog("Screen capture active.");
+                    addLog("Screen capture active (with System Audio).");
                 } catch(e) {
                     addLog("Screen capture declined. Proceeding with Audio-only composition.", "warn");
                 }
@@ -280,9 +281,17 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           const ctx = getGlobalAudioContext();
           const recordingDest = getGlobalMediaStreamDest();
           
+          // MIXER Logic: Combine Microphone and System Audio
           const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const userSource = ctx.createMediaStreamSource(userStream); 
           userSource.connect(recordingDest);
+
+          // If screen audio exists, mix it in too
+          if (screenStreamRef.current && screenStreamRef.current.getAudioTracks().length > 0) {
+              const systemAudioSource = ctx.createMediaStreamSource(screenStreamRef.current);
+              systemAudioSource.connect(recordingDest);
+              addLog("Routing System Audio to AI Agent and Recording pipeline.");
+          }
 
           const canvas = document.createElement('canvas');
           canvas.width = 1280; canvas.height = 720;
@@ -455,7 +464,16 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       });
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       
-      let effectiveInstruction = `[SYSTEM_TIME_CONTEXT]: Current Local Time is ${timeStr} (${timeZone}). Use this to answer temporal questions.\n\n${channel.systemInstruction}`;
+      // Fix: Specifically instruct the AI that it is co-watching and should summarize the shared audio context
+      let effectiveInstruction = `[SYSTEM_TIME_CONTEXT]: Current Local Time is ${timeStr} (${timeZone}). Use this to answer temporal questions.\n\n`;
+      
+      if (channel.id.startsWith('meeting')) {
+          effectiveInstruction += `You are currently in a CO-WATCHING and RECORDING session. You will hear both the user's voice and the system audio (from a YouTube video or Meeting). 
+          TASK: Actively listen to the shared content. Be ready to provide a complete summary of the meeting, including key points from the shared video or speakers. 
+          When asked for a summary, generate a structured Markdown report.\n\n`;
+      }
+
+      effectiveInstruction += channel.systemInstruction;
       
       const historyToInject = transcriptRef.current.length > 0 ? transcriptRef.current : (initialTranscript || []);
       if (historyToInject.length > 0) {

@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, LiveServerMessage } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, coolDownAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
 

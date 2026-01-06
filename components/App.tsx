@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } 
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, Video
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, Video, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewState, TranscriptItem } from '../types';
@@ -205,6 +205,8 @@ const App: React.FC = () => {
   
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
+  const [appLauncherPage, setAppLauncherPage] = useState(0);
+  
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -235,7 +237,7 @@ const App: React.FC = () => {
     existingDiscussionId?: string;
   } | null>(null);
 
-  const allApps = [
+  const allApps = useMemo(() => [
     { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); setActiveTab('categories'); }, color: 'text-indigo-400' },
     { id: 'mock_interview', label: t.mockInterview, icon: Video, action: () => handleSetViewState('mock_interview'), color: 'text-red-500' },
     { id: 'wallet', label: t.wallet, icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400' },
@@ -255,7 +257,18 @@ const App: React.FC = () => {
     { id: 'blog', label: t.blog, icon: Rss, action: () => handleSetViewState('blog'), color: 'text-orange-400' },
     { id: 'card_workshop', label: t.cards, icon: Gift, action: () => handleSetViewState('card_workshop'), color: 'text-red-400' },
     { id: 'mission', label: t.mission, icon: Rocket, action: () => handleSetViewState('mission'), color: 'text-orange-500' },
-  ];
+  ], [t]);
+
+  const appsPerPage = useMemo(() => {
+    return (typeof window !== 'undefined' && window.innerWidth < 768) ? 8 : 10;
+  }, []);
+
+  const totalAppPages = Math.ceil(allApps.length / appsPerPage);
+  
+  const currentAppSlice = useMemo(() => {
+    const start = appLauncherPage * appsPerPage;
+    return allApps.slice(start, start + appsPerPage);
+  }, [allApps, appLauncherPage, appsPerPage]);
 
   const handleSetViewState = (newState: ViewState, params: Record<string, string> = {}) => {
     stopAllPlatformAudio(`NavigationTransition:${viewState}->${newState}`);
@@ -406,7 +419,7 @@ const App: React.FC = () => {
       <div className="h-screen flex flex-col bg-slate-950 text-slate-50 overflow-hidden">
         <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 sm:px-6 shrink-0 z-50 backdrop-blur-xl">
            <div className="flex items-center gap-4">
-              <button onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
+              <button onClick={() => { setIsAppsMenuOpen(!isAppsMenuOpen); setAppLauncherPage(0); }} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
                  <LayoutGrid size={22} />
               </button>
               <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.location.href = window.location.origin}>
@@ -449,7 +462,7 @@ const App: React.FC = () => {
         {isAppsMenuOpen && (
             <div className="fixed inset-0 z-[100] animate-fade-in">
                 <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setIsAppsMenuOpen(false)}></div>
-                <div className="absolute left-4 sm:left-6 top-20 w-[calc(100vw-2rem)] md:w-[640px] lg:w-[850px] bg-slate-900 border border-slate-700 rounded-[2.5rem] shadow-2xl overflow-hidden p-6 md:p-8 animate-fade-in-up flex flex-col max-h-[calc(100vh-8rem)]">
+                <div className="absolute left-4 sm:left-6 top-20 w-[calc(100vw-2rem)] md:w-[640px] lg:w-[850px] bg-slate-900 border border-slate-700 rounded-[2.5rem] shadow-2xl overflow-hidden p-6 md:p-8 animate-fade-in-up flex flex-col">
                     <div className="flex justify-between items-center mb-6 md:mb-8 shrink-0">
                         <div className="flex flex-col">
                             <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Neural OS</h3>
@@ -459,23 +472,56 @@ const App: React.FC = () => {
                             <X size={20} className="text-slate-500 hover:text-white"/>
                         </button>
                     </div>
-                    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 pb-4">
-                          {allApps.map(app => ( 
-                              <button 
-                                  key={app.id} 
-                                  onClick={app.action} 
-                                  className="flex flex-col items-center gap-3 p-5 md:p-6 bg-slate-800/40 hover:bg-indigo-600/10 border border-slate-800 hover:border-indigo-500/40 rounded-3xl transition-all group relative overflow-hidden"
-                              > 
-                                  <div className="absolute top-0 right-0 p-8 bg-white/5 blur-3xl rounded-full group-hover:bg-white/10 transition-colors pointer-events-none"></div>
-                                  <app.icon className={`${app.color} group-hover:scale-110 transition-transform relative z-10`} size={28} /> 
-                                  <span className="text-[10px] md:text-[11px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest relative z-10 text-center">{app.label}</span> 
-                              </button> 
-                          ))}
-                      </div>
+
+                    <div className="flex-1 flex items-center justify-between relative">
+                        <button 
+                            onClick={() => setAppLauncherPage(p => Math.max(0, p - 1))}
+                            disabled={appLauncherPage === 0}
+                            className={`p-3 rounded-full transition-all shrink-0 ${appLauncherPage === 0 ? 'opacity-10 cursor-not-allowed' : 'bg-slate-800 hover:bg-indigo-600 text-white shadow-xl'}`}
+                        >
+                            <ChevronLeft size={24} />
+                        </button>
+
+                        <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 px-4 py-2 animate-fade-in transition-all">
+                            {currentAppSlice.map(app => ( 
+                                <button 
+                                    key={app.id} 
+                                    onClick={app.action} 
+                                    className="flex flex-col items-center gap-3 p-5 md:p-6 bg-slate-800/40 hover:bg-indigo-600/10 border border-slate-800 hover:border-indigo-500/40 rounded-3xl transition-all group relative overflow-hidden h-32 md:h-40"
+                                > 
+                                    <div className="absolute top-0 right-0 p-8 bg-white/5 blur-3xl rounded-full group-hover:bg-white/10 transition-colors pointer-events-none"></div>
+                                    <app.icon className={`${app.color} group-hover:scale-110 transition-transform relative z-10`} size={28} /> 
+                                    <span className="text-[10px] md:text-[11px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest relative z-10 text-center">{app.label}</span> 
+                                </button> 
+                            ))}
+                            {/* Empty placeholders to maintain grid shape if needed */}
+                            {currentAppSlice.length < appsPerPage && Array.from({ length: appsPerPage - currentAppSlice.length }).map((_, i) => (
+                                <div key={`empty-${i}`} className="hidden md:block p-5 md:p-6 rounded-3xl border border-slate-800/20 opacity-0 h-32 md:h-40"></div>
+                            ))}
+                        </div>
+
+                        <button 
+                            onClick={() => setAppLauncherPage(p => Math.min(totalAppPages - 1, p + 1))}
+                            disabled={appLauncherPage === totalAppPages - 1}
+                            className={`p-3 rounded-full transition-all shrink-0 ${appLauncherPage === totalAppPages - 1 ? 'opacity-10 cursor-not-allowed' : 'bg-slate-800 hover:bg-indigo-600 text-white shadow-xl'}`}
+                        >
+                            <ChevronRight size={24} />
+                        </button>
                     </div>
-                    <div className="mt-4 pt-6 border-t border-slate-800 flex justify-center shrink-0">
-                        <p className="text-[9px] font-bold text-slate-600 uppercase tracking-[0.3em]">AIVoiceCast Platform v4.2.0</p>
+
+                    <div className="mt-8 flex flex-col items-center shrink-0">
+                        <div className="flex gap-2 mb-6">
+                            {Array.from({ length: totalAppPages }).map((_, i) => (
+                                <button 
+                                    key={i} 
+                                    onClick={() => setAppLauncherPage(i)}
+                                    className={`w-2 h-2 rounded-full transition-all ${appLauncherPage === i ? 'bg-indigo-500 w-6' : 'bg-slate-700 hover:bg-slate-600'}`}
+                                />
+                            ))}
+                        </div>
+                        <div className="w-full pt-6 border-t border-slate-800 flex justify-center">
+                            <p className="text-[9px] font-bold text-slate-600 uppercase tracking-[0.3em]">AIVoiceCast Platform v4.2.0</p>
+                        </div>
                     </div>
                 </div>
             </div>
