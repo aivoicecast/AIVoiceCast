@@ -112,7 +112,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   };
 
   const handleShare = (rec: RecordingSession) => {
-    // If it's a YouTube link, share that directly. Otherwise share a deep link to this app's recording view.
     const url = isYouTubeUrl(rec.mediaUrl) ? rec.mediaUrl : `${window.location.origin}${window.location.pathname}?view=recordings&id=${rec.id}`;
     setShareUrl(url);
     setSharingTitle(rec.channelTitle);
@@ -236,8 +235,10 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             addSyncLog(`YouTube Success: ${ytId}`, 'success');
         } catch (ytErr: any) { 
             const msg = ytErr.message || String(ytErr);
-            addSyncLog(`YouTube FORCE FAILED: ${msg}`, 'error');
-            if (msg.includes('403')) addSyncLog("Scope 'youtube.upload' likely missing from current session.", 'warn');
+            addSyncLog(`YouTube FAILED: ${msg}`, 'error');
+            if (msg.includes('Failed to fetch') || msg.includes('403')) {
+                addSyncLog("TIP: This error is common if scopes have expired. Try signing out and in again.", 'warn');
+            }
             throw ytErr;
         }
 
@@ -248,7 +249,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             mediaUrl: videoUrl,
         };
         
-        // Ensure transcript URL is also cloud-based if possible
         if (!isDriveUrl(rec.transcriptUrl)) {
             addSyncLog("Uploading transcript to Drive...", 'info');
             const folderId = await ensureCodeStudioFolder(token!);
@@ -265,9 +265,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         }, 800);
         
     } catch (e: any) {
-        addSyncLog(`FORCE SYNC FATAL ERROR: ${e.message}`, 'error');
+        addSyncLog(`FATAL ERROR: ${e.message}`, 'error');
         setSyncingId(null);
-        alert("Forced upload failed: " + e.message);
     }
   };
 
@@ -306,7 +305,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         const isVideo = rec.mediaType?.includes('video');
         let videoUrl = "";
 
-        // YouTube Logic - Forced if preference is YouTube
         if (isVideo && pref === 'youtube') {
             addSyncLog("Uploading to YouTube...", 'info');
             try {
@@ -320,16 +318,16 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             } catch (ytErr: any) { 
                 const msg = ytErr.message || String(ytErr);
                 addSyncLog(`YouTube ERROR: ${msg}`, 'error');
-                if (msg.includes('403')) addSyncLog("Hint: Re-login to ensure 'youtube.upload' scope is active.", 'warn');
+                if (msg.includes('Failed to fetch') || msg.includes('403')) {
+                    addSyncLog("Hint: Re-login to ensure 'youtube.upload' scope is active.", 'warn');
+                }
                 addSyncLog("Critical: YouTube failed. Checking Drive fallback...", 'warn');
             }
         }
 
-        // Transcript is always a Drive asset
         addSyncLog("Backing up transcript to Drive...", 'info');
         const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
         
-        // Media Fallback
         let driveFileId = "";
         if (!videoUrl) {
             addSyncLog("Saving Media to Google Drive...", 'info');
@@ -357,7 +355,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     } catch (e: any) {
         addSyncLog(`SYNC ERROR: ${e.message}`, 'error');
         setSyncingId(null);
-        alert("Sync failed. Check diagnostics.");
     }
   };
 
@@ -380,7 +377,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
       
       const now = new Date();
       const timeStr = now.toLocaleString();
-      // 'meeting-force-start' prefix tells LiveSession to bypass the Landing Page
       const newChannel: Channel = {
           id: `meeting-force-start-${Date.now()}`,
           title: meetingTitle,
@@ -604,7 +600,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <div key={i} className={`flex gap-3 leading-relaxed ${
                           log.type === 'error' ? 'text-red-400' : 
                           log.type === 'warn' ? 'text-amber-400' : 
-                          log.type === 'success' ? 'text-emerald-400' : 'text-slate-400'
+                          log.type === 'success' ? 'text-emerald-400' : 
+                          'text-slate-400'
                       }`}>
                           <span className="opacity-40 shrink-0 font-bold">[{log.time}]</span>
                           <span className="break-words">
@@ -672,7 +669,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           </div>
       )}
 
-      {showShareModal && (
+      {showShareModal && shareUrl && (
         <ShareModal 
           isOpen={true} 
           onClose={() => setShowShareModal(false)} 

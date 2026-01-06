@@ -14,7 +14,10 @@ export interface YouTubeUploadMetadata {
  */
 export async function uploadToYouTube(accessToken: string, videoBlob: Blob, metadata: YouTubeUploadMetadata): Promise<string> {
     console.log("[YouTube] Starting upload process for:", metadata.title);
-    console.log("[YouTube] Blob size:", (videoBlob.size / 1024 / 1024).toFixed(2), "MB");
+    
+    // Fallback for missing blob type
+    const mimeType = videoBlob.type || 'video/webm';
+    console.log("[YouTube] Blob size:", (videoBlob.size / 1024 / 1024).toFixed(2), "MB", "Type:", mimeType);
 
     const initUrl = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
     
@@ -32,16 +35,27 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
     };
 
     console.log("[YouTube] Step 1: Initializing resumable session...");
-    const initRes = await fetch(initUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json; charset=UTF-8',
-            'X-Upload-Content-Length': videoBlob.size.toString(),
-            'X-Upload-Content-Type': videoBlob.type
-        },
-        body: JSON.stringify(body)
-    });
+    
+    let initRes: Response;
+    try {
+        initRes = await fetch(initUrl, {
+            method: 'POST',
+            mode: 'cors',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json; charset=UTF-8',
+                'X-Upload-Content-Length': videoBlob.size.toString(),
+                'X-Upload-Content-Type': mimeType
+            },
+            body: JSON.stringify(body)
+        });
+    } catch (fetchErr: any) {
+        console.error("[YouTube] Handshake network error:", fetchErr);
+        if (fetchErr.message === 'Failed to fetch') {
+            throw new Error("Handshake Failed: 'Failed to fetch'. This usually means the 'youtube.upload' scope is missing or the Origin is not authorized. Try signing out and signing back in.");
+        }
+        throw fetchErr;
+    }
 
     if (!initRes.ok) {
         let errorData: any = {};
@@ -54,28 +68,36 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
             throw new Error("403: Insufficient YouTube Permissions. You must sign out and sign in again to grant the 'youtube.upload' scope.");
         }
         
-        throw new Error(`YouTube initialization failed: ${errorData.error?.message || initRes.statusText}`);
+        throw new Error(`YouTube initialization failed (${initRes.status}): ${errorData.error?.message || initRes.statusText}`);
     }
 
     const uploadUrl = initRes.headers.get('Location');
     if (!uploadUrl) {
         console.error("[YouTube] No Location header received.");
-        throw new Error("Did not receive a YouTube upload location header.");
+        throw new Error("Did not receive a YouTube upload location header. Check if the 'youtube.upload' scope is correctly authorized.");
     }
 
     console.log("[YouTube] Step 2: Uploading binary data to location...");
-    const uploadRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': videoBlob.type
-        },
-        body: videoBlob
-    });
+    
+    let uploadRes: Response;
+    try {
+        uploadRes = await fetch(uploadUrl, {
+            method: 'PUT',
+            mode: 'cors',
+            headers: {
+                'Content-Type': mimeType
+            },
+            body: videoBlob
+        });
+    } catch (uploadErr: any) {
+        console.error("[YouTube] Binary upload network error:", uploadErr);
+        throw new Error(`Binary upload failed: ${uploadErr.message}. Check your internet connection or file size limits.`);
+    }
 
     if (!uploadRes.ok) {
-        const error = await uploadRes.json();
+        const error = await uploadRes.json().catch(() => ({}));
         console.error("[YouTube] Binary upload failed:", error);
-        throw new Error(`YouTube upload failed: ${error.error?.message || uploadRes.statusText}`);
+        throw new Error(`YouTube upload failed (${uploadRes.status}): ${error.error?.message || uploadRes.statusText}`);
     }
 
     const data = await uploadRes.json();
