@@ -75,9 +75,12 @@ async function getAIProvider(): Promise<'gemini' | 'openai'> {
  */
 function getModelForVoice(voiceName: string = '', defaultModel: string): string {
     if (voiceName.includes('gen-lang-client')) {
-        const parts = voiceName.split(' ');
+        const parts = voiceName.split(/\s+/);
         const id = parts.find(p => p.startsWith('gen-lang-client'));
-        return id || defaultModel;
+        if (id) {
+            // Tuned models often require the 'tunedModels/' prefix for generateContent calls.
+            return id.startsWith('tunedModels/') ? id : `tunedModels/${id}`;
+        }
     }
     return defaultModel;
 }
