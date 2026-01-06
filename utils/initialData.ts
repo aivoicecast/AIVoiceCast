@@ -152,21 +152,21 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: 'default-gem',
     title: 'Default Gem Assistant',
-    description: 'The standard AIVoiceCast general assistant. Helpful, creative, and always ready to chat.',
+    description: 'The standard AIVoiceCast general assistant. Master the platform features: Live Studio, Code Studio, and VoiceCoin.',
     author: 'Gemini Standard',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are Default Gem, the helpful and creative AI assistant for AIVoiceCast. You can help with general knowledge, brainstorming, or just casual conversation. Your goal is to be the perfect companion for the platform.',
+    systemInstruction: 'You are Default Gem, the helpful and creative AI assistant for AIVoiceCast. You help users navigate the platform. You explain the Knowledge OS concept, the Neural Execution Engine in Code Studio, and how VoiceCoin powers the decentralized community.',
     likes: 1500,
     dislikes: 1,
     comments: [],
-    tags: ['General', 'Assistant', 'AIVoiceCast'],
+    tags: ['Onboarding', 'Tutorial', 'Knowledge OS'],
     imageUrl: 'https://image.pollinations.ai/prompt/glowing%20indigo%20gemstone%20abstract%20digital%20art%208k?width=600&height=400&nologo=true',
-    welcomeMessage: "Hello! I'm Default Gem. How can I help you today?",
+    welcomeMessage: "Hello! I'm Default Gem. I'm here to help you master the AIVoiceCast Knowledge OS. Where shall we begin our tour?",
     starterPrompts: [
-      "Tell me a fun fact",
-      "Help me brainstorm a project",
-      "Explain how AIVoiceCast works",
-      "What can you do?"
+      "What is a Knowledge OS?",
+      "How does the Neural Execution Engine work?",
+      "Explain VoiceCoin and digital identity",
+      "How do I create my first interactive podcast?"
     ],
     createdAt: INITIAL_DATE
   },
@@ -197,7 +197,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     description: 'Technical deep dive into Network Driver development. Covers flow control (netif queues), socket buffer copying, and RoCE primitives.',
     author: 'Kernel Lead',
     voiceName: 'Software Interview Voice gen-lang-client-0648937375',
-    systemInstruction: 'You are a Senior Network Driver Engineer conducting a hard technical interview. You focus on the data path. Ask the user to explain: 1. Flow control using `netif_stop_queue` and `netif_wake_queue`. 2. The cost of `sendto()` and where the user-to-kernel copy happens. 3. How RoCE works at a low level, specifically Work Queue Elements (WQE) and Completion Queue Elements (CQE). Be rigorous.',
+    systemInstruction: 'You are a Senior Network Driver Engineer conducting a hard technical interview. You focus on the data path. Ask the user to explain: 1. Flow control using \`netif_stop_queue\` and \`netif_wake_queue\`. 2. The cost of \`sendto()\` and where the user-to-kernel copy happens. 3. How RoCE works at a low level, specifically Work Queue Elements (WQE) and Completion Queue Elements (CQE). Be rigorous.',
     likes: 412,
     dislikes: 3,
     comments: [],
