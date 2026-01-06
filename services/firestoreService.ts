@@ -1,3 +1,4 @@
+
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -414,6 +415,11 @@ export async function saveCard(card: AgentMemory, id?: string): Promise<string> 
     const finalId = id || generateSecureId();
     await setDoc(doc(db, CARDS_COLLECTION, finalId), sanitizeData({ ...card, id: finalId, ownerId: auth?.currentUser?.uid }));
     return finalId;
+}
+
+export async function deleteCard(id: string): Promise<void> {
+    if (!db) return;
+    await deleteDoc(doc(db, CARDS_COLLECTION, id));
 }
 
 export async function createBlogPost(post: BlogPost): Promise<string> {

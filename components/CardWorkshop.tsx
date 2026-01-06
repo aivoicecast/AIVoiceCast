@@ -7,7 +7,7 @@ import { GeminiLiveService } from '../services/geminiLive';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
-import { uploadFileToStorage, saveCard, getCard, getUserCards } from '../services/firestoreService';
+import { uploadFileToStorage, saveCard, getCard, getUserCards, deleteCard } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
 import { FunctionDeclaration, Type as GenType } from '@google/genai';
 import { resizeImage } from '../utils/imageUtils';
@@ -139,6 +139,18 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
           setMemory(found);
           setViewState('editor');
           setShareLink(found.id ? `${window.location.origin}?view=card&id=${found.id}` : null);
+      }
+  };
+
+  const handleDeleteCard = async (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      if (!confirm("Are you sure you want to permanently delete this card?")) return;
+      
+      try {
+          await deleteCard(id);
+          setSavedCards(prev => prev.filter(c => c.id !== id));
+      } catch (e) {
+          alert("Failed to delete card.");
       }
   };
 
@@ -488,8 +500,16 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                             <div 
                                 key={card.id} 
                                 onClick={() => card.id && handleOpenCard(card.id)}
-                                className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden hover:border-indigo-500/50 hover:shadow-2xl transition-all cursor-pointer group flex flex-col"
+                                className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden hover:border-indigo-500/50 hover:shadow-2xl transition-all cursor-pointer group flex flex-col relative"
                             >
+                                <button 
+                                    onClick={(e) => card.id && handleDeleteCard(e, card.id)}
+                                    className="absolute top-4 right-4 z-20 p-2 bg-black/40 hover:bg-red-600 text-white rounded-full backdrop-blur-md opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                                    title="Delete Card"
+                                >
+                                    <Trash2 size={16}/>
+                                </button>
+                                
                                 <div className="aspect-[2/3] bg-slate-800 relative overflow-hidden">
                                     {card.coverImageUrl ? (
                                         <img src={card.coverImageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" crossOrigin="anonymous"/>
@@ -504,7 +524,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                                         <h3 className="font-black text-xl leading-tight uppercase italic">{card.occasion}</h3>
                                         <p className="text-[10px] text-indigo-300 font-bold uppercase tracking-widest mt-1">To: {card.recipientName}</p>
                                     </div>
-                                    {(card.voiceMessageUrl || card.songUrl) && <div className="absolute top-4 right-4 bg-indigo-600 p-1.5 rounded-full text-white shadow-lg"><Music size={12}/></div>}
+                                    {(card.voiceMessageUrl || card.songUrl) && <div className="absolute top-4 left-4 bg-indigo-600 p-1.5 rounded-full text-white shadow-lg"><Music size={12}/></div>}
                                 </div>
                                 <div className="p-5 flex-1 flex flex-col justify-between bg-slate-900">
                                     <p className="text-xs text-slate-400 line-clamp-2 italic leading-relaxed">"{card.cardMessage}"</p>
