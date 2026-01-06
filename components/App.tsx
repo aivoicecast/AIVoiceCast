@@ -429,7 +429,7 @@ const App: React.FC = () => {
                           <button 
                             key={app.id} 
                             onClick={() => { app.action(); setIsAppsMenuOpen(false); }}
-                            className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-indigo-600/10 text-left transition-all group"
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-indigo-600/10 text-left transition-all group"
                           >
                             <span className="text-[10px] font-mono text-slate-600 w-4 group-hover:text-indigo-400 transition-colors">{idx + 1}</span>
                             <div className={`p-1.5 rounded-lg bg-slate-800 border border-slate-700 group-hover:border-indigo-500/30 transition-colors`}>
