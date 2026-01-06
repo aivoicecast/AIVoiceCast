@@ -339,6 +339,7 @@ export interface AgentMemory {
   senderName: string;
   occasion: string;
   cardMessage: string;
+  context?: string; // New field for main theme/context
   theme: string;
   customThemePrompt: string;
   userImages: string[];

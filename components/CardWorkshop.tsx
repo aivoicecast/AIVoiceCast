@@ -25,6 +25,7 @@ const DEFAULT_MEMORY: AgentMemory = {
   senderName: '',
   occasion: 'Holiday',
   cardMessage: 'Dear Friend,\n\nWishing you a season filled with warmth, comfort, and good cheer.\n\nWarmly,\nMe',
+  context: '',
   theme: 'festive',
   customThemePrompt: '',
   userImages: [],
@@ -54,6 +55,7 @@ const updateCardTool: FunctionDeclaration = {
             senderName: { type: GenType.STRING, description: "Name of person sending the card" },
             occasion: { type: GenType.STRING, description: "The event (Christmas, Birthday, etc)" },
             cardMessage: { type: GenType.STRING, description: "The final message text to be written on the card." },
+            context: { type: GenType.STRING, description: "The main background story or theme summary for the card." },
             theme: { type: GenType.STRING, enum: ['festive', 'cozy', 'minimal', 'chinese-poem', 'cyberpunk', 'abstract'], description: "Visual theme style" },
             customThemePrompt: { type: GenType.STRING, description: "Specific visual details for image generation (e.g. 'a dog in snow')" }
         }
@@ -220,6 +222,23 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
           updatedMemory.voiceMessageUrl = await syncMedia(updatedMemory.voiceMessageUrl, `cards/${cid}/voice.wav`);
           updatedMemory.songUrl = await syncMedia(updatedMemory.songUrl, `cards/${cid}/song.wav`);
 
+          // Sync user images array
+          if (updatedMemory.userImages && updatedMemory.userImages.length > 0) {
+              const syncedImages = [];
+              for (let i = 0; i < updatedMemory.userImages.length; i++) {
+                  const img = updatedMemory.userImages[i];
+                  if (isLocalUrl(img)) {
+                      const res = await fetch(img);
+                      const blob = await res.blob();
+                      const cloudUrl = await uploadFileToStorage(`cards/${cid}/user_img_${i}.jpg`, blob);
+                      syncedImages.push(cloudUrl);
+                  } else {
+                      syncedImages.push(img);
+                  }
+              }
+              updatedMemory.userImages = syncedImages;
+          }
+
           const finalCardId = await saveCard(updatedMemory, cid); 
           setMemory(updatedMemory);
           const link = `${window.location.origin}?view=card&id=${finalCardId}`;
@@ -263,11 +282,24 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
         const folder = zip.folder("NeuralCard");
         const pdfBlob = await generatePDFBlob();
         if (pdfBlob) folder?.file(`Card.pdf`, pdfBlob);
-        if (memory.voiceMessageUrl) folder?.file("voice_greeting.wav", await fetch(memory.voiceMessageUrl).then(r => r.blob()));
-        if (memory.songUrl) folder?.file("holiday_song.wav", await fetch(memory.songUrl).then(r => r.blob()));
+        
+        const safeFetchBlob = async (url: string) => {
+            const res = await fetch(url);
+            return await res.blob();
+        };
+
+        if (memory.voiceMessageUrl) folder?.file("voice_greeting.wav", await safeFetchBlob(memory.voiceMessageUrl));
+        if (memory.songUrl) folder?.file("holiday_song.wav", await safeFetchBlob(memory.songUrl));
+        
         const content = await zip.generateAsync({ type: "blob" });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(content); a.download = `Neural_Card_Package.zip`; a.click();
-    } catch (e) { alert("Package failed."); } finally { setIsExportingPackage(false); }
+        const a = document.createElement('a'); 
+        a.href = URL.createObjectURL(content); 
+        a.download = `Neural_Card_Package_${memory.recipientName || 'Friend'}.zip`; 
+        a.click();
+    } catch (e) { 
+        console.error("Zip failed", e);
+        alert("Package failed. Some assets might be missing or restricted."); 
+    } finally { setIsExportingPackage(false); }
   };
 
   const toggleLiveAgent = async () => {
@@ -292,6 +324,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
         - Occasion: ${memory.occasion}
         - Theme: ${memory.theme}
         - Current Message: ${memory.cardMessage}
+        - Card Background Context: ${memory.context || 'None provided'}
         
         TASK:
         1. Discuss the design and message.
@@ -349,19 +382,19 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
               </>
           )}
           {page === 1 && (
-              <div className="p-10 flex flex-col items-center justify-center h-full text-center">
-                  <div className="w-12 h-px bg-slate-300 mb-8"></div>
+              <div className="p-10 flex flex-col items-center justify-center h-full text-center overflow-y-auto">
+                  <div className="w-12 h-px bg-slate-300 mb-8 shrink-0"></div>
                   <p className={`whitespace-pre-wrap leading-relaxed text-slate-800 ${memory.fontFamily || 'font-script'}`} style={{ fontSize: `${20 * (memory.fontSizeScale || 1.0)}px` }}>
                       {memory.cardMessage}
                   </p>
-                  <div className="w-12 h-px bg-slate-300 mt-8"></div>
+                  <div className="w-12 h-px bg-slate-300 mt-8 shrink-0"></div>
               </div>
           )}
           {page === 2 && (
               <div className="p-8 h-full flex flex-col items-center justify-center text-center gap-6">
                    <div className="grid grid-cols-2 gap-4 w-full h-full">
                        {[0,1,2,3].map(i => (
-                           <div key={i} className="bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center text-slate-200 overflow-hidden">
+                           <div key={i} className="bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-center text-slate-200 overflow-hidden aspect-square">
                                {memory.userImages[i] ? <img src={memory.userImages[i]} className="w-full h-full object-cover rounded-lg"/> : <ImageIcon size={24}/>}
                            </div>
                        ))}
@@ -551,6 +584,17 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                         <div className="space-y-4">
                             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Settings: {getPageLabel(activePage)}</label>
                             
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">Card Background Story / Context</label>
+                                <textarea 
+                                    rows={3} 
+                                    value={memory.context || ''} 
+                                    onChange={e => setMemory({...memory, context: e.target.value})} 
+                                    placeholder="Brief background or theme summary (e.g. 'A thank you card for a coworker who helped with a big launch'). This informs AI art and message generation."
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 outline-none focus:border-indigo-500 resize-none shadow-inner"
+                                />
+                            </div>
+
                             {activePage === 0 && (
                                 <div className="space-y-4 animate-fade-in">
                                     <button onClick={() => handleGenImage(false)} disabled={isGeneratingImage} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl active:scale-[0.98]">
@@ -581,7 +625,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                                             <input type="range" min="0.5" max="2.0" step="0.1" value={memory.fontSizeScale} onChange={e => setMemory({...memory, fontSizeScale: parseFloat(e.target.value)})} className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
                                         </div>
                                     </div>
-                                    <textarea rows={8} value={memory.cardMessage} onChange={e => setMemory({...memory, cardMessage: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-slate-300 outline-none focus:border-indigo-500 resize-none leading-relaxed"/>
+                                    <textarea rows={8} value={memory.cardMessage} onChange={e => setMemory({...memory, cardMessage: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-slate-300 outline-none focus:border-indigo-500 resize-none leading-relaxed shadow-inner"/>
                                 </div>
                             )}
 
@@ -613,7 +657,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                                     </button>
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1"><Link size={10}/> Shared Album Link (QR)</label>
-                                        <input type="text" placeholder="Photos Album URL..." value={memory.googlePhotosUrl || ''} onChange={e => setMemory({...memory, googlePhotosUrl: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white focus:border-indigo-500 outline-none"/>
+                                        <input type="text" placeholder="Photos Album URL..." value={memory.googlePhotosUrl || ''} onChange={e => setMemory({...memory, googlePhotosUrl: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white focus:border-indigo-500 outline-none shadow-inner"/>
                                     </div>
                                 </div>
                             )}
@@ -624,7 +668,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                                         {isGeneratingVoice ? <Loader2 size={18} className="animate-spin"/> : <Mic size={18}/>}
                                         <span>Synthesize Voice</span>
                                     </button>
-                                    <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl">
+                                    <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl shadow-inner">
                                         <p className="text-[10px] text-slate-500 font-medium italic leading-relaxed line-clamp-4">"{memory.cardMessage}"</p>
                                     </div>
                                 </div>
@@ -636,7 +680,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                                         {isGeneratingSong ? <Loader2 size={18} className="animate-spin"/> : <Music size={18}/>}
                                         <span>Synthesize Melodic Pattern</span>
                                     </button>
-                                    <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl max-h-40 overflow-y-auto scrollbar-hide">
+                                    <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl max-h-40 overflow-y-auto scrollbar-hide shadow-inner">
                                         <p className="text-[10px] text-slate-500 font-medium whitespace-pre-wrap">{memory.songLyrics || "Song lyrics not yet generated. Click button above to start AI synthesis."}</p>
                                     </div>
                                 </div>

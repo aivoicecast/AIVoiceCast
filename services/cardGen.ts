@@ -29,7 +29,7 @@ export async function generateCardMessage(memory: AgentMemory, tone: string = 'w
                 Topic/Occasion: ${memory.occasion}.
                 Recipient: ${memory.recipientName || 'Friend'}.
                 Sender: ${memory.senderName || 'Me'}.
-                Theme/Context: ${memory.customThemePrompt || 'Nature, peace, friendship'}.
+                Theme/Context: ${memory.context || memory.customThemePrompt || 'Nature, peace, friendship'}.
                 ${contextDraft}
                 
                 Requirements:
@@ -46,7 +46,8 @@ export async function generateCardMessage(memory: AgentMemory, tone: string = 'w
                 Sender: ${memory.senderName}
                 Tone: ${tone}
                 Theme: ${memory.theme}
-                ${memory.customThemePrompt ? `Additional Context: "${memory.customThemePrompt}"` : ''}
+                ${memory.context ? `Main Theme/Context: "${memory.context}"` : ''}
+                ${memory.customThemePrompt ? `Visual Context: "${memory.customThemePrompt}"` : ''}
                 
                 ${contextDraft}
                 
@@ -80,8 +81,8 @@ export async function generateSongLyrics(memory: AgentMemory): Promise<string> {
             ? `Base the song lyrics on this specific message: "${memory.cardMessage}"` 
             : '';
             
-        const themeDetails = memory.customThemePrompt 
-            ? `Specific details/topics to include in lyrics: "${memory.customThemePrompt}"` 
+        const themeDetails = memory.context || memory.customThemePrompt 
+            ? `Specific details/topics to include in lyrics: "${memory.context || memory.customThemePrompt}"` 
             : '';
 
         const prompt = `
@@ -153,7 +154,8 @@ export async function generateCardImage(
         // Initialization follows @google/genai guidelines using process.env.API_KEY.
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         
-        const customContext = memory.customThemePrompt ? `Main Subject/Theme: ${memory.customThemePrompt}.` : '';
+        const cardContentContext = `The card is for ${memory.occasion}. The main message is: "${memory.cardMessage}". The background context is: "${memory.context || ''}".`;
+        const customContext = memory.customThemePrompt ? `Visual Theme Detail: ${memory.customThemePrompt}.` : '';
         const userRefinement = refinementText ? `IMPORTANT SPECIFIC DETAILS: ${refinementText}.` : '';
 
         let basePrompt = '';
@@ -161,7 +163,7 @@ export async function generateCardImage(
              basePrompt = `
                 Traditional Chinese Ink Wash Painting (Shui-mo hua).
                 Minimalist, Zen, monochromatic with subtle red accents (plum blossoms or seal).
-                Subject: ${memory.occasion}. ${customContext}. ${userRefinement}
+                Subject: ${memory.occasion}. ${cardContentContext} ${customContext}. ${userRefinement}
                 Use negative space effectively. Rice paper texture background.
                 Art Direction: Masterpiece, brush strokes visible, poetic atmosphere.
              `;
@@ -170,6 +172,7 @@ export async function generateCardImage(
                 Generate a high quality, creative holiday card image.
                 Occasion: ${memory.occasion}.
                 General Style: ${memory.theme}.
+                Story Context: ${cardContentContext}
                 ${customContext}
                 ${userRefinement}
                 Specific Art Direction: ${stylePrompt}.
