@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { RecordingSession, Channel, TranscriptItem, UserProfile } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
@@ -35,6 +36,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const [resolvedMediaUrl, setResolvedMediaUrl] = useState<string | null>(null);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   
@@ -363,7 +365,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   };
 
   const handleDelete = async (rec: RecordingSession) => {
-    if (!confirm(`Are you sure you want to permanently delete "${rec.channelTitle}"? This will remove the assets from both YouTube and Google Drive.`)) return;
+    if (!confirm(`Are you sure you want to permanently delete "${rec.channelTitle}"? This will remove the video from YouTube AND Google Drive.`)) return;
     
     // We need to handle cloud asset deletion before deleting the ledger reference
     const isCloud = !rec.mediaUrl.startsWith('blob:') && !rec.mediaUrl.startsWith('data:');
@@ -384,7 +386,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             token = getDriveToken();
         }
 
-        setSyncingId(rec.id);
+        setDeletingId(rec.id);
         try {
             // 1. Identify Assets
             const ytUri = isYouTubeUrl(rec.mediaUrl) ? rec.mediaUrl : (isYouTubeUrl(rec.driveUrl || '') ? rec.driveUrl : '');
@@ -401,7 +403,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                         addSyncLog("YouTube asset successfully removed.", 'success');
                     } catch (ytErr: any) {
                         addSyncLog(`YouTube deletion failed: ${ytErr.message}`, 'error');
-                        // Proceed anyway to cleanup other assets
                     }
                 }
             }
@@ -416,7 +417,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                         addSyncLog("Google Drive asset successfully removed.", 'success');
                     } catch (drErr: any) {
                         addSyncLog(`Drive file deletion failed: ${drErr.message}`, 'error');
-                        // Proceed anyway to cleanup other assets
                     }
                 }
             }
@@ -441,12 +441,12 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             setRecordings(prev => prev.filter(r => r.id !== rec.id));
             setTimeout(() => {
                 setShowSyncLog(false);
-                setSyncingId(null);
+                setDeletingId(null);
             }, 1500);
 
         } catch (e: any) {
             addSyncLog(`CRITICAL DELETE ERROR: ${e.message}`, 'error');
-            setSyncingId(null);
+            setDeletingId(null);
         }
     } else {
         // Local only or guest deletion
@@ -538,6 +538,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             const isThisResolving = resolvingId === rec.id;
             const isThisDownloading = downloadingId === rec.id;
             const isCopying = copyingId === rec.id;
+            const isThisDeleting = deletingId === rec.id;
 
             return (
               <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : 'border-slate-800'} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl`}>
@@ -592,7 +593,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                         <div className="flex items-center gap-2">
                             <button 
                                 onClick={() => handleForceYouTubeSync(rec)}
-                                disabled={syncingId === rec.id || hasYoutube}
+                                disabled={syncingId === rec.id || isThisDeleting || hasYoutube}
                                 className={`p-2.5 rounded-xl border transition-all shadow-lg active:scale-95 flex items-center gap-2 px-4 group ${hasYoutube ? 'bg-slate-800 text-slate-600 cursor-not-allowed border-slate-700' : 'bg-red-600 hover:bg-red-500 text-white'}`}
                                 title={hasYoutube ? "Already on YouTube" : "Sync to YouTube"}
                             >
@@ -602,7 +603,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                             {isLocal && (
                                 <button 
                                     onClick={() => handleManualSync(rec)}
-                                    disabled={syncingId === rec.id}
+                                    disabled={syncingId === rec.id || isThisDeleting}
                                     className="p-2.5 rounded-xl border bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95"
                                     title="Auto Sync to Drive"
                                 >
@@ -614,7 +615,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
                     <button 
                         onClick={() => handleShare(rec)}
-                        className="p-2.5 bg-slate-800 text-slate-400 hover:text-indigo-400 rounded-xl border border-slate-700 transition-colors" 
+                        disabled={isThisDeleting}
+                        className="p-2.5 bg-slate-800 text-slate-400 hover:text-indigo-400 rounded-xl border border-slate-700 transition-colors disabled:opacity-30" 
                         title="Share Session"
                     >
                         <Share2 size={20} />
@@ -623,8 +625,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                     {!hasYoutube && (
                         <button 
                             onClick={() => handleDownloadToDevice(rec)}
-                            disabled={isThisDownloading}
-                            className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors" 
+                            disabled={isThisDownloading || isThisDeleting}
+                            className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors disabled:opacity-30" 
                             title="Download Local"
                         >
                             {isThisDownloading ? <Loader2 size={20} className="animate-spin text-indigo-400" /> : <Download size={20} />}
@@ -633,8 +635,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                     
                     <button 
                       onClick={() => handlePlayback(rec)}
-                      disabled={resolvingId !== null && !isThisResolving}
-                      className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95 ${isPlaying ? 'bg-red-600 text-white' : 'bg-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-slate-700'}`}
+                      disabled={(resolvingId !== null && !isThisResolving) || isThisDeleting}
+                      className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95 ${isPlaying ? 'bg-red-600 text-white' : 'bg-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-slate-700'} disabled:opacity-30`}
                     >
                       {isThisResolving ? <Loader2 size={16} className="animate-spin" /> : isPlaying ? <X size={16}/> : <Play size={16} fill="currentColor" />}
                       <span>{isPlaying ? 'Close' : 'Playback'}</span>
@@ -644,8 +646,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <FileText size={20} />
                     </a>
 
-                    <button onClick={() => handleDelete(rec)} disabled={syncingId === rec.id} className="p-2.5 bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors disabled:opacity-30" title="Delete Permanent">
-                      {syncingId === rec.id ? <Loader2 size={20} className="animate-spin" /> : <Trash2 size={20} />}
+                    <button onClick={() => handleDelete(rec)} disabled={isThisDeleting} className="p-2.5 bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors disabled:opacity-30" title="Delete Permanent">
+                      {isThisDeleting ? <Loader2 size={20} className="animate-spin text-red-400" /> : <Trash2 size={20} />}
                     </button>
                   </div>
                 </div>
