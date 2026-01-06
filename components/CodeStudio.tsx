@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
-import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash, ExternalLink, GraduationCap, ShieldCheck } from 'lucide-react';
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink, downloadDriveFileAsBlob } from '../services/googleDriveService';
 import { connectGoogleDrive, getDriveToken, signInWithGitHub } from '../services/authService';
@@ -35,6 +36,11 @@ interface CodeStudioProps {
   onSessionStop: (id: string) => void;
   onStartLiveSession: (channel: Channel, context?: string) => void;
   initialFiles?: CodeFile[];
+  externalChatContent?: { role: 'user' | 'ai', text: string }[];
+  onSendExternalMessage?: (text: string) => void;
+  isInterviewerMode?: boolean;
+  isAiThinking?: boolean;
+  onFileChange?: (file: CodeFile) => void;
 }
 
 function getLanguageFromExt(filename: string): CodeFile['language'] {
@@ -186,35 +192,73 @@ const RichCodeEditor = ({ code, onChange, onCursorMove, language, readOnly, font
     );
 };
 
-const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking, currentInput, onInputChange }: any) => {
+const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking, currentInput, onInputChange, isInterviewerMode }: any) => {
+    const scrollRef = useRef<HTMLDivElement>(null);
+    
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [messages, isThinking]);
+
     return (
         <div className="flex flex-col h-full bg-slate-950 border-l border-slate-800">
             <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
-                <span className="font-bold text-slate-300 text-sm flex items-center gap-2"><Bot size={16} className="text-indigo-400"/> AI Assistant</span>
+                <span className="font-bold text-slate-300 text-sm flex items-center gap-2">
+                    {isInterviewerMode ? (
+                        <><GraduationCap size={16} className="text-red-500"/> AI Interviewer</>
+                    ) : (
+                        <><Bot size={16} className="text-indigo-400"/> AI Assistant</>
+                    )}
+                </span>
                 <button onClick={onClose} title="Minimize AI Panel"><PanelRightClose size={16} className="text-slate-500 hover:text-white"/></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
+                {messages.length === 0 && (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-600 text-center p-4">
+                        {isInterviewerMode ? <ShieldCheck size={32} className="mb-2 opacity-20"/> : <Bot size={32} className="mb-2 opacity-20"/>}
+                        <p className="text-xs font-bold uppercase tracking-widest">{isInterviewerMode ? 'Ready for evaluation' : 'Ready to help'}</p>
+                    </div>
+                )}
                 {messages.map((m: any, i: number) => (
-                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[95%] rounded-lg p-3 text-sm leading-relaxed ${m.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
-                            {m.role === 'ai' ? <MarkdownView content={m.text} /> : <p className="whitespace-pre-wrap">{m.text}</p>}
+                    <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
+                        <span className={`text-[9px] font-black uppercase mb-1 ${m.role === 'user' ? 'text-indigo-500' : 'text-slate-500'}`}>
+                            {m.role === 'user' ? 'Candidate' : 'Interviewer'}
+                        </span>
+                        <div className={`max-w-[95%] rounded-2xl p-3 text-sm leading-relaxed ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-lg' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'}`}>
+                            {m.role === 'ai' || m.role === 'model' ? <MarkdownView content={m.text} /> : <p className="whitespace-pre-wrap">{m.text}</p>}
                         </div>
                     </div>
                 ))}
-                {isThinking && <div className="text-slate-500 text-xs flex items-center gap-2 justify-center"><Loader2 className="animate-spin" size={12}/> AI is thinking...</div>}
+                {isThinking && (
+                    <div className="flex flex-col items-start animate-fade-in">
+                        <span className="text-[9px] font-black uppercase mb-1 text-slate-500">AI Thinking...</span>
+                        <div className="bg-slate-800/50 rounded-2xl p-3 border border-slate-700/50">
+                            <Loader2 className="animate-spin text-indigo-400" size={16}/>
+                        </div>
+                    </div>
+                )}
             </div>
             <div className="p-3 border-t border-slate-800 bg-slate-950">
-                <div className="flex gap-2">
+                <form 
+                    className="flex gap-2" 
+                    onSubmit={(e) => { e.preventDefault(); if(currentInput.trim()) { onSendMessage(currentInput); onInputChange(''); } }}
+                >
                     <input 
                         type="text" 
                         value={currentInput} 
                         onChange={e => onInputChange(e.target.value)} 
-                        onKeyDown={e => { if(e.key === 'Enter') { onSendMessage(currentInput); onInputChange(''); } }} 
-                        className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500 placeholder-slate-600" 
-                        placeholder="Ask AI to edit code..." 
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-300 focus:outline-none focus:border-indigo-500 placeholder-slate-600 shadow-inner" 
+                        placeholder={isInterviewerMode ? "Reply to interviewer..." : "Ask AI to edit code..."} 
                     />
-                    <button onClick={() => { onSendMessage(currentInput); onInputChange(''); }} className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"><Send size={16}/></button>
-                </div>
+                    <button 
+                        type="submit" 
+                        disabled={!currentInput.trim() || isThinking}
+                        className="p-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:grayscale text-white rounded-xl transition-all shadow-lg active:scale-95"
+                    >
+                        <Send size={18}/>
+                    </button>
+                </form>
             </div>
         </div>
     );
@@ -352,8 +396,12 @@ const Slot: React.FC<SlotProps> = ({
     );
 };
 
-export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, userProfile, sessionId: propSessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession, initialFiles }) => {
-  // Fix: Move params definition to component scope so it's accessible in all hooks and during render, fixing the "Cannot find name 'params'" error
+export const CodeStudio: React.FC<CodeStudioProps> = ({ 
+  onBack, currentUser, userProfile, sessionId: propSessionId, accessKey, 
+  onSessionStart, onSessionStop, onStartLiveSession, initialFiles,
+  externalChatContent, onSendExternalMessage, isInterviewerMode = false,
+  isAiThinking = false, onFileChange
+}) => {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const [githubLinkingError, setGithubLinkingError] = useState<string | null>(null);
   
@@ -556,7 +604,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   };
 
   useEffect(() => {
-    // Fix: Use the params defined at component scope instead of a locally shadowed version
     const pid = params.get('id');
 
     if (pid && pid !== 'init') {
@@ -756,6 +803,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       if (file) {
         const lang = getLanguageFromExt(file.name);
         setSlotViewModes(prev => ({ ...prev, [slotIndex]: ['markdown', 'plantuml', 'pdf', 'whiteboard'].includes(lang) ? 'preview' : 'code' }));
+        if (onFileChange) onFileChange(file);
       }
       if (isLive && lockStatus === 'mine' && file?.path) updateProjectActiveFile(project.id, file.path);
   };
@@ -768,6 +816,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       newSlots[slotIdx] = updatedFile;
       setActiveSlots(newSlots);
       setSaveStatus('modified');
+      if (onFileChange) onFileChange(updatedFile);
       if (isLive && lockStatus === 'mine') updateCodeFile(project.id, updatedFile);
   };
 
@@ -800,6 +849,13 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isChatThinking) return;
+    
+    // If in interviewer mode, prioritize external handler
+    if (isInterviewerMode && onSendExternalMessage) {
+        onSendExternalMessage(text);
+        return;
+    }
+
     setChatMessages(prev => [...prev, { role: 'user', text }]);
     setIsChatThinking(true);
     try {
@@ -874,7 +930,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       return githubRepos.filter(r => r.full_name.toLowerCase().includes(githubSearchQuery.toLowerCase()));
   }, [githubRepos, githubSearchQuery]);
 
-  // Fix: Using the params defined at component scope instead of a locally shadowed version
   const isSharedViewOnly = isLive && (params.get('mode') === 'view');
 
   return (
@@ -1017,7 +1072,16 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           </div>
           <div onMouseDown={() => setIsDraggingRight(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 z-30 shrink-0 bg-slate-800/20"></div>
           <div className={`${isRightOpen ? '' : 'hidden'} bg-slate-950 flex flex-col shrink-0 overflow-hidden`} style={{ width: `${rightWidth}px` }}>
-              <AIChatPanel isOpen={true} onClose={() => setIsRightOpen(false)} messages={chatMessages} onSendMessage={handleSendMessage} isThinking={isChatThinking} currentInput={chatInput} onInputChange={setChatInput} />
+              <AIChatPanel 
+                isOpen={true} 
+                onClose={() => setIsRightOpen(false)} 
+                messages={isInterviewerMode ? externalChatContent || [] : chatMessages} 
+                onSendMessage={handleSendMessage} 
+                isThinking={isInterviewerMode ? isAiThinking : isChatThinking} 
+                currentInput={chatInput} 
+                onInputChange={setChatInput} 
+                isInterviewerMode={isInterviewerMode}
+              />
           </div>
       </div>
 

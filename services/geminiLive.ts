@@ -67,7 +67,6 @@ export class GeminiLiveService {
       const validVoice = getValidLiveVoice(voiceName);
 
       const config: any = {
-          /* FIXED: Used Modality.AUDIO instead of raw string 'AUDIO' */
           responseModalities: [Modality.AUDIO],
           speechConfig: {
               voiceConfig: {
@@ -114,7 +113,6 @@ export class GeminiLiveService {
                         this.isPlayingResponse = true;
                         if (this.speakingTimer) clearTimeout(this.speakingTimer);
                         
-                        // Critical check for context health
                         if (this.outputAudioContext.state !== 'running') {
                             await this.outputAudioContext.resume();
                         }
@@ -176,12 +174,21 @@ export class GeminiLiveService {
       });
   }
 
-  // Added sendVideo method to support multimodal image input during real-time sessions
   public sendVideo(base64Data: string, mimeType: string) {
     this.sessionPromise?.then((session) => {
       if (session && this.isActive) {
         session.sendRealtimeInput({
           media: { data: base64Data, mimeType }
+        });
+      }
+    });
+  }
+
+  public sendText(text: string) {
+    this.sessionPromise?.then((session) => {
+      if (session && this.isActive) {
+        session.sendRealtimeInput({
+          parts: [{ text }]
         });
       }
     });
