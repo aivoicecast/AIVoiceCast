@@ -69,11 +69,9 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
   const [activePage, setActivePage] = useState<number>(0); 
   const [isViewer, setIsViewer] = useState(initialIsViewer);
   
-  // Gallery State
   const [savedCards, setSavedCards] = useState<AgentMemory[]>([]);
   const [loadingGallery, setLoadingGallery] = useState(false);
 
-  // Editor States
   const [isGeneratingText, setIsGeneratingText] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isGeneratingBackImage, setIsGeneratingBackImage] = useState(false);
@@ -85,7 +83,6 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [qrCodeBase64, setQrCodeBase64] = useState<string | null>(null);
 
-  // Live Agent State
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [isAiConnected, setIsAiConnected] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
@@ -630,8 +627,8 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                                     </button>
                                     <div className="space-y-2 pt-2">
                                         <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-                                            <button onClick={() => setMemory({...memory, fontFamily: 'font-script'})} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${memory.fontFamily === 'font-script' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Script</button>
-                                            <button onClick={() => setMemory({...memory, fontFamily: 'font-serif'})} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${memory.fontFamily === 'font-serif' ? 'bg-slate-800 text-white' : 'text-slate-500'}`}>Serif</button>
+                                            <button onClick={() => setMemory({...memory, fontFamily: 'font-script'})} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${memory.fontFamily === 'font-script' ? 'bg-slate-800 text-white' : 'text-slate-50'}`}>Script</button>
+                                            <button onClick={() => setMemory({...memory, fontFamily: 'font-serif'})} className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${memory.fontFamily === 'font-serif' ? 'bg-slate-800 text-white' : 'text-slate-50'}`}>Serif</button>
                                         </div>
                                         <div className="px-1 py-2">
                                             <div className="flex justify-between items-center mb-2"><span className="text-[9px] font-bold text-slate-600 uppercase">Size</span><span className="text-[9px] font-mono text-indigo-400">x{memory.fontSizeScale?.toFixed(1)}</span></div>

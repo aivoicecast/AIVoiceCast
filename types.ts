@@ -35,7 +35,7 @@ export interface UserProfile {
   savedSignatureUrl?: string;
   nextCheckNumber?: number;
   defaultRepoUrl?: string;
-  defaultLanguage?: string; // New field for profile
+  defaultLanguage?: string; 
   checkTemplate?: {
       bankName: string;
       routingNumber: string;
@@ -147,7 +147,7 @@ export interface RecordingSession {
   channelImage?: string;
   timestamp: number;
   mediaUrl: string;
-  driveUrl?: string; // New field for fallback/dual-storage
+  driveUrl?: string; 
   mediaType?: string;
   transcriptUrl: string;
 }
