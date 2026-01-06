@@ -183,7 +183,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   };
 
   const handleForceYouTubeSync = async (rec: any) => {
-    if (!currentUser || !rec.blob) return;
+    if (!currentUser) return;
     
     setShowSyncLog(true);
     setSyncLogs([]);
@@ -202,14 +202,26 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
     setSyncingId(rec.id);
     try {
-        const folderId = await ensureCodeStudioFolder(token!);
-        const videoBlob = rec.blob;
+        let videoBlob: Blob;
+        
+        if (rec.blob instanceof Blob) {
+            addSyncLog("Using local recording buffer...", 'info');
+            videoBlob = rec.blob;
+        } else if (isDriveUrl(rec.mediaUrl)) {
+            addSyncLog("Fetching recording from Google Drive...", 'info');
+            const fileId = rec.mediaUrl.replace('drive://', '').split('&')[0];
+            videoBlob = await downloadDriveFileAsBlob(token!, fileId);
+            addSyncLog("Drive fetch successful.", 'success');
+        } else {
+            throw new Error("Source recording not available (No local buffer or Drive link).");
+        }
+
         const transcriptText = `Neural Transcript: ${rec.channelTitle}\nOriginal ID: ${rec.id}\nForced YouTube Upload.`;
         const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
 
-        const isVideo = rec.mediaType?.includes('video');
-        if (!isVideo) {
-            throw new Error("Cannot force upload audio to YouTube. YouTube only supports video formats.");
+        const isVideo = rec.mediaType?.includes('video') || rec.mediaUrl.endsWith('.webm') || rec.mediaUrl.endsWith('.mp4');
+        if (!isVideo && !isDriveUrl(rec.mediaUrl)) {
+            throw new Error("Only video recordings can be exported to YouTube.");
         }
 
         let videoUrl = "";
@@ -229,17 +241,20 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             throw ytErr;
         }
 
-        addSyncLog("Archiving transcript to Drive...", 'info');
-        const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
-        
+        addSyncLog("Archiving ledger metadata...", 'info');
         const sessionData: RecordingSession = {
-            id: rec.id, userId: currentUser.uid, channelId: rec.channelId,
-            channelTitle: rec.channelTitle, channelImage: rec.channelImage,
-            timestamp: rec.timestamp, 
+            ...rec,
+            userId: currentUser.uid,
             mediaUrl: videoUrl,
-            mediaType: rec.mediaType, 
-            transcriptUrl: `drive://${tFileId}`
         };
+        
+        // Ensure transcript URL is also cloud-based if possible
+        if (!isDriveUrl(rec.transcriptUrl)) {
+            addSyncLog("Uploading transcript to Drive...", 'info');
+            const folderId = await ensureCodeStudioFolder(token!);
+            const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
+            sessionData.transcriptUrl = `drive://${tFileId}`;
+        }
         
         await saveRecordingReference(sessionData);
         addSyncLog("Ledger points to YouTube successfully.", 'success');
@@ -252,7 +267,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     } catch (e: any) {
         addSyncLog(`FORCE SYNC FATAL ERROR: ${e.message}`, 'error');
         setSyncingId(null);
-        alert("Forced upload failed. Check the Neural Diagnostic Console.");
+        alert("Forced upload failed: " + e.message);
     }
   };
 
@@ -428,7 +443,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         <div className="grid grid-cols-1 gap-4">
           {recordings.map((rec) => {
             const date = new Date(rec.timestamp);
-            const isVideo = rec.mediaType?.includes('video');
+            const isVideo = rec.mediaType?.includes('video') || rec.mediaUrl.endsWith('.webm') || isYouTubeUrl(rec.mediaUrl);
             const isPlaying = activeMediaId === rec.id;
             const isLocal = rec.mediaUrl.startsWith('blob:') || rec.mediaUrl.startsWith('data:');
             const isYoutube = isYouTubeUrl(rec.mediaUrl);
@@ -476,24 +491,27 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                   </div>
 
                   <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-                    {isLocal && currentUser && (
+                    {currentUser && !isYoutube && (
                         <div className="flex items-center gap-2">
                             <button 
                                 onClick={() => handleForceYouTubeSync(rec)}
                                 disabled={syncingId === rec.id}
-                                className="p-2.5 rounded-xl border bg-red-600/10 border-red-500/20 text-red-500 hover:bg-red-600 hover:text-white transition-all shadow-lg active:scale-95"
-                                title="Force YouTube Upload"
+                                className="p-2.5 rounded-xl border bg-red-600 hover:bg-red-500 text-white transition-all shadow-lg active:scale-95 flex items-center gap-2 px-4 group"
+                                title="Force Export to YouTube"
                             >
-                                {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <Youtube size={18} />}
+                                {syncingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <Youtube size={16} />}
+                                <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:inline">Export to YouTube</span>
                             </button>
-                            <button 
-                                onClick={() => handleManualSync(rec)}
-                                disabled={syncingId === rec.id}
-                                className="p-2.5 rounded-xl border bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95"
-                                title="Auto Sync (Respects Preference)"
-                            >
-                                {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <CloudUpload size={18} />}
-                            </button>
+                            {isLocal && (
+                                <button 
+                                    onClick={() => handleManualSync(rec)}
+                                    disabled={syncingId === rec.id}
+                                    className="p-2.5 rounded-xl border bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95"
+                                    title="Auto Sync (Respects Preference)"
+                                >
+                                    {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <CloudUpload size={18} />}
+                                </button>
+                            )}
                         </div>
                     )}
 
