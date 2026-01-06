@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { RecordingSession, Channel, TranscriptItem, UserProfile } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap, Download, Share2 } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap, Download, Share2, Square, CheckSquare } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getYouTubeEmbedUrl, uploadToYouTube, getYouTubeVideoUrl, deleteYouTubeVideo } from '../services/youtubeService';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
@@ -40,6 +40,10 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   
+  // Selection State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
   const [isRecorderModalOpen, setIsRecorderModalOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('');
   const [recordCamera, setRecordCamera] = useState(true);
@@ -364,97 +368,119 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     }
   };
 
+  const purgeRecordingAssets = async (rec: RecordingSession, token: string | null) => {
+    const isCloud = !rec.mediaUrl.startsWith('blob:') && !rec.mediaUrl.startsWith('data:');
+    if (!isCloud) {
+        await deleteLocalRecording(rec.id);
+        return;
+    }
+
+    const ytUri = isYouTubeUrl(rec.mediaUrl) ? rec.mediaUrl : (isYouTubeUrl(rec.driveUrl || '') ? rec.driveUrl : '');
+    const driveUri = isDriveUrl(rec.mediaUrl) ? rec.mediaUrl : (isDriveUrl(rec.driveUrl || '') ? rec.driveUrl : '');
+    const transcriptUri = isDriveUrl(rec.transcriptUrl) ? rec.transcriptUrl : '';
+
+    if (ytUri && token) {
+        const videoId = ytUri.split('v=')[1] || ytUri.split('/').pop() || '';
+        if (videoId) {
+            try { await deleteYouTubeVideo(token, videoId); } catch (e) {}
+        }
+    }
+
+    if (driveUri && token) {
+        const fileId = driveUri.replace('drive://', '').split('&')[0];
+        if (fileId) {
+            try { await deleteDriveFile(token, fileId); } catch (e) {}
+        }
+    }
+
+    if (transcriptUri && token) {
+        const tFileId = transcriptUri.replace('drive://', '').split('&')[0];
+        if (tFileId) {
+            try { await deleteDriveFile(token, tFileId); } catch (e) {}
+        }
+    }
+
+    await deleteRecordingReference(rec.id, rec.mediaUrl, rec.transcriptUrl);
+  };
+
   const handleDelete = async (rec: RecordingSession) => {
     if (!confirm(`Are you sure you want to permanently delete "${rec.channelTitle}"? This will remove the video from YouTube AND Google Drive.`)) return;
     
-    // We need to handle cloud asset deletion before deleting the ledger reference
-    const isCloud = !rec.mediaUrl.startsWith('blob:') && !rec.mediaUrl.startsWith('data:');
-    
-    if (isCloud && currentUser) {
-        setShowSyncLog(true);
-        setSyncLogs([]);
-        addSyncLog(`HARD DELETE STARTED: ${rec.channelTitle}`, 'warn');
-
+    setDeletingId(rec.id);
+    try {
         let token = getDriveToken();
-        if (!token) {
-            addSyncLog("Authentication required for asset removal...", 'warn');
+        const isCloud = !rec.mediaUrl.startsWith('blob:') && !rec.mediaUrl.startsWith('data:');
+        if (isCloud && !token) {
             const user = await signInWithGoogle();
-            if (!user) {
-                addSyncLog("Deletion canceled: No permissions to delete assets.", 'error');
-                return;
-            }
+            if (!user) { setDeletingId(null); return; }
             token = getDriveToken();
         }
-
-        setDeletingId(rec.id);
-        try {
-            // 1. Identify Assets
-            const ytUri = isYouTubeUrl(rec.mediaUrl) ? rec.mediaUrl : (isYouTubeUrl(rec.driveUrl || '') ? rec.driveUrl : '');
-            const driveUri = isDriveUrl(rec.mediaUrl) ? rec.mediaUrl : (isDriveUrl(rec.driveUrl || '') ? rec.driveUrl : '');
-            const transcriptUri = isDriveUrl(rec.transcriptUrl) ? rec.transcriptUrl : '';
-
-            // 2. Delete from YouTube
-            if (ytUri) {
-                const videoId = ytUri.split('v=')[1] || ytUri.split('/').pop() || '';
-                if (videoId) {
-                    addSyncLog(`Requesting YouTube to purge video: ${videoId}...`, 'info');
-                    try {
-                        await deleteYouTubeVideo(token!, videoId);
-                        addSyncLog("YouTube asset successfully removed.", 'success');
-                    } catch (ytErr: any) {
-                        addSyncLog(`YouTube deletion failed: ${ytErr.message}`, 'error');
-                    }
-                }
-            }
-
-            // 3. Delete from Google Drive
-            if (driveUri) {
-                const fileId = driveUri.replace('drive://', '').split('&')[0];
-                if (fileId) {
-                    addSyncLog(`Requesting Google Drive to purge file: ${fileId}...`, 'info');
-                    try {
-                        await deleteDriveFile(token!, fileId);
-                        addSyncLog("Google Drive asset successfully removed.", 'success');
-                    } catch (drErr: any) {
-                        addSyncLog(`Drive file deletion failed: ${drErr.message}`, 'error');
-                    }
-                }
-            }
-
-            // 4. Delete Transcript from Google Drive
-            if (transcriptUri) {
-                const tFileId = transcriptUri.replace('drive://', '').split('&')[0];
-                if (tFileId) {
-                    addSyncLog(`Purging transcript file: ${tFileId}...`, 'info');
-                    try {
-                        await deleteDriveFile(token!, tFileId);
-                        addSyncLog("Transcript asset successfully removed.", 'success');
-                    } catch (e) {}
-                }
-            }
-
-            // 5. Finalize Ledger Delete
-            addSyncLog("Updating neural ledger: Removing session reference...", 'info');
-            await deleteRecordingReference(rec.id, rec.mediaUrl, rec.transcriptUrl);
-            addSyncLog("Cloud session completely purged.", 'success');
-            
-            setRecordings(prev => prev.filter(r => r.id !== rec.id));
-            setTimeout(() => {
-                setShowSyncLog(false);
-                setDeletingId(null);
-            }, 1500);
-
-        } catch (e: any) {
-            addSyncLog(`CRITICAL DELETE ERROR: ${e.message}`, 'error');
-            setDeletingId(null);
-        }
-    } else {
-        // Local only or guest deletion
-        try {
-            await deleteLocalRecording(rec.id);
-            setRecordings(prev => prev.filter(r => r.id !== rec.id));
-        } catch (e) { alert("Local deletion failed."); }
+        await purgeRecordingAssets(rec, token);
+        setRecordings(prev => prev.filter(r => r.id !== rec.id));
+    } catch (e: any) {
+        alert("Delete failed: " + e.message);
+    } finally {
+        setDeletingId(null);
     }
+  };
+
+  const handleBulkDelete = async () => {
+    const count = selectedIds.size;
+    if (count === 0) return;
+    if (!confirm(`Permanently delete ${count} selected recordings? This will purge associated assets from YouTube and Google Drive.`)) return;
+
+    setIsBulkDeleting(true);
+    setShowSyncLog(true);
+    setSyncLogs([]);
+    addSyncLog(`Starting BATCH PURGE for ${count} items...`, 'warn');
+
+    let token = getDriveToken();
+    if (!token && currentUser) {
+        addSyncLog("Authentication required for batch cleanup...", 'warn');
+        const user = await signInWithGoogle();
+        if (!user) {
+            addSyncLog("Action canceled.", 'error');
+            setIsBulkDeleting(false);
+            return;
+        }
+        token = getDriveToken();
+    }
+
+    try {
+        const idsToPurge = Array.from(selectedIds);
+        for (let i = 0; i < idsToPurge.length; i++) {
+            const id = idsToPurge[i];
+            const rec = recordings.find(r => r.id === id);
+            if (rec) {
+                addSyncLog(`[${i+1}/${count}] Purging: ${rec.channelTitle}...`, 'info');
+                await purgeRecordingAssets(rec, token);
+                addSyncLog(`Purged: ${id}`, 'success');
+            }
+        }
+        addSyncLog("Batch Purge Complete.", 'success');
+        setRecordings(prev => prev.filter(r => !selectedIds.has(r.id)));
+        setSelectedIds(new Set());
+        setTimeout(() => setShowSyncLog(false), 2000);
+    } catch (e: any) {
+        addSyncLog(`BATCH ERROR: ${e.message}`, 'error');
+    } finally {
+        setIsBulkDeleting(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === recordings.length) {
+        setSelectedIds(new Set());
+    } else {
+        setSelectedIds(new Set(recordings.map(r => r.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
   };
 
   const handleStartRecorder = async () => {
@@ -509,6 +535,35 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         </div>
       </div>
 
+      {/* Bulk Action Bar */}
+      {!loading && recordings.length > 0 && (
+          <div className={`p-4 rounded-2xl border transition-all duration-300 flex items-center justify-between ${selectedIds.size > 0 ? 'bg-indigo-600 border-indigo-400 shadow-xl shadow-indigo-900/20' : 'bg-slate-900 border-slate-800'}`}>
+              <div className="flex items-center gap-4">
+                  <button onClick={toggleSelectAll} className="flex items-center gap-2 text-xs font-bold text-white uppercase tracking-widest hover:opacity-80 transition-opacity">
+                      {selectedIds.size === recordings.length ? <CheckSquare size={18}/> : <Square size={18}/>}
+                      <span>{selectedIds.size === recordings.length ? 'Deselect All' : 'Select All'}</span>
+                  </button>
+                  {selectedIds.size > 0 && (
+                      <div className="h-6 w-px bg-white/20 mx-2 hidden sm:block"></div>
+                  )}
+                  {selectedIds.size > 0 && (
+                      <span className="text-sm font-black text-white">{selectedIds.size} SELECTED</span>
+                  )}
+              </div>
+              
+              {selectedIds.size > 0 && (
+                  <button 
+                    onClick={handleBulkDelete}
+                    disabled={isBulkDeleting}
+                    className="flex items-center gap-2 px-6 py-2 bg-white text-indigo-600 hover:bg-red-50 hover:text-red-600 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                  >
+                      {isBulkDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16}/>}
+                      <span>Purge Selected</span>
+                  </button>
+              )}
+          </div>
+      )}
+
       {loading ? (
         <div className="py-24 flex flex-col items-center justify-center text-indigo-400 gap-4">
           <Loader2 className="animate-spin" size={40} />
@@ -527,6 +582,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             const isVideo = rec.mediaType?.includes('video') || rec.mediaUrl.endsWith('.webm') || isYouTubeUrl(rec.mediaUrl);
             const isPlaying = activeMediaId === rec.id;
             const isLocal = rec.mediaUrl.startsWith('blob:') || rec.mediaUrl.startsWith('data:');
+            const isSelected = selectedIds.has(rec.id);
             
             // Check for presence of both
             const hasYoutube = isYouTubeUrl(rec.mediaUrl) || (rec.driveUrl && isYouTubeUrl(rec.mediaUrl));
@@ -541,143 +597,151 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             const isThisDeleting = deletingId === rec.id;
 
             return (
-              <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : 'border-slate-800'} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl`}>
-                <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:scale-105 ${hasYoutube ? 'bg-red-900/20 border-red-500/50 text-red-500' : hasDrive ? 'bg-indigo-900/20 border-indigo-500/50 text-indigo-400' : 'bg-slate-800 text-slate-500'}`}>
-                       {hasYoutube ? <Youtube size={24} /> : hasDrive ? <HardDrive size={24} /> : <Mic size={24} />}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-white text-lg truncate">{rec.channelTitle}</h3>
-                        {hasYoutube && <span className="bg-red-600 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded">YouTube</span>}
-                        {hasDrive && <span className="bg-indigo-600 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded">Drive</span>}
-                        {isLocal && <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700">Local Only</span>}
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
-                        <span className="flex items-center gap-1"><Calendar size={12} /> {date.toLocaleDateString()}</span>
-                        <span className="flex items-center gap-1"><Clock size={12} /> {date.toLocaleTimeString()}</span>
-                      </div>
-                      
-                      <div className="mt-2 flex flex-wrap items-center gap-3 max-w-full">
-                          {ytUri && (
-                              <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
-                                  <div className="flex items-center gap-1 text-[8px] font-bold text-red-400 uppercase tracking-widest bg-red-900/20 px-1.5 py-0.5 rounded border border-red-500/10">
-                                    <Youtube size={8}/>
-                                    <span>YT URI</span>
-                                  </div>
-                                  <code className="text-[9px] font-mono text-slate-500 truncate max-w-[120px]">{ytUri}</code>
-                                  <button onClick={() => handleCopyLink(ytUri, rec.id + '-yt')} className={`p-1 rounded hover:bg-slate-800 transition-colors ${copyingId === rec.id + '-yt' ? 'text-emerald-400' : 'text-slate-500'}`} title="Copy YouTube URI">
-                                      {copyingId === rec.id + '-yt' ? <Check size={10}/> : <Copy size={10}/>}
-                                  </button>
-                              </div>
-                          )}
-                          {driveUri && (
-                              <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
-                                  <div className="flex items-center gap-1 text-[8px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-900/20 px-1.5 py-0.5 rounded border border-indigo-500/10">
-                                    <HardDrive size={8}/>
-                                    <span>DRIVE URI</span>
-                                  </div>
-                                  <code className="text-[9px] font-mono text-slate-500 truncate max-w-[120px]">{driveUri}</code>
-                                  <button onClick={() => handleCopyLink(driveUri, rec.id + '-dr')} className={`p-1 rounded hover:bg-slate-800 transition-colors ${copyingId === rec.id + '-dr' ? 'text-emerald-400' : 'text-slate-500'}`} title="Copy Drive URI">
-                                      {copyingId === rec.id + '-dr' ? <Check size={10}/> : <Copy size={10}/>}
-                                  </button>
-                              </div>
-                          )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-                    {currentUser && (
+              <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : (isSelected ? 'border-indigo-500 bg-indigo-900/5' : 'border-slate-800')} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl flex gap-4`}>
+                <div className="flex flex-col items-center pt-2">
+                    <button onClick={() => toggleSelect(rec.id)} className={`transition-colors ${isSelected ? 'text-indigo-400' : 'text-slate-700 hover:text-slate-500'}`}>
+                        {isSelected ? <CheckSquare size={20}/> : <Square size={20}/>}
+                    </button>
+                </div>
+                
+                <div className="flex-1">
+                    <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:scale-105 ${hasYoutube ? 'bg-red-900/20 border-red-500/50 text-red-500' : hasDrive ? 'bg-indigo-900/20 border-indigo-500/50 text-indigo-400' : 'bg-slate-800 text-slate-500'}`}>
+                        {hasYoutube ? <Youtube size={24} /> : hasDrive ? <HardDrive size={24} /> : <Mic size={24} />}
+                        </div>
+                        <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                            <button 
-                                onClick={() => handleForceYouTubeSync(rec)}
-                                disabled={syncingId === rec.id || isThisDeleting || hasYoutube}
-                                className={`p-2.5 rounded-xl border transition-all shadow-lg active:scale-95 flex items-center gap-2 px-4 group ${hasYoutube ? 'bg-slate-800 text-slate-600 cursor-not-allowed border-slate-700' : 'bg-red-600 hover:bg-red-500 text-white'}`}
-                                title={hasYoutube ? "Already on YouTube" : "Sync to YouTube"}
-                            >
-                                {syncingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <Youtube size={16} />}
-                                <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:inline">{hasYoutube ? 'Synced' : 'Transfer to YT'}</span>
-                            </button>
-                            {isLocal && (
-                                <button 
-                                    onClick={() => handleManualSync(rec)}
-                                    disabled={syncingId === rec.id || isThisDeleting}
-                                    className="p-2.5 rounded-xl border bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95"
-                                    title="Auto Sync to Drive"
-                                >
-                                    {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <CloudUpload size={18} />}
-                                </button>
+                            <h3 className="font-bold text-white text-lg truncate">{rec.channelTitle}</h3>
+                            {hasYoutube && <span className="bg-red-600 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded">YouTube</span>}
+                            {hasDrive && <span className="bg-indigo-600 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded">Drive</span>}
+                            {isLocal && <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700">Local Only</span>}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                            <span className="flex items-center gap-1"><Calendar size={12} /> {date.toLocaleDateString()}</span>
+                            <span className="flex items-center gap-1"><Clock size={12} /> {date.toLocaleTimeString()}</span>
+                        </div>
+                        
+                        <div className="mt-2 flex flex-wrap items-center gap-3 max-w-full">
+                            {ytUri && (
+                                <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                                    <div className="flex items-center gap-1 text-[8px] font-bold text-red-400 uppercase tracking-widest bg-red-900/20 px-1.5 py-0.5 rounded border border-red-500/10">
+                                        <Youtube size={8}/>
+                                        <span>YT URI</span>
+                                    </div>
+                                    <code className="text-[9px] font-mono text-slate-500 truncate max-w-[120px]">{ytUri}</code>
+                                    <button onClick={() => handleCopyLink(ytUri, rec.id + '-yt')} className={`p-1 rounded hover:bg-slate-800 transition-colors ${copyingId === rec.id + '-yt' ? 'text-emerald-400' : 'text-slate-500'}`} title="Copy YouTube URI">
+                                        {copyingId === rec.id + '-yt' ? <Check size={10}/> : <Copy size={10}/>}
+                                    </button>
+                                </div>
+                            )}
+                            {driveUri && (
+                                <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                                    <div className="flex items-center gap-1 text-[8px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-900/20 px-1.5 py-0.5 rounded border border-indigo-500/10">
+                                        <HardDrive size={8}/>
+                                        <span>DRIVE URI</span>
+                                    </div>
+                                    <code className="text-[9px] font-mono text-slate-500 truncate max-w-[120px]">{driveUri}</code>
+                                    <button onClick={() => handleCopyLink(driveUri, rec.id + '-dr')} className={`p-1 rounded hover:bg-slate-800 transition-colors ${copyingId === rec.id + '-dr' ? 'text-emerald-400' : 'text-slate-500'}`} title="Copy Drive URI">
+                                        {copyingId === rec.id + '-dr' ? <Check size={10}/> : <Copy size={10}/>}
+                                    </button>
+                                </div>
                             )}
                         </div>
-                    )}
-
-                    <button 
-                        onClick={() => handleShare(rec)}
-                        disabled={isThisDeleting}
-                        className="p-2.5 bg-slate-800 text-slate-400 hover:text-indigo-400 rounded-xl border border-slate-700 transition-colors disabled:opacity-30" 
-                        title="Share Session"
-                    >
-                        <Share2 size={20} />
-                    </button>
-
-                    {!hasYoutube && (
-                        <button 
-                            onClick={() => handleDownloadToDevice(rec)}
-                            disabled={isThisDownloading || isThisDeleting}
-                            className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors disabled:opacity-30" 
-                            title="Download Local"
-                        >
-                            {isThisDownloading ? <Loader2 size={20} className="animate-spin text-indigo-400" /> : <Download size={20} />}
-                        </button>
-                    )}
-                    
-                    <button 
-                      onClick={() => handlePlayback(rec)}
-                      disabled={(resolvingId !== null && !isThisResolving) || isThisDeleting}
-                      className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95 ${isPlaying ? 'bg-red-600 text-white' : 'bg-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-slate-700'} disabled:opacity-30`}
-                    >
-                      {isThisResolving ? <Loader2 size={16} className="animate-spin" /> : isPlaying ? <X size={16}/> : <Play size={16} fill="currentColor" />}
-                      <span>{isPlaying ? 'Close' : 'Playback'}</span>
-                    </button>
-                    
-                    <a href={rec.transcriptUrl} target="_blank" rel="noreferrer" className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors" title="View Transcript">
-                      <FileText size={20} />
-                    </a>
-
-                    <button onClick={() => handleDelete(rec)} disabled={isThisDeleting} className="p-2.5 bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors disabled:opacity-30" title="Delete Permanent">
-                      {isThisDeleting ? <Loader2 size={20} className="animate-spin text-red-400" /> : <Trash2 size={20} />}
-                    </button>
-                  </div>
-                </div>
-
-                {isPlaying && resolvedMediaUrl && (
-                  <div className="mt-6 pt-6 border-t border-slate-800 animate-fade-in flex justify-center">
-                    {hasYoutube && isYouTubeUrl(rec.mediaUrl) ? (
-                        <div className="relative pt-[56.25%] w-full overflow-hidden rounded-2xl bg-black border border-slate-800 shadow-2xl">
-                             <iframe 
-                                className="absolute top-0 left-0 w-full h-full"
-                                src={getYouTubeEmbedUrl(rec.mediaUrl.split('v=')[1] || rec.mediaUrl.split('/').pop() || '')}
-                                frameBorder="0" allowFullScreen
-                             />
                         </div>
-                    ) : isVideo ? (
-                      <div className="w-full bg-black rounded-2xl overflow-hidden flex justify-center shadow-2xl border border-slate-800" style={{ maxHeight: '70vh' }}>
-                        <video 
-                            src={resolvedMediaUrl} 
-                            controls 
-                            autoPlay 
-                            className="max-w-full max-h-full h-auto w-auto object-contain"
-                        />
-                      </div>
-                    ) : (
-                      <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 flex items-center gap-6 shadow-inner w-full">
-                          <audio src={resolvedMediaUrl} controls autoPlay className="flex-1" />
-                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                        {currentUser && (
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => handleForceYouTubeSync(rec)}
+                                    disabled={syncingId === rec.id || isThisDeleting || hasYoutube}
+                                    className={`p-2.5 rounded-xl border transition-all shadow-lg active:scale-95 flex items-center gap-2 px-4 group ${hasYoutube ? 'bg-slate-800 text-slate-600 cursor-not-allowed border-slate-700' : 'bg-red-600 hover:bg-red-500 text-white'}`}
+                                    title={hasYoutube ? "Already on YouTube" : "Sync to YouTube"}
+                                >
+                                    {syncingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <Youtube size={16} />}
+                                    <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:inline">{hasYoutube ? 'Synced' : 'Transfer to YT'}</span>
+                                </button>
+                                {isLocal && (
+                                    <button 
+                                        onClick={() => handleManualSync(rec)}
+                                        disabled={syncingId === rec.id || isThisDeleting}
+                                        className="p-2.5 rounded-xl border bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95"
+                                        title="Auto Sync to Drive"
+                                    >
+                                        {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <CloudUpload size={18} />}
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        <button 
+                            onClick={() => handleShare(rec)}
+                            disabled={isThisDeleting}
+                            className="p-2.5 bg-slate-800 text-slate-400 hover:text-indigo-400 rounded-xl border border-slate-700 transition-colors disabled:opacity-30" 
+                            title="Share Session"
+                        >
+                            <Share2 size={20} />
+                        </button>
+
+                        {!hasYoutube && (
+                            <button 
+                                onClick={() => handleDownloadToDevice(rec)}
+                                disabled={isThisDownloading || isThisDeleting}
+                                className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors disabled:opacity-30" 
+                                title="Download Local"
+                            >
+                                {isThisDownloading ? <Loader2 size={20} className="animate-spin text-indigo-400" /> : <Download size={20} />}
+                            </button>
+                        )}
+                        
+                        <button 
+                        onClick={() => handlePlayback(rec)}
+                        disabled={(resolvingId !== null && !isThisResolving) || isThisDeleting}
+                        className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95 ${isPlaying ? 'bg-red-600 text-white' : 'bg-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-slate-700'} disabled:opacity-30`}
+                        >
+                        {isThisResolving ? <Loader2 size={16} className="animate-spin" /> : isPlaying ? <X size={16}/> : <Play size={16} fill="currentColor" />}
+                        <span>{isPlaying ? 'Close' : 'Playback'}</span>
+                        </button>
+                        
+                        <a href={rec.transcriptUrl} target="_blank" rel="noreferrer" className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors" title="View Transcript">
+                        <FileText size={20} />
+                        </a>
+
+                        <button onClick={() => handleDelete(rec)} disabled={isThisDeleting} className="p-2.5 bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors disabled:opacity-30" title="Delete Permanent">
+                        {isThisDeleting ? <Loader2 size={20} className="animate-spin text-red-400" /> : <Trash2 size={20} />}
+                        </button>
+                    </div>
+                    </div>
+
+                    {isPlaying && resolvedMediaUrl && (
+                    <div className="mt-6 pt-6 border-t border-slate-800 animate-fade-in flex justify-center">
+                        {hasYoutube && isYouTubeUrl(rec.mediaUrl) ? (
+                            <div className="relative pt-[56.25%] w-full overflow-hidden rounded-2xl bg-black border border-slate-800 shadow-2xl">
+                                <iframe 
+                                    className="absolute top-0 left-0 w-full h-full"
+                                    src={getYouTubeEmbedUrl(rec.mediaUrl.split('v=')[1] || rec.mediaUrl.split('/').pop() || '')}
+                                    frameBorder="0" allowFullScreen
+                                />
+                            </div>
+                        ) : isVideo ? (
+                        <div className="w-full bg-black rounded-2xl overflow-hidden flex justify-center shadow-2xl border border-slate-800" style={{ maxHeight: '70vh' }}>
+                            <video 
+                                src={resolvedMediaUrl} 
+                                controls 
+                                autoPlay 
+                                className="max-w-full max-h-full h-auto w-auto object-contain"
+                            />
+                        </div>
+                        ) : (
+                        <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 flex items-center gap-6 shadow-inner w-full">
+                            <audio src={resolvedMediaUrl} controls autoPlay className="flex-1" />
+                        </div>
+                        )}
+                    </div>
                     )}
-                  </div>
-                )}
+                </div>
               </div>
             );
           })}
