@@ -1,9 +1,8 @@
-
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, Video
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, Video, ChevronDown
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewState, TranscriptItem } from './types';
@@ -236,7 +235,7 @@ const App: React.FC = () => {
     returnTo?: ViewState;
   } | null>(null);
 
-  const allApps = [
+  const allApps = useMemo(() => [
     { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); setActiveTab('categories'); }, color: 'text-indigo-400' },
     { id: 'mock_interview', label: t.mockInterview, icon: Video, action: () => handleSetViewState('mock_interview'), color: 'text-red-500' },
     { id: 'wallet', label: t.wallet, icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400' },
@@ -256,7 +255,7 @@ const App: React.FC = () => {
     { id: 'blog', label: t.blog, icon: Rss, action: () => handleSetViewState('blog'), color: 'text-orange-400' },
     { id: 'card_workshop', label: t.cards, icon: Gift, action: () => handleSetViewState('card_workshop'), color: 'text-red-400' },
     { id: 'mission', label: t.mission, icon: Rocket, action: () => handleSetViewState('mission'), color: 'text-orange-500' },
-  ];
+  ], [t]);
 
   const handleSetViewState = (newState: ViewState, params: Record<string, string> = {}) => {
     stopAllPlatformAudio(`NavigationTransition:${viewState}->${newState}`);
@@ -407,10 +406,46 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <div className="h-screen flex flex-col bg-slate-950 text-slate-50 overflow-hidden">
         <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 sm:px-6 shrink-0 z-50 backdrop-blur-xl">
-           <div className="flex items-center gap-4">
-              <button onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
-                 <LayoutGrid size={22} />
-              </button>
+           <div className="flex items-center gap-3">
+              <div className="relative">
+                <button 
+                  onClick={() => { setIsAppsMenuOpen(!isAppsMenuOpen); setIsUserMenuOpen(false); }} 
+                  className={`p-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 ${isAppsMenuOpen ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  aria-label="App Launcher"
+                >
+                  <LayoutGrid size={20} />
+                  <ChevronDown size={14} className={`transition-transform duration-200 ${isAppsMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isAppsMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-[100]" onClick={() => setIsAppsMenuOpen(false)}></div>
+                    <div className="absolute left-0 top-full mt-2 w-64 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up z-[110] flex flex-col border-indigo-500/20">
+                      <div className="p-3 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Neural OS Apps</span>
+                      </div>
+                      <div className="max-h-[70vh] overflow-y-auto p-1 space-y-0.5 scrollbar-hide">
+                        {allApps.map(app => (
+                          <button 
+                            key={app.id} 
+                            onClick={() => { app.action(); setIsAppsMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-indigo-600/10 text-left transition-all group"
+                          >
+                            <div className={`p-1.5 rounded-lg bg-slate-800 border border-slate-700 group-hover:border-indigo-500/30 transition-colors`}>
+                              <app.icon className={`${app.color}`} size={16} />
+                            </div>
+                            <span className="text-xs font-bold text-slate-300 group-hover:text-white transition-colors">{app.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="p-3 bg-slate-950 border-t border-slate-800 flex justify-center">
+                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Platform v4.2.1</p>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
               <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.location.href = window.location.origin}>
                  <BrandLogo size={32} />
                  <h1 className="text-xl font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400 transition-colors">AIVoiceCast</h1>
@@ -440,46 +475,13 @@ const App: React.FC = () => {
                   <span className="relative z-10">{t.magic}</span>
               </button>
               <div className="relative">
-                 <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">
+                 <button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">
                     <img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=Guest`} alt="Profile" className="w-full h-full object-cover" />
                  </button>
                  <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} setIsSyncModalOpen={() => {}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => setIsUserGuideOpen(true)} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => setIsPrivacyOpen(true)} t={t} channels={allChannels} language={language} setLanguage={setLanguage} />
               </div>
            </div>
         </header>
-
-        {isAppsMenuOpen && (
-            <div className="fixed inset-0 z-[100] animate-fade-in">
-                <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={() => setIsAppsMenuOpen(false)}></div>
-                <div className="absolute left-4 sm:left-6 top-20 w-[calc(100vw-2rem)] md:w-[640px] lg:w-[850px] bg-slate-900 border border-slate-700 rounded-[2.5rem] shadow-2xl overflow-hidden p-6 md:p-8 animate-fade-in-up">
-                    <div className="flex justify-between items-center mb-6 md:mb-8">
-                        <div className="flex flex-col">
-                            <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Neural OS</h3>
-                            <p className="text-lg font-bold text-white">App Launcher</p>
-                        </div>
-                        <button onClick={() => setIsAppsMenuOpen(false)} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
-                            <X size={20} className="text-slate-500 hover:text-white"/>
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-                        {allApps.map(app => ( 
-                            <button 
-                                key={app.id} 
-                                onClick={app.action} 
-                                className="flex flex-col items-center gap-3 p-5 md:p-6 bg-slate-800/40 hover:bg-indigo-600/10 border border-slate-800 hover:border-indigo-500/40 rounded-3xl transition-all group relative overflow-hidden"
-                            > 
-                                <div className="absolute top-0 right-0 p-8 bg-white/5 blur-3xl rounded-full group-hover:bg-white/10 transition-colors pointer-events-none"></div>
-                                <app.icon className={`${app.color} group-hover:scale-110 transition-transform relative z-10`} size={28} /> 
-                                <span className="text-[10px] md:text-[11px] font-black text-slate-400 group-hover:text-white uppercase tracking-widest relative z-10 text-center">{app.label}</span> 
-                            </button> 
-                        ))}
-                    </div>
-                    <div className="mt-8 pt-6 border-t border-slate-800 flex justify-center">
-                        <p className="text-[9px] font-bold text-slate-600 uppercase tracking-[0.3em]">AIVoiceCast Platform v4.2.0</p>
-                    </div>
-                </div>
-            </div>
-        )}
 
         <main className="flex-1 overflow-hidden relative">
             {viewState === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice={globalVoice} currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={handleVote} /> )}
