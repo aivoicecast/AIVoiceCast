@@ -441,7 +441,7 @@ const App: React.FC = () => {
                         ))}
                       </div>
                       <div className="p-3 bg-slate-950 border-t border-slate-800 flex justify-center">
-                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Platform v4.2.2</p>
+                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Platform v4.2.4</p>
                       </div>
                     </div>
                   </>

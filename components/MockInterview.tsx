@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -8,7 +7,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint } from 'lucide-react';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
 
 interface MockInterviewProps {
@@ -73,7 +72,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [initialStudioFiles, setInitialStudioFiles] = useState<CodeFile[]>([]);
-  const activeCodeFileRef = useRef<CodeFile | null>(null);
+  
+  // UUID for the current project session
+  const [currentSessionId, setCurrentSessionId] = useState<string>('');
+  const activeCodeFilesRef = useRef<CodeFile[]>([]);
 
   const [activeRecording, setActiveRecording] = useState<MockInterviewRecording | null>(null);
   const [report, setReport] = useState<InterviewReport | null>(null);
@@ -84,7 +86,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const videoChunksRef = useRef<Blob[]>([]);
   const videoBlobRef = useRef<Blob | null>(null);
-  const interviewIdRef = useRef(generateSecureId());
   
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const activeStreamRef = useRef<MediaStream | null>(null);
@@ -135,10 +136,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const handleSendTextMessage = (text: string) => {
     if (liveServiceRef.current && isAiConnected) {
         setIsAiThinking(true);
-        // CRITICAL: Send text explicitly to the live session
+        const userMsg: TranscriptItem = { role: 'user', text, timestamp: Date.now() };
+        setTranscript(prev => [...prev, userMsg]);
         liveServiceRef.current.sendText(text);
-        setTranscript(prev => [...prev, { role: 'user', text, timestamp: Date.now() }]);
-        logApi("Neural Link: Transmitted chat data");
+        logApi("Neural Link: Transmitted chat data packet");
     }
   };
 
@@ -154,7 +155,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setTimeout(async () => {
       if (isEndingRef.current) return;
       const historyText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-      const prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${mode}. History recap: ${historyText.substring(historyText.length - 2000)}. IMPORTANT: Acknowledge messages typed in the candidate's chat box as well as audio inputs.`;
+      const prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${mode}. History recap: ${historyText.substring(historyText.length - 2000)}. IMPORTANT: Monitor and acknowledge messages typed in the chat box. They are high-priority candidate responses.`;
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
@@ -193,7 +194,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           onToolCall: async (toolCall) => {
               for (const fc of toolCall.functionCalls) {
                   if (fc.name === 'get_current_code') {
-                      const code = activeCodeFileRef.current?.content || "// No code written yet.";
+                      // Note: We provide the content of the "solution" file or the first file
+                      const code = activeCodeFilesRef.current[0]?.content || "// No code written yet.";
                       service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: code } }]);
                       logApi("AI Read Candidate Code");
                   }
@@ -219,6 +221,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setIsStarting(true);
     isEndingRef.current = false;
     
+    // UUID Generation for the specific project space
+    const uuid = generateSecureId();
+    setCurrentSessionId(uuid);
+
     let camStream: MediaStream | null = null;
     let screenStream: MediaStream | null = null;
     
@@ -239,7 +245,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setReport(null);
     setApiLogs([]);
     videoChunksRef.current = [];
-    interviewIdRef.current = generateSecureId();
 
     const duration = getDurationSeconds(mode);
     setTimeLeft(duration);
@@ -259,12 +264,23 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
       const ext = language.toLowerCase() === 'python' ? 'py' : (language.toLowerCase().includes('java') ? 'java' : 'cpp');
       const solutionFile: CodeFile = {
-          name: `solution.${ext}`, path: `solution.${ext}`, language: language.toLowerCase() as any,
-          content: `/* \n * Interview Challenge: ${mode}\n */\n\n`,
+          name: `solution.${ext}`, path: `drive://${uuid}/solution.${ext}`, language: language.toLowerCase() as any,
+          content: `/* \n * Interview Challenge: ${mode}\n * Session UUID: ${uuid}\n */\n\n`,
           loaded: true, isDirectory: false, isModified: false
       };
-      activeCodeFileRef.current = solutionFile;
+      activeCodeFilesRef.current = [solutionFile];
       setInitialStudioFiles([solutionFile]);
+
+      // Initialize the project in Firestore for real-time UUID-linked saving
+      /* Fix: Changed accessLevel from 'private' to 'restricted' to match type definition in types.ts */
+      await saveCodeProject({
+          id: uuid,
+          name: `Interview_${mode}_${new Date().toLocaleDateString()}`,
+          files: [solutionFile],
+          lastModified: Date.now(),
+          accessLevel: 'restricted',
+          allowedUserIds: currentUser ? [currentUser.uid] : []
+      });
 
       // Recording logic
       const isPortrait = window.innerHeight > window.innerWidth;
@@ -305,7 +321,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
-      const sysPrompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. IMPORTANT: You are monitoring both the candidate's speech (audio) AND their typed messages in the chat box. Respond and acknowledge both inputs naturally. GOAL: Start by introducing yourself and the challenge.`;
+      const sysPrompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. IMPORTANT: You are monitoring the candidate's speech AND their typed chat messages. You are also monitoring a code project with ID: ${uuid}. Respond naturally to all inputs. GOAL: Introduce yourself and start the challenge.`;
       
       await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', sysPrompt, {
         onOpen: () => {
@@ -333,7 +349,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         onToolCall: async (toolCall) => {
           for (const fc of toolCall.functionCalls) {
               if (fc.name === 'get_current_code') {
-                  const code = activeCodeFileRef.current?.content || "// No code written yet.";
+                  const code = activeCodeFilesRef.current[0]?.content || "// No code written yet.";
                   service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: code } }]);
               }
           }
@@ -347,7 +363,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const handleEndInterview = async () => {
     if (isEndingRef.current) return;
 
-    const confirmEnd = window.confirm("Finish interview now? AI will evaluate your performance based on current progress.");
+    const confirmEnd = window.confirm("Finish interview now? AI will evaluate all saved project files and chat history.");
     if (!confirmEnd) return;
 
     isEndingRef.current = true;
@@ -369,17 +385,15 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setIsAiConnected(false);
     setIsRecording(false);
 
-    setSynthesisStep('Compiling archives...');
+    setSynthesisStep('Auditing Project Ledger...');
     try {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-            const blob = await new Promise<Blob>((resolve) => {
+            const blobPromise = new Promise<Blob>((resolve) => {
                 const rec = mediaRecorderRef.current!;
-                const chunks: Blob[] = [];
-                rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-                rec.onstop = () => resolve(new Blob(chunks.length > 0 ? chunks : videoChunksRef.current, { type: 'video/webm' }));
+                rec.onstop = () => resolve(new Blob(videoChunksRef.current, { type: 'video/webm' }));
                 rec.stop();
             });
-            videoBlobRef.current = blob;
+            videoBlobRef.current = await blobPromise;
         }
     } catch (e) { console.error("Error stopping recorder", e); }
 
@@ -388,9 +402,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         activeScreenStreamRef.current?.getTracks().forEach(t => t.stop());
     } catch (e) {}
 
-    setSynthesisStep('AI Evaluation...');
+    setSynthesisStep('Reviewing Full Project Files...');
     let reportData: InterviewReport | null = null;
-    const finalCode = activeCodeFileRef.current?.content || "// No code submitted.";
+    
+    // Build a multi-file code context for the AI
+    const projectFilesContext = activeCodeFilesRef.current.map(f => `FILE: ${f.name}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
     const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
 
     try {
@@ -398,18 +414,23 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',
-            contents: `Analyze this technical interview.
+            contents: `Analyze this complete technical interview session. 
+            Review the FULL chat history and ALL code files created in the project UUID: ${currentSessionId}.
             
-            TRANSCRIPT:
+            FULL TRANSCRIPT:
             ${transcriptText}
             
-            FINAL CODE IN EDITOR:
-            ${finalCode}
+            PROJECT FILE SYSTEM:
+            ${projectFilesContext}
             
             Current Mode: ${mode}
             
-            Evaluate the candidate's performance across technical accuracy, communication, and problem-solving skills.
-            Provide detailed feedback and a final verdict.
+            Evaluation Criteria:
+            1. Technical accuracy of code across all files.
+            2. Depth of reasoning in chat messages.
+            3. Collaboration and responsiveness.
+            4. System architecture consistency (if applicable).
+
             Return ONLY a valid JSON object. 
             Fields: 
             - score (number 0-100)
@@ -428,7 +449,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         });
         
         let cleanedJson = (response.text || "{}").trim();
-        // Regex to extract content inside code blocks if the model accidentally includes them
         const jsonMatch = cleanedJson.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
             cleanedJson = jsonMatch[0];
@@ -436,25 +456,13 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         reportData = JSON.parse(cleanedJson);
     } catch (e: any) { 
         console.error("AI Evaluation failed", e);
-        // Fallback report if evaluation crashes
-        reportData = {
-            score: 0,
-            technicalSkills: "Evaluation failed to generate.",
-            communication: "N/A",
-            collaboration: "N/A",
-            strengths: [],
-            areasForImprovement: ["System evaluation timed out"],
-            verdict: 'No Hire',
-            summary: "An error occurred during report generation. Your transcript and code have been saved for manual review.",
-            learningMaterial: "Review your transcript in the session history."
-        };
     }
 
     if (reportData) {
       setReport(reportData);
-      setSynthesisStep('Syncing Neural Ledger...');
+      setSynthesisStep('Syncing Universal Record...');
       const rec: MockInterviewRecording = {
-        id: interviewIdRef.current, 
+        id: currentSessionId, 
         userId: currentUser?.uid || 'guest', 
         userName: currentUser?.displayName || 'Guest',
         mode, 
@@ -478,8 +486,23 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           setView('hub');
       }
     } else {
+        setSynthesisStep('Saving Draft Archive...');
+        const failRec: MockInterviewRecording = {
+            id: currentSessionId, 
+            userId: currentUser?.uid || 'guest', 
+            userName: currentUser?.displayName || 'Guest',
+            mode, 
+            language, 
+            jobDescription: jobDesc, 
+            timestamp: Date.now(), 
+            videoUrl: "", 
+            transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
+            feedback: "Evaluation failed. Manual review required.", 
+            visibility
+        };
+        await saveInterviewRecording(failRec);
         setView('hub');
-        alert("Session terminated. No data could be saved.");
+        alert("A system error occurred during multi-file evaluation. Your transcript and project state have been archived for your review.");
     }
     
     setIsGeneratingReport(false);
@@ -494,7 +517,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-40">
         <div className="flex items-center gap-4">
           <button onClick={() => view === 'hub' ? onBack() : setView('hub')} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400"><ArrowLeft size={20} /></button>
-          <h1 className="text-lg font-bold text-white flex items-center gap-2"><Video className="text-red-500" /> Mock Interview</h1>
+          <div>
+            <h1 className="text-lg font-bold text-white flex items-center gap-2">
+                <Video className="text-red-500" /> 
+                Mock Interview
+            </h1>
+            {view === 'interview' && (
+                <div className="flex items-center gap-1.5 text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">
+                    <Fingerprint size={10}/> Session: {currentSessionId.substring(0, 12)}...
+                </div>
+            )}
+          </div>
         </div>
         {view === 'interview' && (
           <div className="flex items-center gap-4">
@@ -566,7 +599,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             <div className="flex-1 bg-slate-950 relative flex flex-col md:flex-row overflow-hidden">
                 <div className="w-full md:w-80 bg-slate-900 border-r border-slate-800 overflow-y-auto p-6 space-y-6 shrink-0 scrollbar-hide">
                     <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800"><h2 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3">Challenge Description</h2><div className="prose prose-invert prose-xs"><MarkdownView content={generatedProblemMd} /></div></div>
-                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800"><h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Interviewer Notes</h2><p className="text-[10px] text-slate-400 italic">"Focus on time complexity and clean modular code. I am monitoring your solution file in real-time."</p></div>
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800"><h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Interviewer Notes</h2><p className="text-[10px] text-slate-400 italic">"Focus on technical accuracy and multi-file consistency. I am reviewing your entire project UUID under a shared ledger."</p></div>
                 </div>
                 <div className="flex-1 overflow-hidden relative flex flex-col bg-slate-950">
                     <CodeStudio 
@@ -581,7 +614,14 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         onSendExternalMessage={handleSendTextMessage}
                         isInterviewerMode={true}
                         isAiThinking={isAiThinking}
-                        onFileChange={(f) => { activeCodeFileRef.current = f; }}
+                        onFileChange={(f) => { 
+                            const existingIdx = activeCodeFilesRef.current.findIndex(x => x.path === f.path);
+                            if (existingIdx !== -1) {
+                                activeCodeFilesRef.current[existingIdx] = f;
+                            } else {
+                                activeCodeFilesRef.current.push(f);
+                            }
+                        }}
                     />
                 </div>
             </div>
