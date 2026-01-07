@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, RotateCcw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save, Activity, RefreshCcw } from 'lucide-react';
 import { auth, db } from '../services/firebaseConfig';
-import { saveWhiteboardSession, subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements, publishChannelToFirestore } from '../services/firestoreService';
+import { saveWhiteboardSession, subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements } from '../services/firestoreService';
 import { WhiteboardElement, ToolType, LineStyle, BrushType } from '../types';
 import { generateSecureId } from '../utils/idUtils';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
@@ -36,6 +36,8 @@ const BRUSH_TYPES: { label: string; value: BrushType; icon: any }[] = [
     { label: 'Chinese Ink', value: 'writing-brush', icon: Languages }
 ];
 
+type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'end' | null;
+
 export const Whiteboard: React.FC<WhiteboardProps> = ({ 
   onBack, 
   sessionId: propSessionId, 
@@ -64,9 +66,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   // Transformation & Selection State
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [boardRotation, setBoardRotation] = useState(0); // in degrees
+  const [boardRotation, setBoardRotation] = useState(0); 
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
+  const [activeResizeHandle, setActiveResizeHandle] = useState<ResizeHandle>(null);
 
   // Text Tool State
   const [textInput, setTextInput] = useState({ x: 0, y: 0, value: '', visible: false });
@@ -124,7 +127,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           }
       } catch (e: any) {
           console.error("Drive load failed", e);
-          alert("Could not load from Drive.");
       } finally {
           setIsLoading(false);
       }
@@ -136,60 +138,62 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
       const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
       
-      // 1. Screen to centered coordinate (relative to rect center)
       const cx = rect.width / 2;
       const cy = rect.height / 2;
       let x = clientX - rect.left - cx;
       let y = clientY - rect.top - cy;
 
-      // 2. Inverse Rotation
       const rad = -(boardRotation * Math.PI) / 180;
       const rx = x * Math.cos(rad) - y * Math.sin(rad);
       const ry = x * Math.sin(rad) + y * Math.cos(rad);
 
-      // 3. Inverse Offset and Scale
       return { 
           x: (rx + cx - offset.x) / scale, 
           y: (ry + cy - offset.y) / scale 
       };
   };
 
+  const getElementBounds = (el: WhiteboardElement) => {
+      if (el.type === 'pen' || el.type === 'eraser') {
+          const xs = el.points?.map(p => p.x) || [el.x];
+          const ys = el.points?.map(p => p.y) || [el.y];
+          return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
+      }
+      if (el.type === 'line' || el.type === 'arrow') {
+          return { minX: Math.min(el.x, el.endX || el.x), minY: Math.min(el.y, el.endY || el.y), maxX: Math.max(el.x, el.endX || el.x), maxY: Math.max(el.y, el.endY || el.y) };
+      }
+      const w = el.width || 200;
+      const h = el.height || 24;
+      return { minX: el.x, minY: el.y, maxX: el.x + w, maxY: el.y + h };
+  };
+
   const isPointInElement = (x: number, y: number, el: WhiteboardElement) => {
-      const margin = 10 / scale;
+      const margin = 12 / scale;
       if (el.type === 'pen' || el.type === 'eraser') {
           return el.points?.some(p => Math.sqrt((p.x - x)**2 + (p.y - y)**2) < (el.strokeWidth / scale) + margin);
       }
-      if (el.type === 'rect') {
-          const minX = Math.min(el.x, el.x + (el.width || 0));
-          const maxX = Math.max(el.x, el.x + (el.width || 0));
-          const minY = Math.min(el.y, el.y + (el.height || 0));
-          const maxY = Math.max(el.y, el.y + (el.height || 0));
-          return x >= minX - margin && x <= maxX + margin && y >= minY - margin && y <= maxY + margin;
-      }
-      if (el.type === 'circle') {
-          const centerX = el.x + (el.width || 0) / 2;
-          const centerY = el.y + (el.height || 0) / 2;
-          const radiusX = Math.abs((el.width || 0) / 2);
-          const radiusY = Math.abs((el.height || 0) / 2);
-          return ((x - centerX)**2 / (radiusX + margin)**2) + ((y - centerY)**2 / (radiusY + margin)**2) <= 1;
-      }
+      const bounds = getElementBounds(el);
+      return x >= bounds.minX - margin && x <= bounds.maxX + margin && y >= bounds.minY - margin && y <= bounds.maxY + margin;
+  };
+
+  const getResizeHandleAt = (x: number, y: number, el: WhiteboardElement): ResizeHandle => {
+      const handleSize = 10 / scale;
+      const bounds = getElementBounds(el);
+      
       if (el.type === 'line' || el.type === 'arrow') {
-          // Point to line distance
-          const x1 = el.x; const y1 = el.y;
-          const x2 = el.endX || el.x; const y2 = el.endY || el.y;
-          const lenSq = (x2 - x1)**2 + (y2 - y1)**2;
-          if (lenSq === 0) return Math.sqrt((x1 - x)**2 + (y1 - y)**2) < margin;
-          let t = ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / lenSq;
-          t = Math.max(0, Math.min(1, t));
-          const dist = Math.sqrt((x - (x1 + t * (x2 - x1)))**2 + (y - (y1 + t * (y2 - y1)))**2);
-          return dist < (el.strokeWidth / scale) + margin;
+          if (Math.sqrt((x - (el.endX || el.x))**2 + (y - (el.endY || el.y))**2) < handleSize * 2) return 'end';
+          return null;
       }
-      if (el.type === 'type') {
-          const w = 200; // estimated
-          const h = 24 * (el.text?.split('\n').length || 1);
-          return x >= el.x && x <= el.x + w && y >= el.y && y <= el.y + h;
-      }
-      return false;
+
+      const handles: { id: ResizeHandle, x: number, y: number }[] = [
+          { id: 'nw', x: bounds.minX, y: bounds.minY },
+          { id: 'ne', x: bounds.maxX, y: bounds.minY },
+          { id: 'sw', x: bounds.minX, y: bounds.maxY },
+          { id: 'se', x: bounds.maxX, y: bounds.maxY }
+      ];
+
+      const found = handles.find(h => Math.sqrt((x - h.x)**2 + (y - h.y)**2) < handleSize * 2);
+      return found ? found.id : null;
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
@@ -203,7 +207,19 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       }
 
       if (tool === 'move') {
-          // Reverse find to get topmost element
+          if (selectedElementId) {
+              const el = elements.find(e => e.id === selectedElementId);
+              if (el) {
+                  const handle = getResizeHandleAt(x, y, el);
+                  if (handle) {
+                      setActiveResizeHandle(handle);
+                      setDragStartPos({ x, y });
+                      setIsDrawing(true);
+                      return;
+                  }
+              }
+          }
+
           const found = [...elements].reverse().find(el => isPointInElement(x, y, el));
           if (found) {
               setSelectedElementId(found.id);
@@ -240,11 +256,36 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           const dy = y - dragStartPos.y;
           setElements(prev => prev.map(el => {
               if (el.id === selectedElementId) {
-                  const updated = { ...el, x: el.x + dx, y: el.y + dy };
-                  if (el.points) updated.points = el.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
-                  if (el.endX !== undefined) updated.endX = el.endX + dx;
-                  if (el.endY !== undefined) updated.endY = el.endY + dy;
-                  return updated;
+                  if (activeResizeHandle) {
+                      const updated = { ...el };
+                      if (activeResizeHandle === 'end') {
+                          updated.endX = (updated.endX || updated.x) + dx;
+                          updated.endY = (updated.endY || updated.y) + dy;
+                      } else if (el.type === 'pen' || el.type === 'eraser') {
+                          // Scaling point-based paths
+                          const bounds = getElementBounds(el);
+                          const center = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+                          const scaleX = 1 + (dx / (bounds.maxX - bounds.minX || 1));
+                          const scaleY = 1 + (dy / (bounds.maxY - bounds.minY || 1));
+                          updated.points = el.points?.map(p => ({
+                              x: center.x + (p.x - center.x) * scaleX,
+                              y: center.y + (p.y - center.y) * scaleY
+                          }));
+                      } else {
+                          if (activeResizeHandle.includes('e')) updated.width = (updated.width || 0) + dx;
+                          if (activeResizeHandle.includes('s')) updated.height = (updated.height || 0) + dy;
+                          if (activeResizeHandle.includes('w')) { updated.x += dx; updated.width = (updated.width || 0) - dx; }
+                          if (activeResizeHandle.includes('n')) { updated.y += dy; updated.height = (updated.height || 0) - dy; }
+                          if (el.type === 'type') updated.fontSize = Math.max(8, (updated.fontSize || 16) + (dy / 5));
+                      }
+                      return updated;
+                  } else {
+                      const updated = { ...el, x: el.x + dx, y: el.y + dy };
+                      if (el.points) updated.points = el.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                      if (el.endX !== undefined) updated.endX = el.endX + dx;
+                      if (el.endY !== undefined) updated.endY = el.endY + dy;
+                      return updated;
+                  }
               }
               return el;
           }));
@@ -269,14 +310,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       if (!isDrawing) return;
 
       if (tool === 'move' && selectedElementId) {
-          const el = elements.find(e => e.id === selectedElementId);
-          if (el && sessionId && !sessionId.startsWith('local-')) {
-              // Batch update is not available for arrayUnion but since we are modifying an existing index 
-              // it's better to just push the whole array or handle per-element sync.
-              // For simplicity, we just save the session state.
+          if (sessionId && !sessionId.startsWith('local-')) {
               await saveWhiteboardSession(sessionId, elements);
           }
           setIsDrawing(false);
+          setActiveResizeHandle(null);
           return;
       }
 
@@ -356,6 +394,12 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     a.click();
   };
 
+  const handleResetView = () => {
+    setOffset({ x: 0, y: 0 });
+    setScale(1);
+    setBoardRotation(0);
+  };
+
   useEffect(() => {
       const canvas = canvasRef.current; if (!canvas) return; 
       const ctx = canvas.getContext('2d'); if (!ctx) return;
@@ -395,13 +439,27 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           ctx.lineCap = 'round'; 
           ctx.lineJoin = 'round';
           
-          if (el.id === selectedElementId) {
-              ctx.shadowBlur = 10;
-              ctx.shadowColor = 'rgba(99, 102, 241, 0.8)'; // Indigo glow for selected
-          }
-
           const styleConfig = LINE_STYLES.find(s => s.value === (el.lineStyle || 'solid'));
           ctx.setLineDash(styleConfig?.dash || []);
+
+          // Render selection box and handles if selected
+          if (el.id === selectedElementId && tool === 'move') {
+              const bounds = getElementBounds(el);
+              ctx.save();
+              ctx.strokeStyle = '#6366f1'; 
+              ctx.lineWidth = 1 / scale; 
+              ctx.setLineDash([5, 5]);
+              ctx.strokeRect(bounds.minX - 5, bounds.minY - 5, (bounds.maxX - bounds.minX) + 10, (bounds.maxY - bounds.minY) + 10);
+              
+              ctx.fillStyle = '#6366f1';
+              const hSize = 8 / scale;
+              const handles = el.type === 'line' || el.type === 'arrow' ? 
+                 [{x: el.endX || el.x, y: el.endY || el.y}] :
+                 [{x: bounds.minX, y: bounds.minY}, {x: bounds.maxX, y: bounds.minY}, {x: bounds.minX, y: bounds.maxY}, {x: bounds.maxX, y: bounds.maxY}];
+              
+              handles.forEach(h => ctx.fillRect(h.x - hSize/2, h.y - hSize/2, hSize, hSize));
+              ctx.restore();
+          }
 
           if (el.type === 'type' && el.text) {
               ctx.fillStyle = el.color;
@@ -445,13 +503,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       elements.forEach(renderElement);
       if (currentElement) renderElement(currentElement);
       ctx.restore();
-  }, [elements, currentElement, scale, offset, boardRotation, backgroundColor, selectedElementId]);
-
-  const handleResetView = () => {
-      setOffset({ x: 0, y: 0 });
-      setScale(1);
-      setBoardRotation(0);
-  };
+  }, [elements, currentElement, scale, offset, boardRotation, backgroundColor, selectedElementId, tool]);
 
   return (
     <div className={`flex flex-col h-full ${isDarkBackground ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden relative`}>
