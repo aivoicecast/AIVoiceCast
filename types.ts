@@ -254,6 +254,8 @@ export interface WhiteboardElement {
   rotation?: number;
   startArrow?: boolean;
   endArrow?: boolean;
+  text?: string;
+  fontSize?: number;
 }
 
 export interface Blog {

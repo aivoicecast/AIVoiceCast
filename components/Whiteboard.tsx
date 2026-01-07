@@ -61,6 +61,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [startArrow, setStartArrow] = useState(false);
   const [endArrow, setEndArrow] = useState(false);
   
+  // Text Tool State
+  const [textInput, setTextInput] = useState({ x: 0, y: 0, value: '', visible: false });
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
+
   const [sessionId, setSessionId] = useState<string>(propSessionId || '');
   const [isReadOnly, setIsReadOnly] = useState(propReadOnly);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -72,7 +76,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
   const isDarkBackground = backgroundColor !== 'transparent' && backgroundColor !== '#ffffff';
 
-  // 1. Session & URL Detection
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
@@ -87,7 +90,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     }
   }, [propDriveId]);
 
-  // 2. Real-time Subscription (Google Docs Mode)
   useEffect(() => {
       if (!sessionId || sessionId.startsWith('local-')) {
           setIsLive(false);
@@ -95,7 +97,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       }
 
       setIsLoading(true);
-      // Start listening to Firestore document changes
       const unsubscribe = subscribeToWhiteboard(sessionId, (remoteElements) => {
           setElements(remoteElements);
           setIsLoading(false);
@@ -119,7 +120,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           }
       } catch (e: any) {
           console.error("Drive load failed", e);
-          alert("Could not load from Drive. Private files require creator permissions.");
+          alert("Could not load from Drive.");
       } finally {
           setIsLoading(false);
       }
@@ -134,8 +135,15 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
-      if (isReadOnly) return;
+      if (isReadOnly || textInput.visible) return;
       const { x, y } = getWorldCoordinates(e);
+
+      if (tool === 'type') {
+          setTextInput({ x, y, value: '', visible: true });
+          setTimeout(() => textInputRef.current?.focus(), 50);
+          return;
+      }
+
       setIsDrawing(true);
       const id = crypto.randomUUID();
       const newEl: WhiteboardElement = { 
@@ -169,18 +177,33 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const stopDrawing = async () => {
       if (isDrawing && currentElement) {
           const finalized = { ...currentElement };
-          
-          // Optimistic local update
           setElements(prev => [...prev, finalized]);
-          
           if (sessionId && !sessionId.startsWith('local-')) {
-              // Push single element to Firestore (arrayUnion)
               await updateWhiteboardElement(sessionId, finalized);
           }
-          
           setCurrentElement(null);
           setIsDrawing(false);
       }
+  };
+
+  const handleTextCommit = async () => {
+      if (!textInput.value.trim()) {
+          setTextInput({ ...textInput, visible: false });
+          return;
+      }
+
+      const id = crypto.randomUUID();
+      const textEl: WhiteboardElement = {
+          id, type: 'type', x: textInput.x, y: textInput.y,
+          color, strokeWidth: lineWidth, text: textInput.value,
+          fontSize: 16
+      };
+
+      setElements(prev => [...prev, textEl]);
+      if (sessionId && !sessionId.startsWith('local-')) {
+          await updateWhiteboardElement(sessionId, textEl);
+      }
+      setTextInput({ ...textInput, visible: false, value: '' });
   };
 
   const handleShare = async () => {
@@ -228,7 +251,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     a.click();
   };
 
-  // Rendering Loop
   useEffect(() => {
       const canvas = canvasRef.current; if (!canvas) return; 
       const ctx = canvas.getContext('2d'); if (!ctx) return;
@@ -262,24 +284,15 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           const styleConfig = LINE_STYLES.find(s => s.value === (el.lineStyle || 'solid'));
           ctx.setLineDash(styleConfig?.dash || []);
 
-          const bType = el.brushType || 'standard';
-          if (bType === 'airbrush') {
-              ctx.shadowBlur = (el.strokeWidth * 1.5) / scale;
-              ctx.shadowColor = el.color;
-              ctx.globalAlpha = 0.5;
-          } else if (bType === 'pencil') {
-              ctx.globalAlpha = 0.6;
-          } else if (bType === 'marker') {
-              ctx.lineCap = 'square';
-              ctx.globalAlpha = 0.8;
-          } else if (bType === 'writing-brush') {
-              ctx.shadowBlur = el.strokeWidth / 4 / scale;
-              ctx.shadowColor = el.color;
-          } else if (bType === 'calligraphy-pen') {
-              ctx.lineCap = 'butt';
-          }
-
-          if (el.type === 'pen' || el.type === 'eraser') {
+          if (el.type === 'type' && el.text) {
+              ctx.fillStyle = el.color;
+              ctx.font = `${(el.fontSize || 16)}px 'JetBrains Mono', monospace`;
+              ctx.textBaseline = 'top';
+              const lines = el.text.split('\n');
+              lines.forEach((line, i) => {
+                  ctx.fillText(line, el.x, el.y + (i * (el.fontSize || 16) * 1.2));
+              });
+          } else if (el.type === 'pen' || el.type === 'eraser') {
               if (el.points?.length) {
                   ctx.lineWidth = el.strokeWidth / scale;
                   ctx.moveTo(el.points[0].x, el.points[0].y);
@@ -330,6 +343,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
                 <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1 mr-2`}>
                     <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Pen"><PenTool size={16}/></button>
+                    <button onClick={() => setTool('type')} className={`p-1.5 rounded ${tool === 'type' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Markdown Text"><Type size={16}/></button>
                     <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Eraser"><Eraser size={16}/></button>
                 </div>
 
@@ -381,16 +395,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                                     </div>
                                     <input type="range" min="1" max="50" value={lineWidth} onChange={(e) => setLineWidth(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
                                 </div>
-
-                                {tool === 'rect' && (
-                                    <div>
-                                        <div className="flex justify-between items-center mb-2">
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Round Corners</label>
-                                            <span className="text-[10px] font-mono text-indigo-400">{borderRadius}px</span>
-                                        </div>
-                                        <input type="range" min="0" max="100" value={borderRadius} onChange={(e) => setBorderRadius(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
-                                    </div>
-                                )}
                             </div>
                         </>
                     )}
@@ -433,6 +437,37 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
                 className="block w-full h-full cursor-crosshair" 
             />
+
+            {textInput.visible && (
+                <div 
+                  className="absolute z-40 bg-slate-900/90 border-2 border-indigo-500 rounded-xl p-3 shadow-2xl animate-fade-in"
+                  style={{ 
+                      left: (textInput.x * scale + offset.x) + 'px', 
+                      top: (textInput.y * scale + offset.y) + 'px',
+                      minWidth: '200px'
+                  }}
+                >
+                    <textarea 
+                        ref={textInputRef}
+                        value={textInput.value}
+                        onChange={e => setTextInput({ ...textInput, value: e.target.value })}
+                        className="bg-transparent border-none outline-none text-white font-mono text-sm w-full h-24 resize-both placeholder-slate-600"
+                        placeholder="Type markdown / text..."
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                handleTextCommit();
+                            }
+                        }}
+                    />
+                    <div className="flex justify-between items-center mt-2 border-t border-slate-800 pt-2">
+                        <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Ctrl+Enter to Save</span>
+                        <div className="flex gap-2">
+                            <button onClick={() => setTextInput({...textInput, visible: false})} className="p-1 hover:bg-red-900/20 text-red-500 rounded"><X size={14}/></button>
+                            <button onClick={handleTextCommit} className="p-1 hover:bg-emerald-900/20 text-emerald-500 rounded"><Check size={14}/></button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
 
         {showShareModal && (
@@ -445,3 +480,5 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     </div>
   );
 };
+
+export default Whiteboard;
