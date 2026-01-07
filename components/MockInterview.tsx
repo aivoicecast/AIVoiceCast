@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -262,21 +263,46 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const probResponse = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: problemPrompt });
       setGeneratedProblemMd(probResponse.text || "Introduction needed.");
 
-      const ext = language.toLowerCase() === 'python' ? 'py' : (language.toLowerCase().includes('java') ? 'java' : 'cpp');
-      const solutionFile: CodeFile = {
-          name: `solution.${ext}`, path: `drive://${uuid}/solution.${ext}`, language: language.toLowerCase() as any,
-          content: `/* \n * Interview Challenge: ${mode}\n * Session UUID: ${uuid}\n */\n\n`,
-          loaded: true, isDirectory: false, isModified: false
-      };
-      activeCodeFilesRef.current = [solutionFile];
-      setInitialStudioFiles([solutionFile]);
+      // Workspace Initialization
+      const filesToInit: CodeFile[] = [];
+
+      if (mode === 'coding' || mode === 'quick_screen' || mode.startsWith('assessment')) {
+          const ext = language.toLowerCase() === 'python' ? 'py' : (language.toLowerCase().includes('java') ? 'java' : 'cpp');
+          const solutionFile: CodeFile = {
+              name: `solution.${ext}`, path: `drive://${uuid}/solution.${ext}`, language: language.toLowerCase() as any,
+              content: `/* \n * Interview Challenge: ${mode}\n * Session UUID: ${uuid}\n */\n\n`,
+              loaded: true, isDirectory: false, isModified: false
+          };
+          filesToInit.push(solutionFile);
+      } else if (mode === 'system_design') {
+          // Auto-open Drawing and Documentation frames for System Design
+          const drawFile: CodeFile = {
+              name: 'architecture.draw', path: `drive://${uuid}/architecture.draw`, language: 'whiteboard',
+              content: '[]', loaded: true, isDirectory: false, isModified: false
+          };
+          const docFile: CodeFile = {
+              name: 'design_spec.md', path: `drive://${uuid}/design_spec.md`, language: 'markdown',
+              content: `# System Design: ${jobDesc || 'New Architecture'}\n\n## Overview\n\n## Components\n\n## Trade-offs\n`,
+              loaded: true, isDirectory: false, isModified: false
+          };
+          filesToInit.push(drawFile, docFile);
+      } else {
+          // Behavioral / General
+          filesToInit.push({
+              name: 'scratchpad.md', path: `drive://${uuid}/scratchpad.md`, language: 'markdown',
+              content: `# Interview Scratchpad\n\n- Key points to remember...\n`,
+              loaded: true, isDirectory: false, isModified: false
+          });
+      }
+
+      activeCodeFilesRef.current = [...filesToInit];
+      setInitialStudioFiles([...filesToInit]);
 
       // Initialize the project in Firestore for real-time UUID-linked saving
-      /* Fix: Changed accessLevel from 'private' to 'restricted' to match type definition in types.ts */
       await saveCodeProject({
           id: uuid,
           name: `Interview_${mode}_${new Date().toLocaleDateString()}`,
-          files: [solutionFile],
+          files: filesToInit,
           lastModified: Date.now(),
           accessLevel: 'restricted',
           allowedUserIds: currentUser ? [currentUser.uid] : []
@@ -363,7 +389,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const handleEndInterview = async () => {
     if (isEndingRef.current) return;
 
-    const confirmEnd = window.confirm("Finish interview now? AI will evaluate all saved project files and chat history.");
+    const confirmEnd = window.confirm("Finish interview now? AI will perform a full audit of all saved project files (including diagrams and design docs) and chat history.");
     if (!confirmEnd) return;
 
     isEndingRef.current = true;
@@ -385,7 +411,20 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setIsAiConnected(false);
     setIsRecording(false);
 
-    setSynthesisStep('Auditing Project Ledger...');
+    setSynthesisStep('Syncing Project State...');
+    try {
+        // Ensure final project state is saved to Firestore under UUID
+        await saveCodeProject({
+            id: currentSessionId,
+            name: `Interview_${mode}_${new Date().toLocaleDateString()}`,
+            files: activeCodeFilesRef.current,
+            lastModified: Date.now(),
+            accessLevel: 'restricted',
+            allowedUserIds: currentUser ? [currentUser.uid] : []
+        });
+    } catch (e) { console.error("Final sync failed", e); }
+
+    setSynthesisStep('Finalizing Recording...');
     try {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
             const blobPromise = new Promise<Blob>((resolve) => {
@@ -402,65 +441,83 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         activeScreenStreamRef.current?.getTracks().forEach(t => t.stop());
     } catch (e) {}
 
-    setSynthesisStep('Reviewing Full Project Files...');
+    setSynthesisStep('Analyzing Ledger & Artifacts...');
     let reportData: InterviewReport | null = null;
     
-    // Build a multi-file code context for the AI
-    const projectFilesContext = activeCodeFilesRef.current.map(f => `FILE: ${f.name}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
+    // Explicitly identify diagram and design files for the AI
+    const projectFilesContext = activeCodeFilesRef.current.map(f => {
+        let typeInfo = `FILE: ${f.name}\n`;
+        if (f.name.endsWith('.draw')) typeInfo += `TYPE: System Architecture Diagram (Whiteboard JSON)\n`;
+        if (f.name.endsWith('.md')) typeInfo += `TYPE: Technical Design Specification (Markdown)\n`;
+        return `${typeInfo}CONTENT:\n${f.content}`;
+    }).join('\n\n---\n\n');
+
     const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
 
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
-            contents: `Analyze this complete technical interview session. 
-            Review the FULL chat history and ALL code files created in the project UUID: ${currentSessionId}.
+    // Attempt Evaluation with retries
+    const tryEvaluate = async (attempt: number): Promise<InterviewReport | null> => {
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
-            FULL TRANSCRIPT:
+            const prompt = `AUDIT REPORT: Technical Interview Session.
+            UUID: ${currentSessionId}
+            MODE: ${mode}
+            LANGUAGE: ${language}
+            
+            Verified Transcript Archive:
             ${transcriptText}
             
-            PROJECT FILE SYSTEM:
+            Verified Project Artifacts (Diagrams, Specs, Code):
             ${projectFilesContext}
             
-            Current Mode: ${mode}
+            CRITICAL EVALUATION TASKS:
+            1. Analyze System Design Artifacts: If ".draw" or ".md" files are present, evaluate them as the primary solution for system design tasks.
+            2. Consistency Check: Ensure the candidate's implementation in diagrams/code matches their verbal/chat reasoning.
+            3. Technical Accuracy: Evaluate logic, scalability, and architectural patterns.
+            4. Communication: Assess how clearly they explained their choices.
             
-            Evaluation Criteria:
-            1. Technical accuracy of code across all files.
-            2. Depth of reasoning in chat messages.
-            3. Collaboration and responsiveness.
-            4. System architecture consistency (if applicable).
-
             Return ONLY a valid JSON object. 
-            Fields: 
-            - score (number 0-100)
-            - technicalSkills (string)
-            - communication (string)
-            - collaboration (string)
-            - strengths (array of strings)
-            - areasForImprovement (array of strings)
-            - verdict (string one of: 'Strong Hire', 'Hire', 'No Hire', 'Strong No Hire')
-            - summary (string)
-            - learningMaterial (string markdown)`,
-            config: { 
-              responseMimeType: 'application/json',
-              thinkingConfig: { thinkingBudget: 0 }
-            }
-        });
-        
-        let cleanedJson = (response.text || "{}").trim();
-        const jsonMatch = cleanedJson.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            cleanedJson = jsonMatch[0];
+            Schema:
+            - score (0-100)
+            - technicalSkills (concise summary)
+            - communication (concise summary)
+            - collaboration (concise summary)
+            - strengths (string array)
+            - areasForImprovement (string array)
+            - verdict (one of: 'Strong Hire', 'Hire', 'No Hire', 'Strong No Hire')
+            - summary (paragraph)
+            - learningMaterial (detailed Markdown including suggested improvements to diagrams or code)`;
+
+            const response = await ai.models.generateContent({
+                model: attempt === 1 ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview',
+                contents: prompt,
+                config: { 
+                  responseMimeType: 'application/json',
+                  thinkingConfig: { thinkingBudget: attempt === 1 ? 4000 : 0 }
+                }
+            });
+            
+            let text = (response.text || "").trim();
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) text = jsonMatch[0];
+            
+            return JSON.parse(text);
+        } catch (e) {
+            console.warn(`Evaluation Attempt ${attempt} failed:`, e);
+            return null;
         }
-        reportData = JSON.parse(cleanedJson);
-    } catch (e: any) { 
-        console.error("AI Evaluation failed", e);
+    };
+
+    // Retry Loop
+    reportData = await tryEvaluate(1);
+    if (!reportData) {
+        setSynthesisStep('Retrying Neural Trace...');
+        reportData = await tryEvaluate(2);
     }
 
     if (reportData) {
       setReport(reportData);
-      setSynthesisStep('Syncing Universal Record...');
+      setSynthesisStep('Archiving to Cloud Ledger...');
       const rec: MockInterviewRecording = {
         id: currentSessionId, 
         userId: currentUser?.uid || 'guest', 
@@ -482,11 +539,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           setView('report');
       } catch (e) { 
           console.error("Persistence failed", e);
-          alert("Session archived locally. Cloud sync failed.");
+          alert("Session archived locally, but cloud ledger sync failed. Check your history later.");
           setView('hub');
       }
     } else {
-        setSynthesisStep('Saving Draft Archive...');
+        setSynthesisStep('Saving Emergency Archive...');
         const failRec: MockInterviewRecording = {
             id: currentSessionId, 
             userId: currentUser?.uid || 'guest', 
@@ -497,12 +554,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             timestamp: Date.now(), 
             videoUrl: "", 
             transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
-            feedback: "Evaluation failed. Manual review required.", 
+            feedback: "Neural Evaluation Engine Timed Out. Your files (including diagrams and specs) are preserved for manual review.", 
             visibility
         };
         await saveInterviewRecording(failRec);
         setView('hub');
-        alert("A system error occurred during multi-file evaluation. Your transcript and project state have been archived for your review.");
+        alert("A transient error occurred during artifact evaluation. Your transcript and project files (including short_uri.draw and short_ui.md) have been safely archived to your history for review.");
     }
     
     setIsGeneratingReport(false);
@@ -524,7 +581,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             </h1>
             {view === 'interview' && (
                 <div className="flex items-center gap-1.5 text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">
-                    <Fingerprint size={10}/> Session: {currentSessionId.substring(0, 12)}...
+                    <Fingerprint size={10}/> Session Ledger: {currentSessionId.substring(0, 12)}...
                 </div>
             )}
           </div>
@@ -550,19 +607,28 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             <div className="bg-indigo-600 rounded-[3rem] p-12 shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center gap-10">
               <div className="absolute top-0 right-0 p-32 bg-white/10 blur-[100px] rounded-full"></div>
               <div className="relative z-10 flex-1 space-y-6">
-                <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Simulate your<br/>Success.</h2>
+                <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Verify your<br/>Potential.</h2>
                 <p className="text-indigo-100 text-lg max-w-sm">Rigorous AI-driven technical evaluations for senior software engineering roles.</p>
                 <button onClick={() => setView('prep')} className="px-10 py-5 bg-white text-indigo-600 font-black uppercase tracking-widest rounded-2xl shadow-2xl hover:scale-105 transition-all flex items-center gap-3"><Zap size={20} fill="currentColor"/> Begin Preparation</button>
               </div>
               <div className="relative z-10 hidden lg:block"><div className="w-64 h-64 bg-slate-950 rounded-[3rem] border-8 border-indigo-400/30 flex items-center justify-center rotate-3 shadow-2xl"><Bot size={100} className="text-indigo-400 animate-pulse"/></div></div>
             </div>
             <div className="space-y-6">
-              <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Session History</h3>
+              <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Verified Session History</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {loading ? <div className="col-span-full py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : interviews.length === 0 ? <div className="col-span-full py-20 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">No archived sessions.</div> : interviews.map(rec => (
+                {loading ? <div className="col-span-full py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : interviews.length === 0 ? <div className="col-span-full py-20 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">No archived ledger entries.</div> : interviews.map(rec => (
                   <div key={rec.id} onClick={() => { setActiveRecording(rec); setReport(JSON.parse(rec.feedback || '{}')); setView('report'); }} className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-6 hover:border-indigo-500/50 transition-all group cursor-pointer shadow-xl relative overflow-hidden">
-                    <div className="flex items-center gap-3"><div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-bold">{rec.userName[0]}</div><div><h4 className="font-bold text-white text-sm">@{rec.userName}</h4><p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{new Date(rec.timestamp).toLocaleDateString()}</p></div></div>
-                    <div className="mt-4"><span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span></div>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-bold">{rec.userName[0]}</div>
+                            <div>
+                                <h4 className="font-bold text-white text-sm">@{rec.userName}</h4>
+                                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{new Date(rec.timestamp).toLocaleDateString()}</p>
+                            </div>
+                        </div>
+                        <span className="text-[8px] font-mono text-slate-700 bg-black px-1.5 py-0.5 rounded">ID: {rec.id.substring(0, 6)}</span>
+                    </div>
+                    <div><span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span></div>
                   </div>
                 ))}
               </div>
@@ -576,20 +642,20 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-6">
                   <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
-                    <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest">Candidate Resume</h3>
+                    <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest">Candidate Portfolio</h3>
                     <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume details for context..." className="w-full h-48 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none"/>
                   </div>
                 </div>
                 <div className="space-y-6">
                   <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Interview Mode</h3>
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Evaluation Scope</h3>
                     <div className="grid grid-cols-1 gap-2">
                       {[{ id: 'coding', icon: Code, label: 'Algorithm & DS' }, { id: 'system_design', icon: Layers, label: 'System Design' }, { id: 'behavioral', icon: MessageSquare, label: 'Behavioral' }].map(m => (<button key={m.id} onClick={() => setMode(m.id as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}><div className="flex items-center gap-2"><m.icon size={14}/><span className="text-[10px] font-bold uppercase">{m.label}</span></div>{mode === m.id && <CheckCircle size={14}/>}</button>))}
                     </div>
                   </div>
                 </div>
               </div>
-              <button onClick={handleStartInterview} disabled={isStarting} className="w-full py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-30">{isStarting ? <Loader2 className="animate-spin" /> : 'Start Mock Interview'}</button>
+              <button onClick={handleStartInterview} disabled={isStarting} className="w-full py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-30">{isStarting ? <Loader2 className="animate-spin" /> : 'Start Technical Evaluation'}</button>
             </div>
           </div>
         )}
@@ -599,7 +665,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             <div className="flex-1 bg-slate-950 relative flex flex-col md:flex-row overflow-hidden">
                 <div className="w-full md:w-80 bg-slate-900 border-r border-slate-800 overflow-y-auto p-6 space-y-6 shrink-0 scrollbar-hide">
                     <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800"><h2 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3">Challenge Description</h2><div className="prose prose-invert prose-xs"><MarkdownView content={generatedProblemMd} /></div></div>
-                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800"><h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Interviewer Notes</h2><p className="text-[10px] text-slate-400 italic">"Focus on technical accuracy and multi-file consistency. I am reviewing your entire project UUID under a shared ledger."</p></div>
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800"><h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Interviewer Notes</h2><p className="text-[10px] text-slate-400 italic">"Focus on technical accuracy and multi-file consistency. I am reviewing all active artifacts including system design diagrams (.draw) and specs (.md) in your workspace."</p></div>
                 </div>
                 <div className="flex-1 overflow-hidden relative flex flex-col bg-slate-950">
                     <CodeStudio 
@@ -615,6 +681,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         isInterviewerMode={true}
                         isAiThinking={isAiThinking}
                         onFileChange={(f) => { 
+                            // CRITICAL: Ensure all workspace files are captured immediately for the audit ref
                             const existingIdx = activeCodeFilesRef.current.findIndex(x => x.path === f.path);
                             if (existingIdx !== -1) {
                                 activeCodeFilesRef.current[existingIdx] = f;
@@ -683,7 +750,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 <Activity className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400" size={40}/>
                 <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 text-3xl font-black text-white">{Math.round(synthesisPercent)}%</div>
             </div>
-            <div className="text-center space-y-2"><h3 className="text-xl font-black text-white uppercase tracking-widest">{synthesisStep}</h3></div>
+            <div className="text-center space-y-2">
+                <h3 className="text-xl font-black text-white uppercase tracking-widest">{synthesisStep}</h3>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest opacity-60">Finalizing Verified Session Ledger</p>
+            </div>
         </div>
       )}
     </div>
