@@ -633,7 +633,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                     <CloudDownload size={14}/>
                     <span className="hidden lg:inline">Sync to Drive</span>
                 </button>
-                <button onClick={handleShare} disabled={isSyncing} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-500/20 disabled:opacity-50 transition-all active:scale-95">
+                <button onClick={handleShare} disabled={isSyncing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-500/20 disabled:opacity-50 transition-all active:scale-95">
                     {isSyncing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
                     <span className="hidden sm:inline">Share URI</span>
                 </button>
@@ -663,14 +663,14 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                   style={{ 
                       left: (textInput.x * scale + offset.x) + 'px', 
                       top: (textInput.y * scale + offset.y) + 'px',
-                      minWidth: '200px'
+                      minWidth: '400px'
                   }}
                 >
                     <textarea 
                         ref={textInputRef}
                         value={textInput.value}
                         onChange={e => setTextInput({ ...textInput, value: e.target.value })}
-                        className="bg-transparent border-none outline-none text-white font-mono text-sm w-full h-24 resize-both placeholder-slate-600"
+                        className="bg-transparent border-none outline-none text-white font-mono text-sm w-full h-48 resize-both placeholder-slate-600"
                         placeholder="Type markdown / text..."
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
