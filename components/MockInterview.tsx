@@ -3,17 +3,11 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject } from '../types';
 import { auth } from '../services/firebaseConfig';
 import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage, getUserInterviews, updateInterviewMetadata, saveCodeProject, getCodeProject, getUserProfile } from '../services/firestoreService';
-import { getDriveToken, signInWithGoogle } from '../services/authService';
-import { uploadToYouTube, getYouTubeVideoUrl, getYouTubeEmbedUrl } from '../services/youtubeService';
 import { GeminiLiveService } from '../services/geminiLive';
 import { GoogleGenAI, Type } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
-import { saveLocalRecording, deleteLocalRecording, getLocalRecordings } from '../utils/db';
 import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
-// Fix: Added missing Minus icon import
 import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus } from 'lucide-react';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
 
@@ -23,15 +17,28 @@ interface MockInterviewProps {
   onStartLiveSession: (channel: Channel, context?: string) => void;
 }
 
+interface InterviewReport {
+  score: number;
+  technicalSkills: string;
+  communication: string;
+  collaboration: string;
+  strengths: string[];
+  areasForImprovement: string[];
+  verdict: 'Strong Hire' | 'Hire' | 'No Hire' | 'Strong No Hire' | 'Move Forward' | 'Reject';
+  summary: string;
+  idealAnswers?: { question: string, expectedAnswer: string, rationale: string }[];
+  learningMaterial: string; 
+  todoList?: string[];
+}
+
 const getCodeTool: any = {
   name: "get_current_code",
   description: "Read the content of the solution file currently in the editor. Use this to evaluate the candidate's code.",
-  // Fix: Ensure Type.OBJECT is not empty by providing a context field
   parameters: { 
     type: Type.OBJECT, 
     properties: {
-      request_context: { type: Type.STRING, description: "Optional context for why the code is being read." }
-    } 
+      request_context: { type: Type.STRING, description: "Context for why the code is being read." }
+    }
   }
 };
 
@@ -42,9 +49,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [interviews, setInterviews] = useState<MockInterviewRecording[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [isAiConnected, setIsAiConnected] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isAiThinking, setIsAiThinking] = useState(false);
   
   const [timeLeft, setTimeLeft] = useState<number>(0); 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -71,7 +78,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [activeRecording, setActiveRecording] = useState<MockInterviewRecording | null>(null);
   const [report, setReport] = useState<InterviewReport | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [reportError, setReportError] = useState<string | null>(null);
   const [generatedProblemMd, setGeneratedProblemMd] = useState('');
 
   const liveServiceRef = useRef<GeminiLiveService | null>(null);
@@ -128,8 +134,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   const handleSendTextMessage = (text: string) => {
     if (liveServiceRef.current && isAiConnected) {
+        setIsAiThinking(true);
+        // CRITICAL: Send text explicitly to the live session
         liveServiceRef.current.sendText(text);
         setTranscript(prev => [...prev, { role: 'user', text, timestamp: Date.now() }]);
+        logApi("Neural Link: Transmitted chat data");
     }
   };
 
@@ -145,7 +154,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setTimeout(async () => {
       if (isEndingRef.current) return;
       const historyText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-      const prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${mode}. History recap: ${historyText.substring(historyText.length - 2000)}`;
+      const prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${mode}. History recap: ${historyText.substring(historyText.length - 2000)}. IMPORTANT: Acknowledge messages typed in the candidate's chat box as well as audio inputs.`;
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
@@ -171,6 +180,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
             if (activeServiceIdRef.current !== service.id) return;
+            if (!isUser) setIsAiThinking(false);
             setTranscript(prev => {
               const role = isUser ? 'user' : 'ai';
               if (prev.length > 0 && prev[prev.length - 1].role === role) {
@@ -295,9 +305,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
-      const prompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. GOAL: Start the interview by introducing yourself and the challenge.`;
+      const sysPrompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. IMPORTANT: You are monitoring both the candidate's speech (audio) AND their typed messages in the chat box. Respond and acknowledge both inputs naturally. GOAL: Start by introducing yourself and the challenge.`;
       
-      await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', prompt, {
+      await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', sysPrompt, {
         onOpen: () => {
           setIsAiConnected(true);
           if (timerRef.current) clearInterval(timerRef.current);
@@ -310,6 +320,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         onVolumeUpdate: () => {},
         onTranscript: (text, isUser) => {
           if (activeServiceIdRef.current !== service.id) return;
+          if (!isUser) setIsAiThinking(false);
           setTranscript(prev => {
             const role = isUser ? 'user' : 'ai';
             if (prev.length > 0 && prev[prev.length - 1].role === role) {
@@ -360,10 +371,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
     setSynthesisStep('Compiling archives...');
     try {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
             const blob = await new Promise<Blob>((resolve) => {
                 const rec = mediaRecorderRef.current!;
-                rec.onstop = () => resolve(new Blob(videoChunksRef.current, { type: 'video/webm' }));
+                const chunks: Blob[] = [];
+                rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+                rec.onstop = () => resolve(new Blob(chunks.length > 0 ? chunks : videoChunksRef.current, { type: 'video/webm' }));
                 rec.stop();
             });
             videoBlobRef.current = blob;
@@ -377,20 +390,28 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
     setSynthesisStep('AI Evaluation...');
     let reportData: InterviewReport | null = null;
+    const finalCode = activeCodeFileRef.current?.content || "// No code submitted.";
+    const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
+
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
         
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',
-            contents: `Analyze this technical interview transcript: 
+            contents: `Analyze this technical interview.
+            
+            TRANSCRIPT:
             ${transcriptText}
+            
+            FINAL CODE IN EDITOR:
+            ${finalCode}
             
             Current Mode: ${mode}
             
             Evaluate the candidate's performance across technical accuracy, communication, and problem-solving skills.
             Provide detailed feedback and a final verdict.
-            Return ONLY a valid JSON object with: 
+            Return ONLY a valid JSON object. 
+            Fields: 
             - score (number 0-100)
             - technicalSkills (string)
             - communication (string)
@@ -400,17 +421,38 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             - verdict (string one of: 'Strong Hire', 'Hire', 'No Hire', 'Strong No Hire')
             - summary (string)
             - learningMaterial (string markdown)`,
-            config: { responseMimeType: 'application/json' }
+            config: { 
+              responseMimeType: 'application/json',
+              thinkingConfig: { thinkingBudget: 0 }
+            }
         });
         
-        reportData = JSON.parse(response.text || "{}");
+        let cleanedJson = (response.text || "{}").trim();
+        // Regex to extract content inside code blocks if the model accidentally includes them
+        const jsonMatch = cleanedJson.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            cleanedJson = jsonMatch[0];
+        }
+        reportData = JSON.parse(cleanedJson);
     } catch (e: any) { 
         console.error("AI Evaluation failed", e);
-        setReportError("Metrics evaluation failed. Please check your transcript manually."); 
+        // Fallback report if evaluation crashes
+        reportData = {
+            score: 0,
+            technicalSkills: "Evaluation failed to generate.",
+            communication: "N/A",
+            collaboration: "N/A",
+            strengths: [],
+            areasForImprovement: ["System evaluation timed out"],
+            verdict: 'No Hire',
+            summary: "An error occurred during report generation. Your transcript and code have been saved for manual review.",
+            learningMaterial: "Review your transcript in the session history."
+        };
     }
 
     if (reportData) {
       setReport(reportData);
+      setSynthesisStep('Syncing Neural Ledger...');
       const rec: MockInterviewRecording = {
         id: interviewIdRef.current, 
         userId: currentUser?.uid || 'guest', 
@@ -419,7 +461,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         language, 
         jobDescription: jobDesc, 
         timestamp: Date.now(), 
-        videoUrl: "",
+        videoUrl: "", 
         transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
         feedback: JSON.stringify(reportData), 
         visibility
@@ -428,14 +470,16 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       try {
           await saveInterviewRecording(rec);
           setActiveRecording(rec);
-      } catch (e) { console.error("Error saving recording", e); }
-      
-      setSynthesisPercent(100);
-      setView('report');
+          setSynthesisPercent(100);
+          setView('report');
+      } catch (e) { 
+          console.error("Persistence failed", e);
+          alert("Session archived locally. Cloud sync failed.");
+          setView('hub');
+      }
     } else {
-        // Fallback if AI fails but we want to show what we have
         setView('hub');
-        alert("Evaluation failed, but your session transcript has been saved to your local history.");
+        alert("Session terminated. No data could be saved.");
     }
     
     setIsGeneratingReport(false);
@@ -500,7 +544,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 <div className="space-y-6">
                   <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
                     <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest">Candidate Resume</h3>
-                    <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume details for context..." className="w-full h-48 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none"/>
+                    <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume details for context..." className="w-full h-48 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none"/>
                   </div>
                 </div>
                 <div className="space-y-6">
@@ -536,7 +580,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         externalChatContent={transcript.map(t => ({ role: t.role, text: t.text }))}
                         onSendExternalMessage={handleSendTextMessage}
                         isInterviewerMode={true}
-                        isAiThinking={!isAiConnected}
+                        isAiThinking={isAiThinking}
                         onFileChange={(f) => { activeCodeFileRef.current = f; }}
                     />
                 </div>
