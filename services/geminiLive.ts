@@ -83,7 +83,8 @@ export class GeminiLiveService {
       }
 
       const connectionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        // Fix: Use the latest native audio preview model as per guidelines
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config,
         callbacks: {
           onopen: () => {
@@ -170,27 +171,26 @@ export class GeminiLiveService {
 
   public sendToolResponse(functionResponses: any) {
       this.sessionPromise?.then((session) => {
-          if (session) session.sendToolResponse({ functionResponses });
+          // Fix: Removed redundant session check and solely rely on promise resolution
+          session.sendToolResponse({ functionResponses });
       });
   }
 
   public sendVideo(base64Data: string, mimeType: string) {
     this.sessionPromise?.then((session) => {
-      if (session && this.isActive) {
-        session.sendRealtimeInput({
-          media: { data: base64Data, mimeType }
-        });
-      }
+      // Fix: Removed redundant session and isActive check as per guidelines
+      session.sendRealtimeInput({
+        media: { data: base64Data, mimeType }
+      });
     });
   }
 
   public sendText(text: string) {
     this.sessionPromise?.then((session) => {
-      if (session && this.isActive) {
-        session.sendRealtimeInput({
-          parts: [{ text }]
-        });
-      }
+      // Fix: Removed redundant session and isActive check as per guidelines
+      session.sendRealtimeInput({
+        parts: [{ text }]
+      });
     });
   }
 
@@ -206,8 +206,9 @@ export class GeminiLiveService {
           onVolume(Math.sqrt(sum / inputData.length) * 5);
       }
       const pcmBlob = createPcmBlob(inputData);
+      // Fix: Strictly rely on sessionPromise resolution for sending realtime input
       this.sessionPromise?.then((session) => { 
-          if (session && this.isActive) session.sendRealtimeInput({ media: pcmBlob }); 
+          session.sendRealtimeInput({ media: pcmBlob }); 
       });
     };
     

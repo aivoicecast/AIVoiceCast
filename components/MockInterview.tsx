@@ -13,7 +13,8 @@ import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug } from 'lucide-react';
+// Fix: Added missing Minus icon import
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus } from 'lucide-react';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
 
 interface MockInterviewProps {
@@ -22,26 +23,16 @@ interface MockInterviewProps {
   onStartLiveSession: (channel: Channel, context?: string) => void;
 }
 
-interface InterviewReport {
-  score: number;
-  technicalSkills: string;
-  communication: string;
-  collaboration: string;
-  strengths: string[];
-  areasForImprovement: string[];
-  verdict: 'Strong Hire' | 'Hire' | 'No Hire' | 'Strong No Hire' | 'Move Forward' | 'Reject';
-  summary: string;
-  idealAnswers: { question: string, expectedAnswer: string, rationale: string }[];
-  learningMaterial: string; 
-  todoList: string[];
-  fitStatus?: 'underfit' | 'overfit' | 'match';
-  missingKnowledge?: string[];
-}
-
 const getCodeTool: any = {
   name: "get_current_code",
   description: "Read the content of the solution file currently in the editor. Use this to evaluate the candidate's code.",
-  parameters: { type: Type.OBJECT, properties: {} }
+  // Fix: Ensure Type.OBJECT is not empty by providing a context field
+  parameters: { 
+    type: Type.OBJECT, 
+    properties: {
+      request_context: { type: Type.STRING, description: "Optional context for why the code is being read." }
+    } 
+  }
 };
 
 export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfile, onStartLiveSession }) => {
@@ -72,7 +63,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [jobDesc, setJobDesc] = useState('');
   const [resumeText, setResumeText] = useState(userProfile?.resumeText || '');
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
-  const [youtubePrivacy, setYoutubePrivacy] = useState<'private' | 'unlisted' | 'public'>('unlisted');
   
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [initialStudioFiles, setInitialStudioFiles] = useState<CodeFile[]>([]);
@@ -82,7 +72,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [report, setReport] = useState<InterviewReport | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
-  const [videoPlaybackUrl, setVideoPlaybackUrl] = useState<string | null>(null);
   const [generatedProblemMd, setGeneratedProblemMd] = useState('');
 
   const liveServiceRef = useRef<GeminiLiveService | null>(null);
@@ -346,61 +335,119 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   const handleEndInterview = async () => {
     if (isEndingRef.current) return;
+
+    const confirmEnd = window.confirm("Finish interview now? AI will evaluate your performance based on current progress.");
+    if (!confirmEnd) return;
+
     isEndingRef.current = true;
     setIsGeneratingReport(true);
     startSmoothProgress();
-    if (timerRef.current) clearInterval(timerRef.current);
+    
+    if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+    }
 
     setSynthesisStep('Closing neural link...');
-    liveServiceRef.current?.disconnect();
+    try {
+        if (liveServiceRef.current) {
+            await liveServiceRef.current.disconnect();
+        }
+    } catch (e) { console.error("Error disconnecting live service", e); }
+    
+    setIsAiConnected(false);
     setIsRecording(false);
 
     setSynthesisStep('Compiling archives...');
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      const blob = await new Promise<Blob>((resolve) => {
-        const rec = mediaRecorderRef.current!;
-        rec.onstop = () => resolve(new Blob(videoChunksRef.current, { type: 'video/webm' }));
-        rec.stop();
-      });
-      videoBlobRef.current = blob;
-    }
+    try {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            const blob = await new Promise<Blob>((resolve) => {
+                const rec = mediaRecorderRef.current!;
+                rec.onstop = () => resolve(new Blob(videoChunksRef.current, { type: 'video/webm' }));
+                rec.stop();
+            });
+            videoBlobRef.current = blob;
+        }
+    } catch (e) { console.error("Error stopping recorder", e); }
 
-    activeStreamRef.current?.getTracks().forEach(t => t.stop());
-    activeScreenStreamRef.current?.getTracks().forEach(t => t.stop());
+    try {
+        activeStreamRef.current?.getTracks().forEach(t => t.stop());
+        activeScreenStreamRef.current?.getTracks().forEach(t => t.stop());
+    } catch (e) {}
 
     setSynthesisStep('AI Evaluation...');
     let reportData: InterviewReport | null = null;
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
+        
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',
-            contents: `Analyze: ${transcriptText}. Return valid JSON: score, technicalSkills, communication, collaboration, strengths, areasForImprovement, verdict, summary, learningMaterial.`,
+            contents: `Analyze this technical interview transcript: 
+            ${transcriptText}
+            
+            Current Mode: ${mode}
+            
+            Evaluate the candidate's performance across technical accuracy, communication, and problem-solving skills.
+            Provide detailed feedback and a final verdict.
+            Return ONLY a valid JSON object with: 
+            - score (number 0-100)
+            - technicalSkills (string)
+            - communication (string)
+            - collaboration (string)
+            - strengths (array of strings)
+            - areasForImprovement (array of strings)
+            - verdict (string one of: 'Strong Hire', 'Hire', 'No Hire', 'Strong No Hire')
+            - summary (string)
+            - learningMaterial (string markdown)`,
             config: { responseMimeType: 'application/json' }
         });
+        
         reportData = JSON.parse(response.text || "{}");
-    } catch (e: any) { setReportError("Metrics failed."); }
+    } catch (e: any) { 
+        console.error("AI Evaluation failed", e);
+        setReportError("Metrics evaluation failed. Please check your transcript manually."); 
+    }
 
     if (reportData) {
       setReport(reportData);
       const rec: MockInterviewRecording = {
-        id: interviewIdRef.current, userId: currentUser?.uid || 'guest', userName: currentUser?.displayName || 'Guest',
-        mode, language, jobDescription: jobDesc, timestamp: Date.now(), videoUrl: "",
+        id: interviewIdRef.current, 
+        userId: currentUser?.uid || 'guest', 
+        userName: currentUser?.displayName || 'Guest',
+        mode, 
+        language, 
+        jobDescription: jobDesc, 
+        timestamp: Date.now(), 
+        videoUrl: "",
         transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
-        feedback: JSON.stringify(reportData), visibility
+        feedback: JSON.stringify(reportData), 
+        visibility
       };
-      await saveInterviewRecording(rec);
-      setActiveRecording(rec);
+      
+      try {
+          await saveInterviewRecording(rec);
+          setActiveRecording(rec);
+      } catch (e) { console.error("Error saving recording", e); }
+      
       setSynthesisPercent(100);
       setView('report');
+    } else {
+        // Fallback if AI fails but we want to show what we have
+        setView('hub');
+        alert("Evaluation failed, but your session transcript has been saved to your local history.");
     }
+    
     setIsGeneratingReport(false);
-    if (synthesisIntervalRef.current) clearInterval(synthesisIntervalRef.current);
+    if (synthesisIntervalRef.current) {
+        clearInterval(synthesisIntervalRef.current);
+        synthesisIntervalRef.current = null;
+    }
   };
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
-      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
+      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-40">
         <div className="flex items-center gap-4">
           <button onClick={() => view === 'hub' ? onBack() : setView('hub')} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400"><ArrowLeft size={20} /></button>
           <h1 className="text-lg font-bold text-white flex items-center gap-2"><Video className="text-red-500" /> Mock Interview</h1>
@@ -410,7 +457,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             <div className={`px-4 py-1.5 rounded-2xl border bg-slate-950/50 flex items-center gap-2 ${timeLeft < 300 ? 'border-red-500/50 text-red-400 animate-pulse' : 'border-indigo-500/30 text-indigo-400'}`}>
                 <Timer size={14}/><span className="font-mono text-base font-black tabular-nums">{formatTime(timeLeft)}</span>
             </div>
-            <button onClick={handleEndInterview} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold">End Session</button>
+            <button 
+                onClick={handleEndInterview} 
+                className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-red-900/20 active:scale-95 transition-all"
+            >
+                End Session
+            </button>
           </div>
         )}
       </header>
@@ -497,13 +549,41 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         )}
 
         {view === 'report' && (
-          <div className="max-w-4xl mx-auto p-8 animate-fade-in-up space-y-12 pb-32">
+          <div className="max-w-4xl mx-auto p-8 animate-fade-in-up space-y-12 pb-32 overflow-y-auto h-full scrollbar-hide">
             <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 flex flex-col items-center text-center space-y-6 shadow-2xl">
               <Trophy className="text-amber-500" size={64}/><h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Evaluation Result</h2>
               {report ? (
-                <div className="flex flex-col items-center gap-6">
-                    <div className="flex gap-4"><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Score</p><p className="text-4xl font-black text-indigo-400">{report.score}/100</p></div><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p><p className={`text-xl font-black uppercase ${report.verdict.includes('Hire') ? 'text-emerald-400' : 'text-red-400'}`}>{report.verdict}</p></div></div>
+                <div className="flex flex-col items-center gap-6 w-full">
+                    <div className="flex flex-wrap justify-center gap-4"><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Score</p><p className="text-4xl font-black text-indigo-400">{report.score}/100</p></div><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p><p className={`text-xl font-black uppercase ${report.verdict.includes('Hire') ? 'text-emerald-400' : 'text-red-400'}`}>{report.verdict}</p></div></div>
                     <div className="text-left w-full bg-slate-950 p-8 rounded-[2rem] border border-slate-800"><h3 className="font-bold text-white mb-4 flex items-center gap-2"><Sparkles className="text-indigo-400" size={18}/> Summary</h3><p className="text-sm text-slate-400 leading-relaxed">{report.summary}</p></div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full text-left">
+                        <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800">
+                            <h4 className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Trophy size={14}/> Key Strengths</h4>
+                            <ul className="space-y-2">
+                                {report.strengths.map((s, i) => (
+                                    <li key={i} className="text-xs text-slate-300 flex items-start gap-2"><CheckCircle size={14} className="text-emerald-500 shrink-0 mt-0.5"/> {s}</li>
+                                ))}
+                            </ul>
+                        </div>
+                        <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800">
+                            <h4 className="text-xs font-black text-amber-400 uppercase tracking-widest mb-4 flex items-center gap-2"><AlertCircle size={14}/> Growth Areas</h4>
+                            <ul className="space-y-2">
+                                {report.areasForImprovement.map((s, i) => (
+                                    <li key={i} className="text-xs text-slate-300 flex items-start gap-2"><Minus size={14} className="text-amber-500 shrink-0 mt-0.5"/> {s}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div className="text-left w-full bg-slate-950 p-8 rounded-[2rem] border border-slate-800">
+                        <h3 className="font-bold text-white mb-4 flex items-center gap-2"><BookOpen className="text-indigo-400" size={18}/> Learning Path</h3>
+                        <div className="prose prose-invert prose-sm max-w-none">
+                            <MarkdownView content={report.learningMaterial} />
+                        </div>
+                    </div>
+                    
+                    <button onClick={() => setView('hub')} className="px-10 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all">Return to Hub</button>
                 </div>
               ) : <Loader2 size={32} className="animate-spin text-indigo-400" />}
             </div>
