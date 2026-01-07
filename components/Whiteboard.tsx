@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save, Activity } from 'lucide-react';
+import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, RotateCcw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save, Activity, RefreshCcw } from 'lucide-react';
 import { auth, db } from '../services/firebaseConfig';
-import { saveWhiteboardSession, subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements } from '../services/firestoreService';
+import { saveWhiteboardSession, subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements, publishChannelToFirestore } from '../services/firestoreService';
 import { WhiteboardElement, ToolType, LineStyle, BrushType } from '../types';
 import { generateSecureId } from '../utils/idUtils';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
@@ -61,6 +61,13 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [startArrow, setStartArrow] = useState(false);
   const [endArrow, setEndArrow] = useState(false);
   
+  // Transformation & Selection State
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [boardRotation, setBoardRotation] = useState(0); // in degrees
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
+
   // Text Tool State
   const [textInput, setTextInput] = useState({ x: 0, y: 0, value: '', visible: false });
   const textInputRef = useRef<HTMLTextAreaElement>(null);
@@ -70,9 +77,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
-
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
 
   const isDarkBackground = backgroundColor !== 'transparent' && backgroundColor !== '#ffffff';
 
@@ -131,7 +135,61 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const rect = canvasRef.current.getBoundingClientRect();
       const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
       const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
-      return { x: (clientX - rect.left - offset.x) / scale, y: (clientY - rect.top - offset.y) / scale };
+      
+      // 1. Screen to centered coordinate (relative to rect center)
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      let x = clientX - rect.left - cx;
+      let y = clientY - rect.top - cy;
+
+      // 2. Inverse Rotation
+      const rad = -(boardRotation * Math.PI) / 180;
+      const rx = x * Math.cos(rad) - y * Math.sin(rad);
+      const ry = x * Math.sin(rad) + y * Math.cos(rad);
+
+      // 3. Inverse Offset and Scale
+      return { 
+          x: (rx + cx - offset.x) / scale, 
+          y: (ry + cy - offset.y) / scale 
+      };
+  };
+
+  const isPointInElement = (x: number, y: number, el: WhiteboardElement) => {
+      const margin = 10 / scale;
+      if (el.type === 'pen' || el.type === 'eraser') {
+          return el.points?.some(p => Math.sqrt((p.x - x)**2 + (p.y - y)**2) < (el.strokeWidth / scale) + margin);
+      }
+      if (el.type === 'rect') {
+          const minX = Math.min(el.x, el.x + (el.width || 0));
+          const maxX = Math.max(el.x, el.x + (el.width || 0));
+          const minY = Math.min(el.y, el.y + (el.height || 0));
+          const maxY = Math.max(el.y, el.y + (el.height || 0));
+          return x >= minX - margin && x <= maxX + margin && y >= minY - margin && y <= maxY + margin;
+      }
+      if (el.type === 'circle') {
+          const centerX = el.x + (el.width || 0) / 2;
+          const centerY = el.y + (el.height || 0) / 2;
+          const radiusX = Math.abs((el.width || 0) / 2);
+          const radiusY = Math.abs((el.height || 0) / 2);
+          return ((x - centerX)**2 / (radiusX + margin)**2) + ((y - centerY)**2 / (radiusY + margin)**2) <= 1;
+      }
+      if (el.type === 'line' || el.type === 'arrow') {
+          // Point to line distance
+          const x1 = el.x; const y1 = el.y;
+          const x2 = el.endX || el.x; const y2 = el.endY || el.y;
+          const lenSq = (x2 - x1)**2 + (y2 - y1)**2;
+          if (lenSq === 0) return Math.sqrt((x1 - x)**2 + (y1 - y)**2) < margin;
+          let t = ((x - x1) * (x2 - x1) + (y - y1) * (y2 - y1)) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+          const dist = Math.sqrt((x - (x1 + t * (x2 - x1)))**2 + (y - (y1 + t * (y2 - y1)))**2);
+          return dist < (el.strokeWidth / scale) + margin;
+      }
+      if (el.type === 'type') {
+          const w = 200; // estimated
+          const h = 24 * (el.text?.split('\n').length || 1);
+          return x >= el.x && x <= el.x + w && y >= el.y && y <= el.y + h;
+      }
+      return false;
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
@@ -141,6 +199,19 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       if (tool === 'type') {
           setTextInput({ x, y, value: '', visible: true });
           setTimeout(() => textInputRef.current?.focus(), 50);
+          return;
+      }
+
+      if (tool === 'move') {
+          // Reverse find to get topmost element
+          const found = [...elements].reverse().find(el => isPointInElement(x, y, el));
+          if (found) {
+              setSelectedElementId(found.id);
+              setDragStartPos({ x, y });
+              setIsDrawing(true);
+          } else {
+              setSelectedElementId(null);
+          }
           return;
       }
 
@@ -161,8 +232,28 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   };
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
-      if (!isDrawing || !currentElement) return;
+      if (!isDrawing) return;
       const { x, y } = getWorldCoordinates(e);
+
+      if (tool === 'move' && selectedElementId) {
+          const dx = x - dragStartPos.x;
+          const dy = y - dragStartPos.y;
+          setElements(prev => prev.map(el => {
+              if (el.id === selectedElementId) {
+                  const updated = { ...el, x: el.x + dx, y: el.y + dy };
+                  if (el.points) updated.points = el.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                  if (el.endX !== undefined) updated.endX = el.endX + dx;
+                  if (el.endY !== undefined) updated.endY = el.endY + dy;
+                  return updated;
+              }
+              return el;
+          }));
+          setDragStartPos({ x, y });
+          return;
+      }
+
+      if (!currentElement) return;
+
       if (tool === 'pen' || tool === 'eraser') { 
           setCurrentElement(prev => prev ? ({ ...prev, points: [...(prev.points || []), { x, y }] }) : null); 
       }
@@ -175,7 +266,21 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   };
 
   const stopDrawing = async () => {
-      if (isDrawing && currentElement) {
+      if (!isDrawing) return;
+
+      if (tool === 'move' && selectedElementId) {
+          const el = elements.find(e => e.id === selectedElementId);
+          if (el && sessionId && !sessionId.startsWith('local-')) {
+              // Batch update is not available for arrayUnion but since we are modifying an existing index 
+              // it's better to just push the whole array or handle per-element sync.
+              // For simplicity, we just save the session state.
+              await saveWhiteboardSession(sessionId, elements);
+          }
+          setIsDrawing(false);
+          return;
+      }
+
+      if (currentElement) {
           const finalized = { ...currentElement };
           setElements(prev => [...prev, finalized]);
           if (sessionId && !sessionId.startsWith('local-')) {
@@ -265,7 +370,16 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
 
-      ctx.save(); ctx.translate(offset.x, offset.y); ctx.scale(scale, scale);
+      ctx.save(); 
+      // Translate to center for rotation
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate((boardRotation * Math.PI) / 180);
+      ctx.translate(-cx, -cy);
+      
+      ctx.translate(offset.x, offset.y); 
+      ctx.scale(scale, scale);
       
       const drawArrowHead = (x1: number, y1: number, x2: number, y2: number, size: number, color: string) => {
           const angle = Math.atan2(y2 - y1, x2 - x1);
@@ -281,6 +395,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           ctx.lineCap = 'round'; 
           ctx.lineJoin = 'round';
           
+          if (el.id === selectedElementId) {
+              ctx.shadowBlur = 10;
+              ctx.shadowColor = 'rgba(99, 102, 241, 0.8)'; // Indigo glow for selected
+          }
+
           const styleConfig = LINE_STYLES.find(s => s.value === (el.lineStyle || 'solid'));
           ctx.setLineDash(styleConfig?.dash || []);
 
@@ -326,7 +445,13 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       elements.forEach(renderElement);
       if (currentElement) renderElement(currentElement);
       ctx.restore();
-  }, [elements, currentElement, scale, offset, backgroundColor]);
+  }, [elements, currentElement, scale, offset, boardRotation, backgroundColor, selectedElementId]);
+
+  const handleResetView = () => {
+      setOffset({ x: 0, y: 0 });
+      setScale(1);
+      setBoardRotation(0);
+  };
 
   return (
     <div className={`flex flex-col h-full ${isDarkBackground ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden relative`}>
@@ -344,17 +469,24 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1 mr-2`}>
                     <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Pen"><PenTool size={16}/></button>
                     <button onClick={() => setTool('type')} className={`p-1.5 rounded ${tool === 'type' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Markdown Text"><Type size={16}/></button>
+                    <button onClick={() => setTool('move')} className={`p-1.5 rounded ${tool === 'move' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Move Object"><MousePointer2 size={16}/></button>
                     <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Eraser"><Eraser size={16}/></button>
                 </div>
 
-                <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1`}>
+                <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1 mr-2`}>
                     <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Rectangle"><Square size={16}/></button>
                     <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Circle"><Circle size={16}/></button>
                     <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Line"><Minus size={16}/></button>
                     <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Arrow"><ArrowRight size={16}/></button>
                 </div>
 
-                <div className="relative">
+                <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1`}>
+                    <button onClick={() => setBoardRotation(prev => prev - 15)} className={`p-1.5 rounded ${isDarkBackground ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black'}`} title="Rotate CCW"><RotateCcw size={16}/></button>
+                    <button onClick={() => setBoardRotation(prev => prev + 15)} className={`p-1.5 rounded ${isDarkBackground ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black'}`} title="Rotate CW"><RotateCw size={16}/></button>
+                    <button onClick={handleResetView} className={`p-1.5 rounded ${isDarkBackground ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black'}`} title="Reset View"><RefreshCcw size={16}/></button>
+                </div>
+
+                <div className="relative ml-2">
                     <button onClick={() => setShowStyleMenu(!showStyleMenu)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${isDarkBackground ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
                         <Sliders size={16}/>
                         <span className="text-xs font-bold uppercase hidden sm:inline">Styles</span>
@@ -406,6 +538,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+                <button onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Zoom In"><ZoomIn size={16}/></button>
+                <button onClick={() => setScale(prev => Math.max(prev / 1.2, 0.2))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Zoom Out"><ZoomOut size={16}/></button>
+                <div className={`w-px h-6 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} mx-1`}></div>
                 <button onClick={handleExportPNG} className={`flex items-center gap-2 px-3 py-1.5 ${isDarkBackground ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'} text-xs font-bold rounded-lg border shadow-sm`}>
                     <Download size={14}/>
                     <span className="hidden lg:inline">Export PNG</span>
@@ -435,7 +570,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 ref={canvasRef} 
                 onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
                 onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
-                className="block w-full h-full cursor-crosshair" 
+                className={`block w-full h-full ${tool === 'move' ? 'cursor-move' : 'cursor-crosshair'}`} 
             />
 
             {textInput.visible && (
