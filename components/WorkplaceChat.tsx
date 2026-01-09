@@ -1,7 +1,8 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import * as React from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChatChannel, RealTimeMessage, Group, UserProfile } from '../types';
-// Removed getUniqueGroupMembers from the import list below as it is not exported by firestoreService
+// FIXED: Removed non-existent getUniqueGroupMembers from imports
 import { sendMessage, subscribeToMessages, getUserGroups, getAllUsers, createOrGetDMChannel, getUserDMChannels, deleteMessage, uploadFileToStorage } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
 import { Send, Hash, Lock, User, Plus, Search, MessageSquare, MoreVertical, Paperclip, Loader2, ArrowLeft, Menu, Users, Briefcase, Reply, Trash2, X, FileText, Image as ImageIcon, Video, CheckCircle } from 'lucide-react';
@@ -226,6 +227,7 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
       (u.email && u.email.toLowerCase().includes(userSearchQuery.toLowerCase()))
   );
 
+  // FIXED: Explicit usage of standard HTML tags under React namespace to resolve intrinsic elements
   return (
     <div className="flex h-full bg-slate-950 text-slate-100 overflow-hidden">
       

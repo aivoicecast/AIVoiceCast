@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
+
+// FIXED: Using namespace React import to ensure JSX intrinsic elements (div, h1, etc.) are correctly resolved
+import * as React from 'react';
+import { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
-  Home, Video as VideoIcon, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, Video, ChevronDown
+  Home, User, ArrowLeft, Play, Gift, 
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, Video, ChevronDown, Activity
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewState, TranscriptItem, CodeFile } from '../types';
@@ -16,44 +19,33 @@ import { StudioMenu } from './StudioMenu';
 import { ChannelSettingsModal } from './ChannelSettingsModal';
 import { CommentsModal } from './CommentsModal';
 import { Notifications } from './Notifications';
-import { GroupManager } from './GroupManager';
-import { MentorBooking } from './MentorBooking';
-import { RecordingList } from './RecordingList';
 import { DocumentList } from './DocumentList';
-import { CalendarView } from './CalendarView';
 import { PodcastFeed } from './PodcastFeed'; 
 import { MissionManifesto } from './MissionManifesto';
 import { CodeStudio } from './CodeStudio';
-import { Whiteboard } from './Whiteboard';
-import { BlogView } from './BlogView';
-import { WorkplaceChat } from './WorkplaceChat';
 import { LoginPage } from './LoginPage'; 
 import { SettingsModal } from './SettingsModal'; 
 import { PricingModal } from './PricingModal'; 
-import { CareerCenter } from './CareerCenter';
 import { UserManual } from './UserManual'; 
 import { PrivacyPolicy } from './PrivacyPolicy';
 import { NotebookViewer } from './NotebookViewer'; 
-import { CardWorkshop } from './CardWorkshop';
-import { CardExplorer } from './CardExplorer';
 import { IconGenerator } from './IconGenerator';
 import { ShippingLabelApp } from './ShippingLabelApp';
 import { CheckDesigner } from './CheckDesigner';
-import { FirestoreInspector } from './FirestoreInspector';
 import { BrandLogo } from './BrandLogo';
 import { CoinWallet } from './CoinWallet';
 import { MockInterview } from './MockInterview';
 import { FirebaseConfigModal } from './FirebaseConfigModal';
 
-import { getCurrentUser, getDriveToken } from '../services/authService';
-import { auth, db, isFirebaseConfigured } from '../services/firebaseConfig';
+import { auth, db } from '../services/firebaseConfig';
+// FIXED: Standard modular imports for Firebase 9+
 import { onAuthStateChanged } from 'firebase/auth';
 import { onSnapshot, doc } from 'firebase/firestore';
-import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from '../services/googleDriveService';
+
 import { getUserChannels, saveUserChannel } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { stopAllPlatformAudio } from '../utils/audioUtils';
-import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, claimCoinCheck, syncUserProfile, publishChannelToFirestore } from '../services/firestoreService';
+import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, syncUserProfile, publishChannelToFirestore } from '../services/firestoreService';
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -64,9 +56,9 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+// FIXED: Explicitly typed state and props to resolve compilation errors
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false, error: null };
-  declare props: ErrorBoundaryProps;
+  public state: ErrorBoundaryState = { hasError: false, error: null };
 
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -202,8 +194,8 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [bootStatus, setBootStatus] = useState("Initializing Neural Core...");
   const [activeTab, setActiveTab] = useState('categories');
-  const [searchQuery, setSearchQuery] = useState('');
   const [publicChannels, setPublicChannels] = useState<Channel[]>([]);
   const [userChannels, setUserChannels] = useState<Channel[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -254,6 +246,7 @@ const App: React.FC = () => {
   ], [t]);
 
   const handleSetViewState = (newState: ViewState, params: Record<string, string> = {}) => {
+    if (typeof newState !== 'string') return;
     stopAllPlatformAudio(`NavigationTransition:${viewState}->${newState}`);
     setViewState(newState);
     setIsAppsMenuOpen(false);
@@ -272,6 +265,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (currentUser?.uid && db) {
+        // FIXED: Modular Firestore syntax
         const unsubscribeProfile = onSnapshot(doc(db, 'users', currentUser.uid), snapshot => {
             if (snapshot.exists()) setUserProfile(snapshot.data() as UserProfile);
         });
@@ -282,11 +276,16 @@ const App: React.FC = () => {
   useEffect(() => {
     const activeAuth = auth;
     if (!activeAuth) {
+      setBootStatus("CRITICAL: Firebase Auth Registry Missing.");
       setAuthLoading(false);
       return;
     }
+
+    setBootStatus("Negotiating Neural Handshake...");
+    // FIXED: Modular Auth state observer syntax
     const unsubscribe = onAuthStateChanged(activeAuth, async (user) => {
         if (user) {
+            setBootStatus("Authenticating Session...");
             setCurrentUser(user);
             syncUserProfile(user).catch(console.error);
         } else {
@@ -295,8 +294,13 @@ const App: React.FC = () => {
         }
         setAuthLoading(false);
     });
-    return () => unsubscribe();
-  }, []);
+
+    const timeout = setTimeout(() => {
+        if (authLoading) setBootStatus("Handshake delay. Check network...");
+    }, 5000);
+
+    return () => { unsubscribe(); clearTimeout(timeout); };
+  }, [authLoading]);
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -344,15 +348,18 @@ const App: React.FC = () => {
       setUserChannels(prev => prev.map(c => c.id === updated.id ? updated : c));
   };
 
-  const handleSchedulePodcast = (date: Date) => {
-      setCreateModalInitialDate(date);
-      setIsCreateModalOpen(true);
-  };
-
   if (authLoading) return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-6">
-        <BrandLogo size={80} className="animate-pulse" />
-        <Loader2 className="animate-spin text-indigo-500" size={32} />
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8 gap-8">
+        <BrandLogo size={120} className="animate-pulse" />
+        <div className="flex flex-col items-center gap-4 max-w-sm w-full">
+            <div className="flex items-center gap-3">
+                <Loader2 className="animate-spin text-indigo-500" size={24} />
+                <span className="text-sm font-black text-white uppercase tracking-widest">{bootStatus}</span>
+            </div>
+            <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-white/5">
+                <div className="h-full bg-indigo-600 animate-loading-bar"></div>
+            </div>
+        </div>
     </div>
   );
 
@@ -420,6 +427,8 @@ const App: React.FC = () => {
         {channelToComment && ( <CommentsModal isOpen={true} onClose={() => setChannelToComment(null)} channel={channelToComment} onAddComment={handleAddComment} onDeleteComment={(cid) => deleteCommentFromChannel(channelToComment.id, cid)} onEditComment={(cid, txt, att) => updateCommentInChannel(channelToComment.id, { id: cid, userId: currentUser.uid, user: currentUser.displayName || 'Anonymous', text: txt, timestamp: Date.now(), attachments: att })} currentUser={currentUser} /> )}
         {channelToEdit && ( <ChannelSettingsModal isOpen={true} onClose={() => setChannelToEdit(null)} channel={channelToEdit} onUpdate={handleUpdateChannel} /> )}
         <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} setIsSyncModalOpen={() => {}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => setIsUserGuideOpen(true)} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => setIsPrivacyOpen(true)} t={t} language={language} setLanguage={setLanguage} channels={allChannels} />
+        {isUserGuideOpen && <div className="fixed inset-0 z-[120]"><UserManual onBack={() => setIsUserGuideOpen(false)} /></div>}
+        {isPrivacyOpen && <div className="fixed inset-0 z-[120]"><PrivacyPolicy onBack={() => setIsPrivacyOpen(false)} /></div>}
         <FirebaseConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} onConfigUpdate={() => window.location.reload()} />
       </div>
     </ErrorBoundary>

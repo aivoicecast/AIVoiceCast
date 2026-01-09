@@ -1,4 +1,4 @@
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, BarChart, Key, Calendar, Terminal } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, BarChart, Key, Calendar, Terminal, History } from 'lucide-react';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -58,7 +58,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [isAiConnected, setIsAiConnected] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isAiThinking, setIsAiThinking] = useState(false);
-  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
   
   const [timeLeft, setTimeLeft] = useState<number>(0); 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -158,14 +157,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     }
   };
 
-  const handleOpenKeySelection = async () => {
-      if ((window as any).aistudio) {
-          await (window as any).aistudio.openSelectKey();
-          setShowKeyPrompt(false);
-          handleStartInterview();
-      }
-  };
-
   const handleReconnectAi = async (isAuto = false) => {
     if (isEndingRef.current) return;
     
@@ -202,11 +193,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           },
           onError: (e: any) => { 
               if (activeServiceIdRef.current === service.id) {
-                  if (e.message?.includes("Requested entity was not found")) {
-                      setShowKeyPrompt(true);
-                  } else {
-                      handleReconnectAi(true);
-                  }
+                  handleReconnectAi(true);
               }
           },
           onVolumeUpdate: () => {},
@@ -249,15 +236,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   }, []);
 
   const handleStartInterview = async () => {
-    // Check for API Key selection mandatory for Tuned Models
-    if ((window as any).aistudio) {
-        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-        if (!hasKey) {
-            setShowKeyPrompt(true);
-            return;
-        }
-    }
-
     setIsStarting(true);
     isEndingRef.current = false;
     
@@ -405,8 +383,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           onClose: () => { if (activeServiceIdRef.current === service.id) { setIsAiConnected(false); if (!isEndingRef.current) handleReconnectAi(true); } },
           onError: (e: any) => { 
               if (activeServiceIdRef.current === service.id) {
-                  if (e.message?.includes("Requested entity was not found")) setShowKeyPrompt(true);
-                  else logApi(`Link Error: ${e}`, "error"); 
+                  logApi(`Link Error: ${e}`, "error"); 
               }
           },
           onVolumeUpdate: () => {},
@@ -431,7 +408,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 }
             }
           }
-      }, [{ functionDeclarations: [getCodeTool] }]);
+      });
 
     } catch (e: any) { logApi(`Init Failed: ${e.message}`, "error"); setIsStarting(false); }
   };
@@ -753,25 +730,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
         {view === 'interview' && (
             <div className="flex-1 flex flex-col bg-black overflow-hidden relative">
-                {showKeyPrompt && (
-                    <div className="absolute inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6">
-                        <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] p-10 max-w-sm w-full text-center shadow-2xl animate-fade-in-up">
-                            <div className="w-16 h-16 bg-indigo-600/10 rounded-full flex items-center justify-center mb-6 mx-auto border border-indigo-500/20">
-                                <Key className="text-indigo-400" size={32}/>
-                            </div>
-                            <h3 className="text-xl font-black text-white uppercase tracking-widest mb-3">API Key Selection Required</h3>
-                            <p className="text-sm text-slate-400 leading-relaxed mb-8">This assessment persona requires a high-fidelity billing-enabled key from AI Studio.</p>
-                            <button 
-                                onClick={handleOpenKeySelection}
-                                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
-                            >
-                                Authorize Assessment
-                            </button>
-                            <button onClick={() => setView('hub')} className="mt-4 text-xs font-bold text-slate-500 hover:text-white uppercase underline">Cancel Session</button>
-                        </div>
-                    </div>
-                )}
-
                 {/* Main Interactive Zone */}
                 <div className="flex-1 flex overflow-hidden">
                     <div className="flex-1 flex flex-col bg-slate-950 min-w-0">

@@ -1,3 +1,5 @@
+
+// FIXED: Using default React import and fixing modular onAuthStateChanged import
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { signInWithGoogle, signOut } from '../services/authService';
@@ -42,6 +44,7 @@ export const UserAuth: React.FC = () => {
     }
   };
 
+  // FIXED: Explicit usage of default React context for intrinsic elements
   if (loading) return (
     <div className="flex items-center px-4 py-2 bg-slate-800/50 rounded-full border border-slate-700">
         <Loader2 size={16} className="animate-spin text-indigo-400" />

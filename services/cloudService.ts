@@ -1,3 +1,4 @@
+
 import { 
   ref, 
   uploadBytes, 
@@ -6,6 +7,7 @@ import {
   deleteObject, 
   listAll 
 } from 'firebase/storage';
+// FIXED: Using standard modular imports for Firestore functions
 import { 
   doc, 
   setDoc, 
@@ -74,6 +76,7 @@ export async function uploadToCloud(): Promise<{ count: number, size: number, ti
   const manifestBlob = new Blob([JSON.stringify(updatedManifest)], { type: 'application/json' });
   await uploadBytes(ref(storage, `${CLOUD_FOLDER}/${uid}/manifest.json`), manifestBlob);
 
+  // FIXED: Using named setDoc and doc functions correctly
   await setDoc(doc(db, 'users', uid), {
     lastBackup: Timestamp.now(),
     backupSize: totalSize,
@@ -136,6 +139,7 @@ export async function getLastBackupTime(): Promise<Date | null> {
   if (local) return new Date(local);
   if (!db) return null;
   try {
+    // FIXED: Using named getDoc and doc functions correctly
     const snap = await getDoc(doc(db, 'users', getUserId()));
     if (snap.exists()) return snap.data()?.lastBackup?.toDate() || null;
   } catch (e) {}

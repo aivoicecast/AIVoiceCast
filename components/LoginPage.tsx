@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2, Activity, Terminal, AlertTriangle, CheckCircle, Wifi, Cpu, ShieldAlert } from 'lucide-react';
+import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2, Activity, Terminal, AlertTriangle, CheckCircle, Wifi, Cpu, ShieldAlert, Key, ExternalLink } from 'lucide-react';
 import { signInWithGoogle } from '../services/authService';
 import { BrandLogo } from './BrandLogo';
 import { getFirebaseDiagnostics } from '../services/firebaseConfig';
@@ -22,10 +22,22 @@ const GoogleLogo = ({ size = 20 }: { size?: number }) => (
 export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionClick }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [diagnostics, setDiagnostics] = useState<any>(null);
+  const [hasAiKey, setHasAiKey] = useState(false);
   const [bootLogs, setBootLogs] = useState<{msg: string, type: 'info' | 'success' | 'error'}[]>([]);
 
   const addLog = (msg: string, type: 'info' | 'success' | 'error' = 'info') => {
-      setBootLogs(prev => [...prev, { msg, type }].slice(-8));
+      setBootLogs(prev => [...prev, { msg, type }].slice(-10));
+  };
+
+  const checkAiKey = async () => {
+    if ((window as any).aistudio) {
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        setHasAiKey(hasKey);
+        if (hasKey) addLog("AI Studio: Key Verified", "success");
+        else addLog("AI Studio: Key Selection Required", "info");
+        return hasKey;
+    }
+    return false;
   };
 
   useEffect(() => {
@@ -36,13 +48,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
     };
 
     const d = runDiagnostics();
+    checkAiKey();
     
     addLog("Neural Kernel v4.5.6 Initializing...");
     
     if (d.apiKeyPresent) {
-        addLog("Security: API Keys Loaded", "success");
+        addLog("Registry: Firebase Keys Loaded", "success");
     } else {
-        addLog("Security: Keys Missing (Local Mode)", "error");
+        addLog("Registry: Keys Missing (Local Mode)", "error");
     }
 
     if (d.isInitialized) {
@@ -63,11 +76,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
     
     const timer = setInterval(() => {
         setDiagnostics(runDiagnostics());
-    }, 3000);
+        checkAiKey();
+    }, 5000);
     return () => clearInterval(timer);
   }, []);
 
+  const handleSelectKey = async () => {
+    if ((window as any).aistudio) {
+        addLog("Opening AI Studio Key Selection...");
+        await (window as any).aistudio.openSelectKey();
+        // Per guidelines, assume success and proceed
+        setHasAiKey(true);
+        addLog("AI Key Protocol: ACTIVE", "success");
+    }
+  };
+
   const handleLogin = async () => {
+    if (!hasAiKey) {
+        await handleSelectKey();
+    }
+    
     setIsLoading(true);
     addLog("Initiating Secure Neural Handshake...");
     try {
@@ -99,7 +127,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
             AI-native learning, synced to your sovereign Drive.
           </p>
 
-          {/* Neural Boot Log Section */}
           <div className="mb-8 p-5 bg-black/60 rounded-3xl border border-slate-800 text-left space-y-4 shadow-inner overflow-hidden">
               <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
@@ -107,12 +134,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
                   </span>
                   <div className="flex gap-1.5">
                       <div className={`w-1.5 h-1.5 rounded-full ${diagnostics?.isInitialized ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}/>
-                      <div className={`w-1.5 h-1.5 rounded-full ${diagnostics?.hasAuth ? 'bg-emerald-500' : 'bg-slate-700'}`}/>
-                      <div className={`w-1.5 h-1.5 rounded-full ${diagnostics?.hasFirestore ? 'bg-indigo-500' : 'bg-slate-800'}`}/>
+                      <div className={`w-1.5 h-1.5 rounded-full ${hasAiKey ? 'bg-indigo-500' : 'bg-slate-700'}`}/>
+                      <div className={`w-1.5 h-1.5 rounded-full ${diagnostics?.hasFirestore ? 'bg-emerald-500' : 'bg-slate-800'}`}/>
                   </div>
               </div>
               
-              <div className="space-y-1.5 font-mono text-[10px] min-h-[120px]">
+              <div className="space-y-1.5 font-mono text-[10px] min-h-[140px]">
                   {bootLogs.map((log, i) => (
                       <div key={i} className={`flex items-center gap-2 ${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-emerald-400' : 'text-slate-500'}`}>
                           <span className="opacity-40">>></span>
@@ -127,22 +154,38 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
                   )}
               </div>
               
+              {!hasAiKey && (
+                  <div className="mt-4 p-4 bg-indigo-900/20 border border-indigo-500/30 rounded-2xl flex flex-col gap-3 animate-fade-in">
+                      <div className="flex items-start gap-3">
+                        <Key size={18} className="text-indigo-400 shrink-0 mt-0.5"/>
+                        <div className="text-[10px] text-indigo-200 leading-relaxed font-bold">
+                            REQUIRED: AI Studio Key Selection
+                            <p className="mt-1 text-slate-400 font-normal">A billing-enabled API key from a paid GCP project is required for specialized personas and high-quality imaging.</p>
+                        </div>
+                      </div>
+                      <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-[9px] text-indigo-400 hover:text-white flex items-center gap-1 uppercase font-black tracking-widest">
+                        Billing Documentation <ExternalLink size={10}/>
+                      </a>
+                      <button onClick={handleSelectKey} className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg">Authorize AI Studio</button>
+                  </div>
+              )}
+
               {!diagnostics?.hasAuth && diagnostics?.isInitialized && (
                   <div className="mt-4 p-3 bg-red-900/20 border border-red-900/30 rounded-xl flex items-start gap-3 animate-fade-in">
                       <ShieldAlert size={16} className="text-red-400 shrink-0 mt-0.5"/>
                       <div className="text-[10px] text-red-300 leading-relaxed font-bold">
                           REGISTRY CONFLICT: Auth module failed to register. 
-                          <p className="mt-1 text-slate-400 font-normal">This is usually caused by multiple SDK instances. Please perform a force reboot.</p>
+                          <p className="mt-1 text-slate-400 font-normal">Please perform a force reboot to re-link modules.</p>
                           <button onClick={() => window.location.reload()} className="block mt-2 underline text-white font-black uppercase tracking-tighter">Force System Reboot</button>
                       </div>
                   </div>
               )}
           </div>
 
-          <div className="space-y-4 mb-10">
+          <div className="space-y-3 mb-8">
               <div className="flex items-center gap-4 bg-slate-800/30 p-4 rounded-2xl border border-slate-700/50 group hover:border-indigo-500/30 transition-all">
                   <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-400 group-hover:scale-110 transition-transform">
-                    <ShieldCheck size={24}/>
+                    <ShieldCheck size={20}/>
                   </div>
                   <div className="text-left">
                       <p className="text-xs font-bold text-white uppercase tracking-wider">Secure Protocol</p>
@@ -151,7 +194,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
               </div>
               <div className="flex items-center gap-4 bg-slate-800/30 p-4 rounded-2xl border border-slate-700/50 group hover:border-indigo-500/30 transition-all">
                   <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-400 group-hover:scale-110 transition-transform">
-                    <HardDrive size={24}/>
+                    <HardDrive size={20}/>
                   </div>
                   <div className="text-left">
                       <p className="text-xs font-bold text-white uppercase tracking-wider">Cloud Sovereignty</p>
@@ -170,7 +213,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
             ) : (
               <>
                 <GoogleLogo size={24} />
-                <span className="text-base uppercase tracking-wider">Continue with Google Account</span>
+                <span className="text-base uppercase tracking-wider">Launch Knowledge OS</span>
               </>
             )}
           </button>

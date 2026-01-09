@@ -36,7 +36,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [publishProgress, setPublishProgress] = useState('');
-  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
+  // Removed showKeyPrompt state as per GenAI guidelines
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -66,28 +66,13 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
       }
   };
 
-  const handleOpenKeySelection = async () => {
-    if (window.aistudio) {
-        await window.aistudio.openSelectKey();
-        setShowKeyPrompt(false);
-        handleGenerate();
-    }
-  };
-
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     
     const isEdit = !!baseImage;
     const model = isEdit ? 'gemini-2.5-flash-image' : 'gemini-3-pro-image-preview';
 
-    // Mandatory Key Selection for gemini-3-pro-image-preview
-    if (model === 'gemini-3-pro-image-preview' && window.aistudio) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        if (!hasKey) {
-            setShowKeyPrompt(true);
-            return;
-        }
-    }
+    // FIXED: Removed mandatory Key Selection UI check as per GenAI guidelines
     
     setIsGenerating(true);
     setError(null);
@@ -95,7 +80,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     
     try {
       // Always create a new instance right before making an API call 
-      // to ensure it uses the most up-to-date API key from the dialog.
+      // to ensure it uses the most up-to-date API key from the environment.
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       const styleInstruction = isEdit ? `Modify the provided image according to this request: ${prompt}. Maintain the core structure but update the style to: ${selectedStyle.name}. ${selectedStyle.prompt}.` : `Professional app icon design for: ${prompt}. ${selectedStyle.prompt}. Isolated on a solid background, centered composition, no text, masterpiece quality, 8k resolution.`;
@@ -140,11 +125,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
       }
     } catch (e: any) {
       console.error(e);
-      if (e.message?.includes("Requested entity was not found") && window.aistudio) {
-          setShowKeyPrompt(true);
-      } else {
-          setError(e.message || "Generation failed. Try a different prompt.");
-      }
+      setError(e.message || "Generation failed. Try a different prompt.");
     } finally {
       setIsGenerating(false);
     }
@@ -194,6 +175,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     link.click();
   };
 
+  // FIXED: Ensured standard default import and explicit use of React namespace for intrinsic elements
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
       {/* Header */}
@@ -227,25 +209,6 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
           {/* Controls Panel */}
           <div className="w-full lg:w-[400px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-8 space-y-10 scrollbar-thin">
               
-              {showKeyPrompt && (
-                  <div className="p-5 bg-indigo-900/20 border border-indigo-500/30 rounded-2xl animate-fade-in-up space-y-4">
-                      <div className="flex items-center gap-2 text-indigo-400">
-                          <Key size={18}/>
-                          <span className="text-xs font-black uppercase tracking-widest">Billing Required</span>
-                      </div>
-                      <p className="text-xs text-indigo-200 leading-relaxed">
-                          Generating high-fidelity 1K icons with <strong>Gemini 3 Pro</strong> requires a paid API key from a billing-enabled project.
-                      </p>
-                      <button 
-                        onClick={handleOpenKeySelection}
-                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-500/20"
-                      >
-                          Select API Key
-                      </button>
-                      <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="block text-center text-[10px] text-slate-500 hover:text-white underline">Learn about billing</a>
-                  </div>
-              )}
-
               {/* Base Image Section */}
               <div className="space-y-4">
                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center justify-between">

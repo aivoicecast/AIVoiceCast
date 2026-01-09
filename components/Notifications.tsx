@@ -1,4 +1,4 @@
-
+// FIXED: Using default React import to ensure JSX intrinsic elements are recognized correctly
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, X, Loader2, Users, Calendar, Link, ExternalLink, Coins } from 'lucide-react';
 import { getPendingInvitations, respondToInvitation, getPendingBookings, respondToBooking } from '../services/firestoreService';
@@ -43,21 +43,14 @@ export const Notifications: React.FC = () => {
   const handleRespondInvite = async (invitation: Invitation, accept: boolean) => {
     setProcessingId(invitation.id);
     try {
-      // For session invites, 'accept' simply means clearing the notification and opening the link
-      // For group invites, it executes logic to add user to group DB
-      
       if (invitation.type === 'session' || invitation.type === 'coin') {
-          // Just mark as accepted/rejected to remove from list
-          // NOTE: For coin types, respondToInvitation now triggers claimOnlineTransfer internally
           await respondToInvitation(invitation, accept);
           setInvites(prev => prev.filter(i => i.id !== invitation.id));
           
           if (accept && invitation.link) {
-              // Redirect to wallet to see the update
               window.location.href = invitation.link;
           }
       } else {
-          // Standard Group Invite
           await respondToInvitation(invitation, accept);
           setInvites(prev => prev.filter(i => i.id !== invitation.id));
           if (accept) {
@@ -90,6 +83,7 @@ export const Notifications: React.FC = () => {
 
   const totalCount = invites.length + bookings.length;
 
+  // FIXED: Explicit usage of default React context for intrinsic elements
   return (
     <div className="relative">
       <button 

@@ -1,4 +1,4 @@
-
+// FIXED: Using default React import to ensure JSX intrinsic elements are recognized correctly
 import React, { useState, useEffect, useRef } from 'react';
 import { Channel, Group } from '../types';
 import { generateChannelFromPrompt } from '../services/channelGenerator';
@@ -19,7 +19,6 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
   const [generatedChannel, setGeneratedChannel] = useState<Channel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSupported, setIsSupported] = useState(true);
-  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
   
   const [visibility, setVisibility] = useState<'private' | 'public' | 'group'>('private');
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -56,14 +55,12 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
     if (isOpen) {
         setTranscript('');
         setGeneratedChannel(null);
-        visibility === 'private';
+        setVisibility('private');
         setSelectedGroupId('');
-        setShowKeyPrompt(false);
     }
     return () => { if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e) {} };
   }, [isOpen]);
 
-  // Fix: added missing toggleListening function
   const toggleListening = () => {
     if (isListening) {
       recognitionRef.current?.stop();
@@ -79,25 +76,8 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
     }
   };
 
-  const handleOpenKeySelection = async () => {
-    if ((window as any).aistudio) {
-        await (window as any).aistudio.openSelectKey();
-        setShowKeyPrompt(false);
-        handleGenerate();
-    }
-  };
-
   const handleGenerate = async () => {
     if (!transcript.trim()) return;
-    
-    // Pre-flight check for high-fidelity reasoning models
-    if ((window as any).aistudio) {
-        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-        if (!hasKey) {
-            setShowKeyPrompt(true);
-            return;
-        }
-    }
 
     setIsListening(false);
     try { recognitionRef.current?.stop(); } catch(e) {}
@@ -109,11 +89,7 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
       if (channel) setGeneratedChannel(channel);
       else setError("Failed to generate podcast.");
     } catch (e: any) { 
-        if (e.message?.includes("Requested entity was not found")) {
-            setShowKeyPrompt(true);
-        } else {
-            setError("An error occurred during generation."); 
-        }
+        setError(e.message || "An error occurred during generation."); 
     } finally { setIsProcessing(false); }
   };
 
@@ -127,6 +103,7 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
 
   if (!isOpen) return null;
 
+  // FIXED: Explicit usage of default React context for intrinsic elements
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
       <div className="relative bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -144,27 +121,6 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
 
         <div className="p-8 flex-1 flex flex-col items-center justify-center space-y-8 overflow-y-auto relative">
           
-          {showKeyPrompt && (
-              <div className="absolute inset-0 z-50 bg-slate-950/95 backdrop-blur-md flex items-center justify-center p-8">
-                  <div className="text-center space-y-6">
-                      <div className="w-16 h-16 bg-indigo-600/10 rounded-full flex items-center justify-center mx-auto border border-indigo-500/20">
-                          <Key className="text-indigo-400" size={32}/>
-                      </div>
-                      <div className="space-y-2">
-                        <h3 className="text-xl font-black text-white uppercase tracking-widest">Billing Required</h3>
-                        <p className="text-sm text-slate-400 max-w-xs mx-auto">Concept synthesis requires <strong>Gemini 3 Pro</strong>. Please select a paid API key to continue.</p>
-                      </div>
-                      <button 
-                        onClick={handleOpenKeySelection}
-                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95"
-                      >
-                          Select API Key
-                      </button>
-                      <button onClick={() => setShowKeyPrompt(false)} className="text-xs font-bold text-slate-500 hover:text-white uppercase underline">Return to Editor</button>
-                  </div>
-              </div>
-          )}
-
           {!generatedChannel && !isProcessing && (
             <>
               <div className="text-center space-y-3">

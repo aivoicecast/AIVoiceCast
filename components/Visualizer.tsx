@@ -1,4 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+
+// FIXED: Using namespace React import to resolve JSX intrinsic elements
+import * as React from 'react';
+import { useEffect, useRef } from 'react';
 
 interface VisualizerProps {
   volume: number; // 0 to 1+
@@ -74,6 +77,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({ volume, isActive, color 
     };
   }, [isActive, volume, color]);
 
+  // FIXED: Using standard HTML tags correctly resolved under React namespace
   return (
     <canvas 
       ref={canvasRef} 

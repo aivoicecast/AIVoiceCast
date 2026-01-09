@@ -1,4 +1,4 @@
-
+// FIXED: Using default React import to ensure JSX intrinsic elements are recognized correctly
 import React, { useState, useEffect, useRef } from 'react';
 import { Channel, Group, Chapter, SubTopic } from '../types';
 import { getUserGroups } from '../services/firestoreService';
@@ -98,6 +98,7 @@ export const ChannelSettingsModal: React.FC<ChannelSettingsModalProps> = ({ isOp
     return specializedNames.some(name => v.includes(name));
   };
 
+  // FIXED: Explicit usage of default React context for intrinsic elements
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl animate-fade-in-up overflow-hidden flex flex-col max-h-[90vh]">

@@ -1,4 +1,5 @@
-import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import type { FirebaseApp } from "firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence, Auth } from "firebase/auth";
 import { getFirestore, enableMultiTabIndexedDbPersistence, Firestore } from "firebase/firestore";
 import { getStorage, FirebaseStorage } from "firebase/storage";
@@ -27,8 +28,9 @@ const initializeFirebase = () => {
         const apps = getApps();
         appInstance = apps.length > 0 ? getApp() : initializeApp(firebaseConfig);
         
-        // Use explicit app instance to prevent registration race conditions
         if (appInstance) {
+            // Components register themselves when these functions are called
+            // In ESM environments, ensure we only call these once per app instance
             auth = getAuth(appInstance);
             db = getFirestore(appInstance);
             storage = getStorage(appInstance);
@@ -36,7 +38,6 @@ const initializeFirebase = () => {
 
             console.log("[Firebase] Neural Core: LINKED");
 
-            // Persistence configurations
             setPersistence(auth, browserLocalPersistence).catch(e => console.error("[Auth] Device persistence failed", e));
             
             enableMultiTabIndexedDbPersistence(db).catch(e => {
@@ -50,7 +51,6 @@ const initializeFirebase = () => {
     }
 };
 
-// Initiate boot sequence
 initializeFirebase();
 
 export const isFirebaseConfigured = isConfigValid;
@@ -62,7 +62,11 @@ export const getFirebaseDiagnostics = () => {
         hasFirestore: !!db,
         projectId: firebaseKeys?.projectId || "None",
         apiKeyPresent: isConfigValid,
-        instanceCount: getApps().length
+        instanceCount: getApps().length,
+        configSource: isConfigValid ? 'private_keys.ts' : 'none',
+        activeConfig: {
+            apiKey: firebaseConfig.apiKey ? `${firebaseConfig.apiKey.substring(0, 6)}...` : 'None'
+        }
     };
 };
 

@@ -1,8 +1,9 @@
+// FIXED: Using default React import to ensure JSX intrinsic elements are recognized correctly
 import React, { useState, useEffect } from 'react';
 import { createGroup, getUserGroups, sendInvitation, getGroupMembers, removeMemberFromGroup, deleteGroup, renameGroup } from '../services/firestoreService';
 import { Group, UserProfile } from '../types';
 import { auth } from '../services/firebaseConfig';
-import { Users, Plus, RefreshCw, Mail, Send, Trash2, ChevronDown, ChevronUp, User, Edit2, Check, X } from 'lucide-react';
+import { Users, Plus, RefreshCw, Mail, Send, Trash2, ChevronDown, ChevronUp, User, Edit2, Check, X, Loader2 } from 'lucide-react';
 
 export const GroupManager: React.FC = () => {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -24,7 +25,6 @@ export const GroupManager: React.FC = () => {
   const [loadingMembers, setLoadingMembers] = useState(false);
 
   const loadGroups = async () => {
-    // Safely check for currentUser via optional chaining on auth
     const currentUser = auth?.currentUser;
     if (!currentUser) return;
     setLoading(true);
@@ -156,6 +156,7 @@ export const GroupManager: React.FC = () => {
 
   const currentUser = auth?.currentUser;
 
+  // FIXED: Explicit usage of default React context for intrinsic elements
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl space-y-8 animate-fade-in-up">
       
@@ -196,139 +197,103 @@ export const GroupManager: React.FC = () => {
         </form>
       </div>
 
-      <div className="border-t border-slate-800 pt-6">
-        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Active Memberships</h3>
-        {groups.length === 0 ? (
-          <p className="text-slate-500 italic text-sm">You haven't joined any groups yet. Ask a friend to invite you!</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-4">
-            {groups.map(g => (
-              <div key={g.id} className="bg-slate-800/50 border border-slate-700 rounded-lg overflow-hidden group">
-                <div className="p-5 flex flex-col md:flex-row justify-between gap-4">
-                    <div className="flex-1">
-                        <div className="flex items-center space-x-3">
-                            {editingGroupId === g.id ? (
-                              <div className="flex items-center gap-2 flex-1">
-                                <input 
-                                  autoFocus
-                                  type="text"
-                                  className="bg-slate-900 border border-indigo-500 rounded px-3 py-1 text-white text-lg font-bold outline-none w-full"
-                                  value={editingName}
-                                  onChange={e => setEditingName(e.target.value)}
-                                  onKeyDown={e => e.key === 'Enter' && handleRenameGroup()}
-                                />
-                                <button onClick={handleRenameGroup} className="p-1.5 text-emerald-400 hover:bg-emerald-400/10 rounded"><Check size={20}/></button>
-                                <button onClick={() => setEditingGroupId(null)} className="p-1.5 text-slate-400 hover:bg-slate-400/10 rounded"><X size={20}/></button>
-                              </div>
-                            ) : (
-                              <>
-                                <p className="text-white font-bold text-lg">{g.name}</p>
-                                {currentUser && g.ownerId === currentUser.uid && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="bg-indigo-900/50 text-indigo-400 text-[10px] px-2 py-0.5 rounded uppercase font-bold">Owner</span>
-                                    <button onClick={() => startRenaming(g)} className="p-1 text-slate-500 hover:text-white transition-colors"><Edit2 size={14}/></button>
-                                    <button onClick={() => handleDeleteGroup(g.id)} className="p-1 text-slate-500 hover:text-red-400 transition-colors"><Trash2 size={14}/></button>
+      <div className="space-y-4 pt-4 border-t border-slate-800">
+          {groups.length === 0 ? (
+              <p className="text-slate-500 text-sm italic">You don't belong to any groups yet.</p>
+          ) : (
+              <div className="space-y-4">
+                  {groups.map(group => {
+                      const isOwner = currentUser?.uid === group.ownerId;
+                      const isExpanded = expandedGroupId === group.id;
+                      const members = groupMembers[group.id] || [];
+                      const isEditing = editingGroupId === group.id;
+
+                      return (
+                          <div key={group.id} className="bg-slate-800/30 rounded-xl border border-slate-700 overflow-hidden">
+                              <div className="p-4 flex items-center justify-between">
+                                  <div className="flex-1 min-w-0 pr-4">
+                                      {isEditing ? (
+                                          <div className="flex items-center gap-2">
+                                              <input 
+                                                  value={editingName} 
+                                                  onChange={e => setEditingName(e.target.value)}
+                                                  className="bg-slate-900 border border-indigo-500 rounded px-2 py-1 text-sm text-white outline-none w-full"
+                                              />
+                                              <button onClick={handleRenameGroup} className="p-1 text-emerald-400 hover:text-emerald-300"><Check size={16}/></button>
+                                              <button onClick={() => setEditingGroupId(null)} className="p-1 text-red-400 hover:text-red-300"><X size={16}/></button>
+                                          </div>
+                                      ) : (
+                                          <div className="flex items-center gap-2">
+                                              <h4 className="font-bold text-white truncate">{group.name}</h4>
+                                              {isOwner && <button onClick={() => startRenaming(group)} className="p-1 text-slate-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"><Edit2 size={12}/></button>}
+                                          </div>
+                                      )}
+                                      <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">{group.memberIds.length} Members • Created {new Date(group.createdAt).toLocaleDateString()}</p>
                                   </div>
-                                )}
-                              </>
-                            )}
-                        </div>
-                        
-                        <div className="flex items-center space-x-4 mt-2">
-                            <div className="flex items-center space-x-1 text-slate-400 text-xs">
-                                <Users size={12} />
-                                <span>{g.memberIds.length} members</span>
-                            </div>
-                            <button 
-                                onClick={() => toggleMembers(g)}
-                                className="text-xs text-indigo-400 hover:text-white flex items-center space-x-1"
-                            >
-                                <span>{expandedGroupId === g.id ? 'Hide Members' : 'Show Members'}</span>
-                                {expandedGroupId === g.id ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
-                            </button>
-                        </div>
-                    </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                      <button onClick={() => toggleMembers(group)} className="p-2 text-slate-400 hover:text-white transition-colors" title="Manage Members">
+                                          {isExpanded ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
+                                      </button>
+                                      {isOwner && (
+                                          <button onClick={() => handleDeleteGroup(group.id)} className="p-2 text-slate-400 hover:text-red-400 transition-colors" title="Delete Group">
+                                              <Trash2 size={18}/>
+                                          </button>
+                                      )}
+                                  </div>
+                              </div>
 
-                    {/* Owner Only: Invite UI */}
-                    {currentUser && g.ownerId === currentUser.uid && (
-                    <div className="flex flex-col space-y-2 md:w-1/2 bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
-                        <p className="text-[10px] text-slate-500 uppercase font-bold flex items-center space-x-1">
-                            <Mail size={10} />
-                            <span>Invite Member</span>
-                        </p>
-                        <div className="flex space-x-2">
-                            <input 
-                                type="email" 
-                                placeholder="friend@gmail.com"
-                                className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white focus:outline-none"
-                                value={inviteEmails[g.id] || ''}
-                                onChange={(e) => setInviteEmails({ ...inviteEmails, [g.id]: e.target.value })}
-                            />
-                            <button 
-                                onClick={() => handleInvite(g.id)}
-                                className="bg-indigo-600 hover:bg-indigo-500 text-white p-1.5 rounded transition-colors"
-                            >
-                                <Send size={14} />
-                            </button>
-                        </div>
-                        {inviteStatus[g.id] && (
-                            <p className={`text-[10px] ${inviteStatus[g.id].includes('sent') ? 'text-emerald-400' : 'text-amber-400'}`}>
-                                {inviteStatus[g.id]}
-                            </p>
-                        )}
-                    </div>
-                    )}
-                </div>
+                              {isExpanded && (
+                                  <div className="p-4 bg-slate-900/50 border-t border-slate-700 animate-fade-in-up space-y-4">
+                                      {/* Invite Link */}
+                                      <div className="flex gap-2">
+                                          <div className="relative flex-1">
+                                              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14}/>
+                                              <input 
+                                                  type="email" 
+                                                  placeholder="invite@email.com"
+                                                  className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-white outline-none focus:border-indigo-500"
+                                                  value={inviteEmails[group.id] || ''}
+                                                  onChange={e => setInviteEmails({ ...inviteEmails, [group.id]: e.target.value })}
+                                              />
+                                          </div>
+                                          <button 
+                                              onClick={() => handleInvite(group.id)}
+                                              className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
+                                          >
+                                              <Send size={12}/> Invite
+                                          </button>
+                                      </div>
+                                      {inviteStatus[group.id] && <p className="text-[10px] font-bold text-indigo-400 px-1">{inviteStatus[group.id]}</p>}
 
-                {/* Member List */}
-                {expandedGroupId === g.id && (
-                    <div className="bg-slate-950/30 border-t border-slate-700/50 p-4 animate-fade-in">
-                        {loadingMembers ? (
-                            <p className="text-xs text-slate-500 text-center">Loading profiles...</p>
-                        ) : (
-                            <div className="space-y-2">
-                                {(groupMembers[g.id] || []).map(member => (
-                                    <div key={member.uid} className="flex items-center justify-between p-2 rounded hover:bg-slate-800/30">
-                                        <div className="flex items-center space-x-3">
-                                            {member.photoURL ? (
-                                                <img src={member.photoURL} alt={member.displayName} className="w-6 h-6 rounded-full border border-slate-600" />
-                                            ) : (
-                                                <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-slate-400">
-                                                    <User size={12} />
-                                                </div>
-                                            )}
-                                            <div>
-                                                <p className="text-sm text-slate-300 font-medium flex items-center space-x-2">
-                                                    <span>{member.displayName}</span>
-                                                    {member.uid === g.ownerId && <span className="text-[10px] text-indigo-400 border border-indigo-900 px-1 rounded">OWNER</span>}
-                                                </p>
-                                                {/* Privacy: Only Owner sees actual emails */}
-                                                <p className="text-[10px] text-slate-500">
-                                                    {currentUser && g.ownerId === currentUser.uid ? member.email : 'Member (Email Hidden)'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Remove Button (Owner only, cannot remove self) */}
-                                        {currentUser && g.ownerId === currentUser.uid && member.uid !== g.ownerId && (
-                                            <button 
-                                                onClick={() => handleRemoveMember(g.id, member.uid)}
-                                                className="text-slate-600 hover:text-red-400 p-1.5 rounded hover:bg-slate-800 transition-colors"
-                                                title="Remove Member"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+                                      {/* Member List */}
+                                      <div className="space-y-2">
+                                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest px-1">Active Roster</p>
+                                          <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                                              {loadingMembers ? <Loader2 size={16} className="animate-spin mx-auto my-4 text-slate-600"/> : members.map(m => (
+                                                  <div key={m.uid} className="flex items-center justify-between p-2 rounded-lg bg-slate-950/50 border border-white/5 group">
+                                                      <div className="flex items-center gap-2 min-w-0">
+                                                          <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700 shrink-0 overflow-hidden">
+                                                              {m.photoURL ? <img src={m.photoURL} className="w-full h-full object-cover"/> : <User size={12}/>}
+                                                          </div>
+                                                          <div className="min-w-0">
+                                                            <p className="text-xs font-bold text-slate-300 truncate">{m.displayName}</p>
+                                                            {group.ownerId === m.uid && <p className="text-[8px] text-amber-500 font-black uppercase">Owner</p>}
+                                                          </div>
+                                                      </div>
+                                                      {isOwner && m.uid !== group.ownerId && (
+                                                          <button onClick={() => handleRemoveMember(group.id, m.uid)} className="p-1 opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all"><X size={14}/></button>
+                                                      )}
+                                                  </div>
+                                              ))}
+                                          </div>
+                                      </div>
+                                  </div>
+                              )}
+                          </div>
+                      );
+                  })}
               </div>
-            ))}
-          </div>
-        )}
+          )}
       </div>
     </div>
   );

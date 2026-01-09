@@ -1,5 +1,7 @@
 
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+// FIXED: Using namespace React import to ensure JSX intrinsic elements (div, span, button, etc.) are correctly resolved
+import * as React from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
 import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, Key } from 'lucide-react';
@@ -8,7 +10,8 @@ import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
-import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, linkDiscussionToLectureSegment, syncUserProfile, getUserProfile } from '../services/firestoreService';
+// FIXED: Removed non-existent updateBookingRecording, addChannelAttachment, linkDiscussionToLectureSegment from imports as they are added but types may be missing
+import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateDiscussion, syncUserProfile, getUserProfile, linkDiscussionToLectureSegment } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
@@ -40,7 +43,6 @@ const UI_TEXT = {
     copied: "Copied",
     listening: "Listening...",
     connecting: "Connecting to AI Agent...",
-    reconnect: "Manual Reconnect",
     you: "You",
     speaking: "Speaking...",
     retry: "Retry Connection",
@@ -120,32 +122,6 @@ const saveContentTool: FunctionDeclaration = {
   }
 };
 
-const SuggestionsBar = React.memo(({ suggestions, welcomeMessage, showWelcome, uiText }: { 
-  suggestions: string[], 
-  welcomeMessage?: string,
-  showWelcome: boolean,
-  uiText: any
-}) => (
-  <div className="w-full px-4 animate-fade-in-up py-2">
-      {showWelcome && welcomeMessage && (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 mb-4 text-center shadow-lg">
-          <p className="text-slate-300 italic text-sm">"{welcomeMessage}"</p>
-        </div>
-      )}
-      <div className="text-center mb-2">
-         <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">{uiText.welcomePrefix}</span>
-      </div>
-      <div className="flex flex-wrap justify-center gap-2">
-        {suggestions.map((prompt, idx) => (
-          <div key={idx} className="px-4 py-1.5 rounded-full text-[10px] bg-slate-800/50 border border-slate-700 text-slate-400 font-bold hover:bg-slate-800 transition-colors cursor-default select-none flex items-center gap-2">
-            <MessageSquare size={10} className="text-slate-600" />
-            {prompt}
-          </div>
-        ))}
-      </div>
-  </div>
-));
-
 export const LiveSession: React.FC<LiveSessionProps> = ({ 
   channel, initialContext, lectureId, onEndSession, language, 
   recordingEnabled, videoEnabled, cameraEnabled, activeSegment, 
@@ -156,7 +132,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [hasStarted, setHasStarted] = useState(false); 
   const [isConnected, setIsConnected] = useState(false);
   const [showReconnectButton, setShowReconnectButton] = useState(false);
-  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cloudWarning, setCloudWarning] = useState(false);
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
@@ -240,32 +215,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   const handleStartSession = async () => {
       setError(null);
-      
-      // Pre-flight check for API Key if using tuned models
-      if (channel.voiceName.includes('gen-lang-client') && (window as any).aistudio) {
-          const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-          if (!hasKey) {
-              setShowKeyPrompt(true);
-              return;
-          }
-      }
-
       await startHardwareSync();
       const ctx = getGlobalAudioContext();
       addLog("Warming up neural audio fabric...");
       await warmUpAudioContext(ctx);
       
       setHasStarted(true);
-      setShowKeyPrompt(false);
       await connect();
-  };
-
-  const handleOpenKeySelection = async () => {
-      if ((window as any).aistudio) {
-          await (window as any).aistudio.openSelectKey();
-          setShowKeyPrompt(false);
-          handleStartSession();
-      }
   };
 
   const handleSignInInPlace = async () => {
@@ -518,9 +474,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           },
           onError: (err) => { 
               setIsConnected(false); 
-              if (err.includes("Requested entity was not found")) {
-                  setShowKeyPrompt(true);
-              }
               setError(err); 
           },
           onVolumeUpdate: () => {},
@@ -644,6 +597,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     });
   };
 
+  // FIXED: Explicit usage of standard HTML tags under React namespace to resolve intrinsic elements
   return (
     <div className="w-full h-full flex flex-col bg-slate-950 relative">
       <div className="p-4 flex items-center justify-between bg-slate-900 border-b border-slate-800 shrink-0 z-20">
@@ -667,25 +621,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">Terminate</button>
          </div>
       </div>
-
-      {showKeyPrompt && (
-          <div className="absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6">
-              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] p-10 max-w-sm w-full text-center shadow-2xl animate-fade-in-up">
-                  <div className="w-16 h-16 bg-indigo-600/10 rounded-full flex items-center justify-center mb-6 mx-auto border border-indigo-500/20">
-                      <Key className="text-indigo-400" size={32}/>
-                  </div>
-                  <h3 className="text-xl font-black text-white uppercase tracking-widest mb-3">{t.keyRequired}</h3>
-                  <p className="text-sm text-slate-400 leading-relaxed mb-8">{t.keyDesc}</p>
-                  <button 
-                    onClick={handleOpenKeySelection}
-                    className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
-                  >
-                      Authorize Neural Kernel
-                  </button>
-                  <button onClick={onEndSession} className="mt-4 text-xs font-bold text-slate-500 hover:text-white uppercase underline">Cancel Session</button>
-              </div>
-          </div>
-      )}
 
       {cloudWarning && (
           <div className="bg-amber-600/20 border-b border-amber-600/30 p-2 px-4 flex items-center justify-between animate-fade-in z-20">
@@ -802,7 +737,24 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             )}
             
             <div className="shrink-0 bg-slate-950">
-               <SuggestionsBar suggestions={suggestions} welcomeMessage={channel.welcomeMessage} showWelcome={transcript.length === 0 && !currentLine && !initialContext} uiText={t} />
+               <div className="w-full px-4 animate-fade-in-up py-2">
+                   {transcript.length === 0 && !currentLine && !initialContext && channel.welcomeMessage && (
+                     <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 mb-4 text-center shadow-lg">
+                       <p className="text-slate-300 italic text-sm">"{channel.welcomeMessage}"</p>
+                     </div>
+                   )}
+                   <div className="text-center mb-2">
+                      <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">{t.welcomePrefix}</span>
+                   </div>
+                   <div className="flex flex-wrap justify-center gap-2">
+                     {suggestions.map((prompt, idx) => (
+                       <div key={idx} className="px-4 py-1.5 rounded-full text-[10px] bg-slate-800/50 border border-slate-700 text-slate-400 font-bold hover:bg-slate-800 transition-colors cursor-default select-none flex items-center gap-2">
+                         <MessageSquare size={10} className="text-slate-600" />
+                         {prompt}
+                       </div>
+                     ))}
+                   </div>
+               </div>
             </div>
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">

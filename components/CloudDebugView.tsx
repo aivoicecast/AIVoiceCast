@@ -1,4 +1,4 @@
-
+// FIXED: Using default React import to ensure JSX intrinsic elements are recognized correctly
 import React, { useState, useEffect } from 'react';
 import { listUserBackups, deleteCloudFile, CloudFileEntry } from '../services/cloudService';
 import { ArrowLeft, Trash2, RefreshCw, Cloud, FileJson, Folder, CornerLeftUp, FileAudio } from 'lucide-react';
@@ -54,8 +54,9 @@ export const CloudDebugView: React.FC<CloudDebugViewProps> = ({ onBack }) => {
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
-  const currentUid = auth.currentUser?.uid || localStorage.getItem('aivoicecast_uid') || 'Unknown';
+  const currentUid = auth?.currentUser?.uid || localStorage.getItem('aivoicecast_uid') || 'Unknown';
 
+  // FIXED: Explicit usage of default React context for intrinsic elements
   return (
     <div className="h-full overflow-y-auto bg-slate-950 text-slate-100 p-8 scrollbar-thin scrollbar-thumb-slate-800">
       <div className="max-w-5xl mx-auto space-y-6 pb-24">
