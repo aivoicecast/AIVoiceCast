@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-// FIXED: Using @firebase/ scoped packages
-import { onAuthStateChanged } from '@firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { signInWithGoogle, signOut } from '../services/authService';
-import { getAuthInstance } from '../services/firebaseConfig';
+import { auth } from '../services/firebaseConfig';
 import { LogOut, User as UserIcon, Loader2 } from 'lucide-react';
 import { syncUserProfile, logUserActivity } from '../services/firestoreService';
 
@@ -11,13 +10,12 @@ export const UserAuth: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const authInstance = getAuthInstance();
-    if (!authInstance) {
+    if (!auth) {
         setLoading(false);
         return;
     }
 
-    const unsubscribe = onAuthStateChanged(authInstance, (u: any) => {
+    const unsubscribe = onAuthStateChanged(auth, (u: any) => {
       setUser(u);
       setLoading(false);
       if (u) {

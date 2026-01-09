@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem } from '../types';
 import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertTriangle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal as TerminalIcon, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, Link, MousePointer2, Activity, Key, Search, FilePlus, FileUp, Play, Trash, ExternalLink, GraduationCap, ShieldCheck } from 'lucide-react';
-import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive } from '../services/firestoreService';
+import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, deleteCloudFolderRecursive, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess, sendShareNotification } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile, shareFileWithEmail, getDriveFileSharingLink, downloadDriveFileAsBlob } from '../services/googleDriveService';
 import { connectGoogleDrive, getDriveToken, signInWithGitHub } from '../services/authService';
 import { fetchRepoInfo, fetchRepoContents, fetchFileContent, updateRepoFile, fetchUserRepos, fetchRepoSubTree } from '../services/githubService';
@@ -232,7 +232,7 @@ const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking, cur
                 ))}
                 {isThinking && (
                     <div className="flex flex-col items-start animate-fade-in">
-                        <span className="text-[9px] font-black uppercase mb-1 text-slate-500">AI Thinking...</span>
+                        <span className={`text-[9px] font-black uppercase mb-1 text-slate-500`}>AI Thinking...</span>
                         <div className="bg-slate-800/50 rounded-2xl p-3 border border-slate-700/50">
                             <Loader2 className="animate-spin text-indigo-400" size={16}/>
                         </div>
@@ -345,7 +345,13 @@ const Slot: React.FC<SlotProps> = ({
                       <div className="flex-1 overflow-hidden">
                           {vMode === 'preview' ? (
                               lang === 'whiteboard' ? (
-                                  <div className="w-full h-full"><Whiteboard isReadOnly={isReadOnly} /></div>
+                                  <div className="w-full h-full">
+                                    <Whiteboard 
+                                        isReadOnly={isReadOnly} 
+                                        initialData={file.content} 
+                                        onDataChange={(newData) => handleCodeChangeInSlot(newData, idx)}
+                                    />
+                                  </div>
                               ) : lang === 'pdf' ? (
                                   <iframe src={file.path} className="w-full h-full border-none bg-white" title="PDF Viewer" />
                               ) : (
@@ -850,7 +856,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isChatThinking) return;
     
-    // If in interviewer mode, prioritize external handler
     if (isInterviewerMode && onSendExternalMessage) {
         onSendExternalMessage(text);
         return;
@@ -1100,7 +1105,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
       )}
 
       {showManualToken && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up">
                   <div className="flex justify-between items-center mb-4">
                       <h3 className="text-lg font-bold text-white flex items-center gap-2"><Key className="text-indigo-400" size={18}/> Manual Token Fallback</h3>

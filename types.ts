@@ -1,4 +1,3 @@
-
 export type SubscriptionTier = 'free' | 'pro';
 
 export type ChannelVisibility = 'public' | 'private' | 'group';
@@ -24,7 +23,7 @@ export interface UserProfile {
   groups: string[];
   coinBalance: number;
   lastCoinGrantAt?: number;
-  lastBackup?: any; // Firestore Timestamp
+  lastBackup?: any; 
   backupSize?: number;
   itemCount?: number;
   preferredAiProvider?: 'gemini' | 'openai';
@@ -174,7 +173,7 @@ export interface RealTimeMessage {
   senderId: string;
   senderName: string;
   senderImage?: string;
-  timestamp: any; // Firestore Timestamp
+  timestamp: any; 
   replyTo?: {
       id: string;
       text: string;
@@ -506,9 +505,9 @@ export interface MockInterviewRecording {
   language?: string;
   jobDescription: string;
   timestamp: number;
-  videoUrl: string; // Drive Link
+  videoUrl: string; 
   transcript?: TranscriptItem[];
-  coachingTranscript?: TranscriptItem[]; // Persistent coaching history
+  coachingTranscript?: TranscriptItem[]; 
   feedback?: string;
   visibility?: 'public' | 'private';
 }

@@ -1,12 +1,11 @@
-
-import { initializeApp, getApps, getApp } from "@firebase/app";
-import type { FirebaseApp } from "@firebase/app";
-import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
-import type { Auth } from "@firebase/auth";
-import { initializeFirestore, enableMultiTabIndexedDbPersistence } from "@firebase/firestore";
-import type { Firestore } from "@firebase/firestore";
-import { getStorage } from "@firebase/storage";
-import type { FirebaseStorage } from "@firebase/storage";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import type { FirebaseApp } from "firebase/app";
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
+import type { Auth } from "firebase/auth";
+import { initializeFirestore, enableMultiTabIndexedDbPersistence, getFirestore } from "firebase/firestore";
+import type { Firestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+import type { FirebaseStorage } from "firebase/storage";
 import { firebaseKeys } from './private_keys';
 
 /**
@@ -19,14 +18,11 @@ const initializeFirebase = (): FirebaseApp | null => {
         }
 
         if (firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY") {
-            // Ensure authDomain is strictly the firebaseapp.com version to minimize cross-origin issues
             const config = {
                 ...firebaseKeys,
                 authDomain: `${firebaseKeys.projectId}.firebaseapp.com`
             };
             return initializeApp(config);
-        } else {
-            console.warn("[Firebase] Configuration missing or using placeholder key.");
         }
     } catch (err) {
         console.error("[Firebase] Initialization failed:", err);
@@ -42,24 +38,23 @@ const appInstance = initializeFirebase();
 const initDb = (): Firestore | null => {
     if (!appInstance) return null;
     
-    const firestore = initializeFirestore(appInstance, {
-        experimentalForceLongPolling: true,
-    });
-
-    enableMultiTabIndexedDbPersistence(firestore).catch((err) => {
-        if (err.code === 'failed-precondition') {
-            console.warn("[Firestore] Persistence failed: Multiple tabs open.");
-        } else if (err.code === 'unimplemented') {
-            console.warn("[Firestore] Persistence failed: Browser not supported.");
-        }
-    });
-
-    return firestore;
+    try {
+        const firestore = getFirestore(appInstance);
+        enableMultiTabIndexedDbPersistence(firestore).catch((err) => {
+            if (err.code === 'failed-precondition') {
+                console.warn("[Firestore] Persistence failed: Multiple tabs open.");
+            } else if (err.code === 'unimplemented') {
+                console.warn("[Firestore] Persistence failed: Browser not supported.");
+            }
+        });
+        return firestore;
+    } catch (e) {
+        return null;
+    }
 };
 
 const authInstance: Auth | null = appInstance ? getAuth(appInstance) : null;
 
-// Explicitly set persistence to Local to survive session storage clearing
 if (authInstance) {
     setPersistence(authInstance, browserLocalPersistence).catch((err) => {
         console.error("[Auth] Persistence setup failed:", err);
@@ -82,8 +77,7 @@ export const getFirebaseDiagnostics = () => {
         hasAuth: !!auth,
         hasFirestore: !!db,
         projectId: firebaseKeys?.projectId || "Missing",
-        apiKeyPresent: !!firebaseKeys?.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY",
-        configSource: localStorage.getItem('firebase_config') ? 'LocalStorage' : 'Static Keys'
+        apiKeyPresent: !!firebaseKeys?.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY"
     };
 };
 

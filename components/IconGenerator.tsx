@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera, AlertCircle, Share2, Link, Copy } from 'lucide-react';
+import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera, AlertCircle, Share2, Link, Copy, ExternalLink } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { resizeImage } from '../utils/imageUtils';
 import { saveIcon, uploadFileToStorage, getIcon } from '../services/firestoreService';
@@ -36,6 +36,8 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [publishProgress, setPublishProgress] = useState('');
+  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -64,8 +66,26 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
       }
   };
 
+  const handleOpenKeySelection = async () => {
+    await (window as any).aistudio.openSelectKey();
+    setShowKeyPrompt(false);
+    handleGenerate();
+  };
+
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
+    
+    const isEdit = !!baseImage;
+    const model = isEdit ? 'gemini-2.5-flash-image' : 'gemini-3-pro-image-preview';
+
+    // Mandatory Key Selection for gemini-3-pro-image-preview
+    if (model === 'gemini-3-pro-image-preview') {
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+            setShowKeyPrompt(true);
+            return;
+        }
+    }
     
     setIsGenerating(true);
     setError(null);
@@ -73,9 +93,6 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
-      const isEdit = !!baseImage;
-      const model = isEdit ? 'gemini-2.5-flash-image' : 'gemini-3-pro-image-preview';
       
       const styleInstruction = isEdit ? `Modify the provided image according to this request: ${prompt}. Maintain the core structure but update the style to: ${selectedStyle.name}. ${selectedStyle.prompt}.` : `Professional app icon design for: ${prompt}. ${selectedStyle.prompt}. Isolated on a solid background, centered composition, no text, masterpiece quality, 8k resolution.`;
 
@@ -119,7 +136,11 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
       }
     } catch (e: any) {
       console.error(e);
-      setError(e.message || "Generation failed. Try a different prompt.");
+      if (e.message?.includes("Requested entity was not found")) {
+          setShowKeyPrompt(true);
+      } else {
+          setError(e.message || "Generation failed. Try a different prompt.");
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -202,6 +223,25 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
           {/* Controls Panel */}
           <div className="w-full lg:w-[400px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-8 space-y-10 scrollbar-thin">
               
+              {showKeyPrompt && (
+                  <div className="p-5 bg-indigo-900/20 border border-indigo-500/30 rounded-2xl animate-fade-in-up space-y-4">
+                      <div className="flex items-center gap-2 text-indigo-400">
+                          <Key size={18}/>
+                          <span className="text-xs font-black uppercase tracking-widest">Billing Required</span>
+                      </div>
+                      <p className="text-xs text-indigo-200 leading-relaxed">
+                          Generating high-fidelity 1K icons with <strong>Gemini 3 Pro</strong> requires a paid API key from a billing-enabled project.
+                      </p>
+                      <button 
+                        onClick={handleOpenKeySelection}
+                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-500/20"
+                      >
+                          Select API Key
+                      </button>
+                      <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="block text-center text-[10px] text-slate-500 hover:text-white underline">Learn about billing</a>
+                  </div>
+              )}
+
               {/* Base Image Section */}
               <div className="space-y-4">
                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center justify-between">

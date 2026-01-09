@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { RecordingSession, Channel, TranscriptItem, UserProfile } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
@@ -641,7 +640,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             return (
               <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : (isSelected ? 'border-indigo-500 bg-indigo-900/5' : 'border-slate-800')} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl flex gap-4`}>
                 <div className="flex flex-col items-center pt-2">
-                    <button onClick={() => toggleSelect(rec.id)} className={`transition-colors ${isSelected ? 'text-indigo-400' : 'text-slate-700 hover:text-slate-500'}`}>
+                    <button onClick={() => toggleSelect(rec.id)} className={`transition-colors ${isSelected ? 'text-indigo-400' : 'text-slate-700 hover:text-slate-50'}`}>
                         {isSelected ? <CheckSquare size={20}/> : <Square size={20}/>}
                     </button>
                 </div>
@@ -822,7 +821,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                   ))}
               </div>
               <div className="p-3 border-t border-slate-800 bg-slate-950 flex justify-between items-center">
-                  <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">Protocol Version 4.2.1-SYN</p>
+                  <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">Protocol Version 4.5.2-SYN</p>
                   <button onClick={() => setSyncLogs([])} className="text-[10px] text-slate-500 hover:text-white underline font-bold uppercase">Clear Logs</button>
               </div>
           </div>

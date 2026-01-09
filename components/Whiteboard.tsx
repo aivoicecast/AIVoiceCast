@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ArrowLeft, Share2, Trash2, Undo, PenTool, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Pen, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, RotateCcw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save, Activity, RefreshCcw, Type as TypeIcon } from 'lucide-react';
 import { auth, db } from '../services/firebaseConfig';
 import { saveWhiteboardSession, subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements } from '../services/firestoreService';
@@ -17,6 +17,8 @@ interface WhiteboardProps {
   isReadOnly?: boolean;
   initialColor?: string;
   backgroundColor?: string;
+  initialData?: string; 
+  onDataChange?: (data: string) => void; 
 }
 
 const LINE_STYLES: { label: string; value: LineStyle; dash: number[] }[] = [
@@ -44,7 +46,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   driveId: propDriveId,
   isReadOnly: propReadOnly = false,
   initialColor = '#ffffff',
-  backgroundColor = '#0f172a'
+  backgroundColor = '#0f172a',
+  initialData,
+  onDataChange
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [elements, setElements] = useState<WhiteboardElement[]>([]);
@@ -63,7 +67,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [startArrow, setStartArrow] = useState(false);
   const [endArrow, setEndArrow] = useState(false);
   
-  // Transformation & Selection State
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [boardRotation, setBoardRotation] = useState(0); 
@@ -71,7 +74,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [activeResizeHandle, setActiveResizeHandle] = useState<ResizeHandle>(null);
 
-  // Text Tool State
   const [textInput, setTextInput] = useState({ x: 0, y: 0, value: '', visible: false, editingId: null as string | null });
   const textInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -82,6 +84,24 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [shareUrl, setShareUrl] = useState('');
 
   const isDarkBackground = backgroundColor !== 'transparent' && backgroundColor !== '#ffffff';
+
+  // Sync internal state with external data prop (e.g. from CodeStudio file)
+  useEffect(() => {
+    if (initialData) {
+        try {
+            const parsed = JSON.parse(initialData);
+            if (Array.isArray(parsed)) {
+                // CRITICAL: Prevent infinite loop by checking string equality
+                const currentDataStr = JSON.stringify(elements);
+                if (initialData !== currentDataStr) {
+                    setElements(parsed);
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to parse initial whiteboard data", e);
+        }
+    }
+  }, [initialData]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -149,6 +169,25 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       };
   };
 
+  const getScreenCoordinates = (x: number, y: number) => {
+      if (!canvasRef.current) return { x: 0, y: 0 };
+      const rect = canvasRef.current.getBoundingClientRect();
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      
+      let wx = x * scale + offset.x;
+      let wy = y * scale + offset.y;
+
+      let rx = wx - cx;
+      let ry = wy - cy;
+
+      const rad = (boardRotation * Math.PI) / 180;
+      const sx = rx * Math.cos(rad) - ry * Math.sin(rad);
+      const sy = rx * Math.sin(rad) + ry * Math.cos(rad);
+
+      return { x: sx + cx, y: sy + cy };
+  };
+
   const getElementBounds = (el: WhiteboardElement) => {
       if (el.type === 'pen' || el.type === 'eraser') {
           const xs = el.points?.map(p => p.x) || [el.x];
@@ -161,11 +200,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const w = el.width || 0;
       const h = el.height || 0;
       if (el.type === 'type') {
-          // Estimated bounds for text
           const lines = el.text?.split('\n') || [];
-          const width = 200 * (el.fontSize || 16) / 16; 
-          const height = lines.length * (el.fontSize || 16) * 1.2;
-          return { minX: el.x, minY: el.y, maxX: el.x + width, maxY: el.y + height };
+          const fontSize = el.fontSize || 16;
+          const maxWidth = Math.max(...lines.map(l => l.length)) * fontSize * 0.6;
+          const height = lines.length * fontSize * 1.2;
+          return { minX: el.x, minY: el.y, maxX: el.x + maxWidth, maxY: el.y + height };
       }
       return { minX: Math.min(el.x, el.x + w), minY: Math.min(el.y, el.y + h), maxX: Math.max(el.x, el.x + w), maxY: Math.max(el.y, el.y + h) };
   };
@@ -182,19 +221,16 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const getResizeHandleAt = (x: number, y: number, el: WhiteboardElement): ResizeHandle => {
       const handleSize = 10 / scale;
       const bounds = getElementBounds(el);
-      
       if (el.type === 'line' || el.type === 'arrow') {
           if (Math.sqrt((x - (el.endX || el.x))**2 + (y - (el.endY || el.y))**2) < handleSize * 2) return 'end';
           return null;
       }
-
       const handles: { id: ResizeHandle, x: number, y: number }[] = [
           { id: 'nw', x: bounds.minX, y: bounds.minY },
           { id: 'ne', x: bounds.maxX, y: bounds.minY },
           { id: 'sw', x: bounds.minX, y: bounds.maxY },
           { id: 'se', x: bounds.maxX, y: bounds.maxY }
       ];
-
       const found = handles.find(h => Math.sqrt((x - h.x)**2 + (y - h.y)**2) < handleSize * 2);
       return found ? found.id : null;
   };
@@ -279,8 +315,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                           if (activeResizeHandle.includes('w')) { updated.x += dx; updated.width = (updated.width || 0) - dx; }
                           if (activeResizeHandle.includes('n')) { updated.y += dy; updated.height = (updated.height || 0) - dy; }
                           if (el.type === 'type') {
-                              // Proportional font resizing for text
-                              const scaleFactor = 1 + (dy / 50);
+                              const scaleFactor = 1 + (dy / 100);
                               updated.fontSize = Math.max(8, (updated.fontSize || 16) * scaleFactor);
                           }
                       }
@@ -300,7 +335,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       }
 
       if (!currentElement) return;
-
       if (tool === 'pen' || tool === 'eraser') { 
           setCurrentElement(prev => prev ? ({ ...prev, points: [...(prev.points || []), { x, y }] }) : null); 
       }
@@ -315,8 +349,12 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const stopDrawing = async () => {
       if (!isDrawing) return;
       if (tool === 'move' && selectedElementId) {
+          const currentElements = [...elements];
           if (sessionId && !sessionId.startsWith('local-')) {
-              await saveWhiteboardSession(sessionId, elements);
+              await saveWhiteboardSession(sessionId, currentElements);
+          }
+          if (onDataChange) {
+              onDataChange(JSON.stringify(currentElements));
           }
           setIsDrawing(false);
           setActiveResizeHandle(null);
@@ -324,12 +362,25 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       }
       if (currentElement) {
           const finalized = { ...currentElement };
-          setElements(prev => [...prev, finalized]);
+          const nextElements = [...elements, finalized];
+          setElements(nextElements);
           if (sessionId && !sessionId.startsWith('local-')) {
               await updateWhiteboardElement(sessionId, finalized);
           }
+          if (onDataChange) {
+              onDataChange(JSON.stringify(nextElements));
+          }
           setCurrentElement(null);
           setIsDrawing(false);
+      }
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+      if (tool !== 'move' || isReadOnly) return;
+      const { x, y } = getWorldCoordinates(e);
+      const found = [...elements].reverse().find(el => el.type === 'type' && isPointInElement(x, y, el));
+      if (found) {
+          handleStartEditingText(found);
       }
   };
 
@@ -339,8 +390,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           return;
       }
 
+      let nextElements = [...elements];
       if (textInput.editingId) {
-          const nextElements = elements.map(el => {
+          nextElements = elements.map(el => {
               if (el.id === textInput.editingId) {
                   return { ...el, text: textInput.value };
               }
@@ -355,13 +407,15 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           const textEl: WhiteboardElement = {
               id, type: 'type', x: textInput.x, y: textInput.y,
               color, strokeWidth: lineWidth, text: textInput.value,
-              fontSize: 16
+              fontSize: 24
           };
-          setElements(prev => [...prev, textEl]);
+          nextElements = [...elements, textEl];
+          setElements(nextElements);
           if (sessionId && !sessionId.startsWith('local-')) {
               await updateWhiteboardElement(sessionId, textEl);
           }
       }
+      if (onDataChange) onDataChange(JSON.stringify(nextElements));
       setTextInput({ ...textInput, visible: false, value: '', editingId: null });
   };
 
@@ -421,6 +475,20 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     setOffset({ x: 0, y: 0 });
     setScale(1);
     setBoardRotation(0);
+  };
+
+  const handleUndo = () => {
+      const nextElements = elements.slice(0, -1);
+      setElements(nextElements);
+      if (onDataChange) onDataChange(JSON.stringify(nextElements));
+  };
+
+  const handleClear = () => {
+      if(confirm("Clear everything?")) { 
+          setElements([]); 
+          if(sessionId) deleteWhiteboardElements(sessionId); 
+          if(onDataChange) onDataChange('[]');
+      }
   };
 
   useEffect(() => {
@@ -527,6 +595,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   }, [elements, currentElement, scale, offset, boardRotation, backgroundColor, selectedElementId, tool]);
 
   const selectedElement = elements.find(el => el.id === selectedElementId);
+  
+  // Positoning logic for the text editor overlay
+  const overlayPos = textInput.visible ? getScreenCoordinates(textInput.x, textInput.y) : { x: 0, y: 0 };
 
   return (
     <div className={`flex flex-col h-full ${isDarkBackground ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden relative`}>
@@ -622,8 +693,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-                <button onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Zoom In"><ZoomIn size={16}/></button>
-                <button onClick={() => setScale(prev => Math.max(prev / 1.2, 0.2))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Zoom Out"><ZoomOut size={16}/></button>
+                <button onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-2`} title="Zoom In"><ZoomIn size={16}/></button>
+                <button onClick={() => setScale(prev => Math.max(prev / 1.2, 0.2))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-2`} title="Zoom Out"><ZoomOut size={16}/></button>
                 <div className={`w-px h-6 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} mx-1`}></div>
                 <button onClick={handleExportPNG} className={`flex items-center gap-2 px-3 py-1.5 ${isDarkBackground ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'} text-xs font-bold rounded-lg border shadow-sm`}>
                     <Download size={14}/>
@@ -633,13 +704,13 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                     <CloudDownload size={14}/>
                     <span className="hidden lg:inline">Sync to Drive</span>
                 </button>
-                <button onClick={handleShare} disabled={isSyncing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-500/20 disabled:opacity-50 transition-all active:scale-95">
+                <button onClick={handleShare} disabled={isSyncing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all active:scale-95">
                     {isSyncing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
                     <span className="hidden sm:inline">Share URI</span>
                 </button>
                 <div className={`w-px h-6 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} mx-1`}></div>
-                <button onClick={() => setElements(prev => prev.slice(0, -1))} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Undo"><Undo size={16} /></button>
-                <button onClick={() => { if(confirm("Clear everything?")) { setElements([]); if(sessionId) deleteWhiteboardElements(sessionId); } }} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`} title="Clear Canvas"><Trash2 size={16} /></button>
+                <button onClick={handleUndo} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Undo"><Undo size={16} /></button>
+                <button onClick={handleClear} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`} title="Clear Canvas"><Trash2 size={16} /></button>
             </div>
         </div>
         
@@ -654,23 +725,25 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 ref={canvasRef} 
                 onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
                 onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
+                onDoubleClick={handleDoubleClick}
                 className={`block w-full h-full ${tool === 'move' ? 'cursor-move' : 'cursor-crosshair'}`} 
             />
 
             {textInput.visible && (
                 <div 
-                  className="absolute z-40 bg-slate-900/90 border-2 border-indigo-500 rounded-xl p-3 shadow-2xl animate-fade-in"
+                  className="absolute z-40 bg-slate-900 border-2 border-indigo-500 rounded-xl p-3 shadow-2xl animate-fade-in"
                   style={{ 
-                      left: (textInput.x * scale + offset.x) + 'px', 
-                      top: (textInput.y * scale + offset.y) + 'px',
-                      minWidth: '400px'
+                      left: overlayPos.x + 'px', 
+                      top: overlayPos.y + 'px',
+                      minWidth: '400px',
+                      transform: 'translate(-50%, -50%)'
                   }}
                 >
                     <textarea 
                         ref={textInputRef}
                         value={textInput.value}
                         onChange={e => setTextInput({ ...textInput, value: e.target.value })}
-                        className="bg-transparent border-none outline-none text-white font-mono text-sm w-full h-48 resize-both placeholder-slate-600"
+                        className="bg-transparent border-none outline-none text-white font-mono text-sm w-full h-64 resize-both placeholder-slate-600"
                         placeholder="Type markdown / text..."
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {

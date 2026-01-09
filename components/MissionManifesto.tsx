@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ArrowLeft, Zap, Heart, Users, BrainCircuit, Rocket, Code, Palette, Wallet, Truck, Box } from 'lucide-react';
 
@@ -23,7 +22,7 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
           {/* Hero Section */}
           <section className="text-center space-y-8 animate-fade-in-up">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-900/30 border border-indigo-500/30 text-indigo-300 text-sm font-bold uppercase tracking-wider mb-4">
-              <SparkleIcon /> AIVoiceCast Platform v4.2.0
+              <SparkleIcon /> AIVoiceCast Platform v4.5.2
             </div>
             <h2 className="text-5xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-200 to-slate-400 leading-tight">
               A Shared Network of<br />Neural Intelligence.
@@ -37,7 +36,7 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
           <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-indigo-500/50 transition-all duration-500 group">
               <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-indigo-500/20">
-                <Zap className="text-indigo-400 w-8 h-8" />
+                < Zap className="text-indigo-400 w-8 h-8" />
               </div>
               <h3 className="text-2xl font-bold text-white mb-4">Augmented Growth</h3>
               <p className="text-slate-400 leading-relaxed text-sm">
