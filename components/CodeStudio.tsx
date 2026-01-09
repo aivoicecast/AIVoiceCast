@@ -967,7 +967,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
   }, [cloudItems]);
 
   const filteredRepos = useMemo(() => {
-      if (!searchQuery.trim()) return githubRepos;
+      // Fix: changed searchQuery to githubSearchQuery
+      if (!githubSearchQuery.trim()) return githubRepos;
       return githubRepos.filter(r => r.full_name.toLowerCase().includes(githubSearchQuery.toLowerCase()));
   }, [githubRepos, githubSearchQuery]);
 

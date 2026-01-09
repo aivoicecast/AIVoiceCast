@@ -56,12 +56,28 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
     if (isOpen) {
         setTranscript('');
         setGeneratedChannel(null);
-        setVisibility('private');
+        visibility === 'private';
         setSelectedGroupId('');
         setShowKeyPrompt(false);
     }
     return () => { if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e) {} };
   }, [isOpen]);
+
+  // Fix: added missing toggleListening function
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    } else {
+      setTranscript('');
+      try {
+          recognitionRef.current?.start();
+          setIsListening(true);
+      } catch(e) {
+          console.error("Speech recognition start failed", e);
+      }
+    }
+  };
 
   const handleOpenKeySelection = async () => {
     if ((window as any).aistudio) {

@@ -1,8 +1,8 @@
-
-import React, { useState } from 'react';
-import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2, Activity, Terminal, AlertTriangle, CheckCircle, Wifi, Cpu, ShieldAlert } from 'lucide-react';
 import { signInWithGoogle } from '../services/authService';
 import { BrandLogo } from './BrandLogo';
+import { getFirebaseDiagnostics } from '../services/firebaseConfig';
 
 interface LoginPageProps {
   onPrivacyClick?: () => void;
@@ -21,14 +21,64 @@ const GoogleLogo = ({ size = 20 }: { size?: number }) => (
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionClick }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<any>(null);
+  const [bootLogs, setBootLogs] = useState<{msg: string, type: 'info' | 'success' | 'error'}[]>([]);
+
+  const addLog = (msg: string, type: 'info' | 'success' | 'error' = 'info') => {
+      setBootLogs(prev => [...prev, { msg, type }].slice(-8));
+  };
+
+  useEffect(() => {
+    const runDiagnostics = () => {
+        const d = getFirebaseDiagnostics();
+        setDiagnostics(d);
+        return d;
+    };
+
+    const d = runDiagnostics();
+    
+    addLog("Neural Kernel v4.5.6 Initializing...");
+    
+    if (d.apiKeyPresent) {
+        addLog("Security: API Keys Loaded", "success");
+    } else {
+        addLog("Security: Keys Missing (Local Mode)", "error");
+    }
+
+    if (d.isInitialized) {
+        addLog("Core: LINKED", "success");
+    } else {
+        addLog("Core: OFFLINE", "error");
+    }
+    
+    if (d.hasAuth) {
+        addLog("Auth Protocol: SIGNED", "success");
+    } else {
+        addLog("Auth Protocol: NOT REGISTERED", "error");
+    }
+
+    if (d.hasFirestore) {
+        addLog("Knowledge Ledger: CONNECTED", "success");
+    }
+    
+    const timer = setInterval(() => {
+        setDiagnostics(runDiagnostics());
+    }, 3000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleLogin = async () => {
     setIsLoading(true);
+    addLog("Initiating Secure Neural Handshake...");
     try {
       await signInWithGoogle();
-      window.location.reload();
+      addLog("Handshake Complete. Loading UI...", "success");
+      setTimeout(() => {
+          window.location.reload();
+      }, 500);
     } catch (e: any) {
       console.error(e);
+      addLog(`Handshake Failed: ${String(e.message || "Network Error")}`, "error");
       setIsLoading(false);
     }
   };
@@ -44,39 +94,76 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
           </div>
 
           <h1 className="text-4xl font-black text-white mb-2 tracking-tighter uppercase italic">AIVoiceCast</h1>
-          <p className="text-slate-400 text-sm mb-10 font-medium">
+          <p className="text-slate-400 text-sm mb-10 font-medium leading-relaxed">
             <span className="text-indigo-400 font-bold uppercase tracking-widest">Knowledge OS</span><br/> 
-            AI-native learning, synced to your personal Google Drive.
+            AI-native learning, synced to your sovereign Drive.
           </p>
 
+          {/* Neural Boot Log Section */}
+          <div className="mb-8 p-5 bg-black/60 rounded-3xl border border-slate-800 text-left space-y-4 shadow-inner overflow-hidden">
+              <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                      <Terminal size={12}/> Neural Boot Log
+                  </span>
+                  <div className="flex gap-1.5">
+                      <div className={`w-1.5 h-1.5 rounded-full ${diagnostics?.isInitialized ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}/>
+                      <div className={`w-1.5 h-1.5 rounded-full ${diagnostics?.hasAuth ? 'bg-emerald-500' : 'bg-slate-700'}`}/>
+                      <div className={`w-1.5 h-1.5 rounded-full ${diagnostics?.hasFirestore ? 'bg-indigo-500' : 'bg-slate-800'}`}/>
+                  </div>
+              </div>
+              
+              <div className="space-y-1.5 font-mono text-[10px] min-h-[120px]">
+                  {bootLogs.map((log, i) => (
+                      <div key={i} className={`flex items-center gap-2 ${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-emerald-400' : 'text-slate-500'}`}>
+                          <span className="opacity-40">>></span>
+                          <span className="font-bold">{String(log.msg)}</span>
+                      </div>
+                  ))}
+                  {isLoading && (
+                      <div className="flex items-center gap-2 text-indigo-400 animate-pulse">
+                          <span className="opacity-40">>></span>
+                          <span className="font-bold">Authorizing Neural Link...</span>
+                      </div>
+                  )}
+              </div>
+              
+              {!diagnostics?.hasAuth && diagnostics?.isInitialized && (
+                  <div className="mt-4 p-3 bg-red-900/20 border border-red-900/30 rounded-xl flex items-start gap-3 animate-fade-in">
+                      <ShieldAlert size={16} className="text-red-400 shrink-0 mt-0.5"/>
+                      <div className="text-[10px] text-red-300 leading-relaxed font-bold">
+                          REGISTRY CONFLICT: Auth module failed to register. 
+                          <p className="mt-1 text-slate-400 font-normal">This is usually caused by multiple SDK instances. Please perform a force reboot.</p>
+                          <button onClick={() => window.location.reload()} className="block mt-2 underline text-white font-black uppercase tracking-tighter">Force System Reboot</button>
+                      </div>
+                  </div>
+              )}
+          </div>
+
           <div className="space-y-4 mb-10">
-              <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
-                  <ShieldCheck className="text-emerald-400" size={20}/>
+              <div className="flex items-center gap-4 bg-slate-800/30 p-4 rounded-2xl border border-slate-700/50 group hover:border-indigo-500/30 transition-all">
+                  <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-400 group-hover:scale-110 transition-transform">
+                    <ShieldCheck size={24}/>
+                  </div>
                   <div className="text-left">
-                      <p className="text-xs font-bold text-white uppercase">Secure Entry</p>
-                      <p className="text-[10px] text-slate-500">Google Account mandatory for all members.</p>
+                      <p className="text-xs font-bold text-white uppercase tracking-wider">Secure Protocol</p>
+                      <p className="text-[10px] text-slate-500 font-medium">Standard Google OAuth 2.0 verification.</p>
                   </div>
               </div>
-              <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
-                  <HardDrive className="text-indigo-400" size={20}/>
-                  <div className="text-left">
-                      <p className="text-xs font-bold text-white uppercase">Cloud Sync</p>
-                      <p className="text-[10px] text-slate-500">Recordings and projects save directly to your Drive.</p>
+              <div className="flex items-center gap-4 bg-slate-800/30 p-4 rounded-2xl border border-slate-700/50 group hover:border-indigo-500/30 transition-all">
+                  <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-400 group-hover:scale-110 transition-transform">
+                    <HardDrive size={24}/>
                   </div>
-              </div>
-              <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
-                  <Share2 className="text-purple-400" size={20}/>
                   <div className="text-left">
-                      <p className="text-xs font-bold text-white uppercase">Native Sharing</p>
-                      <p className="text-[10px] text-slate-500">Share files with any valid Google member.</p>
+                      <p className="text-xs font-bold text-white uppercase tracking-wider">Cloud Sovereignty</p>
+                      <p className="text-[10px] text-slate-500 font-medium">Data resides strictly in your private Google Drive.</p>
                   </div>
               </div>
           </div>
 
           <button
             onClick={handleLogin}
-            disabled={isLoading}
-            className="group w-full bg-white hover:bg-slate-50 text-slate-900 font-black py-5 rounded-2xl shadow-2xl flex items-center justify-center gap-4 transition-all active:scale-[0.98]"
+            disabled={isLoading || !diagnostics?.isInitialized}
+            className={`group w-full bg-white hover:bg-slate-50 text-slate-900 font-black py-5 rounded-2xl shadow-2xl flex items-center justify-center gap-4 transition-all active:scale-[0.98] ${!diagnostics?.isInitialized ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}
           >
             {isLoading ? (
               <Loader2 size={24} className="animate-spin text-indigo-600" />
@@ -88,9 +175,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
             )}
           </button>
           
-          <div className="mt-10 flex justify-center gap-8">
-              <button onClick={onMissionClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold tracking-[0.2em] transition-colors">Mission</button>
-              <button onClick={onPrivacyClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold tracking-[0.2em] transition-colors">Privacy</button>
+          <div className="mt-10 flex justify-center gap-8 border-t border-slate-800 pt-6">
+              <button onClick={onMissionClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-black tracking-[0.2em] transition-colors">Mission</button>
+              <button onClick={onPrivacyClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-black tracking-[0.2em] transition-colors">Privacy</button>
           </div>
       </div>
     </div>

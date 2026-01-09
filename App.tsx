@@ -43,9 +43,10 @@ import { FirestoreInspector } from './components/FirestoreInspector';
 import { BrandLogo } from './components/BrandLogo';
 import { CoinWallet } from './components/CoinWallet';
 import { MockInterview } from './components/MockInterview';
+import { FirebaseConfigModal } from './components/FirebaseConfigModal';
 
 import { getCurrentUser, getDriveToken } from './services/authService';
-import { auth, db } from './services/firebaseConfig';
+import { auth, db, isFirebaseConfigured } from './services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { onSnapshot, doc } from 'firebase/firestore';
 import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from './services/googleDriveService';
@@ -211,6 +212,7 @@ const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [globalVoice, setGlobalVoice] = useState('Auto');
   const [channelToComment, setChannelToComment] = useState<Channel | null>(null);
   const [channelToEdit, setChannelToEdit] = useState<Channel | null>(null);
@@ -279,7 +281,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const activeAuth = auth;
-    if (!activeAuth) return;
+    if (!activeAuth) {
+      setAuthLoading(false);
+      return;
+    }
     const unsubscribe = onAuthStateChanged(activeAuth, async (user) => {
         if (user) {
             setCurrentUser(user);
@@ -415,6 +420,7 @@ const App: React.FC = () => {
         {channelToComment && ( <CommentsModal isOpen={true} onClose={() => setChannelToComment(null)} channel={channelToComment} onAddComment={handleAddComment} onDeleteComment={(cid) => deleteCommentFromChannel(channelToComment.id, cid)} onEditComment={(cid, txt, att) => updateCommentInChannel(channelToComment.id, { id: cid, userId: currentUser.uid, user: currentUser.displayName || 'Anonymous', text: txt, timestamp: Date.now(), attachments: att })} currentUser={currentUser} /> )}
         {channelToEdit && ( <ChannelSettingsModal isOpen={true} onClose={() => setChannelToEdit(null)} channel={channelToEdit} onUpdate={handleUpdateChannel} /> )}
         <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} setIsSyncModalOpen={() => {}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => setIsUserGuideOpen(true)} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => setIsPrivacyOpen(true)} t={t} language={language} setLanguage={setLanguage} channels={allChannels} />
+        <FirebaseConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} onConfigUpdate={() => window.location.reload()} />
       </div>
     </ErrorBoundary>
   );
