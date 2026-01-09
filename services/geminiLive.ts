@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
 import { resolvePersona } from '../utils/aiRegistry';
@@ -44,7 +45,8 @@ export class GeminiLiveService {
       this.isActive = true;
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       
-      // Always create a new instance right before making an API call to ensure it uses the most up-to-date API key
+      // CRITICAL: Always create a new instance right before making an API call 
+      // to ensure it uses the most up-to-date API key from the selection dialog.
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       if (!this.inputAudioContext || this.inputAudioContext.state !== 'running') {
@@ -135,7 +137,6 @@ export class GeminiLiveService {
             if (!this.isActive) return;
             
             // Handle race condition/expired key error by prompting re-selection
-            // This is required for accessing tuned models which need specific billing-enabled keys
             if (e?.message?.includes("Requested entity was not found") && (window as any).aistudio) {
                 (window as any).aistudio.openSelectKey();
             }
@@ -191,6 +192,8 @@ export class GeminiLiveService {
           onVolume(Math.sqrt(sum / inputData.length) * 5);
       }
       const pcmBlob = createPcmBlob(inputData);
+      
+      // Solely rely on sessionPromise resolves
       this.sessionPromise?.then((session) => { 
           session.sendRealtimeInput({ media: pcmBlob }); 
       });

@@ -43,9 +43,10 @@ import { FirestoreInspector } from './FirestoreInspector';
 import { BrandLogo } from './BrandLogo';
 import { CoinWallet } from './CoinWallet';
 import { MockInterview } from './MockInterview';
+import { FirebaseConfigModal } from './FirebaseConfigModal';
 
 import { getCurrentUser, getDriveToken } from '../services/authService';
-import { auth, db } from '../services/firebaseConfig';
+import { auth, db, isFirebaseConfigured } from '../services/firebaseConfig';
 import { onAuthStateChanged } from 'firebase/auth';
 import { onSnapshot, doc } from 'firebase/firestore';
 import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } from '../services/googleDriveService';
@@ -211,6 +212,7 @@ const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [globalVoice, setGlobalVoice] = useState('Auto');
   const [channelToComment, setChannelToComment] = useState<Channel | null>(null);
   const [channelToEdit, setChannelToEdit] = useState<Channel | null>(null);
@@ -279,7 +281,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const activeAuth = auth;
-    if (!activeAuth) return;
+    if (!activeAuth) {
+      setAuthLoading(false);
+      return;
+    }
     const unsubscribe = onAuthStateChanged(activeAuth, async (user) => {
         if (user) {
             setCurrentUser(user);
@@ -363,12 +368,9 @@ const App: React.FC = () => {
         <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 shrink-0 z-50 backdrop-blur-xl">
            <div className="flex items-center gap-3">
               <button onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)} className={`p-2 hover:bg-slate-800 rounded-lg transition-colors ${isAppsMenuOpen ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}><LayoutGrid size={20} /></button>
-              <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.history.replaceState({}, '', window.location.origin)}>
+              <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.location.href = window.location.origin}>
                  <BrandLogo size={32} />
-                 <div className="flex flex-col">
-                    <h1 className="text-xl font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400">AIVoiceCast</h1>
-                    <span className="hidden sm:block text-[8px] font-black text-indigo-500 tracking-[0.2em] -mt-1 uppercase">Neural OS v4.5.6</span>
-                 </div>
+                 <h1 className="text-xl font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400">AIVoiceCast</h1>
               </div>
            </div>
 
@@ -418,6 +420,7 @@ const App: React.FC = () => {
         {channelToComment && ( <CommentsModal isOpen={true} onClose={() => setChannelToComment(null)} channel={channelToComment} onAddComment={handleAddComment} onDeleteComment={(cid) => deleteCommentFromChannel(channelToComment.id, cid)} onEditComment={(cid, txt, att) => updateCommentInChannel(channelToComment.id, { id: cid, userId: currentUser.uid, user: currentUser.displayName || 'Anonymous', text: txt, timestamp: Date.now(), attachments: att })} currentUser={currentUser} /> )}
         {channelToEdit && ( <ChannelSettingsModal isOpen={true} onClose={() => setChannelToEdit(null)} channel={channelToEdit} onUpdate={handleUpdateChannel} /> )}
         <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} setIsSyncModalOpen={() => {}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => setIsUserGuideOpen(true)} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => setIsPrivacyOpen(true)} t={t} language={language} setLanguage={setLanguage} channels={allChannels} />
+        <FirebaseConfigModal isOpen={isConfigModalOpen} onClose={() => setIsConfigModalOpen(false)} onConfigUpdate={() => window.location.reload()} />
       </div>
     </ErrorBoundary>
   );

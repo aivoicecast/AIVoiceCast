@@ -835,7 +835,24 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
       updateTerminal(`>>> Starting Neural Execution: ${file.name}`);
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const prompt = `Act as a high-speed remote C++ / Multi-language execution engine. Execute: File: ${file.name}, Lang: ${file.language}, Code: ${file.content}. Respond ONLY with JSON: { "stdout": "string", "stderr": "string", "exitCode": number }`;
+          const prompt = `Act as a high-speed language-agnostic logic simulation engine. 
+          Your goal is to "imagine" the execution of the following code and predict the standard output.
+          
+          SYSTEM ENVIRONMENT: Linux v6.5, Bash 5.0, Python 3.11, GCC 12.2.
+          
+          FILE NAME: ${file.name}
+          LANGUAGE: ${file.language}
+          CODE CONTENT:
+          ${file.content}
+          
+          STRICT OUTPUT FORMAT:
+          Respond ONLY with a valid JSON object:
+          { 
+              "stdout": "predicted standard output string", 
+              "stderr": "predicted error output string (if any)", 
+              "exitCode": number,
+              "socraticFeedback": "A brief explanation of WHY this result was predicted, focusing on the logic."
+          }`;
           
           const resp = await ai.models.generateContent({ 
               model: 'gemini-3-flash-preview', 
@@ -846,11 +863,17 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
               } 
           });
           
-          const result = JSON.parse(resp.text || '{"stdout": "", "stderr": "Internal Error", "exitCode": 1}');
+          const result = JSON.parse(resp.text || '{"stdout": "", "stderr": "Internal Neural Error", "exitCode": 1}');
           if (result.stderr) updateTerminal(result.stderr, true);
           if (result.stdout) updateTerminal(result.stdout);
+          if (result.socraticFeedback) updateTerminal(`\n[NEURAL TRACE]: ${result.socraticFeedback}`);
           updateTerminal(`\n[Process exited with code ${result.exitCode}]`);
-      } catch (e: any) { updateTerminal(`Execution failed: ${e.message}`, true); } finally { setIsRunning(prev => ({ ...prev, [slotIdx]: false })); }
+      } catch (e: any) { 
+          if (e.message?.includes("Requested entity was not found") && (window as any).aistudio) {
+              (window as any).aistudio.openSelectKey();
+          }
+          updateTerminal(`Execution failed: ${e.message}`, true); 
+      } finally { setIsRunning(prev => ({ ...prev, [slotIdx]: false })); }
   };
 
   const handleSendMessage = async (text: string) => {
@@ -868,12 +891,24 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
       const history = chatMessages.map(m => ({ role: (m.role === 'ai' ? 'model' : 'user') as 'model' | 'user', parts: [{ text: m.text }] }));
       let contextualMessage = text;
       if (activeFile) contextualMessage = `CONTEXT: Focused File "${activeFile.name}" content:\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\`\n\nUSER REQUEST: ${text}`;
-      const response = await ai.models.generateContent({ model: 'gemini-3-pro-preview', contents: [ ...history, { role: 'user', parts: [{ text: contextualMessage }] } ], config: { systemInstruction: "Expert pair programmer.", tools: [{ functionDeclarations: [updateFileTool] }] } });
+      const response = await ai.models.generateContent({ 
+          model: 'gemini-3-pro-preview', 
+          contents: [ ...history, { role: 'user', parts: [{ text: contextualMessage }] } ], 
+          config: { 
+              systemInstruction: "Expert pair programmer and technical architect. You help the user build, debug and optimize high-performance software systems.", 
+              tools: [{ functionDeclarations: [updateFileTool] }] 
+          } 
+      });
       if (response.functionCalls?.[0]?.name === 'update_active_file') {
           const args = response.functionCalls[0].args as any;
           if (args.new_content) { handleCodeChangeInSlot(args.new_content, focusedSlot); setChatMessages(prev => [...prev, { role: 'ai', text: `✅ Updated. ${args.summary || ''}` }]); }
       } else { setChatMessages(prev => [...prev, { role: 'ai', text: response.text || "No response." }]); }
-    } catch (e: any) { setChatMessages(prev => [...prev, { role: 'ai', text: "Error: " + e.message }]); } finally { setIsChatThinking(false); }
+    } catch (e: any) { 
+        if (e.message?.includes("Requested entity was not found") && (window as any).aistudio) {
+            (window as any).aistudio.openSelectKey();
+        }
+        setChatMessages(prev => [...prev, { role: 'ai', text: "Error: " + e.message }]); 
+    } finally { setIsChatThinking(false); }
   };
 
   const handleFormatCode = async (slotIdx: number) => {
@@ -882,8 +917,9 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
       setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: true }));
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const resp = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: `Format RAW code: ${file.content}` });
+          const resp = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: `Format the following raw code content according to industry best practices. Ensure consistent indentation, clear spacing and removal of unnecessary comments while preserving logic:\n\n${file.content}` });
           let result = resp.text || file.content;
+          // Strip markdown fences if present
           result = result.replace(/```(?:[a-zA-Z0-9+-]+)?\n?([\s\S]*?)\n?```/g, '$1').trim();
           handleCodeChangeInSlot(result, slotIdx);
       } catch (e: any) { console.error(e); } finally { setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: false })); }
@@ -931,7 +967,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
   }, [cloudItems]);
 
   const filteredRepos = useMemo(() => {
-      if (!githubSearchQuery.trim()) return githubRepos;
+      if (!searchQuery.trim()) return githubRepos;
       return githubRepos.filter(r => r.full_name.toLowerCase().includes(githubSearchQuery.toLowerCase()));
   }, [githubRepos, githubSearchQuery]);
 
@@ -988,7 +1024,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
                                       <Github size={14}/> Connect GitHub
                                   </button>
                                   <div className="flex flex-col gap-2 mt-4 text-center">
-                                      <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest leading-relaxed">Problems connecting?</p>
+                                      <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest leading-relaxed">Problems connecting?</p>
                                       <button onClick={() => setShowManualToken(true)} className="text-[10px] text-indigo-400 hover:text-white underline font-bold uppercase tracking-widest">Use Access Token</button>
                                   </div>
                               </div>

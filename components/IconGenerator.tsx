@@ -67,9 +67,11 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
   };
 
   const handleOpenKeySelection = async () => {
-    await (window as any).aistudio.openSelectKey();
-    setShowKeyPrompt(false);
-    handleGenerate();
+    if (window.aistudio) {
+        await window.aistudio.openSelectKey();
+        setShowKeyPrompt(false);
+        handleGenerate();
+    }
   };
 
   const handleGenerate = async () => {
@@ -79,8 +81,8 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     const model = isEdit ? 'gemini-2.5-flash-image' : 'gemini-3-pro-image-preview';
 
     // Mandatory Key Selection for gemini-3-pro-image-preview
-    if (model === 'gemini-3-pro-image-preview') {
-        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+    if (model === 'gemini-3-pro-image-preview' && window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
         if (!hasKey) {
             setShowKeyPrompt(true);
             return;
@@ -92,6 +94,8 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     setShareLink(null);
     
     try {
+      // Always create a new instance right before making an API call 
+      // to ensure it uses the most up-to-date API key from the dialog.
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       const styleInstruction = isEdit ? `Modify the provided image according to this request: ${prompt}. Maintain the core structure but update the style to: ${selectedStyle.name}. ${selectedStyle.prompt}.` : `Professional app icon design for: ${prompt}. ${selectedStyle.prompt}. Isolated on a solid background, centered composition, no text, masterpiece quality, 8k resolution.`;
@@ -136,7 +140,7 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
       }
     } catch (e: any) {
       console.error(e);
-      if (e.message?.includes("Requested entity was not found")) {
+      if (e.message?.includes("Requested entity was not found") && window.aistudio) {
           setShowKeyPrompt(true);
       } else {
           setError(e.message || "Generation failed. Try a different prompt.");

@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedLecture, TranscriptItem } from '../types';
 import { incrementApiUsage } from './firestoreService';
@@ -25,6 +26,7 @@ export async function generateLectureScript(
   voiceName?: string
 ): Promise<GeneratedLecture | null> {
   try {
+    // ALWAYS instantiate per-request
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     // Resolve identity and model from registry

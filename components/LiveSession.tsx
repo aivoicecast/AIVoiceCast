@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, Key } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
@@ -63,7 +63,9 @@ const UI_TEXT = {
     diagnostics: "Neural Diagnostics",
     cloudWarn: "Drive/YouTube Access Missing: Local Only.",
     signIn: "Sign In",
-    forceStart: "Bypassing Landing Screen: Auto-Initializing..."
+    forceStart: "Bypassing Landing Screen: Auto-Initializing...",
+    keyRequired: "API Key Selection Required",
+    keyDesc: "This persona requires a billing-enabled key from AI Studio."
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -98,7 +100,9 @@ const UI_TEXT = {
     diagnostics: "神经诊断",
     cloudWarn: "缺少 Drive/YouTube 权限：仅限本地。",
     signIn: "登录",
-    forceStart: "跳过着陆页：自动初始化..."
+    forceStart: "跳过着陆页：自动初始化...",
+    keyRequired: "需要选择 API Key",
+    keyDesc: "此人格需要从 AI Studio 选择一个已启用结算的 Key。"
   }
 };
 
@@ -152,6 +156,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [hasStarted, setHasStarted] = useState(false); 
   const [isConnected, setIsConnected] = useState(false);
   const [showReconnectButton, setShowReconnectButton] = useState(false);
+  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cloudWarning, setCloudWarning] = useState(false);
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
@@ -197,7 +202,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const currentUser = auth?.currentUser;
   const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
 
-  // NEW: Force start for meeting recorder mode
   useEffect(() => {
     if (channel.id.startsWith('meeting-force-start')) {
         addLog("One-Click Meeting Mode Detected. Bypassing Landing Page...");
@@ -206,7 +210,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   }, [channel.id]);
 
   const startHardwareSync = async () => {
-    // CRITICAL: Request screen capture IMMEDIATELY to satisfy iOS user-gesture requirement
     if (recordingEnabled) {
         const isMeeting = channel.id.includes('meeting');
         if (videoEnabled || isMeeting) {
@@ -238,15 +241,31 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const handleStartSession = async () => {
       setError(null);
       
-      // 1. Immediately request hardware to capture user gesture for iOS
-      await startHardwareSync();
+      // Pre-flight check for API Key if using tuned models
+      if (channel.voiceName.includes('gen-lang-client') && (window as any).aistudio) {
+          const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+          if (!hasKey) {
+              setShowKeyPrompt(true);
+              return;
+          }
+      }
 
+      await startHardwareSync();
       const ctx = getGlobalAudioContext();
       addLog("Warming up neural audio fabric...");
       await warmUpAudioContext(ctx);
       
       setHasStarted(true);
+      setShowKeyPrompt(false);
       await connect();
+  };
+
+  const handleOpenKeySelection = async () => {
+      if ((window as any).aistudio) {
+          await (window as any).aistudio.openSelectKey();
+          setShowKeyPrompt(false);
+          handleStartSession();
+      }
   };
 
   const handleSignInInPlace = async () => {
@@ -286,7 +305,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               addLog("Routing System Audio to AI Agent.");
           }
 
-          // IMPROVED: Logic to determine aspect ratio based on available stream settings
           const screenTrack = screenStreamRef.current?.getVideoTracks()[0];
           const camTrack = cameraStreamRef.current?.getVideoTracks()[0];
           let isPortrait = window.innerHeight > window.innerWidth;
@@ -325,7 +343,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   const y = (canvas.height - h) / 2;
                   drawCtx.drawImage(screenVideo, x, y, w, h);
               } else {
-                  // If screen share is missing (common on iPhone), use a nice visual backdrop
                   const gradient = drawCtx.createLinearGradient(0, 0, canvas.width, canvas.height);
                   gradient.addColorStop(0, '#1e1b4b');
                   gradient.addColorStop(1, '#020617');
@@ -397,14 +414,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       const pref = profile?.preferredRecordingTarget || 'drive';
                       const folderId = await ensureCodeStudioFolder(token);
                       
+                      let driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
                       let ytVideoUrl = '';
-                      let driveVideoUrl = '';
-                      
-                      // 1. Upload to Drive first for safety
-                      driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
                       setSynthesisProgress(70);
 
-                      // 2. Upload to YouTube if preferred
                       if (pref === 'youtube' || channel.id.includes('meeting')) {
                           try {
                               addLog(`Preferred Dest is YOUTUBE. Sending blob...`);
@@ -420,15 +433,14 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                           }
                       }
 
-                      let tFileId = '';
-                      tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
+                      let tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
                       
                       const sessionData: RecordingSession = {
                           id: recId, userId: currentUser.uid, channelId: channel.id,
                           channelTitle: channel.title, channelImage: channel.imageUrl,
                           timestamp, 
-                          mediaUrl: ytVideoUrl || driveVideoUrl, // Primary URI
-                          driveUrl: driveVideoUrl, // Fallback/Secondary URI
+                          mediaUrl: ytVideoUrl || driveVideoUrl,
+                          driveUrl: driveVideoUrl,
                           mediaType: 'video/webm', transcriptUrl: tFileId ? `drive://${tFileId}` : ''
                       };
                       await saveRecordingReference(sessionData);
@@ -506,6 +518,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           },
           onError: (err) => { 
               setIsConnected(false); 
+              if (err.includes("Requested entity was not found")) {
+                  setShowKeyPrompt(true);
+              }
               setError(err); 
           },
           onVolumeUpdate: () => {},
@@ -553,7 +568,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   transcript: fullTranscript, createdAt: Date.now(), 
                   title: `${channel.title}: AI Session` 
               };
-              // FIXED: Pass transcript as part of an object to match Partial<CommunityDiscussion>
               if (existingDiscussionId) await updateDiscussion(existingDiscussionId, { transcript: fullTranscript, updatedAt: Date.now() });
               else await saveDiscussion(discussion);
           }
@@ -654,6 +668,25 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
          </div>
       </div>
 
+      {showKeyPrompt && (
+          <div className="absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6">
+              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] p-10 max-w-sm w-full text-center shadow-2xl animate-fade-in-up">
+                  <div className="w-16 h-16 bg-indigo-600/10 rounded-full flex items-center justify-center mb-6 mx-auto border border-indigo-500/20">
+                      <Key className="text-indigo-400" size={32}/>
+                  </div>
+                  <h3 className="text-xl font-black text-white uppercase tracking-widest mb-3">{t.keyRequired}</h3>
+                  <p className="text-sm text-slate-400 leading-relaxed mb-8">{t.keyDesc}</p>
+                  <button 
+                    onClick={handleOpenKeySelection}
+                    className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                  >
+                      Authorize Neural Kernel
+                  </button>
+                  <button onClick={onEndSession} className="mt-4 text-xs font-bold text-slate-500 hover:text-white uppercase underline">Cancel Session</button>
+              </div>
+          </div>
+      )}
+
       {cloudWarning && (
           <div className="bg-amber-600/20 border-b border-amber-600/30 p-2 px-4 flex items-center justify-between animate-fade-in z-20">
               <div className="flex items-center gap-2">
@@ -725,7 +758,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 </>
              )}
          </div>
-      ) : error ? (
+      ) : error && !isConnected ? (
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
              <AlertCircle size={40} className="text-red-400" />
              <p className="text-red-300 text-sm font-bold">{error}</p>

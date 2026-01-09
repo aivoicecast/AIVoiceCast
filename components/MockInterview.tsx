@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -7,7 +8,8 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, BarChart } from 'lucide-react';
+import { resolvePersona } from '../utils/aiRegistry';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, BarChart, Key } from 'lucide-react';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
 
 interface MockInterviewProps {
@@ -57,6 +59,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [isAiConnected, setIsAiConnected] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isAiThinking, setIsAiThinking] = useState(false);
+  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
   
   const [timeLeft, setTimeLeft] = useState<number>(0); 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -97,6 +100,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const activeStreamRef = useRef<MediaStream | null>(null);
   const activeScreenStreamRef = useRef<MediaStream | null>(null);
+
+  const persona = useMemo(() => resolvePersona('software-interview'), []);
 
   const logApi = (msg: string, type: 'info' | 'error' | 'warn' = 'info') => {
     setApiLogs(prev => [{timestamp: Date.now(), msg, type}, ...prev].slice(0, 50));
@@ -154,6 +159,14 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     }
   };
 
+  const handleOpenKeySelection = async () => {
+      if ((window as any).aistudio) {
+          await (window as any).aistudio.openSelectKey();
+          setShowKeyPrompt(false);
+          handleStartInterview();
+      }
+  };
+
   const handleReconnectAi = async (isAuto = false) => {
     if (isEndingRef.current) return;
     
@@ -173,7 +186,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
       try {
         logApi(`Re-linking AI...`);
-        await service.connect('Software Interview Voice gen-lang-client-0648937375', prompt, {
+        await service.connect(persona.id, prompt, {
           onOpen: () => {
             if (activeServiceIdRef.current !== service.id) return;
             setIsAiConnected(true);
@@ -188,7 +201,15 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               handleReconnectAi(true);
             }
           },
-          onError: (e: any) => { if (activeServiceIdRef.current === service.id) handleReconnectAi(true); },
+          onError: (e: any) => { 
+              if (activeServiceIdRef.current === service.id) {
+                  if (e.message?.includes("Requested entity was not found")) {
+                      setShowKeyPrompt(true);
+                  } else {
+                      handleReconnectAi(true);
+                  }
+              }
+          },
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
             if (activeServiceIdRef.current !== service.id) return;
@@ -229,6 +250,15 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   }, []);
 
   const handleStartInterview = async () => {
+    // Check for API Key selection mandatory for Tuned Models
+    if ((window as any).aistudio) {
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+            setShowKeyPrompt(true);
+            return;
+        }
+    }
+
     setIsStarting(true);
     isEndingRef.current = false;
     
@@ -331,7 +361,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         } else { drawCtx.fillStyle = '#020617'; drawCtx.fillRect(0, 0, canvas.width, canvas.height); }
         if (camVideo.readyState >= 2) {
           const pipW = isPortrait ? canvas.width * 0.5 : 320;
-          const pipH = (pipW * camVideo.videoHeight) / camVideo.videoWidth;
+          const pipH = (pipW * cameraVideo.videoHeight) / cameraVideo.videoWidth;
           const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - 24;
           const pipY = isPortrait ? canvas.height - pipH - 120 : canvas.height - pipH - 24;
           drawCtx.strokeStyle = '#6366f1'; drawCtx.lineWidth = 4; drawCtx.strokeRect(pipX, pipY, pipW, pipH); 
@@ -352,9 +382,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
-      const sysPrompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. IMPORTANT: You are monitoring the candidate's speech AND their typed chat messages. You are also monitoring a code project with ID: ${uuid}. Respond naturally to all inputs. GOAL: Introduce yourself and start the challenge.`;
+      const sysPrompt = persona.systemInstruction + `\n\n[CONTEXT]: Candidate: ${currentUser?.displayName}. Mode: ${mode}. Resume: ${resumeText}. UUID: ${uuid}. Introduce yourself and start the challenge.`;
       
-      await service.connect('Software Interview Voice gen-lang-client-0648937375', sysPrompt, {
+      await service.connect(persona.id, sysPrompt, {
         onOpen: () => {
           setIsAiConnected(true);
           if (timerRef.current) clearInterval(timerRef.current);
@@ -363,7 +393,16 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           }, 1000);
         },
         onClose: (r) => { if (activeServiceIdRef.current === service.id) { setIsAiConnected(false); handleReconnectAi(true); } },
-        onError: (e) => { if (activeServiceIdRef.current === service.id) { setIsAiConnected(false); handleReconnectAi(true); } },
+        onError: (e: any) => { 
+            if (activeServiceIdRef.current === service.id) { 
+                setIsAiConnected(false); 
+                if (e.message?.includes("Requested entity was not found")) {
+                    setShowKeyPrompt(true);
+                } else {
+                    handleReconnectAi(true); 
+                }
+            } 
+        },
         onVolumeUpdate: () => {},
         onTranscript: (text, isUser) => {
           if (activeServiceIdRef.current !== service.id) return;
@@ -388,7 +427,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       }, [{ functionDeclarations: [getCodeTool] }]);
       
       setView('interview');
-    } catch (e: any) { alert("Startup failed."); setView('hub'); } finally { setIsStarting(false); }
+    } catch (e: any) { 
+        console.error(e);
+        alert("Startup failed: " + e.message); 
+        setView('hub'); 
+    } finally { setIsStarting(false); }
   };
 
   const handleEndInterview = async () => {
@@ -510,11 +553,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 }
             }`;
 
-            // Use the specialized interviewer model for best results
-            const modelIdToUse = 'tunedModels/gen-lang-client-0648937375';
-
             const response = await ai.models.generateContent({
-                model: attempt === 1 ? modelIdToUse : 'gemini-3-pro-preview',
+                model: attempt === 1 ? persona.modelId : 'gemini-3-pro-preview',
                 contents: prompt,
                 config: { 
                   responseMimeType: 'application/json',
@@ -530,13 +570,13 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         } catch (e: any) {
             console.warn(`Evaluation Attempt ${attempt} failed:`, e);
             if (e.message?.includes("Requested entity was not found") && (window as any).aistudio) {
-                (window as any).aistudio.openSelectKey();
+                setShowKeyPrompt(true);
             }
             return null;
         }
     };
 
-    addSynthesisLog('Invoking Interviewer Tuned Model [0648937375]...');
+    addSynthesisLog(`Invoking Interviewer Tuned Model [${persona.modelId.split('/')[1]}]...`);
     reportData = await tryEvaluate(1);
     if (!reportData) {
         setSynthesisStep('Fallback Analysis...');
@@ -632,6 +672,25 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       </header>
 
       <main className="flex-1 overflow-hidden relative">
+        {showKeyPrompt && (
+            <div className="absolute inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6">
+                <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] p-10 max-w-sm w-full text-center shadow-2xl animate-fade-in-up">
+                    <div className="w-16 h-16 bg-indigo-600/10 rounded-full flex items-center justify-center mb-6 mx-auto border border-indigo-500/20">
+                        <Key className="text-indigo-400" size={32}/>
+                    </div>
+                    <h3 className="text-xl font-black text-white uppercase tracking-widest mb-3">API Key Required</h3>
+                    <p className="text-sm text-slate-400 leading-relaxed mb-8">Specialized Tuned Models require a billing-enabled API key to be selected via AI Studio.</p>
+                    <button 
+                        onClick={handleOpenKeySelection}
+                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                    >
+                        Select AI Studio Key
+                    </button>
+                    <button onClick={() => { setShowKeyPrompt(false); setIsStarting(false); }} className="mt-4 text-xs font-bold text-slate-500 hover:text-white uppercase underline">Cancel</button>
+                </div>
+            </div>
+        )}
+
         {view === 'hub' && (
           <div className="max-w-6xl mx-auto p-8 space-y-12 animate-fade-in overflow-y-auto h-full scrollbar-hide">
             <div className="bg-indigo-600 rounded-[3rem] p-12 shadow-2xl relative overflow-hidden flex flex-col md:flex-row items-center gap-10">
