@@ -1,10 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import { UserProfile, SubscriptionTier, GlobalStats, Channel } from '../types';
 import { getUserProfile, getGlobalStats, updateUserProfile } from '../services/firestoreService';
 import { Sparkles, BarChart2, Plus, Wand2, Crown, Settings, Book, Users, LogIn, Terminal, Cloud, Globe, Mic, LayoutGrid, HardDrive, AlertCircle, Gift, CreditCard, Languages, MousePointer2, Rocket, Shield, LogOut } from 'lucide-react';
 import { VOICES } from '../utils/initialData';
-import { PricingModal } from './PricingModal';
 import { signOut } from '../services/authService';
 
 interface StudioMenuProps {
@@ -17,6 +15,7 @@ interface StudioMenuProps {
   setGlobalVoice: (v: string) => void;
   setIsCreateModalOpen: (open: boolean) => void;
   setIsVoiceCreateOpen: (open: boolean) => void;
+  onUpgradeClick: () => void;
   setIsSyncModalOpen: (open: boolean) => void;
   setIsSettingsModalOpen: (open: boolean) => void;
   onOpenUserGuide: () => void;
@@ -32,11 +31,10 @@ interface StudioMenuProps {
 
 export const StudioMenu: React.FC<StudioMenuProps> = ({
   isUserMenuOpen, setIsUserMenuOpen, userProfile, setUserProfile, currentUser,
-  setIsCreateModalOpen, setIsVoiceCreateOpen, setIsSettingsModalOpen, onOpenUserGuide, onNavigate, onOpenPrivacy,
+  setIsCreateModalOpen, setIsVoiceCreateOpen, onUpgradeClick, setIsSettingsModalOpen, onOpenUserGuide, onNavigate, onOpenPrivacy,
   className, channels = [],
   language, setLanguage
 }) => {
-  const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [globalStats, setGlobalStats] = useState<GlobalStats>({ totalLogins: 0, uniqueUsers: 0 });
   
   const isSuperAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
@@ -46,11 +44,6 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
   }, [isUserMenuOpen]);
 
   if (!isUserMenuOpen || !currentUser) return null;
-
-  const handleUpgradeSuccess = async (newTier: SubscriptionTier) => {
-      if (userProfile) setUserProfile({ ...userProfile, subscriptionTier: newTier });
-      try { const fresh = await getUserProfile(currentUser.uid); if (fresh) setUserProfile(fresh); } catch(e) {}
-  };
 
   const handleLogout = async () => {
     if (confirm("Are you sure you want to sign out?")) {
@@ -69,7 +62,7 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
          </div>
          
          <div className="p-2 space-y-1 flex-1">
-            <button onClick={() => setIsPricingOpen(true)} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-white hover:bg-slate-800 rounded-lg transition-colors bg-gradient-to-r from-indigo-900/20 to-purple-900/20 border border-indigo-500/30 mb-2">
+            <button onClick={() => { onUpgradeClick(); setIsUserMenuOpen(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-white hover:bg-slate-800 rounded-lg transition-colors bg-gradient-to-r from-indigo-900/20 to-purple-900/20 border border-indigo-500/30 mb-2">
                <div className="p-1.5 bg-amber-500 text-white rounded-md shadow-lg"><Crown size={14} fill="currentColor"/></div><span className="font-bold text-amber-200">Upgrade Membership</span>
             </button>
             <button onClick={() => { setIsCreateModalOpen(true); setIsUserMenuOpen(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-white hover:bg-slate-800 rounded-lg"><div className="p-1.5 bg-indigo-900/50 text-indigo-400 rounded-md"><Plus size={16}/></div><span className="font-medium">Create Podcast</span></button>
@@ -82,14 +75,6 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
          </div>
          <div className="p-2 border-t border-slate-800 bg-slate-950/50 mt-auto"><button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-bold text-red-400 hover:text-white hover:bg-red-900/40 rounded-lg transition-all"><LogOut size={16} /><span>Sign Out</span></button></div>
       </div>
-      {isPricingOpen && (
-        <PricingModal 
-          isOpen={true} 
-          onClose={() => setIsPricingOpen(false)} 
-          user={userProfile} 
-          onSuccess={handleUpgradeSuccess} 
-        />
-      )}
     </>
   );
 };

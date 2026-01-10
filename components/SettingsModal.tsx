@@ -29,7 +29,7 @@ const LANGUAGES = ['TypeScript', 'JavaScript', 'Python', 'C++', 'Java', 'Rust', 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
   isOpen, onClose, user, onUpdateProfile, onUpgradeClick 
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'interests' | 'profile' | 'banking' | 'billing'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'interests' | 'profile' | 'banking'>('general');
   const [isSaving, setIsSaving] = useState(false);
   const [displayName, setDisplayName] = useState(user.displayName);
   const [defaultRepo, setDefaultRepo] = useState(user.defaultRepoUrl || '');
@@ -54,9 +54,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [nextCheckNumber, setNextCheckNumber] = useState(user.nextCheckNumber || 1001);
   const [showSignPad, setShowSignPad] = useState(false);
   
-  const [billingHistory, setBillingHistory] = useState<any[]>([]);
-  const [isProcessingPortal, setIsProcessingPortal] = useState(false);
-
   const currentTier = user.subscriptionTier || 'free';
   const isPaid = currentTier === 'pro';
 
@@ -67,30 +64,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  const handleManageSubscription = async () => {
-    setIsProcessingPortal(true);
-    try {
-      const url = await createStripePortalSession(user.uid);
-      window.location.href = url;
-    } catch (e) {
-      alert("Could not load billing portal.");
-    } finally {
-      setIsProcessingPortal(false);
-    }
-  };
-
   const handleLogout = async () => {
     if (confirm("Sign out of AIVoiceCast?")) {
       await signOut();
       onClose();
     }
   };
-
-  useEffect(() => {
-      if (activeTab === 'billing' && user.subscriptionTier === 'pro') {
-          getBillingHistory(user.uid).then(setBillingHistory);
-      }
-  }, [activeTab, user]);
 
   useEffect(() => {
       if (isOpen) {
@@ -121,7 +100,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setResumeStatusMsg('Neural Prism scanning PDF...');
       
       try {
-          // 1. Parse Text with Gemini
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const base64 = await new Promise<string>((resolve) => {
               const reader = new FileReader();
@@ -142,10 +120,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setResumeText(parsedText);
           
           setResumeStatusMsg('Syncing to Cloud Storage...');
-          // 2. Upload to Firebase Storage for public Talent Pool access
           const firebaseResumeUrl = await uploadFileToStorage(`users/${user.uid}/resume.pdf`, file);
           
-          // 3. Optional: Backup to Google Drive
           try {
             setResumeStatusMsg('Backing up to Google Drive...');
             const token = getDriveToken() || await connectGoogleDrive();
@@ -158,7 +134,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             console.warn("Drive backup skipped or failed", driveErr);
           }
 
-          // 4. Update Profile with new URL and parsed text
           await updateUserProfile(user.uid, { 
               resumeUrl: firebaseResumeUrl,
               resumeText: parsedText 
@@ -245,7 +220,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button onClick={() => setActiveTab('profile')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'profile' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Professional</button>
             <button onClick={() => setActiveTab('interests')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'interests' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Interests</button>
             <button onClick={() => setActiveTab('banking')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'banking' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Check Profile</button>
-            <button onClick={() => setActiveTab('billing')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'billing' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Billing</button>
         </div>
 
         <div className="p-6 overflow-y-auto flex-1 bg-slate-900 scrollbar-thin scrollbar-thumb-slate-800">
@@ -271,48 +245,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
                                 />
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Github size={12}/> Default GitHub Repository</label>
-                                    <input 
-                                        type="text" 
-                                        value={defaultRepo} 
-                                        onChange={(e) => setDefaultRepo(e.target.value)} 
-                                        placeholder="owner/repo" 
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
-                                    />
+                            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-inner">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-xl ${isPaid ? 'bg-emerald-600' : 'bg-slate-800'} text-white shadow-lg`}>
+                                        {isPaid ? <Crown size={20} fill="currentColor"/> : <User size={20}/>}
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-black text-slate-500 uppercase tracking-widest">Membership Tier</p>
+                                        <p className={`text-sm font-bold ${isPaid ? 'text-emerald-400' : 'text-slate-300'}`}>{currentTier.toUpperCase()}</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1"><Code2 size={12}/> Preferred Language</label>
-                                    <select 
-                                        value={defaultLanguage} 
-                                        onChange={(e) => setDefaultLanguage(e.target.value)}
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                {!isPaid && (
+                                    <button 
+                                        onClick={onUpgradeClick}
+                                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase rounded-lg shadow-lg active:scale-95 transition-all"
                                     >
-                                        {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
-                                    </select>
-                                </div>
+                                        Upgrade to Pro
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
                     
-                    <div className="space-y-4 pt-4">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><HardDrive size={16} className="text-indigo-400"/> Recording Destination</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${recordingTarget === 'drive' ? 'bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
-                                <div className="flex items-center gap-3">
-                                    <input type="radio" name="recordingTarget" checked={recordingTarget === 'drive'} onChange={() => setRecordingTarget('drive')} className="accent-indigo-500 w-4 h-4"/>
-                                    <div><p className="text-sm font-bold text-white">Google Drive</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Private Storage</p></div>
-                                </div>
-                                <HardDrive size={20} className={recordingTarget === 'drive' ? 'text-indigo-400' : 'text-slate-700'}/>
-                            </label>
-                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${recordingTarget === 'youtube' ? 'bg-red-900/20 border-red-500 ring-1 ring-red-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
-                                <div className="flex items-center gap-3">
-                                    <input type="radio" name="recordingTarget" checked={recordingTarget === 'youtube'} onChange={() => setRecordingTarget('youtube')} className="accent-red-500 w-4 h-4"/>
-                                    <div><p className="text-sm font-bold text-white">YouTube</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Social Video</p></div>
-                                </div>
-                                <Youtube size={20} className={recordingTarget === 'youtube' ? 'text-red-400' : 'text-slate-700'}/>
-                            </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                        <div className="space-y-4">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><HardDrive size={16} className="text-indigo-400"/> Recording Destination</h4>
+                            <div className="space-y-2">
+                                <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${recordingTarget === 'drive' ? 'bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <input type="radio" name="recordingTarget" checked={recordingTarget === 'drive'} onChange={() => setRecordingTarget('drive')} className="accent-indigo-500 w-4 h-4"/>
+                                        <div><p className="text-sm font-bold text-white">Google Drive</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Private Storage</p></div>
+                                    </div>
+                                    <HardDrive size={20} className={recordingTarget === 'drive' ? 'text-indigo-400' : 'text-slate-700'}/>
+                                </label>
+                                <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${recordingTarget === 'youtube' ? 'bg-red-900/20 border-red-500 ring-1 ring-red-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <input type="radio" name="recordingTarget" checked={recordingTarget === 'youtube'} onChange={() => setRecordingTarget('youtube')} className="accent-red-500 w-4 h-4"/>
+                                        <div><p className="text-sm font-bold text-white">YouTube</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Social Video</p></div>
+                                    </div>
+                                    <Youtube size={20} className={recordingTarget === 'youtube' ? 'text-red-400' : 'text-slate-700'}/>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Cpu size={16}/> Preferred AI Engine</h4>
+                            <div className="space-y-2">
+                                <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'gemini' ? 'bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <input type="radio" name="aiProvider" checked={aiProvider === 'gemini'} onChange={() => setAiProvider('gemini')} className="accent-indigo-500 w-4 h-4"/>
+                                        <div><p className="text-sm font-bold text-white">Google Gemini</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Native Engine</p></div>
+                                    </div>
+                                    <Sparkles size={20} className={aiProvider === 'gemini' ? 'text-indigo-400' : 'text-slate-700'}/>
+                                </label>
+                                <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'openai' ? 'bg-emerald-900/20 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <input type="radio" name="aiProvider" checked={aiProvider === 'openai'} onChange={() => setAiProvider('openai')} className="accent-emerald-500 w-4 h-4"/>
+                                        <div><p className="text-sm font-bold text-white">OpenAI GPT</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Requires Pro</p></div>
+                                    </div>
+                                    <Zap size={20} className={aiProvider === 'openai' ? 'text-emerald-400' : 'text-slate-700'}/>
+                                </label>
+                            </div>
                         </div>
                     </div>
 
@@ -337,26 +330,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     </button>
                                 );
                             })}
-                        </div>
-                    </div>
-
-                    <div className="space-y-4 pt-4">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Cpu size={16}/> Preferred AI Engine</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'gemini' ? 'bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
-                                <div className="flex items-center gap-3">
-                                    <input type="radio" name="aiProvider" checked={aiProvider === 'gemini'} onChange={() => setAiProvider('gemini')} className="accent-indigo-500 w-4 h-4"/>
-                                    <div><p className="text-sm font-bold text-white">Google Gemini</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Native Engine</p></div>
-                                </div>
-                                <Sparkles size={20} className={aiProvider === 'gemini' ? 'text-indigo-400' : 'text-slate-700'}/>
-                            </label>
-                            <label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'openai' ? 'bg-emerald-900/20 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-950 border-slate-800 hover:bg-slate-800'}`}>
-                                <div className="flex items-center gap-3">
-                                    <input type="radio" name="aiProvider" checked={aiProvider === 'openai'} onChange={() => setAiProvider('openai')} className="accent-emerald-500 w-4 h-4"/>
-                                    <div><p className="text-sm font-bold text-white">OpenAI GPT</p><p className="text-[10px] text-slate-500 uppercase tracking-tighter">Requires Pro</p></div>
-                                </div>
-                                <Zap size={20} className={aiProvider === 'openai' ? 'text-emerald-400' : 'text-slate-700'}/>
-                            </label>
                         </div>
                     </div>
                 </div>
@@ -512,53 +485,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             )}
                         </div>
                     </div>
-                </div>
-            )}
-
-            {activeTab === 'billing' && (
-                <div className="space-y-8 animate-fade-in">
-                    <div className={`p-6 rounded-[2.5rem] border ${isPaid ? 'bg-emerald-900/10 border-emerald-500/30' : 'bg-slate-800 border-slate-700'} flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl`}>
-                        <div className="flex items-center gap-4">
-                            <div className={`p-4 rounded-3xl ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-slate-600'}`}>
-                                {isPaid ? <Crown size={32} fill="currentColor"/> : <CreditCard size={32}/>}
-                            </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-white uppercase tracking-tighter">{currentTier} Membership</h3>
-                                <p className="text-xs text-slate-400 mt-0.5">Status: <span className={isPaid ? 'text-emerald-400 font-bold' : 'text-slate-50'}>{user.subscriptionStatus || 'Active'}</span></p>
-                            </div>
-                        </div>
-                        <button 
-                            onClick={isPaid ? handleManageSubscription : onUpgradeClick}
-                            disabled={isProcessingPortal}
-                            className={`px-8 py-3 rounded-xl font-black text-xs uppercase tracking-[0.2em] shadow-lg transition-all active:scale-95 flex items-center gap-2 ${isPaid ? 'bg-white text-slate-900 hover:bg-slate-100' : 'bg-indigo-600 text-white hover:bg-indigo-500'}`}
-                        >
-                            {isProcessingPortal ? <Loader2 size={16} className="animate-spin"/> : <CreditCard size={16}/>}
-                            {isPaid ? 'Manage Billing' : 'Upgrade to Pro'}
-                        </button>
-                    </div>
-
-                    {isPaid && billingHistory.length > 0 && (
-                        <div className="space-y-4">
-                            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Payment History</h4>
-                            <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden divide-y divide-slate-800 shadow-inner">
-                                {billingHistory.map((inv, i) => (
-                                    <div key={i} className="px-6 py-4 flex items-center justify-between hover:bg-slate-900 transition-colors">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-slate-900 rounded-lg border border-slate-800 text-slate-500"><FileText size={14}/></div>
-                                            <div>
-                                                <p className="text-xs font-bold text-slate-300">Monthly Pro Renewal</p>
-                                                <p className="text-[10px] text-slate-500">{inv.date}</p>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-xs font-bold text-white">${inv.amount}</p>
-                                            <p className="text-[9px] text-emerald-500 font-black uppercase tracking-tighter">Paid</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                 </div>
             )}
         </div>
