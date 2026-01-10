@@ -7,7 +7,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, FileSearch } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, FileSearch, RefreshCcw } from 'lucide-react';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
 
 interface MockInterviewProps {
@@ -93,6 +93,21 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   const logApi = (msg: string, type: 'info' | 'error' | 'warn' = 'info') => {
     setApiLogs(prev => [{timestamp: Date.now(), msg, type}, ...prev].slice(0, 50));
+  };
+
+  // Sync resume from profile if it becomes available and the field is empty
+  useEffect(() => {
+    if (userProfile?.resumeText && !resumeText) {
+      setResumeText(userProfile.resumeText);
+    }
+  }, [userProfile]);
+
+  const handleSyncResume = () => {
+    if (userProfile?.resumeText) {
+      setResumeText(userProfile.resumeText);
+    } else {
+      alert("No resume found in your profile. Go to Settings to upload one.");
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -257,8 +272,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       activeScreenStreamRef.current = screenStream;
 
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const jobContext = jobDesc.trim() ? `Job: ${jobDesc}` : "Job: Senior developer role";
-      const problemPrompt = `Generate a unique coding challenge for ${mode} in ${language}. ${jobContext}. Respond with Markdown.`;
+      const jobContext = jobDesc.trim() ? `Job Description: ${jobDesc}` : "Job: Senior developer role";
+      const candidateContext = resumeText.trim() ? `Candidate Resume: ${resumeText}` : "";
+      const problemPrompt = `You are a world-class technical interviewer. Based on the following information, generate a unique, challenging coding or system design task for a candidate.
+      
+      Interview Mode: ${mode}
+      Preferred Language: ${language}
+      ${jobContext}
+      ${candidateContext}
+      
+      Respond with Markdown formatted problem description.`;
+      
       const probResponse = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: problemPrompt });
       setGeneratedProblemMd(probResponse.text || "Introduction needed.");
 
@@ -643,11 +667,30 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 <div className="space-y-6">
                   <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
                     <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><FileSearch size={14}/> Job Specification</h3>
-                    <textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste Job Description for targeted evaluation..." className="w-full h-32 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-emerald-500/50 transition-all"/>
+                    <textarea 
+                        value={jobDesc} 
+                        onChange={e => setJobDesc(e.target.value)} 
+                        placeholder="Paste Job Description for targeted evaluation..." 
+                        className="w-full h-32 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-emerald-500/50 transition-all shadow-inner"
+                    />
                   </div>
                   <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
-                    <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Candidate Portfolio</h3>
-                    <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume details for context..." className="w-full h-48 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-indigo-500/50 transition-all"/>
+                    <div className="flex justify-between items-center px-1">
+                        <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Candidate Portfolio</h3>
+                        <button 
+                            onClick={handleSyncResume} 
+                            className="text-[10px] font-black text-slate-500 hover:text-indigo-400 flex items-center gap-1 transition-colors uppercase tracking-widest"
+                            title="Load resume from your global profile"
+                        >
+                            <RefreshCcw size={12}/> Sync Profile
+                        </button>
+                    </div>
+                    <textarea 
+                        value={resumeText} 
+                        onChange={e => setResumeText(e.target.value)} 
+                        placeholder="Paste resume details or sync from your profile..." 
+                        className="w-full h-48 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-indigo-500/50 transition-all shadow-inner"
+                    />
                   </div>
                 </div>
                 <div className="space-y-6">
