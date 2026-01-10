@@ -68,10 +68,10 @@ const UI_TEXT = {
     linkLost: "Neural Link Interrupted",
     rateLimit: "Neural Cooling Engaged",
     rateLimitDesc: "API quota exceeded. Please wait a few seconds before retrying.",
-    rotating: "Optimizing Neural Fabric...",
-    forceRestart: "Force Neural Refresh",
-    stopLink: "Stop Neural Link",
-    stopped: "Link Stopped"
+    rotating: "Refreshing Neural Fabric...",
+    forceRestart: "Neural Refresh (Fix Hang)",
+    stopLink: "Pause AI Link",
+    stopped: "AI Paused"
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -111,10 +111,10 @@ const UI_TEXT = {
     linkLost: "神经连接中断",
     rateLimit: "神经冷却中",
     rateLimitDesc: "API 配额已超出。请等待几秒钟后重试。",
-    rotating: "正在优化神经织网...",
-    forceRestart: "强制刷新连接",
-    stopLink: "停止神经连接",
-    stopped: "连接已停止"
+    rotating: "正在刷新神经织网...",
+    forceRestart: "神经刷新 (修复卡顿)",
+    stopLink: "暂停 AI 连接",
+    stopped: "AI 已暂停"
   }
 };
 
@@ -172,16 +172,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [isRateLimited, setIsRateLimited] = useState(false);
   const [showReconnectButton, setShowReconnectButton] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cloudWarning, setCloudWarning] = useState(false);
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
   const [synthesisProgress, setSynthesisProgress] = useState(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [logs, setLogs] = useState<{time: string, msg: string, type: 'info' | 'error' | 'warn'}[]>([]);
   
-  const [isAppending, setIsAppending] = useState(false);
-  const [isSavingLesson, setIsSavingLesson] = useState(false);
-  const [isLinking, setIsLinking] = useState(false);
-  
+  // PERSISTENT RECORDING REFS (Survive re-connections)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -198,8 +194,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [currentLine, setCurrentLine] = useState<TranscriptItem | null>(null);
   const transcriptRef = useRef<TranscriptItem[]>(initialTranscript || []);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [activeQuoteIndex, setActiveQuoteIndex] = useState<number | null>(null);
-
   const [suggestions] = useState<string[]>(channel.starterPrompts?.slice(0, 4) || []);
   
   const addLog = useCallback((msg: string, type: 'info' | 'error' | 'warn' = 'info') => {
@@ -216,137 +210,142 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           mountedRef.current = false; 
           if (rotationTimerRef.current) clearTimeout(rotationTimerRef.current);
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+          if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
       };
   }, [transcript, currentLine]);
 
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
-  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
+
+  // Decoupled startRecording logic
+  const initializePersistentRecorder = useCallback(async () => {
+    if (!recordingEnabled || !currentUser) return;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') return;
+
+    try {
+        addLog("Initializing Persistent Neural Scribe...");
+        const ctx = getGlobalAudioContext();
+        const recordingDest = getGlobalMediaStreamDest();
+        
+        // Microphone acquisition
+        const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const userSource = ctx.createMediaStreamSource(userStream); 
+        userSource.connect(recordingDest);
+
+        // UI Compositor Canvas
+        const canvas = document.createElement('canvas');
+        const isPortrait = window.innerHeight > window.innerWidth;
+        canvas.width = isPortrait ? 720 : 1280;
+        canvas.height = isPortrait ? 1280 : 720;
+        const drawCtx = canvas.getContext('2d', { alpha: false })!;
+        
+        const screenVideo = document.createElement('video');
+        if (screenStreamRef.current) { screenVideo.srcObject = screenStreamRef.current; screenVideo.muted = true; screenVideo.play(); }
+        const cameraVideo = document.createElement('video');
+        if (cameraStreamRef.current) { cameraVideo.srcObject = cameraStreamRef.current; cameraVideo.muted = true; cameraVideo.play(); }
+
+        const drawCompositor = () => {
+            if (!mountedRef.current) return;
+            drawCtx.fillStyle = '#020617'; drawCtx.fillRect(0, 0, canvas.width, canvas.height);
+            if (screenStreamRef.current && screenVideo.readyState >= 2) {
+                const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
+                const w = screenVideo.videoWidth * scale; const h = screenVideo.videoHeight * scale;
+                drawCtx.drawImage(screenVideo, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+            }
+            if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
+                const pipW = isPortrait ? canvas.width * 0.5 : 320;
+                const pipH = (pipW * cameraVideo.videoHeight) / cameraVideo.videoWidth;
+                const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - 24;
+                const pipY = isPortrait ? canvas.height - pipH - 150 : canvas.height - pipH - 24;
+                drawCtx.strokeStyle = '#6366f1'; drawCtx.lineWidth = 4;
+                drawCtx.strokeRect(pipX, pipY, pipW, pipH); drawCtx.drawImage(cameraVideo, pipX, pipY, pipW, pipH);
+            }
+            animationFrameRef.current = requestAnimationFrame(drawCompositor);
+        };
+        drawCompositor();
+
+        const captureStream = canvas.captureStream(30);
+        recordingDest.stream.getAudioTracks().forEach(track => captureStream.addTrack(track));
+        
+        const recorder = new MediaRecorder(captureStream, { 
+            mimeType: 'video/webm;codecs=vp8,opus', 
+            videoBitsPerSecond: 2500000 
+        });
+        
+        audioChunksRef.current = []; // ONLY reset here once per meeting
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+        
+        recorder.onstop = async () => {
+            addLog("Processing final meeting package...");
+            const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
+            const transcriptText = transcriptRef.current.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
+            const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
+            setIsUploadingRecording(true);
+            try {
+                const timestamp = Date.now();
+                const recId = `session-${timestamp}`;
+                await saveLocalRecording({
+                    id: recId, userId: currentUser.uid, channelId: channel.id, channelTitle: channel.title, channelImage: channel.imageUrl, timestamp, mediaUrl: URL.createObjectURL(videoBlob), mediaType: 'video/webm', transcriptUrl: URL.createObjectURL(transcriptBlob), blob: videoBlob
+                });
+                const token = getDriveToken();
+                if (token) {
+                    const folderId = await ensureCodeStudioFolder(token);
+                    const driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
+                    const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
+                    await saveRecordingReference({
+                        id: recId, userId: currentUser.uid, channelId: channel.id, channelTitle: channel.title, channelImage: channel.imageUrl, timestamp, mediaUrl: driveVideoUrl, driveUrl: driveVideoUrl, mediaType: 'video/webm', transcriptUrl: `drive://${tFileId}`
+                    });
+                }
+            } catch(e) { console.error("Neural archive failed", e); } 
+            finally { setIsUploadingRecording(false); onEndSession(); }
+            userStream.getTracks().forEach(t => t.stop());
+        };
+        
+        mediaRecorderRef.current = recorder;
+        recorder.start(1000);
+        addLog("Recording Active.");
+    } catch(e) { addLog("Recorder Init Error: Permissions declined.", "error"); }
+  }, [recordingEnabled, currentUser, channel, onEndSession, addLog]);
 
   const handleStartSession = async () => {
       setError(null);
       setIsRateLimited(false);
       autoReconnectAttempts.current = 0;
-      await startHardwareSync();
+      
+      // 1. Hardware Sync
+      if (recordingEnabled) {
+          const isMeeting = channel.id.includes('meeting');
+          if (videoEnabled || isMeeting) {
+              try {
+                  screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" } as any, audio: true });
+                  addLog("Screen sync active.");
+              } catch(e) { addLog("Screen sync declined.", "warn"); }
+          }
+          if (cameraEnabled) {
+              try {
+                  cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+                  addLog("Camera sync active.");
+              } catch(e) { addLog("Camera sync declined.", "warn"); }
+          }
+          await initializePersistentRecorder();
+      }
+
+      // 2. Audio Fabric
       const ctx = getGlobalAudioContext();
-      addLog("Warming up neural audio fabric...");
+      addLog("Warming up neural fabric...");
       await warmUpAudioContext(ctx);
       setHasStarted(true);
+      
+      // 3. Connect Link
       await connect();
   };
-
-  const startHardwareSync = async () => {
-    if (recordingEnabled) {
-        const isMeeting = channel.id.includes('meeting');
-        if (videoEnabled || isMeeting) {
-            try {
-                screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
-                    video: { cursor: "always" } as any,
-                    audio: true 
-                });
-                addLog("Screen capture active.");
-            } catch(e) {
-                addLog("Screen capture declined.", "warn");
-            }
-        }
-        if (cameraEnabled) {
-            try {
-                cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "user" }, 
-                    audio: false 
-                });
-                addLog("Camera capture active.");
-            } catch(e) {
-                addLog("Camera capture declined.", "warn");
-            }
-        }
-    }
-  };
-
-  const startRecording = useCallback(async () => {
-      if (!recordingEnabled || !serviceRef.current || !currentUser) return;
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') return; 
-      
-      try {
-          const ctx = getGlobalAudioContext();
-          const recordingDest = getGlobalMediaStreamDest();
-          const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const userSource = ctx.createMediaStreamSource(userStream); 
-          userSource.connect(recordingDest);
-
-          const canvas = document.createElement('canvas');
-          const isPortrait = window.innerHeight > window.innerWidth;
-          canvas.width = isPortrait ? 720 : 1280;
-          canvas.height = isPortrait ? 1280 : 720;
-          const drawCtx = canvas.getContext('2d', { alpha: false })!;
-          
-          const screenVideo = document.createElement('video');
-          if (screenStreamRef.current) { screenVideo.srcObject = screenStreamRef.current; screenVideo.muted = true; screenVideo.play(); }
-          const cameraVideo = document.createElement('video');
-          if (cameraStreamRef.current) { cameraVideo.srcObject = cameraStreamRef.current; cameraVideo.muted = true; cameraVideo.play(); }
-
-          const drawCompositor = () => {
-              if (!mountedRef.current) return;
-              drawCtx.fillStyle = '#020617'; drawCtx.fillRect(0, 0, canvas.width, canvas.height);
-              if (screenStreamRef.current && screenVideo.readyState >= 2) {
-                  const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
-                  const w = screenVideo.videoWidth * scale; const h = screenVideo.videoHeight * scale;
-                  drawCtx.drawImage(screenVideo, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
-              }
-              if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
-                  const pipW = isPortrait ? canvas.width * 0.5 : 320;
-                  const pipH = (pipW * cameraVideo.videoHeight) / cameraVideo.videoWidth;
-                  const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - 24;
-                  const pipY = isPortrait ? canvas.height - pipH - 150 : canvas.height - pipH - 24;
-                  drawCtx.strokeStyle = '#6366f1'; drawCtx.lineWidth = 4;
-                  drawCtx.strokeRect(pipX, pipY, pipW, pipH); drawCtx.drawImage(cameraVideo, pipX, pipY, pipW, pipH);
-              }
-              animationFrameRef.current = requestAnimationFrame(drawCompositor);
-          };
-          drawCompositor();
-
-          const captureStream = canvas.captureStream(30);
-          recordingDest.stream.getAudioTracks().forEach(track => captureStream.addTrack(track));
-          const recorder = new MediaRecorder(captureStream, { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 2500000 });
-          audioChunksRef.current = [];
-          recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-          
-          recorder.onstop = async () => {
-              if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-              const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
-              const transcriptText = transcriptRef.current.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
-              const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
-              setIsUploadingRecording(true);
-              try {
-                  const timestamp = Date.now();
-                  const recId = `session-${timestamp}`;
-                  await saveLocalRecording({
-                      id: recId, userId: currentUser.uid, channelId: channel.id, channelTitle: channel.title, channelImage: channel.imageUrl, timestamp, mediaUrl: URL.createObjectURL(videoBlob), mediaType: 'video/webm', transcriptUrl: URL.createObjectURL(transcriptBlob), blob: videoBlob
-                  });
-                  const token = getDriveToken();
-                  if (token) {
-                      const folderId = await ensureCodeStudioFolder(token);
-                      const driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
-                      const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
-                      await saveRecordingReference({
-                          id: recId, userId: currentUser.uid, channelId: channel.id, channelTitle: channel.title, channelImage: channel.imageUrl, timestamp, mediaUrl: driveVideoUrl, driveUrl: driveVideoUrl, mediaType: 'video/webm', transcriptUrl: `drive://${tFileId}`
-                      });
-                  }
-              } catch(e) { console.error("Archive failed", e); } finally { setIsUploadingRecording(false); onEndSession(); }
-              userStream.getTracks().forEach(t => t.stop());
-          };
-          mediaRecorderRef.current = recorder;
-          recorder.start(1000);
-      } catch(e) { addLog("Recording initialization error", "warn"); }
-  }, [recordingEnabled, channel, currentUser, onEndSession, addLog]);
 
   const connect = useCallback(async (isAutoRetry = false, isRotationSwap = false) => {
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     if (rotationTimerRef.current) clearTimeout(rotationTimerRef.current);
     
-    // CRITICAL: Clear all platform audio and clean up existing service before establishing new link
     if (isRotationSwap || isAutoRetry) {
-        addLog(isRotationSwap ? "PREEMPTIVE ROTATION: Refreshing Neural Fabric..." : "LINK INTERRUPTED: Attempting Neural Recovery...", "info");
+        addLog(isRotationSwap ? "NEURAL ROTATION: Refreshing fabric for stability..." : "LINK INTERRUPTED: Attempting neural restoration...", "info");
         setIsRotating(isRotationSwap);
         setIsReconnecting(!isRotationSwap);
         
@@ -354,62 +353,47 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             await serviceRef.current.disconnect();
             serviceRef.current = null;
         }
-        stopAllPlatformAudio("NeuralStitch");
+        stopAllPlatformAudio("NeuralHandover");
     } else {
-        setIsConnected(false);
-        setIsReconnecting(false);
-        setIsRotating(false);
-        setShowReconnectButton(false);
+        setIsConnected(false); setIsReconnecting(false); setIsRotating(false); setShowReconnectButton(false);
     }
     
-    // ALWAYS create a fresh service instance for a new connection to avoid stale promise/event state
     const service = new GeminiLiveService();
     serviceRef.current = service;
     
     try {
       await service.initializeAudio();
-      
       const now = new Date();
-      let effectiveInstruction = `[SYSTEM_TIME]: ${now.toLocaleString()}.\n\n${channel.systemInstruction}`;
+      let effectiveInstruction = `[TIME]: ${now.toLocaleString()}.\n\n${channel.systemInstruction}`;
       
-      // CONTEXT HANDOVER: Seed memory with recent turns
-      const fullHistory = transcriptRef.current.length > 0 ? transcriptRef.current : (initialTranscript || []);
+      const fullHistory = transcriptRef.current;
       const recentHistory = fullHistory.slice(-25); 
       if (recentHistory.length > 0) {
-          effectiveInstruction += `\n\n[RESUMED_HISTORY]:\n${recentHistory.map(t => `${t.role}: ${t.text}`).join('\n')}\n\nContinue the conversation seamlessly.`;
+          effectiveInstruction += `\n\n[CONTEXT_STITCH]:\n${recentHistory.map(t => `${t.role}: ${t.text}`).join('\n')}\n\nContinue the current meeting exactly where it left off.`;
       }
 
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { 
               if (!mountedRef.current) return;
-              setIsConnected(true); 
-              setIsReconnecting(false);
-              setIsRotating(false);
-              setShowReconnectButton(false);
+              setIsConnected(true); setIsReconnecting(false); setIsRotating(false); setShowReconnectButton(false);
               autoReconnectAttempts.current = 0;
               addLog(isRotationSwap ? "Neural Link Refreshed." : "Neural Link Active.");
-              if (recordingEnabled) startRecording(); 
 
-              // SCHEDULE 5-MINUTE PREEMPTIVE ROTATION
+              // SCHEDULE 5-MINUTE ROTATION
               const jitter = (Math.random() * 20 - 10) * 1000;
-              const rotationInterval = (5 * 60 * 1000) + jitter; 
               rotationTimerRef.current = setTimeout(() => {
-                  if (mountedRef.current && isConnected) {
-                      handlePreemptiveRotation();
-                  }
-              }, rotationInterval);
+                  if (mountedRef.current && isConnected) handlePreemptiveRotation();
+              }, (5 * 60 * 1000) + jitter);
           },
           onClose: (reason, code) => { 
               if (!mountedRef.current) return;
               setIsConnected(false);
-              // Only auto-retry if it wasn't a planned rotation and we haven't hit the limit
               if (!isRotating && autoReconnectAttempts.current < maxAutoRetries) {
                   autoReconnectAttempts.current++;
-                  const backoff = 1000 + (autoReconnectAttempts.current * 1000);
+                  const backoff = 1000 + (autoReconnectAttempts.current * 1500);
                   reconnectTimeoutRef.current = setTimeout(() => connect(true), backoff);
               } else if (!isRotating) {
-                  setIsReconnecting(false);
-                  setShowReconnectButton(true);
+                  setIsReconnecting(false); setShowReconnectButton(true);
               }
           },
           onError: (err, code) => { 
@@ -448,37 +432,38 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         setError(isRate ? null : (e.message || "Link Timeout"));
         setShowReconnectButton(true);
     }
-  }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, recordingEnabled, startRecording, onCustomToolCall, initialTranscript, isRotating, isConnected, addLog]);
+  }, [channel.id, channel.voiceName, channel.systemInstruction, recordingEnabled, initializePersistentRecorder, onCustomToolCall, isRotating, isConnected, addLog]);
 
   const handlePreemptiveRotation = async (force: boolean = false) => {
     if (!mountedRef.current) return;
-    // Wait for AI silence to avoid cutting off mid-sentence, unless FORCED by human
     if (!force && serviceRef.current && (serviceRef.current as any).isPlayingResponse) {
         addLog("Neural Rotation: Waiting for AI silence...", "info");
         rotationTimerRef.current = setTimeout(() => handlePreemptiveRotation(false), 2500);
         return;
     }
-    if (force) addLog("HUMAN FORCE RESTART: Resetting neural link manually...", "warn");
     connect(false, true); 
   };
 
   const handleStopLink = async () => {
-    addLog("MANUAL STOP: Severing neural link...", "warn");
-    setIsConnected(false);
-    setIsReconnecting(false);
-    setIsRotating(false);
+    addLog("HUMAN PAUSE: Severing AI connection temporarily...", "warn");
+    setIsConnected(false); setIsReconnecting(false); setIsRotating(false);
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     if (rotationTimerRef.current) clearTimeout(rotationTimerRef.current);
     if (serviceRef.current) await serviceRef.current.disconnect();
   };
 
   const handleDisconnect = async () => {
-      addLog("Closing Session...");
+      addLog("Terminating Session...");
       autoReconnectAttempts.current = maxAutoRetries; 
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (rotationTimerRef.current) clearTimeout(rotationTimerRef.current);
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop();
-      else onEndSession();
+      
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+      } else {
+          onEndSession();
+      }
+      
       if (serviceRef.current) await serviceRef.current.disconnect();
   };
 
@@ -552,13 +537,24 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
          </div>
       ) : (
          <div className="flex-1 flex flex-col min-h-0 relative">
+            {isUploadingRecording && (
+               <div className="absolute inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                  <div className="relative">
+                    <div className="w-32 h-32 border-4 border-indigo-500/10 rounded-full" />
+                    <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl font-black text-white">SYNC</div>
+                  </div>
+                  <div className="text-center"><span className="text-sm font-black text-white uppercase tracking-widest">{t.uploading}</span></div>
+               </div>
+            )}
+
             {!isConnected && !isReconnecting && !isRotating && !error && !isRateLimited && (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-fade-in gap-6">
                     <div className="flex flex-col items-center gap-4">
                         <Loader2 size={32} className="text-indigo-500 animate-spin" />
-                        <p className="text-xs font-black text-indigo-300 uppercase tracking-widest">Neural Link Offline</p>
+                        <p className="text-xs font-black text-indigo-300 uppercase tracking-widest">Neural Link Inactive</p>
                     </div>
-                    <button onClick={() => connect()} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase rounded-xl shadow-xl transition-all flex items-center gap-2"><RefreshCw size={14}/><span>Reconnect Now</span></button>
+                    <button onClick={() => connect()} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase rounded-xl shadow-xl transition-all flex items-center gap-2"><RefreshCw size={14}/><span>Resume AI Conversation</span></button>
                 </div>
             )}
             
