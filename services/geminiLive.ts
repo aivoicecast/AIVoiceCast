@@ -5,7 +5,7 @@ import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, coolDow
 export interface LiveConnectionCallbacks {
   onOpen: () => void;
   onClose: (reason: string, code?: number) => void;
-  onError: (error: string) => void;
+  onError: (error: string, code?: string) => void;
   onVolumeUpdate: (volume: number) => void;
   onTranscript: (text: string, isUser: boolean) => void;
   onToolCall?: (toolCall: any) => void;
@@ -34,6 +34,7 @@ export class GeminiLiveService {
   private isPlayingResponse: boolean = false;
   private speakingTimer: any = null;
   private isActive: boolean = false;
+  private heartbeatInterval: any = null;
 
   public async initializeAudio() {
     if (!this.inputAudioContext) {
@@ -53,6 +54,11 @@ export class GeminiLiveService {
     try {
       this.isActive = true;
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
+      
+      if (!navigator.onLine) {
+          throw new Error("OFFLINE: Handshake aborted.");
+      }
+
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       if (!this.inputAudioContext || this.inputAudioContext.state !== 'running') {
@@ -88,6 +94,7 @@ export class GeminiLiveService {
           onopen: () => {
             if (!this.isActive) return;
             this.startAudioInput(callbacks.onVolumeUpdate);
+            this.startHeartbeat();
             callbacks.onOpen();
           },
           onmessage: async (message: LiveServerMessage) => {
@@ -148,24 +155,42 @@ export class GeminiLiveService {
           onclose: (e: any) => {
             if (!this.isActive) return;
             this.cleanup();
-            // Pass the specific reason code and text to UI
-            callbacks.onClose(e?.reason || "WebSocket closed", e?.code);
+            callbacks.onClose(e?.reason || "Connection closed by server", e?.code);
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
             this.cleanup();
-            callbacks.onError(e?.message || "Handshake Error");
+            // Parse for 429 Rate Limits
+            const code = e?.message?.includes('429') ? 'RATE_LIMIT' : 'ERROR';
+            callbacks.onError(e?.message || "Handshake Error", code);
           }
         }
       });
 
+      // Session Watchdog: Timeout after 8 seconds if no onOpen
+      const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Handshake timeout (8s)")), 8000)
+      );
+
       this.sessionPromise = connectionPromise;
-      this.session = await this.sessionPromise;
+      this.session = await Promise.race([this.sessionPromise, timeoutPromise]);
     } catch (error: any) {
       this.isActive = false;
-      callbacks.onError(error?.message || "Initialization Error");
+      const isRateLimit = error?.message?.includes('429');
+      callbacks.onError(error?.message || "Init Error", isRateLimit ? 'RATE_LIMIT' : 'ERROR');
       this.cleanup();
+      throw error;
     }
+  }
+
+  private startHeartbeat() {
+    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    // Send a small empty text keep-alive every 15 seconds
+    this.heartbeatInterval = setInterval(() => {
+        if (this.session && this.isActive) {
+            this.sendText(" "); 
+        }
+    }, 15000);
   }
 
   public sendToolResponse(functionResponses: any) {
@@ -226,6 +251,7 @@ export class GeminiLiveService {
   }
 
   private cleanup() {
+    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     this.stopAllSources();
     this.isPlayingResponse = false;
     if (this.speakingTimer) clearTimeout(this.speakingTimer);
