@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -8,7 +7,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, FileSearch } from 'lucide-react';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
 
 interface MockInterviewProps {
@@ -347,7 +346,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
-      const sysPrompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. IMPORTANT: You are monitoring the candidate's speech AND their typed chat messages. You are also monitoring a code project with ID: ${uuid}. Respond naturally to all inputs. GOAL: Introduce yourself and start the challenge.`;
+      const sysPrompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. Job Description: ${jobDesc}. IMPORTANT: You are monitoring the candidate's speech AND their typed chat messages. You are also monitoring a code project with ID: ${uuid}. Respond naturally to all inputs. GOAL: Introduce yourself and start the challenge.`;
       
       await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', sysPrompt, {
         onOpen: () => {
@@ -463,6 +462,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             UUID: ${currentSessionId}
             MODE: ${mode}
             LANGUAGE: ${language}
+            JOB_SPEC: ${jobDesc}
             
             Verified Transcript Archive:
             ${transcriptText}
@@ -642,20 +642,24 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-6">
                   <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
-                    <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest">Candidate Portfolio</h3>
-                    <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume details for context..." className="w-full h-48 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none"/>
+                    <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><FileSearch size={14}/> Job Specification</h3>
+                    <textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste Job Description for targeted evaluation..." className="w-full h-32 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-emerald-500/50 transition-all"/>
+                  </div>
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
+                    <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Candidate Portfolio</h3>
+                    <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume details for context..." className="w-full h-48 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-indigo-500/50 transition-all"/>
                   </div>
                 </div>
                 <div className="space-y-6">
                   <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Evaluation Scope</h3>
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Target size={14}/> Evaluation Scope</h3>
                     <div className="grid grid-cols-1 gap-2">
                       {[{ id: 'coding', icon: Code, label: 'Algorithm & DS' }, { id: 'system_design', icon: Layers, label: 'System Design' }, { id: 'behavioral', icon: MessageSquare, label: 'Behavioral' }].map(m => (<button key={m.id} onClick={() => setMode(m.id as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}><div className="flex items-center gap-2"><m.icon size={14}/><span className="text-[10px] font-bold uppercase">{m.label}</span></div>{mode === m.id && <CheckCircle size={14}/>}</button>))}
                     </div>
                   </div>
                 </div>
               </div>
-              <button onClick={handleStartInterview} disabled={isStarting} className="w-full py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-30">{isStarting ? <Loader2 className="animate-spin" /> : 'Start Technical Evaluation'}</button>
+              <button onClick={handleStartInterview} disabled={isStarting} className="w-full py-5 bg-gradient-to-r from-red-600 to-indigo-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-900/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-30">{isStarting ? <Loader2 className="animate-spin" /> : 'Start Technical Evaluation'}</button>
             </div>
           </div>
         )}
