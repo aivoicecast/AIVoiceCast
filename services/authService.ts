@@ -1,12 +1,11 @@
-// FIXED: Import modular functions directly from firebase/auth
 import { 
     GoogleAuthProvider, 
-    GithubAuthProvider, 
+    GithubAuthProvider,
     signInWithPopup, 
-    linkWithPopup, 
-    signOut as firebaseSignOut 
-} from 'firebase/auth';
-import type { User } from 'firebase/auth';
+    linkWithPopup,
+    signOut as firebaseSignOut
+} from '@firebase/auth';
+import type { User } from '@firebase/auth';
 import { auth } from './firebaseConfig';
 
 /**

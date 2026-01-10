@@ -1,72 +1,89 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
-import type { FirebaseApp } from "firebase/app";
-import { getAuth, setPersistence, browserLocalPersistence, Auth } from "firebase/auth";
-import { getFirestore, enableMultiTabIndexedDbPersistence, Firestore } from "firebase/firestore";
-import { getStorage, FirebaseStorage } from "firebase/storage";
+
+import { initializeApp, getApps, getApp } from "@firebase/app";
+import type { FirebaseApp } from "@firebase/app";
+import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
+import type { Auth } from "@firebase/auth";
+import { initializeFirestore, enableMultiTabIndexedDbPersistence } from "@firebase/firestore";
+import type { Firestore } from "@firebase/firestore";
+import { getStorage } from "@firebase/storage";
+import type { FirebaseStorage } from "@firebase/storage";
 import { firebaseKeys } from './private_keys';
 
-const firebaseConfig = {
-  ...firebaseKeys,
-  authDomain: firebaseKeys.projectId ? `${firebaseKeys.projectId}.firebaseapp.com` : ""
-};
-
-const isConfigValid = !!(firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_FIREBASE_API_KEY" && firebaseConfig.apiKey !== "");
-
-let appInstance: FirebaseApp | null = null;
-export let auth: Auth | null = null;
-export let db: Firestore | null = null;
-export let storage: FirebaseStorage | null = null;
-export let appInitialized = false;
-
-const initializeFirebase = () => {
+/**
+ * Standard Firebase Initialization
+ */
+const initializeFirebase = (): FirebaseApp | null => {
     try {
-        if (!isConfigValid) {
-            console.warn("[Firebase] Neural Config missing. Local Mode active.");
-            return;
+        if (getApps().length > 0) {
+            return getApp();
         }
 
-        const apps = getApps();
-        appInstance = apps.length > 0 ? getApp() : initializeApp(firebaseConfig);
-        
-        if (appInstance) {
-            // Components register themselves when these functions are called
-            // In ESM environments, ensure we only call these once per app instance
-            auth = getAuth(appInstance);
-            db = getFirestore(appInstance);
-            storage = getStorage(appInstance);
-            appInitialized = true;
-
-            console.log("[Firebase] Neural Core: LINKED");
-
-            setPersistence(auth, browserLocalPersistence).catch(e => console.error("[Auth] Device persistence failed", e));
-            
-            enableMultiTabIndexedDbPersistence(db).catch(e => {
-                if (e.code === 'failed-precondition') {
-                    console.warn("[Firestore] Multiple tabs open - offline ledger limited.");
-                }
-            });
+        if (firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY") {
+            // Ensure authDomain is strictly the firebaseapp.com version to minimize cross-origin issues
+            const config = {
+                ...firebaseKeys,
+                authDomain: `${firebaseKeys.projectId}.firebaseapp.com`
+            };
+            return initializeApp(config);
+        } else {
+            console.warn("[Firebase] Configuration missing or using placeholder key.");
         }
-    } catch (error) {
-        console.error("[Firebase] Fatal Neural Handshake Error:", error);
+    } catch (err) {
+        console.error("[Firebase] Initialization failed:", err);
     }
+    return null;
 };
 
-initializeFirebase();
+const appInstance = initializeFirebase();
 
-export const isFirebaseConfigured = isConfigValid;
+/**
+ * Robust Firestore Initialization
+ */
+const initDb = (): Firestore | null => {
+    if (!appInstance) return null;
+    
+    const firestore = initializeFirestore(appInstance, {
+        experimentalForceLongPolling: true,
+    });
+
+    enableMultiTabIndexedDbPersistence(firestore).catch((err) => {
+        if (err.code === 'failed-precondition') {
+            console.warn("[Firestore] Persistence failed: Multiple tabs open.");
+        } else if (err.code === 'unimplemented') {
+            console.warn("[Firestore] Persistence failed: Browser not supported.");
+        }
+    });
+
+    return firestore;
+};
+
+const authInstance: Auth | null = appInstance ? getAuth(appInstance) : null;
+
+// Explicitly set persistence to Local to survive session storage clearing
+if (authInstance) {
+    setPersistence(authInstance, browserLocalPersistence).catch((err) => {
+        console.error("[Auth] Persistence setup failed:", err);
+    });
+}
+
+export const auth = authInstance;
+export const db: Firestore | null = initDb();
+export const storage: FirebaseStorage | null = appInstance ? getStorage(appInstance) : null;
+
+export const getAuthInstance = (): Auth | null => auth;
+export const getDb = (): Firestore | null => db;
+export const getStorageInstance = (): FirebaseStorage | null => storage;
+
+export const isFirebaseConfigured = !!(firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY");
 
 export const getFirebaseDiagnostics = () => {
     return {
-        isInitialized: appInitialized,
+        isInitialized: !!appInstance,
         hasAuth: !!auth,
         hasFirestore: !!db,
-        projectId: firebaseKeys?.projectId || "None",
-        apiKeyPresent: isConfigValid,
-        instanceCount: getApps().length,
-        configSource: isConfigValid ? 'private_keys.ts' : 'none',
-        activeConfig: {
-            apiKey: firebaseConfig.apiKey ? `${firebaseConfig.apiKey.substring(0, 6)}...` : 'None'
-        }
+        projectId: firebaseKeys?.projectId || "Missing",
+        apiKeyPresent: !!firebaseKeys?.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY",
+        configSource: localStorage.getItem('firebase_config') ? 'LocalStorage' : 'Static Keys'
     };
 };
 

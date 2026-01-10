@@ -1,4 +1,3 @@
-// FIXED: Using default React import to ensure JSX intrinsic elements are recognized correctly
 import React, { useState, useEffect } from 'react';
 import { Channel, Group, Chapter } from '../types';
 import { X, Podcast, Sparkles, Lock, Globe, Users, FileText, Loader2, Clipboard, Crown, Calendar, Star, Zap, Cpu } from 'lucide-react';
@@ -153,7 +152,6 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
     );
   }
 
-  // FIXED: Explicit usage of default React context for intrinsic elements
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" onClick={onClose}></div>

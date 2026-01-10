@@ -1,9 +1,8 @@
-
-// FIXED: Using default React import and fixing modular onAuthStateChanged import
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+// FIXED: Using @firebase/ scoped packages
+import { onAuthStateChanged } from '@firebase/auth';
 import { signInWithGoogle, signOut } from '../services/authService';
-import { auth } from '../services/firebaseConfig';
+import { getAuthInstance } from '../services/firebaseConfig';
 import { LogOut, User as UserIcon, Loader2 } from 'lucide-react';
 import { syncUserProfile, logUserActivity } from '../services/firestoreService';
 
@@ -12,12 +11,13 @@ export const UserAuth: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth) {
+    const authInstance = getAuthInstance();
+    if (!authInstance) {
         setLoading(false);
         return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (u: any) => {
+    const unsubscribe = onAuthStateChanged(authInstance, (u: any) => {
       setUser(u);
       setLoading(false);
       if (u) {
@@ -44,7 +44,6 @@ export const UserAuth: React.FC = () => {
     }
   };
 
-  // FIXED: Explicit usage of default React context for intrinsic elements
   if (loading) return (
     <div className="flex items-center px-4 py-2 bg-slate-800/50 rounded-full border border-slate-700">
         <Loader2 size={16} className="animate-spin text-indigo-400" />

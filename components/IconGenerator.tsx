@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera, AlertCircle, Share2, Link, Copy, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera, AlertCircle, Share2, Link, Copy } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { resizeImage } from '../utils/imageUtils';
 import { saveIcon, uploadFileToStorage, getIcon } from '../services/firestoreService';
@@ -36,8 +36,6 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [publishProgress, setPublishProgress] = useState('');
-  // Removed showKeyPrompt state as per GenAI guidelines
-  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -69,19 +67,15 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     
-    const isEdit = !!baseImage;
-    const model = isEdit ? 'gemini-2.5-flash-image' : 'gemini-3-pro-image-preview';
-
-    // FIXED: Removed mandatory Key Selection UI check as per GenAI guidelines
-    
     setIsGenerating(true);
     setError(null);
     setShareLink(null);
     
     try {
-      // Always create a new instance right before making an API call 
-      // to ensure it uses the most up-to-date API key from the environment.
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
+      const isEdit = !!baseImage;
+      const model = isEdit ? 'gemini-2.5-flash-image' : 'gemini-3-pro-image-preview';
       
       const styleInstruction = isEdit ? `Modify the provided image according to this request: ${prompt}. Maintain the core structure but update the style to: ${selectedStyle.name}. ${selectedStyle.prompt}.` : `Professional app icon design for: ${prompt}. ${selectedStyle.prompt}. Isolated on a solid background, centered composition, no text, masterpiece quality, 8k resolution.`;
 
@@ -175,7 +169,6 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     link.click();
   };
 
-  // FIXED: Ensured standard default import and explicit use of React namespace for intrinsic elements
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
       {/* Header */}

@@ -88,7 +88,6 @@ export async function generateChannelFromPrompt(
     if (activeProvider === 'openai') {
         text = await callOpenAI(systemPrompt, userRequest, openaiKey);
     } else {
-        // ALWAYS create a new instance to respect the most recent API key from the environment/dialog
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview',

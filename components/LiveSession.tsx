@@ -1,17 +1,14 @@
 
-// FIXED: Using namespace React import to ensure JSX intrinsic elements (div, span, button, etc.) are correctly resolved
-import * as React from 'react';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, Key } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
-// FIXED: Removed non-existent updateBookingRecording, addChannelAttachment, linkDiscussionToLectureSegment from imports as they are added but types may be missing
-import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateDiscussion, syncUserProfile, getUserProfile, linkDiscussionToLectureSegment } from '../services/firestoreService';
+import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, linkDiscussionToLectureSegment, syncUserProfile, getUserProfile } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
@@ -43,6 +40,7 @@ const UI_TEXT = {
     copied: "Copied",
     listening: "Listening...",
     connecting: "Connecting to AI Agent...",
+    reconnect: "Manual Reconnect",
     you: "You",
     speaking: "Speaking...",
     retry: "Retry Connection",
@@ -65,9 +63,7 @@ const UI_TEXT = {
     diagnostics: "Neural Diagnostics",
     cloudWarn: "Drive/YouTube Access Missing: Local Only.",
     signIn: "Sign In",
-    forceStart: "Bypassing Landing Screen: Auto-Initializing...",
-    keyRequired: "API Key Selection Required",
-    keyDesc: "This persona requires a billing-enabled key from AI Studio."
+    forceStart: "Bypassing Landing Screen: Auto-Initializing..."
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -102,9 +98,7 @@ const UI_TEXT = {
     diagnostics: "神经诊断",
     cloudWarn: "缺少 Drive/YouTube 权限：仅限本地。",
     signIn: "登录",
-    forceStart: "跳过着陆页：自动初始化...",
-    keyRequired: "需要选择 API Key",
-    keyDesc: "此人格需要从 AI Studio 选择一个已启用结算的 Key。"
+    forceStart: "跳过着陆页：自动初始化..."
   }
 };
 
@@ -121,6 +115,32 @@ const saveContentTool: FunctionDeclaration = {
     required: ["filename", "content"]
   }
 };
+
+const SuggestionsBar = React.memo(({ suggestions, welcomeMessage, showWelcome, uiText }: { 
+  suggestions: string[], 
+  welcomeMessage?: string,
+  showWelcome: boolean,
+  uiText: any
+}) => (
+  <div className="w-full px-4 animate-fade-in-up py-2">
+      {showWelcome && welcomeMessage && (
+        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 mb-4 text-center shadow-lg">
+          <p className="text-slate-300 italic text-sm">"{welcomeMessage}"</p>
+        </div>
+      )}
+      <div className="text-center mb-2">
+         <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">{uiText.welcomePrefix}</span>
+      </div>
+      <div className="flex flex-wrap justify-center gap-2">
+        {suggestions.map((prompt, idx) => (
+          <div key={idx} className="px-4 py-1.5 rounded-full text-[10px] bg-slate-800/50 border border-slate-700 text-slate-400 font-bold hover:bg-slate-800 transition-colors cursor-default select-none flex items-center gap-2">
+            <MessageSquare size={10} className="text-slate-600" />
+            {prompt}
+          </div>
+        ))}
+      </div>
+  </div>
+));
 
 export const LiveSession: React.FC<LiveSessionProps> = ({ 
   channel, initialContext, lectureId, onEndSession, language, 
@@ -177,6 +197,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const currentUser = auth?.currentUser;
   const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
 
+  // NEW: Force start for meeting recorder mode
   useEffect(() => {
     if (channel.id.startsWith('meeting-force-start')) {
         addLog("One-Click Meeting Mode Detected. Bypassing Landing Page...");
@@ -185,6 +206,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   }, [channel.id]);
 
   const startHardwareSync = async () => {
+    // CRITICAL: Request screen capture IMMEDIATELY to satisfy iOS user-gesture requirement
     if (recordingEnabled) {
         const isMeeting = channel.id.includes('meeting');
         if (videoEnabled || isMeeting) {
@@ -215,7 +237,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   const handleStartSession = async () => {
       setError(null);
+      
+      // 1. Immediately request hardware to capture user gesture for iOS
       await startHardwareSync();
+
       const ctx = getGlobalAudioContext();
       addLog("Warming up neural audio fabric...");
       await warmUpAudioContext(ctx);
@@ -261,6 +286,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               addLog("Routing System Audio to AI Agent.");
           }
 
+          // IMPROVED: Logic to determine aspect ratio based on available stream settings
           const screenTrack = screenStreamRef.current?.getVideoTracks()[0];
           const camTrack = cameraStreamRef.current?.getVideoTracks()[0];
           let isPortrait = window.innerHeight > window.innerWidth;
@@ -299,6 +325,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   const y = (canvas.height - h) / 2;
                   drawCtx.drawImage(screenVideo, x, y, w, h);
               } else {
+                  // If screen share is missing (common on iPhone), use a nice visual backdrop
                   const gradient = drawCtx.createLinearGradient(0, 0, canvas.width, canvas.height);
                   gradient.addColorStop(0, '#1e1b4b');
                   gradient.addColorStop(1, '#020617');
@@ -370,10 +397,14 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       const pref = profile?.preferredRecordingTarget || 'drive';
                       const folderId = await ensureCodeStudioFolder(token);
                       
-                      let driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
                       let ytVideoUrl = '';
+                      let driveVideoUrl = '';
+                      
+                      // 1. Upload to Drive first for safety
+                      driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
                       setSynthesisProgress(70);
 
+                      // 2. Upload to YouTube if preferred
                       if (pref === 'youtube' || channel.id.includes('meeting')) {
                           try {
                               addLog(`Preferred Dest is YOUTUBE. Sending blob...`);
@@ -389,14 +420,15 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                           }
                       }
 
-                      let tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
+                      let tFileId = '';
+                      tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
                       
                       const sessionData: RecordingSession = {
                           id: recId, userId: currentUser.uid, channelId: channel.id,
                           channelTitle: channel.title, channelImage: channel.imageUrl,
                           timestamp, 
-                          mediaUrl: ytVideoUrl || driveVideoUrl,
-                          driveUrl: driveVideoUrl,
+                          mediaUrl: ytVideoUrl || driveVideoUrl, // Primary URI
+                          driveUrl: driveVideoUrl, // Fallback/Secondary URI
                           mediaType: 'video/webm', transcriptUrl: tFileId ? `drive://${tFileId}` : ''
                       };
                       await saveRecordingReference(sessionData);
@@ -521,6 +553,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   transcript: fullTranscript, createdAt: Date.now(), 
                   title: `${channel.title}: AI Session` 
               };
+              // FIXED: Pass transcript as part of an object to match Partial<CommunityDiscussion>
               if (existingDiscussionId) await updateDiscussion(existingDiscussionId, { transcript: fullTranscript, updatedAt: Date.now() });
               else await saveDiscussion(discussion);
           }
@@ -597,7 +630,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     });
   };
 
-  // FIXED: Explicit usage of standard HTML tags under React namespace to resolve intrinsic elements
   return (
     <div className="w-full h-full flex flex-col bg-slate-950 relative">
       <div className="p-4 flex items-center justify-between bg-slate-900 border-b border-slate-800 shrink-0 z-20">
@@ -693,7 +725,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 </>
              )}
          </div>
-      ) : error && !isConnected ? (
+      ) : error ? (
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
              <AlertCircle size={40} className="text-red-400" />
              <p className="text-red-300 text-sm font-bold">{error}</p>
@@ -737,24 +769,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             )}
             
             <div className="shrink-0 bg-slate-950">
-               <div className="w-full px-4 animate-fade-in-up py-2">
-                   {transcript.length === 0 && !currentLine && !initialContext && channel.welcomeMessage && (
-                     <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 mb-4 text-center shadow-lg">
-                       <p className="text-slate-300 italic text-sm">"{channel.welcomeMessage}"</p>
-                     </div>
-                   )}
-                   <div className="text-center mb-2">
-                      <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">{t.welcomePrefix}</span>
-                   </div>
-                   <div className="flex flex-wrap justify-center gap-2">
-                     {suggestions.map((prompt, idx) => (
-                       <div key={idx} className="px-4 py-1.5 rounded-full text-[10px] bg-slate-800/50 border border-slate-700 text-slate-400 font-bold hover:bg-slate-800 transition-colors cursor-default select-none flex items-center gap-2">
-                         <MessageSquare size={10} className="text-slate-600" />
-                         {prompt}
-                       </div>
-                     ))}
-                   </div>
-               </div>
+               <SuggestionsBar suggestions={suggestions} welcomeMessage={channel.welcomeMessage} showWelcome={transcript.length === 0 && !currentLine && !initialContext} uiText={t} />
             </div>
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">

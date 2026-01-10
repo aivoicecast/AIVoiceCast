@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, ReaderTheme } from '../types';
 import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive } from 'lucide-react';
@@ -122,9 +121,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setResumeStatusMsg('Neural Prism scanning PDF...');
       
       try {
-          // 1. Create fresh instance
+          // 1. Parse Text with Gemini
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          
           const base64 = await new Promise<string>((resolve) => {
               const reader = new FileReader();
               reader.onload = () => resolve((reader.result as string).split(',')[1]);
@@ -173,14 +171,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setResumeUploadStatus('success');
           setResumeStatusMsg('Resume verified and synced!');
           setTimeout(() => setResumeUploadStatus('idle'), 3000);
-      } catch (err: any) {
+      } catch (err) {
           console.error(err);
           setResumeUploadStatus('error');
           setResumeStatusMsg('Upload failed. Please try again.');
-          
-          if (err.message?.includes("Requested entity was not found") && (window as any).aistudio) {
-              (window as any).aistudio.openSelectKey();
-          }
       }
   };
 

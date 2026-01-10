@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile } from '../types';
-import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Key, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2 } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { synthesizeSpeech } from '../services/tts';
 import { OFFLINE_CHANNEL_ID, OFFLINE_CURRICULUM, OFFLINE_LECTURES } from '../utils/offlineContent';
@@ -38,8 +38,7 @@ const UI_TEXT = {
     typesetting: "Typesetting Pages...", syncing: "Saving to Drive...",
     toc: "Table of Contents", prev: "Prev Lesson", next: "Next Lesson",
     noLesson: "No Lesson Selected", chooseChapter: "Choose a chapter and lesson from the menu.",
-    synthesizingAudio: "Synthesizing Audio...", reading: "Reading Material", homework: "Homework & Exercises",
-    keyRequired: "Key Required", keyDesc: "Accessing this model requires a billing-enabled API key."
+    synthesizingAudio: "Synthesizing Audio...", reading: "Reading Material", homework: "Homework & Exercises"
   },
   zh: {
     back: "返回", curriculum: "课程大纲", selectTopic: "选择一个课程开始阅读",
@@ -50,8 +49,7 @@ const UI_TEXT = {
     typesetting: "正在排版页面...", syncing: "正在同步到 Drive...",
     toc: "目录", prev: "上一节", next: "下一节",
     noLesson: "未选择课程", chooseChapter: "请从菜单中选择章节和课程。",
-    synthesizingAudio: "正在合成音频...", reading: "延伸阅读", homework: "课后作业",
-    keyRequired: "需要 Key", keyDesc: "访问此模型需要选择已启用结算的 API Key。"
+    synthesizingAudio: "正在合成音频...", reading: "延伸阅读", homework: "课后作业"
   }
 };
 
@@ -62,8 +60,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
   const [activeSubTopicId, setActiveSubTopicId] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
-  const [showKeyPrompt, setShowKeyPrompt] = useState(false);
-  const [lastRequestedTopic, setLastRequestedTopic] = useState<{title: string, id: string} | null>(null);
 
   const [chapters, setChapters] = useState<Chapter[]>(() => {
     if (channel.chapters && channel.chapters.length > 0) return channel.chapters;
@@ -74,45 +70,17 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
   
   const [expandedChapterId, setExpandedChapterId] = useState<string | null>(null);
 
-  const handleOpenKeySelection = async () => {
-    if ((window as any).aistudio) {
-        await (window as any).aistudio.openSelectKey();
-        setShowKeyPrompt(false);
-        if (lastRequestedTopic) {
-            handleTopicClick(lastRequestedTopic.title, lastRequestedTopic.id);
-        }
-    }
-  };
-
   const handleTopicClick = async (topicTitle: string, subTopicId?: string) => {
     setActiveSubTopicId(subTopicId || null);
     setActiveLecture(null);
     setIsLoadingLecture(true);
-    setShowKeyPrompt(false);
-    setLastRequestedTopic({ title: topicTitle, id: subTopicId || '' });
-
     try {
         const cacheKey = `lecture_${channel.id}_${subTopicId}_${language}`;
         const cached = await getCachedLectureScript(cacheKey);
-        if (cached) { setActiveLecture(cached); setIsLoadingLecture(false); return; }
-        
-        const script = await generateLectureScript(topicTitle, channel.description, language, channel.id, channel.voiceName);
-        if (script) { 
-            setActiveLecture(script); 
-            await cacheLectureScript(cacheKey, script); 
-        } else {
-            // Check if failure was likely key-related
-            if ((window as any).aistudio && !(await (window as any).aistudio.hasSelectedApiKey())) {
-                setShowKeyPrompt(true);
-            }
-        }
-    } catch (e: any) {
-        if (e.message?.includes("Requested entity was not found")) {
-            setShowKeyPrompt(true);
-        }
-    } finally { 
-        setIsLoadingLecture(false); 
-    }
+        if (cached) { setActiveLecture(cached); return; }
+        const script = await generateLectureScript(topicTitle, channel.description, language);
+        if (script) { setActiveLecture(script); await cacheLectureScript(cacheKey, script); }
+    } finally { setIsLoadingLecture(false); }
   };
 
   const handleShareLecture = (e: React.MouseEvent) => {
@@ -151,28 +119,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
             </div>
         </div>
         <div className="col-span-12 lg:col-span-8">
-          {showKeyPrompt ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-10 text-center animate-fade-in space-y-6">
-                  <div className="w-16 h-16 bg-indigo-600/10 rounded-full flex items-center justify-center mx-auto border border-indigo-500/20">
-                      <Key className="text-indigo-400" size={32}/>
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-bold text-white uppercase tracking-widest">{t.keyRequired}</h3>
-                    <p className="text-sm text-slate-400 max-w-sm mx-auto">{t.keyDesc}</p>
-                  </div>
-                  <button 
-                    onClick={handleOpenKeySelection}
-                    className="px-10 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-xl shadow-xl transition-all"
-                  >
-                      Authorize Neural Kernel
-                  </button>
-              </div>
-          ) : isLoadingLecture ? (
-            <div className="h-64 flex flex-col items-center justify-center p-12 text-center bg-slate-900/50 rounded-2xl animate-pulse">
-                <Loader2 size={40} className="text-indigo-500 animate-spin mb-4" />
-                <h3 className="text-lg font-bold text-white">{t.generating}</h3>
-            </div>
-          ) : activeLecture ? (
+          {isLoadingLecture ? (<div className="h-64 flex flex-col items-center justify-center p-12 text-center bg-slate-900/50 rounded-2xl animate-pulse"><Loader2 size={40} className="text-indigo-500 animate-spin mb-4" /><h3 className="text-lg font-bold text-white">{t.generating}</h3></div>) : activeLecture ? (
             <div className="space-y-6 animate-fade-in">
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div><h2 className="text-xl font-bold text-white">{activeLecture.topic}</h2><p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">{t.lectureTitle}</p></div>
@@ -185,12 +132,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
                     showThemeSwitcher={true}
                 />
             </div>
-          ) : (
-            <div className="h-64 flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-800 rounded-2xl bg-slate-900/30">
-                <Info size={32} className="mb-2 opacity-20" />
-                <h3 className="text-lg font-bold text-slate-400">{t.selectTopic}</h3>
-            </div>
-          )}
+          ) : (<div className="h-64 flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-800 rounded-2xl bg-slate-900/30"><Info size={32} className="mb-2 opacity-20" /><h3 className="text-lg font-bold text-slate-400">{t.selectTopic}</h3></div>)}
         </div>
       </main>
 

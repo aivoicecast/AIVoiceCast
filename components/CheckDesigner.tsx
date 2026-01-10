@@ -1,5 +1,5 @@
-import * as React from 'react';
-import { useState, useRef, useMemo, useEffect } from 'react';
+
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
   Trash2, Printer, CheckCircle, AlertTriangle, Send, Share2, DollarSign, Calendar, 
@@ -399,7 +399,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
   if (isLoadingCheck) return <div className="h-screen bg-slate-950 flex items-center justify-center animate-pulse"><Loader2 className="animate-spin text-indigo-500" size={40} /></div>;
 
-  // FIXED: Explicit usage of standard HTML tags under React namespace to resolve intrinsic elements
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
@@ -578,8 +577,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl p-6 shadow-2xl animate-fade-in-up">
                   <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center gap-2"><PenTool size={20} className="text-indigo-400"/> Draw Official Signature</h3><button onClick={() => setShowSignPad(false)} className="p-2 text-slate-500 hover:text-white"><X/></button></div>
-                  {/* FIXED: Removed invalid props from Whiteboard component call */}
-                  <div className="h-[300px] border-2 border-dashed border-slate-800 rounded-2xl overflow-hidden mb-6 bg-white"><Whiteboard backgroundColor="transparent" initialColor="#000000" /></div>
+                  {/* Fix: removed disableAI and onDataChange from Whiteboard component */}
+                  <div className="h-[300px] border-2 border-dashed border-slate-800 rounded-2xl overflow-hidden mb-6 bg-white"><Whiteboard backgroundColor="transparent" initialColor="#000000" onSessionStart={() => {}} /></div>
                   <div className="flex justify-end gap-2">
                       <button onClick={() => setShowSignPad(false)} className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold">Cancel</button>
                       <button onClick={() => {

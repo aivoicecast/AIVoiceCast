@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Book, Play, Terminal, MoreVertical, Plus, Edit3, Trash2, Cpu, Share2, Sparkles, Loader2, Save, Image as ImageIcon, X, ChevronUp, ChevronDown, Check, Zap, Wand2, Link } from 'lucide-react';
 import { Notebook, NotebookCell } from '../types';
@@ -188,7 +189,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
                                   <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-1">
                                       <Cpu size={12}/> AI Logic
                                   </span>
-                                  <div className="flex items-gap-1">
+                                  <div className="flex items-center gap-1">
                                       <button onClick={() => setEditingCellId(isEditing ? null : cell.id)} className="p-1 text-slate-500 hover:text-white"><Edit3 size={12}/></button>
                                       <button onClick={() => handleDeleteCell(cell.id)} className="p-1 text-slate-500 hover:text-red-400"><Trash2 size={12}/></button>
                                   </div>
@@ -356,7 +357,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
                           
                           {/* Title Metadata Section */}
                           <div className="mb-12 space-y-4">
-                              <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em]">Scientific Notebook v4.5.2</span>
+                              <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em]">Scientific Notebook v4.1.0</span>
                               <h1 className="text-5xl font-black text-white leading-tight tracking-tighter italic">{activeNotebook.title}</h1>
                               <p className="text-lg text-slate-400 font-medium max-w-2xl leading-relaxed">{activeNotebook.description}</p>
                               <div className="flex gap-4 pt-4">

@@ -1,4 +1,4 @@
-// FIXED: Using default React import to ensure JSX intrinsic elements (div, table, tr, etc.) are correctly resolved
+
 import React, { useState, useEffect } from 'react';
 import { getAllDebugEntries, deleteDebugEntry, clearDebugStore, DebugEntry } from '../utils/db';
 import { ArrowLeft, Trash2, RefreshCw, HardDrive, FileText, Mic2 } from 'lucide-react';
@@ -49,7 +49,6 @@ export const DebugView: React.FC<DebugViewProps> = ({ onBack }) => {
      channels: entries.filter(e => e.store === 'user_channels').reduce((acc, curr) => acc + curr.size, 0),
   };
 
-  // FIXED: Explicit usage of default React context for intrinsic elements
   return (
     <div className="h-full overflow-y-auto bg-slate-950 text-slate-100 p-8 scrollbar-thin scrollbar-thumb-slate-800">
       <div className="max-w-6xl mx-auto space-y-8 pb-24">

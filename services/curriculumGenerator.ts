@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from '@google/genai';
 import { Chapter } from '../types';
 import { incrementApiUsage } from './firestoreService';
@@ -10,7 +9,6 @@ export async function generateCurriculum(
   language: 'en' | 'zh' = 'en'
 ): Promise<Chapter[] | null> {
   try {
-    // ALWAYS create a new instance right before the call
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const langInstruction = language === 'zh' 
@@ -55,12 +53,8 @@ export async function generateCurriculum(
         title: sub.title
       }))
     }));
-  } catch (error: any) {
+  } catch (error) {
     console.error("Failed to generate curriculum:", error);
-    // Handle key selection requirement if specific errors occur
-    if (error.message?.includes("Requested entity was not found") && (window as any).aistudio) {
-        (window as any).aistudio.openSelectKey();
-    }
     return null;
   }
 }

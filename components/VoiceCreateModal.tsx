@@ -1,10 +1,10 @@
-// FIXED: Using default React import to ensure JSX intrinsic elements are recognized correctly
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Channel, Group } from '../types';
 import { generateChannelFromPrompt } from '../services/channelGenerator';
 import { auth } from '../services/firebaseConfig';
 import { getUserGroups } from '../services/firestoreService';
-import { Mic, MicOff, Sparkles, X, Loader2, Check, Lock, Globe, Users, AlertCircle, Wand2, ArrowRight, BrainCircuit, MessageSquare, Key } from 'lucide-react';
+import { Mic, MicOff, Sparkles, X, Loader2, Check, Lock, Globe, Users, AlertCircle, Wand2, ArrowRight, BrainCircuit, MessageSquare } from 'lucide-react';
 
 interface VoiceCreateModalProps {
   isOpen: boolean;
@@ -61,24 +61,25 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
     return () => { if (recognitionRef.current) try { recognitionRef.current.stop(); } catch(e) {} };
   }, [isOpen]);
 
+  useEffect(() => {
+     if (generatedChannel && visibility === 'group' && auth.currentUser) {
+         getUserGroups(auth.currentUser.uid).then(setUserGroups);
+     }
+  }, [visibility, generatedChannel]);
+
   const toggleListening = () => {
+    if (!isSupported) return;
     if (isListening) {
-      recognitionRef.current?.stop();
+      try { recognitionRef.current?.stop(); } catch(e) {}
       setIsListening(false);
     } else {
-      setTranscript('');
-      try {
-          recognitionRef.current?.start();
-          setIsListening(true);
-      } catch(e) {
-          console.error("Speech recognition start failed", e);
-      }
+      setError(null);
+      try { recognitionRef.current?.start(); setIsListening(true); } catch(e) { setIsSupported(false); }
     }
   };
 
   const handleGenerate = async () => {
     if (!transcript.trim()) return;
-
     setIsListening(false);
     try { recognitionRef.current?.stop(); } catch(e) {}
     setIsProcessing(true);
@@ -88,9 +89,7 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
       const channel = await generateChannelFromPrompt(transcript, auth.currentUser, 'en');
       if (channel) setGeneratedChannel(channel);
       else setError("Failed to generate podcast.");
-    } catch (e: any) { 
-        setError(e.message || "An error occurred during generation."); 
-    } finally { setIsProcessing(false); }
+    } catch (e) { setError("An error occurred during generation."); } finally { setIsProcessing(false); }
   };
 
   const handleConfirm = () => {
@@ -103,7 +102,6 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
 
   if (!isOpen) return null;
 
-  // FIXED: Explicit usage of default React context for intrinsic elements
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
       <div className="relative bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -119,7 +117,7 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors"><X size={24} /></button>
         </div>
 
-        <div className="p-8 flex-1 flex flex-col items-center justify-center space-y-8 overflow-y-auto relative">
+        <div className="p-8 flex-1 flex flex-col items-center justify-center space-y-8 overflow-y-auto">
           
           {!generatedChannel && !isProcessing && (
             <>

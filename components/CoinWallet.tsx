@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History, Signature, Fingerprint, Terminal, Activity } from 'lucide-react';
+import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History, Signature } from 'lucide-react';
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
 import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile, registerIdentity, claimOfflinePayment, DEFAULT_MONTHLY_GRANT } from '../services/firestoreService';
-import { auth, db } from '../services/firebaseConfig';
-import { onAuthStateChanged } from 'firebase/auth';
+import { auth, db, getDb } from '../services/firebaseConfig';
+// FIXED: Using @firebase/ scoped packages
+import { onAuthStateChanged } from '@firebase/auth';
 import { generateMemberIdentity, requestIdentityCertificate, verifyCertificateOffline, verifySignature, signPayment, AIVOICECAST_TRUST_PUBLIC_KEY } from '../utils/cryptoUtils';
 import { generateSecureId } from '../utils/idUtils';
 import { getLocalPrivateKey, saveLocalPrivateKey } from '../utils/db';
@@ -18,6 +19,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [transactions, setTransactions] = useState<CoinTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [databaseInstance, setDatabaseInstance] = useState(db);
   
   // Ledger Search & Filter
   const [ledgerSearch, setLedgerSearch] = useState('');
@@ -54,7 +56,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifiedToken, setVerifiedToken] = useState<OfflinePaymentToken | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
-  const [verificationLogs, setVerificationLogs] = useState<string[]>([]);
   const [isClaiming, setIsClaiming] = useState(false);
   const [showReceiveQR, setShowReceiveQR] = useState(false);
   const [isAutoSyncing, setIsAutoSyncing] = useState(false);
@@ -239,7 +240,11 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   }, []);
 
   const initWallet = useCallback(async (force = false) => {
-    if (!db) { setLoading(false); return; }
+    const activeDb = databaseInstance || getDb();
+    if (!activeDb) { setLoading(false); return; }
+    if (!databaseInstance) setDatabaseInstance(activeDb);
+    // CRITICAL: We only load if not already attempted or if forced. 
+    // user is excluded from dependencies to prevent infinite loops.
     if (!force && initAttempted.current) return;
     
     setLoading(true);
@@ -254,7 +259,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
         setTransactions(txs || []);
         initAttempted.current = true;
     } catch (e) { console.error("Wallet initialization failed", e); } finally { setLoading(false); }
-  }, []); 
+  }, [databaseInstance]); // Removed 'user' to stop dead loop
 
   useEffect(() => {
     initWallet();
@@ -344,31 +349,16 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       }
   };
 
-  const addVerificationLog = (msg: string) => {
-      setVerificationLogs(prev => [...prev, `[${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}] ${msg}`].slice(-6));
-  };
-
   const handleVerifyPastedToken = async (strOverride?: string) => {
       const tokenToVerify = strOverride || pastedToken;
       if (!tokenToVerify.trim()) return;
       setIsVerifying(true);
       setVerificationError(null);
       setVerifiedToken(null);
-      setVerificationLogs([]);
-      
       try {
-          addVerificationLog("Decoding Neural Bearer Token...");
-          await new Promise(r => setTimeout(r, 600));
           const token: OfflinePaymentToken = JSON.parse(atob(tokenToVerify));
-          
-          addVerificationLog("Checking Identity Certificate...");
-          await new Promise(r => setTimeout(r, 500));
           const isCertValid = verifyCertificateOffline(token.certificate);
           if (!isCertValid) throw new Error("Certificate invalid.");
-          addVerificationLog("Certificate Signature Verified.");
-          
-          addVerificationLog("Verifying Transaction Signature...");
-          await new Promise(r => setTimeout(r, 800));
           const senderCert = JSON.parse(atob(token.certificate));
           const isSigValid = await verifySignature(senderCert.publicKey, token.signature, {
               senderId: token.senderId,
@@ -380,17 +370,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               memo: (token as any).memo
           });
           if (!isSigValid) throw new Error("Invalid signature.");
-          addVerificationLog("Signature Authentic.");
-          
-          addVerificationLog("Checking Nonce Registry...");
-          await new Promise(r => setTimeout(r, 400));
-          addVerificationLog("Verification Complete.");
-          
           setVerifiedToken(token);
-      } catch (e: any) { 
-          setVerificationError(e.message || "Invalid token."); 
-          addVerificationLog("VERIFICATION FAILED: " + (e.message || "Unknown"));
-      } finally { setIsVerifying(false); }
+      } catch (e: any) { setVerificationError(e.message || "Invalid token."); } finally { setIsVerifying(false); }
   };
 
   const handleClaimVerifiedToken = async () => {
@@ -765,35 +746,14 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               </div>
           </div>
 
-          {/* Identity Section */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-12 bg-white/5 blur-3xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className={`p-5 rounded-[2rem] border-2 transition-all shrink-0 ${user?.certificate ? 'bg-emerald-950/20 border-emerald-500/50 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>{user?.certificate ? <ShieldCheck size={40} /> : <Shield size={40} />}</div>
-              <div className="flex-1 text-center md:text-left relative z-10">
-                  <h3 className="text-lg font-bold text-white mb-1 flex items-center justify-center md:justify-start gap-2">
-                    Identity Protocol 
-                    {user?.certificate && <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest font-black">Trusted</span>}
-                  </h3>
-                  <div className="flex flex-col gap-1">
-                    <p className="text-sm text-slate-400 leading-relaxed">Initialize your cryptographic identity for verified offline transactions.</p>
-                    {user?.certificate && (
-                        <div className="flex flex-wrap items-center gap-4 mt-2">
-                            <div className="flex items-center gap-2">
-                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Trust Score:</span>
-                                <div className="flex gap-0.5">
-                                    {[1,2,3,4,5].map(i => <div key={i} className={`w-3 h-1 rounded-full ${i <= 5 ? 'bg-emerald-500' : 'bg-slate-700'}`}/>)}
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Fingerprint size={12} className="text-indigo-400"/>
-                                <span className="text-[9px] font-mono text-slate-500 uppercase">Hash: {user.certificate.substring(0, 16)}...</span>
-                            </div>
-                        </div>
-                    )}
-                  </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-xl">
+              <div className={`p-5 rounded-[2rem] border-2 transition-all ${user?.certificate ? 'bg-emerald-950/20 border-emerald-500/50 text-emerald-400' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>{user?.certificate ? <ShieldCheck size={40} /> : <Shield size={40} />}</div>
+              <div className="flex-1 text-center md:text-left">
+                  <h3 className="text-lg font-bold text-white mb-1 flex items-center justify-center md:justify-start gap-2">Identity Protocol {user?.certificate && <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-widest font-black">Trusted</span>}</h3>
+                  <p className="text-sm text-slate-400 leading-relaxed">Initialize your cryptographic identity to support verified offline payments and peer-to-peer trust.</p>
               </div>
-              {!privateKey && (<button onClick={handleCreateIdentity} disabled={isCreatingIdentity} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 whitespace-nowrap active:scale-95 z-10">{isCreatingIdentity ? 'Signing...' : 'Sign Identity'}</button>)}
-              {privateKey && <div className="text-[10px] font-black text-emerald-500 border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 rounded-lg uppercase tracking-widest relative z-10">Active Session Key</div>}
+              {!privateKey && (<button onClick={handleCreateIdentity} disabled={isCreatingIdentity} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 whitespace-nowrap active:scale-95">{isCreatingIdentity ? 'Signing...' : 'Sign Identity'}</button>)}
+              {privateKey && <div className="text-[10px] font-black text-emerald-500 border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 rounded-lg uppercase tracking-widest">Active Session Key</div>}
           </div>
 
           {/* Enhanced Ledger with Lookup */}
@@ -838,8 +798,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                         </div>
                         
                         <div className="flex p-1 bg-slate-950 rounded-xl border border-slate-800 mb-6">
-                            <button onClick={() => setIsDonationMode(false)} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${!isDonationMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}>Fixed Price</button>
-                            <button onClick={() => setIsDonationMode(true)} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${isDonationMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}>Donation Range</button>
+                            <button onClick={() => setIsDonationMode(false)} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${!isDonationMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Fixed Price</button>
+                            <button onClick={() => setIsDonationMode(true)} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${isDonationMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Donation Range</button>
                         </div>
 
                         <div className="space-y-4">
@@ -952,14 +912,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       {/* Import Token Modal */}
       {showTokenInput && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-              <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md p-8 shadow-2xl animate-fade-in-up flex flex-col max-h-[90vh]">
-                  <div className="flex justify-between items-center mb-6 shrink-0"><h3 className="text-xl font-bold text-white flex items-center gap-2"><Download size={20} className="text-indigo-400"/> Verify Token</h3><button onClick={() => { setShowTokenInput(false); setVerifiedToken(null); setPastedToken(''); setActionStatus({ type: null, message: null }); }} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button></div>
+              <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md p-8 shadow-2xl animate-fade-in-up">
+                  <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-bold text-white flex items-center gap-2"><Download size={20} className="text-indigo-400"/> Verify Token</h3><button onClick={() => { setShowTokenInput(false); setVerifiedToken(null); setPastedToken(''); setActionStatus({ type: null, message: null }); }} className="p-1.5 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button></div>
                   
                   {actionStatus.message && (
-                    <div className={`mb-4 p-3 rounded-xl border flex items-center gap-2 text-xs font-bold shrink-0 ${
-                        actionStatus.type === 'success' ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' : 
-                        actionStatus.type === 'error' ? 'bg-red-900/20 border-red-900/50 text-red-400' : 
-                        'bg-indigo-900/20 border-indigo-500/30 text-indigo-300'
+                    <div className={`mb-4 p-3 rounded-xl border flex items-center gap-2 text-xs font-bold ${
+                        actionStatus.type === 'success' ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' : 'bg-indigo-900/20 border-indigo-500/30 text-indigo-300'
                     }`}>
                         {actionStatus.type === 'success' ? <CheckCircle size={14}/> : <Info size={14}/>}
                         {actionStatus.message}
@@ -967,52 +925,25 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                   )}
 
                   {!verifiedToken ? (
-                      <div className="space-y-6 overflow-y-auto pr-1 scrollbar-hide">
+                      <div className="space-y-6">
                           <textarea value={pastedToken} onChange={e => setPastedToken(e.target.value)} className="w-full h-32 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-indigo-300 focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Paste token string here..."/>
-                          
-                          {verificationLogs.length > 0 && (
-                              <div className="bg-black/60 border border-white/5 rounded-xl p-4 font-mono text-[9px] text-slate-400 h-32 overflow-hidden flex flex-col shadow-inner">
-                                  <div className="flex items-center gap-2 mb-2 text-indigo-500 border-b border-white/5 pb-1">
-                                      <Terminal size={10}/>
-                                      <span className="font-black uppercase tracking-widest">Verification Trace</span>
-                                  </div>
-                                  <div className="flex-1 overflow-y-auto scrollbar-hide space-y-1">
-                                      {verificationLogs.map((log, i) => (
-                                          <div key={i} className="flex gap-2">
-                                              <span className="text-indigo-400 shrink-0">>></span>
-                                              <span>{log}</span>
-                                          </div>
-                                      ))}
-                                      {isVerifying && <div className="flex gap-2 animate-pulse"><span className="text-indigo-400 shrink-0">>></span><span>Computing...</span></div>}
-                                  </div>
-                              </div>
-                          )}
-
                           {verificationError && (<div className="p-3 bg-red-900/20 border border-red-900/50 rounded-xl flex items-center gap-2 text-red-400 text-xs"><AlertTriangle size={14}/> {verificationError}</div>)}
-                          <div className="grid grid-cols-1 gap-2 pt-2">
-                             <button onClick={() => handleVerifyPastedToken()} disabled={isVerifying || !pastedToken.trim()} className="py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95">
-                                 {isVerifying ? <Loader2 size={18} className="animate-spin"/> : <ShieldCheck size={18}/>}
-                                 <span>{isVerifying ? 'Verifying...' : 'Analyze Neural Proof'}</span>
-                             </button>
+                          <div className="grid grid-cols-2 gap-2">
+                             <button className="py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl font-bold flex items-center justify-center gap-2"><Camera size={18}/> Scan QR</button>
+                             <button onClick={() => handleVerifyPastedToken()} disabled={isVerifying || !pastedToken.trim()} className="py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2">{isVerifying ? <Loader2 size={18} className="animate-spin"/> : <ShieldCheck size={18}/>}Verify</button>
                           </div>
                       </div>
                   ) : (
-                      <div className="space-y-6 animate-fade-in overflow-y-auto scrollbar-hide">
-                          <div className="bg-emerald-950/20 border border-emerald-500/30 p-6 rounded-3xl text-center shadow-xl shadow-emerald-500/5">
-                              <div className="relative inline-block mb-4">
-                                  <CheckCircle size={48} className="text-emerald-400 mx-auto"/>
-                                  <Activity size={16} className="absolute -top-1 -right-1 text-emerald-500 animate-pulse"/>
-                              </div>
-                              <h4 className="text-lg font-bold text-white mb-1 uppercase tracking-tighter italic">Authentic Payment</h4>
-                              <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">Signed by {verifiedToken.senderName}</p>
+                      <div className="space-y-6 animate-fade-in">
+                          <div className="bg-emerald-950/20 border border-emerald-500/30 p-6 rounded-3xl text-center">
+                              <CheckCircle size={48} className="text-emerald-400 mx-auto mb-3"/><h4 className="text-lg font-bold text-white mb-1">Authentic Payment</h4><p className="text-xs text-slate-400">Signed by {verifiedToken.senderName} and trusted by Authority.</p>
                           </div>
-                          <div className="p-6 bg-slate-950 rounded-2xl border border-slate-800 shadow-inner">
-                              <div className="flex justify-between items-center mb-4"><span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Total Amount</span><span className="text-4xl font-black text-white">{verifiedToken.amount} <span className="text-xs text-indigo-400">VC</span></span></div>
-                              <div className="h-px bg-white/5 w-full mb-4" />
-                              <div className="flex justify-between items-center text-xs"><span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Status</span><span className="text-indigo-400 font-bold flex items-center gap-1.5">{navigator.onLine ? <Globe size={14}/> : <WifiOff size={14}/>} {navigator.onLine ? 'Global Consensus' : 'Local Queue'}</span></div>
+                          <div className="p-6 bg-slate-950 rounded-2xl border border-slate-800">
+                              <div className="flex justify-between items-center mb-4"><span className="text-xs text-slate-500 font-bold uppercase tracking-widest">Amount</span><span className="text-3xl font-black text-white">{verifiedToken.amount} VC</span></div>
+                              <div className="flex justify-between items-center text-xs"><span className="text-slate-500 font-bold uppercase tracking-widest">Status</span><span className="text-indigo-400 font-bold flex items-center gap-1">{navigator.onLine ? <Globe size={12}/> : <WifiOff size={12}/>} {navigator.onLine ? 'Online (Instant)' : 'Offline (Queued)'}</span></div>
                           </div>
-                          <button onClick={handleClaimVerifiedToken} disabled={isClaiming} className={`w-full py-5 ${navigator.onLine ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-800 hover:bg-slate-700'} text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50`}>
-                              {isClaiming ? <Loader2 size={20} className="animate-spin"/> : navigator.onLine ? 'Settle to Global Ledger' : 'Archive for Sync'}
+                          <button onClick={handleClaimVerifiedToken} disabled={isClaiming} className={`w-full py-4 ${navigator.onLine ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-slate-800 hover:bg-slate-700'} text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2`}>
+                              {isClaiming ? <Loader2 size={20} className="animate-spin"/> : navigator.onLine ? 'Sync to Ledger' : 'Pocket Evidence'}
                           </button>
                       </div>
                   )}
