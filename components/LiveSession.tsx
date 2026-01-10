@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
@@ -32,7 +32,7 @@ interface LiveSessionProps {
 const UI_TEXT = {
   en: {
     welcomePrefix: "Try asking...",
-    reconnecting: "Reconnecting...",
+    reconnecting: "Reconnecting Neural Link...",
     establishing: "Establishing neural link...",
     holdMusic: "Playing hold music...",
     preparing: "Preparing agent environment...",
@@ -63,11 +63,13 @@ const UI_TEXT = {
     diagnostics: "Neural Diagnostics",
     cloudWarn: "Drive/YouTube Access Missing: Local Only.",
     signIn: "Sign In",
-    forceStart: "Bypassing Landing Screen: Auto-Initializing..."
+    forceStart: "Bypassing Landing Screen: Auto-Initializing...",
+    linkRestored: "Neural Link Restored",
+    linkLost: "Neural Link Interrupted"
   },
   zh: {
     welcomePrefix: "试着问...",
-    reconnecting: "正在重新连接...",
+    reconnecting: "正在重新建立神经连接...",
     establishing: "建立神经连接...",
     holdMusic: "播放等待音乐...",
     preparing: "准备智能体环境...",
@@ -98,7 +100,9 @@ const UI_TEXT = {
     diagnostics: "神经诊断",
     cloudWarn: "缺少 Drive/YouTube 权限：仅限本地。",
     signIn: "登录",
-    forceStart: "跳过着陆页：自动初始化..."
+    forceStart: "跳过着陆页：自动初始化...",
+    linkRestored: "神经连接已恢复",
+    linkLost: "神经连接中断"
   }
 };
 
@@ -151,6 +155,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const t = UI_TEXT[language];
   const [hasStarted, setHasStarted] = useState(false); 
   const [isConnected, setIsConnected] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [showReconnectButton, setShowReconnectButton] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cloudWarning, setCloudWarning] = useState(false);
@@ -171,6 +176,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const animationFrameRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const reconnectTimeoutRef = useRef<any>(null);
+  const autoReconnectAttempts = useRef(0);
+  const maxAutoRetries = 5;
 
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [currentLine, setCurrentLine] = useState<TranscriptItem | null>(null);
@@ -197,7 +204,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const currentUser = auth?.currentUser;
   const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
 
-  // NEW: Force start for meeting recorder mode
   useEffect(() => {
     if (channel.id.startsWith('meeting-force-start')) {
         addLog("One-Click Meeting Mode Detected. Bypassing Landing Page...");
@@ -206,7 +212,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   }, [channel.id]);
 
   const startHardwareSync = async () => {
-    // CRITICAL: Request screen capture IMMEDIATELY to satisfy iOS user-gesture requirement
     if (recordingEnabled) {
         const isMeeting = channel.id.includes('meeting');
         if (videoEnabled || isMeeting) {
@@ -237,14 +242,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   const handleStartSession = async () => {
       setError(null);
-      
-      // 1. Immediately request hardware to capture user gesture for iOS
+      autoReconnectAttempts.current = 0;
       await startHardwareSync();
-
       const ctx = getGlobalAudioContext();
       addLog("Warming up neural audio fabric...");
       await warmUpAudioContext(ctx);
-      
       setHasStarted(true);
       await connect();
   };
@@ -271,6 +273,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   const startRecording = useCallback(async () => {
       if (!recordingEnabled || !serviceRef.current || !currentUser) return;
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') return; // Don't restart if already active during reconnect
       
       try {
           const ctx = getGlobalAudioContext();
@@ -286,21 +289,16 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               addLog("Routing System Audio to AI Agent.");
           }
 
-          // IMPROVED: Logic to determine aspect ratio based on available stream settings
           const screenTrack = screenStreamRef.current?.getVideoTracks()[0];
           const camTrack = cameraStreamRef.current?.getVideoTracks()[0];
           let isPortrait = window.innerHeight > window.innerWidth;
           
           if (screenTrack) {
               const settings = screenTrack.getSettings();
-              if (settings.width && settings.height) {
-                  isPortrait = settings.height > settings.width;
-              }
+              if (settings.width && settings.height) isPortrait = settings.height > settings.width;
           } else if (camTrack) {
               const settings = camTrack.getSettings();
-              if (settings.width && settings.height) {
-                  isPortrait = settings.height > settings.width;
-              }
+              if (settings.width && settings.height) isPortrait = settings.height > settings.width;
           }
 
           const canvas = document.createElement('canvas');
@@ -325,13 +323,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   const y = (canvas.height - h) / 2;
                   drawCtx.drawImage(screenVideo, x, y, w, h);
               } else {
-                  // If screen share is missing (common on iPhone), use a nice visual backdrop
                   const gradient = drawCtx.createLinearGradient(0, 0, canvas.width, canvas.height);
-                  gradient.addColorStop(0, '#1e1b4b');
-                  gradient.addColorStop(1, '#020617');
-                  drawCtx.fillStyle = gradient;
-                  drawCtx.fillRect(0, 0, canvas.width, canvas.height);
-
+                  gradient.addColorStop(0, '#1e1b4b'); gradient.addColorStop(1, '#020617');
+                  drawCtx.fillStyle = gradient; drawCtx.fillRect(0, 0, canvas.width, canvas.height);
                   drawCtx.fillStyle = '#6366f1'; drawCtx.font = 'bold 40px sans-serif'; drawCtx.textAlign = 'center';
                   drawCtx.fillText('Neural Broadcast', canvas.width / 2, canvas.height / 2 - 40);
                   drawCtx.fillStyle = '#94a3b8'; drawCtx.font = '24px sans-serif';
@@ -342,16 +336,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   const pipW = isPortrait ? canvas.width * 0.5 : 320;
                   const pipH = (pipW * cameraVideo.videoHeight) / cameraVideo.videoWidth;
                   const m = 24;
-                  
                   const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - m;
                   const pipY = isPortrait ? canvas.height - pipH - 150 : canvas.height - pipH - m;
-
                   drawCtx.save();
-                  drawCtx.shadowColor = 'rgba(0,0,0,0.5)';
-                  drawCtx.shadowBlur = 20;
+                  drawCtx.shadowColor = 'rgba(0,0,0,0.5)'; drawCtx.shadowBlur = 20;
                   drawCtx.strokeStyle = '#6366f1'; drawCtx.lineWidth = 4;
-                  drawCtx.strokeRect(pipX, pipY, pipW, pipH);
-                  drawCtx.drawImage(cameraVideo, pipX, pipY, pipW, pipH);
+                  drawCtx.strokeRect(pipX, pipY, pipW, pipH); drawCtx.drawImage(cameraVideo, pipX, pipY, pipW, pipH);
                   drawCtx.restore();
               }
               animationFrameRef.current = requestAnimationFrame(drawCompositor);
@@ -376,8 +366,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               const transcriptText = transcriptRef.current.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
               const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
 
-              setIsUploadingRecording(true);
-              setSynthesisProgress(10);
+              setIsUploadingRecording(true); setSynthesisProgress(10);
               try {
                   const timestamp = Date.now();
                   const recId = `session-${timestamp}`;
@@ -396,15 +385,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       const profile = await getUserProfile(currentUser.uid);
                       const pref = profile?.preferredRecordingTarget || 'drive';
                       const folderId = await ensureCodeStudioFolder(token);
-                      
-                      let ytVideoUrl = '';
-                      let driveVideoUrl = '';
-                      
-                      // 1. Upload to Drive first for safety
+                      let ytVideoUrl = ''; let driveVideoUrl = '';
                       driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
                       setSynthesisProgress(70);
 
-                      // 2. Upload to YouTube if preferred
                       if (pref === 'youtube' || channel.id.includes('meeting')) {
                           try {
                               addLog(`Preferred Dest is YOUTUBE. Sending blob...`);
@@ -415,20 +399,14 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                               });
                               ytVideoUrl = getYouTubeVideoUrl(ytId);
                               addLog(`YouTube Link Generated: ${ytId}`);
-                          } catch (ytErr: any) { 
-                              addLog(`YouTube Failed: ${ytErr.message}`, "warn");
-                          }
+                          } catch (ytErr: any) { addLog(`YouTube Failed: ${ytErr.message}`, "warn"); }
                       }
 
-                      let tFileId = '';
-                      tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
-                      
+                      let tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
                       const sessionData: RecordingSession = {
                           id: recId, userId: currentUser.uid, channelId: channel.id,
                           channelTitle: channel.title, channelImage: channel.imageUrl,
-                          timestamp, 
-                          mediaUrl: ytVideoUrl || driveVideoUrl, // Primary URI
-                          driveUrl: driveVideoUrl, // Fallback/Secondary URI
+                          timestamp, mediaUrl: ytVideoUrl || driveVideoUrl, driveUrl: driveVideoUrl,
                           mediaType: 'video/webm', transcriptUrl: tFileId ? `drive://${tFileId}` : ''
                       };
                       await saveRecordingReference(sessionData);
@@ -448,18 +426,21 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           };
           mediaRecorderRef.current = recorder;
           recorder.start(1000);
-      } catch(e) { 
-          console.warn("Recording start failure", e); 
-      }
+      } catch(e) { console.warn("Recording start failure", e); }
   }, [recordingEnabled, channel, currentUser, onEndSession, addLog, transcript]);
 
-  const connect = useCallback(async () => {
-    setIsConnected(false);
-    setShowReconnectButton(false);
+  const connect = useCallback(async (isAutoRetry = false) => {
+    if (!isAutoRetry) {
+        setIsConnected(false);
+        setShowReconnectButton(false);
+    } else {
+        setIsReconnecting(true);
+        addLog(`Link Dropped. Attempting auto-reconnect (${autoReconnectAttempts.current + 1}/${maxAutoRetries})...`, "warn");
+    }
     
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     reconnectTimeoutRef.current = setTimeout(() => {
-        if (!isConnected && mountedRef.current) setShowReconnectButton(true);
+        if (!isConnected && !isReconnecting && mountedRef.current) setShowReconnectButton(true);
     }, 8000);
 
     let service = serviceRef.current || new GeminiLiveService();
@@ -468,45 +449,41 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     
     try {
       const now = new Date();
-      const timeStr = now.toLocaleString(undefined, { 
-          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', 
-          hour: '2-digit', minute: '2-digit', second: '2-digit' 
-      });
+      const timeStr = now.toLocaleString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      
       let effectiveInstruction = `[SYSTEM_TIME_CONTEXT]: Current Local Time is ${timeStr} (${timeZone}).\n\n`;
-      
-      if (channel.id.includes('meeting')) {
-          effectiveInstruction += `You are currently in a CO-WATCHING and RECORDING session. You will hear both the user's voice and the system audio. 
-          TASK: Actively listen and summarize the shared content.\n\n`;
-      }
-
+      if (channel.id.includes('meeting')) effectiveInstruction += `You are currently in a CO-WATCHING and RECORDING session.\n\n`;
       effectiveInstruction += channel.systemInstruction;
-      
       const historyToInject = transcriptRef.current.length > 0 ? transcriptRef.current : (initialTranscript || []);
-      if (historyToInject.length > 0) {
-          effectiveInstruction += `\n\n[CONTEXT]:\n${historyToInject.map(t => `${t.role}: ${t.text}`).join('\n')}`;
-      }
-      if (initialContext) {
-          effectiveInstruction += `\n\n[USER CONTEXT]: ${initialContext}`;
-      }
+      if (historyToInject.length > 0) effectiveInstruction += `\n\n[CONTEXT]:\n${historyToInject.map(t => `${t.role}: ${t.text}`).join('\n')}`;
+      if (initialContext) effectiveInstruction += `\n\n[USER CONTEXT]: ${initialContext}`;
 
-      addLog("Establishing Neural Link...");
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { 
               setIsConnected(true); 
+              setIsReconnecting(false);
               setShowReconnectButton(false);
+              autoReconnectAttempts.current = 0;
               if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-              addLog("Link Active.");
+              addLog("Neural Link Active.");
               if (recordingEnabled) startRecording(); 
           },
           onClose: (reason, code) => { 
-              setIsConnected(false); 
-              addLog(`Link Closed: ${reason}`);
+              setIsConnected(false);
+              addLog(`Link Interrupted: ${reason} (Code: ${code})`, "warn");
+              if (autoReconnectAttempts.current < maxAutoRetries && mountedRef.current) {
+                  autoReconnectAttempts.current++;
+                  setTimeout(() => connect(true), 2000);
+              } else {
+                  setIsReconnecting(false);
+                  setShowReconnectButton(true);
+              }
           },
           onError: (err) => { 
               setIsConnected(false); 
+              setIsReconnecting(false);
               setError(err); 
+              addLog(`Neural Error: ${err}`, "error");
           },
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
@@ -534,11 +511,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       }, [{ functionDeclarations: [saveContentTool] }]);
     } catch (e: any) { 
         setError("AI init failure."); 
+        setIsReconnecting(false);
     }
   }, [channel.id, channel.voiceName, channel.systemInstruction, initialContext, recordingEnabled, startRecording, onCustomToolCall, addLog, initialTranscript, isConnected]);
 
   const handleDisconnect = async () => {
       addLog("Closing Session...");
+      autoReconnectAttempts.current = maxAutoRetries; // Prevent auto-reconnect
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           mediaRecorderRef.current.stop();
@@ -553,7 +532,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   transcript: fullTranscript, createdAt: Date.now(), 
                   title: `${channel.title}: AI Session` 
               };
-              // FIXED: Pass transcript as part of an object to match Partial<CommunityDiscussion>
               if (existingDiscussionId) await updateDiscussion(existingDiscussionId, { transcript: fullTranscript, updatedAt: Date.now() });
               else await saveDiscussion(discussion);
           }
@@ -637,7 +615,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" alt={channel.title} />
             <div>
                <h2 className="text-sm font-bold text-white leading-tight">{channel.title}</h2>
-               <span className="text-xs text-indigo-400 font-medium">Neural Prism Studio</span>
+               <div className="flex items-center gap-2">
+                   <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : isReconnecting ? 'bg-amber-500 animate-pulse' : 'bg-red-500'}`} />
+                   <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{isConnected ? 'Link Active' : isReconnecting ? 'Retrying Link...' : 'Link Offline'}</span>
+               </div>
             </div>
          </div>
          <div className="flex items-center gap-3">
@@ -666,6 +647,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 </button>
                 <button onClick={() => setCloudWarning(false)} className="text-slate-500 hover:text-white"><X size={14}/></button>
               </div>
+          </div>
+      )}
+
+      {isReconnecting && (
+          <div className="bg-indigo-600/20 border-b border-indigo-500/30 p-2 px-4 flex items-center justify-center animate-fade-in z-20 gap-3">
+              <Loader2 size={12} className="animate-spin text-indigo-400"/>
+              <span className="text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em]">{t.reconnecting}</span>
           </div>
       )}
 
@@ -750,7 +738,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   </div>
                </div>
             )}
-            {!isConnected && (
+            {!isConnected && !isReconnecting && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 z-10 backdrop-blur-sm space-y-6">
                     <div className="flex flex-col items-center space-y-4">
                         <Loader2 size={32} className="text-indigo-500 animate-spin" />
@@ -758,7 +746,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     </div>
                     {showReconnectButton && (
                         <button 
-                            onClick={connect}
+                            onClick={() => connect()}
                             className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase rounded-xl shadow-xl shadow-indigo-500/20 animate-fade-in"
                         >
                             <RefreshCw size={14}/>
@@ -796,6 +784,17 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                    </div>
                )}
             </div>
+            
+            {isReconnecting && (
+                <div className="px-4 py-2 bg-indigo-600 text-white flex items-center justify-between text-xs font-black uppercase tracking-widest animate-pulse shadow-lg">
+                    <div className="flex items-center gap-2">
+                        <RefreshCw size={14} className="animate-spin" />
+                        <span>{t.reconnecting}</span>
+                    </div>
+                    <span className="opacity-60">Handshake in progress...</span>
+                </div>
+            )}
+
             <div className="p-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between shrink-0 z-20">
                 <div className="flex items-center space-x-2 text-slate-500 text-[10px] font-black uppercase tracking-widest"><ScrollText size={14} className="text-indigo-400"/><span>{t.transcript}</span></div>
                 <div className="flex items-center gap-2">

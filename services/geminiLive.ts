@@ -7,7 +7,7 @@ export interface LiveConnectionCallbacks {
   onClose: (reason: string, code?: number) => void;
   onError: (error: string) => void;
   onVolumeUpdate: (volume: number) => void;
-  onTranscript: (text: string, isUser) => void;
+  onTranscript: (text: string, isUser: boolean) => void;
   onToolCall?: (toolCall: any) => void;
 }
 
@@ -46,7 +46,6 @@ export class GeminiLiveService {
       warmUpAudioContext(this.outputAudioContext)
     ]);
     
-    // Reset the scheduler for a fresh connection
     this.nextStartTime = this.outputAudioContext.currentTime;
   }
 
@@ -83,7 +82,6 @@ export class GeminiLiveService {
       }
 
       const connectionPromise = ai.live.connect({
-        // Fix: Use the latest native audio preview model as per guidelines
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config,
         callbacks: {
@@ -150,7 +148,8 @@ export class GeminiLiveService {
           onclose: (e: any) => {
             if (!this.isActive) return;
             this.cleanup();
-            callbacks.onClose(e?.reason || "Link closed", e?.code || 1000);
+            // Pass the specific reason code and text to UI
+            callbacks.onClose(e?.reason || "WebSocket closed", e?.code);
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
@@ -164,21 +163,19 @@ export class GeminiLiveService {
       this.session = await this.sessionPromise;
     } catch (error: any) {
       this.isActive = false;
-      callbacks.onError(error?.message || "Auth Error");
+      callbacks.onError(error?.message || "Initialization Error");
       this.cleanup();
     }
   }
 
   public sendToolResponse(functionResponses: any) {
       this.sessionPromise?.then((session) => {
-          // Fix: Removed redundant session check and solely rely on promise resolution
           session.sendToolResponse({ functionResponses });
       });
   }
 
   public sendVideo(base64Data: string, mimeType: string) {
     this.sessionPromise?.then((session) => {
-      // Fix: Removed redundant session and isActive check as per guidelines
       session.sendRealtimeInput({
         media: { data: base64Data, mimeType }
       });
@@ -187,7 +184,6 @@ export class GeminiLiveService {
 
   public sendText(text: string) {
     this.sessionPromise?.then((session) => {
-      // Fix: Removed redundant session and isActive check as per guidelines
       session.sendRealtimeInput({
         parts: [{ text }]
       });
@@ -206,7 +202,6 @@ export class GeminiLiveService {
           onVolume(Math.sqrt(sum / inputData.length) * 5);
       }
       const pcmBlob = createPcmBlob(inputData);
-      // Fix: Strictly rely on sessionPromise resolution for sending realtime input
       this.sessionPromise?.then((session) => { 
           session.sendRealtimeInput({ media: pcmBlob }); 
       });
