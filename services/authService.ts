@@ -4,8 +4,8 @@ import {
     signInWithPopup, 
     linkWithPopup,
     signOut as firebaseSignOut
-} from 'firebase/auth';
-import type { User } from 'firebase/auth';
+} from '@firebase/auth';
+import type { User } from '@firebase/auth';
 import { auth } from './firebaseConfig';
 
 /**
