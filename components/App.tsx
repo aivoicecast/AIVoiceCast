@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -511,7 +512,7 @@ const App: React.FC = () => {
             {viewState === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
             {viewState === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice={globalVoice} t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={handleSchedulePodcast} /> )}
             {viewState === 'groups' && ( <div className="p-8 max-w-4xl mx-auto h-full overflow-y-auto scrollbar-hide"><GroupManager /></div> )}
-            {viewState === 'mentorship' && ( <MentorBooking currentUser={currentUser} channels={allChannels} onStartLiveSession={handleStartLiveSession} /> )}
+            {viewState === 'mentorship' && ( <MentorBooking currentUser={currentUser} userProfile={userProfile} channels={allChannels} onStartLiveSession={handleStartLiveSession} /> )}
             {viewState === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><RecordingList onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} /></div> )}
             {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} /> )}
             {(viewState === 'shipping_labels' || viewState === 'shipping_viewer') && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}

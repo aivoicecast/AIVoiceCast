@@ -83,11 +83,12 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
       const isSelf = currentUser && bookingMember?.uid === currentUser.uid;
       const target = isSelf ? userProfile : bookingMember;
       
-      // Default to 24/7 if AI mentor, or 7-day 9-6 if member has no settings
+      // Default to 24/7 if AI mentor
       if (!bookingMember && selectedMentor) {
           return { enabled: true, startHour: 0, endHour: 23, days: [0,1,2,3,4,5,6] };
       }
       
+      // Fallback: Default to 9-6, all 7 days if no settings found
       return target?.availability || { enabled: true, startHour: 9, endHour: 18, days: [0, 1, 2, 3, 4, 5, 6] };
   }, [bookingMember, selectedMentor, userProfile, currentUser]);
 
@@ -102,7 +103,10 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
       
       const availability = currentTargetAvailability;
       
-      if (!availability.enabled || !availability.days.includes(dayOfWeek)) return [];
+      // Safety: Ensure days array exists before calling includes
+      const activeDays = availability.days || [0, 1, 2, 3, 4, 5, 6];
+      
+      if (!availability.enabled || !activeDays.includes(dayOfWeek)) return [];
 
       const slots: Slot[] = [];
       const startH = availability.startHour;
@@ -191,7 +195,8 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
 
   if (bookingMember || selectedMentor) {
       const isSelf = currentUser && bookingMember?.uid === currentUser.uid;
-      const daysStr = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].filter((_, i) => currentTargetAvailability.days.includes(i)).join(', ');
+      const activeDaysArray = currentTargetAvailability.days || [0, 1, 2, 3, 4, 5, 6];
+      const daysStr = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].filter((_, i) => activeDaysArray.includes(i)).join(', ');
       
       return (
         <div className="max-w-5xl mx-auto my-8 animate-fade-in-up">
