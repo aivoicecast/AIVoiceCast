@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Sparkles, Wand2, Plus, Trash2, Maximize2, Settings2, RefreshCw, Loader2, Info, ChevronRight, Share2, Grid3X3, Circle, Activity, Play } from 'lucide-react';
+import { ArrowLeft, Sparkles, Wand2, Plus, Trash2, Maximize2, Settings2, RefreshCw, Loader2, Info, ChevronRight, Share2, Grid3X3, Circle, Activity, Play, Check } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
 interface GraphStudioProps {
@@ -51,6 +51,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
     const data: any[] = [];
 
     equations.filter(e => e.visible).forEach(eq => {
+      if (!eq.expression.trim()) return;
       try {
         const compiled = math.compile(eq.expression);
 
@@ -180,6 +181,12 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      renderGraph();
+    }
+  };
+
   return (
     <div className="flex h-full bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Sidebar Controls */}
@@ -210,7 +217,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Expressions</label>
-              <button onClick={addEquation} className="p-1 hover:bg-slate-800 rounded text-indigo-400">
+              <button onClick={addEquation} className="p-1 hover:bg-slate-800 rounded text-indigo-400" title="Add Expression">
                 <Plus size={16}/>
               </button>
             </div>
@@ -228,12 +235,20 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
                     type="text"
                     value={eq.expression}
                     onChange={(e) => updateEquation(eq.id, e.target.value)}
+                    onKeyDown={handleKeyDown}
                     className="w-full bg-transparent text-sm font-mono text-indigo-200 outline-none placeholder-slate-800"
                     placeholder={mode === 'polar' ? "r = sin(3*theta)" : mode === '3d' ? "z = x^2 - y^2" : "y = sin(x)/x"}
                   />
                 </div>
               ))}
             </div>
+            <button 
+              onClick={renderGraph}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+            >
+              <Play size={12} fill="currentColor"/>
+              Plot Equations
+            </button>
           </div>
 
           <div className="pt-4 border-t border-slate-800">
