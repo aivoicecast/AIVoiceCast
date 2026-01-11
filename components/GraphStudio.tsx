@@ -1,0 +1,311 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Sparkles, Wand2, Plus, Trash2, Maximize2, Settings2, RefreshCw, Loader2, Info, ChevronRight, Share2, Grid3X2, Circle, Activity, Play } from 'lucide-react';
+import { GoogleGenAI, Type } from "@google/genai";
+
+interface GraphStudioProps {
+  onBack: () => void;
+}
+
+interface Equation {
+  id: string;
+  expression: string;
+  visible: boolean;
+  color: string;
+}
+
+type GraphMode = '2d' | '3d' | 'polar';
+
+export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
+  const [mode, setMode] = useState<GraphMode>('2d');
+  const [equations, setEquations] = useState<Equation[]>([
+    { id: '1', expression: 'sin(x)', visible: true, color: '#6366f1' }
+  ]);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isAiThinking, setIsAiThinking] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const graphRef = useRef<HTMLDivElement>(null);
+
+  // Constants for graphing
+  const RANGE_2D = 10;
+  const RANGE_3D = 5;
+  const POINTS_2D = 400;
+  const POINTS_3D = 50;
+
+  useEffect(() => {
+    renderGraph();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [equations, mode]);
+
+  const handleResize = () => {
+    if (graphRef.current && (window as any).Plotly) {
+      (window as any).Plotly.Plots.resize(graphRef.current);
+    }
+  };
+
+  const renderGraph = () => {
+    if (!graphRef.current || !(window as any).Plotly || !(window as any).math) return;
+
+    const Plotly = (window as any).Plotly;
+    const math = (window as any).math;
+    const data: any[] = [];
+
+    equations.filter(e => e.visible).forEach(eq => {
+      try {
+        const compiled = math.compile(eq.expression);
+
+        if (mode === '2d') {
+          const xValues = Array.from({ length: POINTS_2D }, (_, i) => -RANGE_2D + (i / POINTS_2D) * 2 * RANGE_2D);
+          const yValues = xValues.map(x => {
+            try { return compiled.evaluate({ x }); } catch { return null; }
+          });
+          data.push({
+            x: xValues, y: yValues,
+            mode: 'lines',
+            name: eq.expression,
+            line: { color: eq.color, width: 3 }
+          });
+        } 
+        else if (mode === '3d') {
+          const xValues = Array.from({ length: POINTS_3D }, (_, i) => -RANGE_3D + (i / POINTS_3D) * 2 * RANGE_3D);
+          const yValues = Array.from({ length: POINTS_3D }, (_, i) => -RANGE_3D + (i / POINTS_3D) * 2 * RANGE_3D);
+          const zValues: number[][] = [];
+          
+          for (let i = 0; i < yValues.length; i++) {
+            const row: number[] = [];
+            for (let j = 0; j < xValues.length; j++) {
+              try {
+                row.push(compiled.evaluate({ x: xValues[j], y: yValues[i] }));
+              } catch { row.push(0); }
+            }
+            zValues.push(row);
+          }
+
+          data.push({
+            z: zValues, x: xValues, y: yValues,
+            type: 'surface',
+            name: eq.expression,
+            colorscale: 'Viridis',
+            showscale: false
+          });
+        }
+        else if (mode === 'polar') {
+          const thetaValues = Array.from({ length: POINTS_2D }, (_, i) => (i / POINTS_2D) * 2 * Math.PI);
+          const rValues = thetaValues.map(theta => {
+            try { return compiled.evaluate({ theta }); } catch { return null; }
+          });
+          data.push({
+            type: 'scatterpolar',
+            r: rValues,
+            theta: thetaValues.map(t => (t * 180) / Math.PI),
+            mode: 'lines',
+            name: eq.expression,
+            line: { color: eq.color, width: 3 }
+          });
+        }
+      } catch (err) {
+        console.warn("Math parse error for expression:", eq.expression, err);
+      }
+    });
+
+    const layout = {
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(0,0,0,0)',
+      margin: { t: 20, r: 20, b: 20, l: 20 },
+      showlegend: mode !== '3d',
+      font: { color: '#94a3b8', family: 'Inter, sans-serif' },
+      xaxis: { gridcolor: '#1e293b', zerolinecolor: '#475569' },
+      yaxis: { gridcolor: '#1e293b', zerolinecolor: '#475569' },
+      scene: {
+        xaxis: { backgroundcolor: '#020617', gridcolor: '#1e293b', showbackground: true, zerolinecolor: '#475569' },
+        yaxis: { backgroundcolor: '#020617', gridcolor: '#1e293b', showbackground: true, zerolinecolor: '#475569' },
+        zaxis: { backgroundcolor: '#020617', gridcolor: '#1e293b', showbackground: true, zerolinecolor: '#475569' }
+      },
+      polar: {
+        bgcolor: 'rgba(0,0,0,0)',
+        angularaxis: { gridcolor: '#1e293b', linecolor: '#475569' },
+        radialaxis: { gridcolor: '#1e293b', linecolor: '#475569' }
+      }
+    };
+
+    Plotly.newPlot(graphRef.current, data, layout, { responsive: true, displayModeBar: false });
+  };
+
+  const handleAiAssist = async () => {
+    if (!aiPrompt.trim() || isAiThinking) return;
+    setIsAiThinking(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const prompt = `Convert this natural language request for a math graph into a pure mathematical expression that math.js can evaluate. 
+      For 2D, use 'x' as variable. For 3D, use 'x' and 'y'. For Polar, use 'theta'.
+      Return ONLY a JSON object: { "expression": "string", "mode": "2d" | "3d" | "polar", "explanation": "string" }
+      Request: "${aiPrompt}"`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: { responseMimeType: 'application/json' }
+      });
+
+      const result = JSON.parse(response.text || '{}');
+      if (result.expression) {
+        setMode(result.mode);
+        const newEq: Equation = {
+          id: Date.now().toString(),
+          expression: result.expression,
+          visible: true,
+          color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
+        };
+        setEquations([newEq]); // Clear and set new for AI results
+        setAiPrompt('');
+      }
+    } catch (e) {
+      console.error("AI Math Assist Error", e);
+    } finally {
+      setIsAiThinking(false);
+    }
+  };
+
+  const addEquation = () => {
+    setEquations([...equations, { id: Date.now().toString(), expression: '', visible: true, color: '#818cf8' }]);
+  };
+
+  const updateEquation = (id: string, expression: string) => {
+    setEquations(equations.map(e => e.id === id ? { ...e, expression } : e));
+  };
+
+  const removeEquation = (id: string) => {
+    if (equations.length > 1) {
+      setEquations(equations.filter(e => e.id !== id));
+    }
+  };
+
+  return (
+    <div className="flex h-full bg-slate-950 text-slate-100 overflow-hidden font-sans">
+      {/* Sidebar Controls */}
+      <div className="w-80 border-r border-slate-800 bg-slate-900/50 flex flex-col shrink-0">
+        <div className="p-4 border-b border-slate-800 flex items-center gap-3">
+          <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400">
+            <ArrowLeft size={20} />
+          </button>
+          <h2 className="font-black uppercase tracking-tighter italic text-indigo-400">Neural Graph</h2>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Coordinate System</label>
+            <div className="grid grid-cols-3 gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800">
+              {(['2d', '3d', 'polar'] as GraphMode[]).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className={`py-2 rounded-lg text-[10px] font-black uppercase transition-all ${mode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Expressions</label>
+              <button onClick={addEquation} className="p-1 hover:bg-slate-800 rounded text-indigo-400">
+                <Plus size={16}/>
+              </button>
+            </div>
+            <div className="space-y-3">
+              {equations.map((eq) => (
+                <div key={eq.id} className="group relative bg-slate-950 border border-slate-800 rounded-xl p-3 focus-within:border-indigo-500/50 transition-all">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: eq.color }}></div>
+                    <span className="text-[9px] font-mono text-slate-600 uppercase tracking-tighter">f({mode === 'polar' ? 'θ' : mode === '3d' ? 'x,y' : 'x'})</span>
+                    <button onClick={() => removeEquation(eq.id)} className="ml-auto opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-opacity">
+                      <Trash2 size={12}/>
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={eq.expression}
+                    onChange={(e) => updateEquation(eq.id, e.target.value)}
+                    className="w-full bg-transparent text-sm font-mono text-indigo-200 outline-none placeholder-slate-800"
+                    placeholder={mode === 'polar' ? "r = sin(3*theta)" : mode === '3d' ? "z = x^2 - y^2" : "y = sin(x)/x"}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-800">
+            <label className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-3 block">Neural Assistant</label>
+            <div className="relative group">
+              <textarea
+                value={aiPrompt}
+                onChange={e => setAiPrompt(e.target.value)}
+                placeholder="Describe a function... (e.g., 'A hyperbolic paraboloid' or 'Golden ratio spiral')"
+                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 outline-none focus:border-indigo-500 resize-none h-24 transition-all"
+              />
+              <button
+                onClick={handleAiAssist}
+                disabled={!aiPrompt.trim() || isAiThinking}
+                className="absolute bottom-3 right-3 p-2 bg-indigo-600 text-white rounded-xl shadow-lg disabled:opacity-30 transition-transform active:scale-90"
+              >
+                {isAiThinking ? <Loader2 size={16} className="animate-spin"/> : <Wand2 size={16}/>}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-slate-800 bg-slate-950/50">
+            <div className="flex items-center gap-3 p-3 bg-indigo-600/10 border border-indigo-500/20 rounded-xl">
+                <Info size={16} className="text-indigo-400 shrink-0"/>
+                <p className="text-[9px] text-indigo-300 leading-tight">
+                    Variables supported: <b>x</b>, <b>y</b>, <b>theta</b>. Use standard notation like <b>^2</b>, <b>sin()</b>, <b>abs()</b>.
+                </p>
+            </div>
+        </div>
+      </div>
+
+      {/* Main Graph Area */}
+      <div className="flex-1 relative flex flex-col bg-slate-950">
+        <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-600/20 blur-[120px] rounded-full"></div>
+        </div>
+
+        <div className="p-6 flex items-center justify-between z-10 shrink-0">
+           <div>
+               <h3 className="text-xl font-black text-white italic tracking-tighter uppercase">Visualizing {mode.toUpperCase()} Reality</h3>
+               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1 flex items-center gap-2">
+                   <Activity size={10} className="text-emerald-500"/> Interactive WebGL Engine Active
+               </p>
+           </div>
+           <div className="flex gap-2">
+               <button className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-white transition-all"><Share2 size={18}/></button>
+               <button onClick={renderGraph} className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-white transition-all"><RefreshCw size={18}/></button>
+           </div>
+        </div>
+
+        <div className="flex-1 z-10 p-4 pt-0">
+            <div className="w-full h-full bg-slate-900/40 backdrop-blur-md rounded-[3rem] border border-slate-800/50 shadow-2xl overflow-hidden relative">
+                <div ref={graphRef} className="w-full h-full" />
+                
+                {/* HUD Overlay */}
+                <div className="absolute bottom-8 right-8 flex flex-col gap-2">
+                    <div className="bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-slate-700 shadow-2xl flex items-center gap-4">
+                        <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                            <Grid3X2 size={14}/> {mode === '3d' ? '3D Proj' : '2D Plane'}
+                        </div>
+                        <div className="w-px h-4 bg-slate-700"></div>
+                        <div className="flex items-center gap-2 text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                            <Circle size={10} fill="currentColor" className="animate-pulse"/> Real-time
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default GraphStudio;
