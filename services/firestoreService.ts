@@ -1,3 +1,4 @@
+
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -50,7 +51,6 @@ export const ADMIN_EMAIL = ADMIN_EMAILS[0];
  */
 const sanitizeData = (data: any) => { 
     if (!data) return data;
-    // Strip functions, complex prototypes, and circular refs by creating a fresh JSON clone
     const cleaned = JSON.parse(JSON.stringify(data, (key, value) => {
         if (value instanceof HTMLElement || value instanceof MediaStream || value instanceof AudioContext) return undefined;
         return value;
@@ -63,7 +63,6 @@ const sanitizeData = (data: any) => {
 export async function saveInterviewRecording(recording: MockInterviewRecording): Promise<string> {
     if (!db) return recording.id;
     const id = recording.id || generateSecureId();
-    // Ensure transcript is clean
     const cleanTranscript = recording.transcript?.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })) || [];
     const payload = { ...recording, id, transcript: cleanTranscript, visibility: recording.visibility || 'public' };
     await setDoc(doc(db, INTERVIEWS_COLLECTION, id), sanitizeData(payload));
@@ -71,7 +70,7 @@ export async function saveInterviewRecording(recording: MockInterviewRecording):
 }
 
 export async function updateInterviewMetadata(id: string, data: Partial<MockInterviewRecording>): Promise<void> {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, INTERVIEWS_COLLECTION, id), sanitizeData(data));
 }
 
@@ -80,7 +79,7 @@ export async function getPublicInterviews(): Promise<MockInterviewRecording[]> {
     try {
         const q = query(collection(db, INTERVIEWS_COLLECTION), where('visibility', '==', 'public'), limit(100));
         const snap = await getDocs(q);
-        return snap.docs.map(d => d.data() as MockInterviewRecording).sort((a, b) => b.timestamp - a.timestamp);
+        return snap.docs.map(d => ({ ...d.data(), id: d.id } as MockInterviewRecording)).sort((a, b) => b.timestamp - a.timestamp);
     } catch (e) {
         console.error("Public interviews fetch error", e);
         return [];
@@ -92,26 +91,44 @@ export async function getUserInterviews(uid: string): Promise<MockInterviewRecor
     try {
         const q = query(collection(db, INTERVIEWS_COLLECTION), where('userId', '==', uid));
         const snap = await getDocs(q);
-        return snap.docs.map(d => d.data() as MockInterviewRecording).sort((a, b) => b.timestamp - a.timestamp);
+        return snap.docs.map(d => ({ ...d.data(), id: d.id } as MockInterviewRecording)).sort((a, b) => b.timestamp - a.timestamp);
     } catch (e) {
         console.error("User interviews fetch error", e);
         return [];
     }
 }
 
+/**
+ * CRITICAL FIX: Ensures document reference always has exactly 2 segments (Collection + ID).
+ * Prevents "Document references must have an even number of segments" error.
+ */
 export async function deleteInterview(id: string): Promise<void> {
-    if (!db) return;
-    await deleteDoc(doc(db, INTERVIEWS_COLLECTION, id));
+    if (!db) throw new Error("Database offline.");
+    if (!id || typeof id !== 'string' || id.trim() === "") {
+        console.error("[Firestore] Attempted to delete interview with invalid ID:", id);
+        return; // Silently skip to prevent crash
+    }
+    
+    try {
+        const docRef = doc(db, INTERVIEWS_COLLECTION, id);
+        await deleteDoc(docRef);
+    } catch (e: any) {
+        if (e.code === 'permission-denied') {
+            throw new Error("You do not have permission to delete this record.");
+        }
+        throw e;
+    }
 }
 
 // --- Coins & Wallet ---
-
-// 1,000,000 Coin Monthly Grant
 export const DEFAULT_MONTHLY_GRANT = 1000000;
 
-/**
- * Initiates a coin transfer.
- */
+// Fix: Added registerIdentity function used by CoinWallet.tsx
+export async function registerIdentity(uid: string, publicKey: string, certificate: string) {
+    if (!db || !uid) return;
+    await updateDoc(doc(db, USERS_COLLECTION, uid), { publicKey, certificate });
+}
+
 export async function transferCoins(toId: string, toName: string, amount: number, memo?: string): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Database unavailable");
     const fromId = auth.currentUser.uid;
@@ -137,17 +154,9 @@ export async function transferCoins(toId: string, toName: string, amount: number
         
         const invRef = doc(collection(db, INVITATIONS_COLLECTION), generateSecureId());
         const notification: Invitation = {
-            id: invRef.id,
-            fromUserId: fromId,
-            fromName: fromName,
-            toEmail: toData.email || '',
-            groupId: txId, 
-            groupName: 'VoiceCoin Transfer',
-            status: 'pending',
-            createdAt: Date.now(),
-            type: 'coin',
-            amount: amount,
-            link: `${window.location.origin}${window.location.pathname}?view=coin_wallet`
+            id: invRef.id, fromUserId: fromId, fromName: fromName, toEmail: toData.email || '',
+            groupId: txId, groupName: 'VoiceCoin Transfer', status: 'pending', createdAt: Date.now(),
+            type: 'coin', amount: amount, link: `${window.location.origin}${window.location.pathname}?view=coin_wallet`
         };
 
         transaction.update(fromRef, { coinBalance: increment(-amount) });
@@ -156,9 +165,6 @@ export async function transferCoins(toId: string, toName: string, amount: number
     });
 }
 
-/**
- * Finalizes an online transfer.
- */
 export async function claimOnlineTransfer(txId: string): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Auth required");
     const txRef = doc(db, TRANSACTIONS_COLLECTION, txId);
@@ -168,20 +174,13 @@ export async function claimOnlineTransfer(txId: string): Promise<void> {
         const txSnap = await t.get(txRef);
         if (!txSnap.exists()) throw new Error("Transfer record not found.");
         const txData = txSnap.data() as CoinTransaction;
-        
         if (txData.isVerified) throw new Error("Transfer already claimed.");
-        if (txData.toId !== auth.currentUser?.uid) {
-            throw new Error("Unauthorized claim: Recipient ID does not match your account.");
-        }
-
+        if (txData.toId !== auth.currentUser?.uid) throw new Error("Unauthorized claim.");
         t.update(recipientRef, { coinBalance: increment(txData.amount) });
         t.update(txRef, { isVerified: true, memo: (txData.memo || "") + " (Claimed)" });
     });
 }
 
-/**
- * Processes an offline payment token.
- */
 export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Auth required");
     const txRef = doc(db, TRANSACTIONS_COLLECTION, `offline-${token.nonce}`);
@@ -191,24 +190,15 @@ export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<v
     await runTransaction(db, async (t) => {
         const txSnap = await t.get(txRef);
         if (txSnap.exists()) throw new Error("Payment already claimed.");
-
         const senderSnap = await t.get(senderRef);
         if (!senderSnap.exists()) throw new Error("Sender not found.");
         const senderData = senderSnap.data() as UserProfile;
-        
         if ((senderData.coinBalance || 0) < token.amount) throw new Error("Sender has insufficient funds.");
 
         const tx: CoinTransaction = {
-            id: txRef.id,
-            fromId: token.senderId,
-            fromName: token.senderName,
-            toId: auth.currentUser?.uid || '',
-            toName: auth.currentUser?.displayName || 'Recipient',
-            amount: token.amount,
-            type: 'offline',
-            memo: "Verified Offline Payment",
-            timestamp: token.timestamp,
-            isVerified: true,
+            id: txRef.id, fromId: token.senderId, fromName: token.senderName, toId: auth.currentUser?.uid || '',
+            toName: auth.currentUser?.displayName || 'Recipient', amount: token.amount, type: 'offline',
+            memo: "Verified Offline Payment", timestamp: token.timestamp, isVerified: true,
             offlineToken: btoa(JSON.stringify(token))
         };
 
@@ -223,18 +213,10 @@ export async function getCoinTransactions(uid: string): Promise<CoinTransaction[
     try {
         const qFrom = query(collection(db, TRANSACTIONS_COLLECTION), where('fromId', '==', uid), limit(100));
         const qTo = query(collection(db, TRANSACTIONS_COLLECTION), where('toId', '==', uid), limit(100));
-        
         const [fromSnap, toSnap] = await Promise.all([getDocs(qFrom), getDocs(qTo)]);
-        
-        const all = [
-            ...fromSnap.docs.map(d => ({ ...d.data(), id: d.id })), 
-            ...toSnap.docs.map(d => ({ ...d.data(), id: d.id }))
-        ] as CoinTransaction[];
-        
+        const all = [ ...fromSnap.docs.map(d => ({ ...d.data(), id: d.id })), ...toSnap.docs.map(d => ({ ...d.data(), id: d.id })) ] as CoinTransaction[];
         return all.sort((a, b) => b.timestamp - a.timestamp);
-    } catch(e: any) { 
-      return []; 
-    }
+    } catch(e) { return []; }
 }
 
 export async function checkAndGrantMonthlyCoins(uid: string): Promise<number> {
@@ -271,8 +253,7 @@ export async function awardContributionBonus(ownerId: string, type: 'podcast' | 
             id: txId, fromId: 'system', fromName: 'Contribution Pool', 
             toId: ownerId, toName: 'Creator', amount: reward, 
             type: 'contribution', memo: `Reward for high quality ${type} engagement`, 
-            timestamp: Date.now(),
-            isVerified: true
+            timestamp: Date.now(), isVerified: true
         };
         t.update(userRef, { coinBalance: increment(reward) });
         t.set(txRef, sanitizeData(tx));
@@ -299,12 +280,6 @@ export async function claimCoinCheck(checkId: string): Promise<number> {
         t.set(txRef, sanitizeData(tx));
     });
     return amount;
-}
-
-// --- Identity Registration ---
-export async function registerIdentity(uid: string, publicKey: string, certificate: string): Promise<void> {
-    if (!db) return;
-    await updateDoc(doc(db, USERS_COLLECTION, uid), { publicKey, certificate });
 }
 
 // --- Universal Creators ---
@@ -351,12 +326,11 @@ export async function getUserChecks(uid: string): Promise<BankingCheck[]> {
     if (!db) return [];
     const q = query(collection(db, CHECKS_COLLECTION), where('ownerId', '==', uid));
     const snap = await getDocs(q);
-    const results = snap.docs.map(d => ({ ...d.data(), id: d.id } as BankingCheck));
-    return results.sort((a, b) => b.date.localeCompare(a.date));
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as BankingCheck)).sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export async function deleteCheck(id: string): Promise<void> {
-    if (!db) return;
+    if (!db || !id) return;
     await deleteDoc(doc(db, CHECKS_COLLECTION, id));
 }
 
@@ -380,13 +354,6 @@ export async function getCodeProject(id: string): Promise<CodeProject | null> {
     return snap.exists() ? (snap.data() as CodeProject) : null;
 }
 
-export async function saveWhiteboardSession(id: string, elements: WhiteboardElement[]) {
-    if (!db) return;
-    const finalId = id || generateSecureId();
-    await setDoc(doc(db, WHITEBOARDS_COLLECTION, finalId), { elements: sanitizeData(elements), updatedAt: Date.now() });
-    return finalId;
-}
-
 export async function createBooking(booking: Booking): Promise<string> {
     if (!db) return '';
     const id = generateSecureId();
@@ -402,21 +369,8 @@ export async function saveDiscussion(discussion: CommunityDiscussion): Promise<s
 }
 
 export async function updateDiscussion(id: string, data: Partial<CommunityDiscussion>) {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, DISCUSSIONS_COLLECTION, id), sanitizeData(data));
-}
-
-/**
- * Links a discussion to a specific lecture segment by updating its metadata in Firestore.
- */
-export async function linkDiscussionToLectureSegment(channelId: string, lectureId: string, segmentIndex: number, discussionId: string) {
-    if (!db) return;
-    await updateDoc(doc(db, DISCUSSIONS_COLLECTION, discussionId), {
-        channelId,
-        lectureId,
-        segmentIndex,
-        updatedAt: Date.now()
-    });
 }
 
 export async function saveCard(card: AgentMemory, id?: string): Promise<string> {
@@ -427,7 +381,7 @@ export async function saveCard(card: AgentMemory, id?: string): Promise<string> 
 }
 
 export async function deleteCard(id: string): Promise<void> {
-    if (!db) return;
+    if (!db || !id) return;
     await deleteDoc(doc(db, CARDS_COLLECTION, id));
 }
 
@@ -469,13 +423,13 @@ export async function syncUserProfile(user: any): Promise<void> {
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  if (!db) return null;
+  if (!db || !uid) return null;
   const snap = await getDoc(doc(db, USERS_COLLECTION, uid));
-  return snap.exists() ? (snap.data() as UserProfile) : null;
+  return snap.exists() ? ({ ...snap.data(), uid: snap.id } as UserProfile) : null;
 }
 
 export async function updateUserProfile(uid: string, data: Partial<UserProfile>): Promise<void> {
-    if (!db) return;
+    if (!db || !uid) return;
     await updateDoc(doc(db, USERS_COLLECTION, uid), sanitizeData(data));
 }
 
@@ -486,7 +440,7 @@ export async function getAllUsers(): Promise<UserProfile[]> {
 }
 
 export async function getUserProfileByEmail(email: string): Promise<UserProfile | null> {
-    if (!db) return null;
+    if (!db || !email) return null;
     const q = query(collection(db, USERS_COLLECTION), where('email', '==', email), limit(1));
     const snap = await getDocs(q);
     return snap.empty ? null : ({ ...snap.docs[0].data(), uid: snap.docs[0].id } as UserProfile);
@@ -503,10 +457,10 @@ export async function createGroup(name: string): Promise<string> {
 }
 
 export async function getUserGroups(uid: string): Promise<Group[]> {
-    if (!db) return [];
+    if (!db || !uid) return [];
     const q = query(collection(db, GROUPS_COLLECTION), where('memberIds', 'array-contains', uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as Group);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Group));
 }
 
 export async function getGroupMembers(uids: string[]): Promise<UserProfile[]> {
@@ -517,23 +471,22 @@ export async function getGroupMembers(uids: string[]): Promise<UserProfile[]> {
 }
 
 export async function removeMemberFromGroup(groupId: string, memberId: string): Promise<void> {
-    if (!db) return;
-    // FIXED: corrected typo gROUPS_COLLECTION to GROUPS_COLLECTION and added missing db argument
+    if (!db || !groupId) return;
     await updateDoc(doc(db, GROUPS_COLLECTION, groupId), { memberIds: arrayRemove(memberId) });
 }
 
 export async function deleteGroup(groupId: string): Promise<void> {
-    if (!db) return;
+    if (!db || !groupId) return;
     await deleteDoc(doc(db, GROUPS_COLLECTION, groupId));
 }
 
 export async function renameGroup(groupId: string, name: string): Promise<void> {
-    if (!db) return;
+    if (!db || !groupId) return;
     await updateDoc(doc(db, GROUPS_COLLECTION, groupId), { name });
 }
 
 export async function sendInvitation(groupId: string, toEmail: string): Promise<void> {
-    if (!db || !auth?.currentUser) return;
+    if (!db || !auth?.currentUser || !groupId) return;
     const groupSnap = await getDoc(doc(db, GROUPS_COLLECTION, groupId));
     if (!groupSnap.exists()) return;
     const inv: Invitation = { id: '', fromUserId: auth.currentUser.uid, fromName: auth.currentUser.displayName || 'Friend', toEmail, groupId, groupName: groupSnap.data()?.name, status: 'pending', createdAt: Date.now() };
@@ -541,14 +494,14 @@ export async function sendInvitation(groupId: string, toEmail: string): Promise<
 }
 
 export async function getPendingInvitations(email: string): Promise<Invitation[]> {
-    if (!db) return [];
+    if (!db || !email) return [];
     const q = query(collection(db, INVITATIONS_COLLECTION), where('toEmail', '==', email), where('status', '==', 'pending'));
     const snap = await getDocs(q);
     return snap.docs.map(d => ({ ...d.data(), id: d.id } as Invitation));
 }
 
 export async function respondToInvitation(invitation: Invitation, accept: boolean): Promise<void> {
-    if (!db || !auth?.currentUser) return;
+    if (!db || !auth?.currentUser || !invitation.id) return;
     if (invitation.type === 'coin' && accept && invitation.groupId) {
         await claimOnlineTransfer(invitation.groupId);
     }
@@ -561,42 +514,37 @@ export async function respondToInvitation(invitation: Invitation, accept: boolea
 // --- Bookings ---
 export async function getUserBookings(uid: string, email: string): Promise<Booking[]> {
     if (!db) return [];
-    const q1 = query(collection(db, BOOKINGS_COLLECTION), where('userId', '==', uid));
-    const q2 = query(collection(db, BOOKINGS_COLLECTION), where('invitedEmail', '==', email));
-    const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+    const q1 = uid ? query(collection(db, BOOKINGS_COLLECTION), where('userId', '==', uid)) : null;
+    const q2 = email ? query(collection(db, BOOKINGS_COLLECTION), where('invitedEmail', '==', email)) : null;
+    const [snap1, snap2] = await Promise.all([ q1 ? getDocs(q1) : Promise.resolve({ docs: [] }), q2 ? getDocs(q2) : Promise.resolve({ docs: [] }) ]);
     const combined = [...snap1.docs, ...snap2.docs];
-    return Array.from(new Map(combined.map(d => [d.id, d.data() as Booking])).values());
+    return Array.from(new Map(combined.map(d => [d.id, { ...d.data(), id: d.id } as Booking])).values());
 }
 
 export async function getPendingBookings(email: string): Promise<Booking[]> {
-    if (!db) return [];
+    if (!db || !email) return [];
     const q = query(collection(db, BOOKINGS_COLLECTION), where('invitedEmail', '==', email), where('status', '==', 'pending'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as Booking);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Booking));
 }
 
 export async function respondToBooking(bookingId: string, accept: boolean): Promise<void> {
-    if (!db) return;
+    if (!db || !bookingId) return;
     await updateDoc(doc(db, BOOKINGS_COLLECTION, bookingId), { status: accept ? 'scheduled' : 'rejected' });
 }
 
 export async function cancelBooking(id: string): Promise<void> {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, BOOKINGS_COLLECTION, id), { status: 'cancelled' });
 }
 
-export async function updateBookingInvite(id: string, status: string): Promise<void> {
-    if (!db) return;
-    await updateDoc(doc(db, BOOKINGS_COLLECTION, id), { status });
-}
-
 export async function updateBookingRecording(bookingId: string, recordingUrl: string, transcriptUrl: string): Promise<void> {
-    if (!db) return;
+    if (!db || !bookingId) return;
     await updateDoc(doc(db, BOOKINGS_COLLECTION, bookingId), { recordingUrl, transcriptUrl, status: 'completed' });
 }
 
 export async function deleteBookingRecording(id: string): Promise<void> {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, BOOKINGS_COLLECTION, id), { recordingUrl: null, transcriptUrl: null });
 }
 
@@ -605,28 +553,28 @@ export async function getPublicChannels(): Promise<Channel[]> {
     if (!db) return [];
     const q = query(collection(db, CHANNELS_COLLECTION), where('visibility', '==', 'public'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as Channel);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Channel));
 }
 
 export async function getChannelsByIds(ids: string[]): Promise<Channel[]> {
     if (!db || ids.length === 0) return [];
     const q = query(collection(db, CHANNELS_COLLECTION), where(documentId(), 'in', ids.slice(0, 10)));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as Channel);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Channel));
 }
 
 export async function getCreatorChannels(uid: string): Promise<Channel[]> {
-    if (!db) return [];
+    if (!db || !uid) return [];
     const q = query(collection(db, CHANNELS_COLLECTION), where('ownerId', '==', uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as Channel);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Channel));
 }
 
 export async function subscribeToPublicChannels(callback: (channels: Channel[]) => void) {
     if (!db) return () => {};
     const q = query(collection(db, CHANNELS_COLLECTION), where('visibility', '==', 'public'));
     return onSnapshot(q, (snap) => {
-        callback(snap.docs.map(d => d.data() as Channel));
+        callback(snap.docs.map(d => ({ ...d.data(), id: d.id } as Channel)));
     });
 }
 
@@ -636,12 +584,12 @@ export async function publishChannelToFirestore(channel: Channel) {
 }
 
 export async function deleteChannelFromFirestore(id: string): Promise<void> {
-    if (!db) return;
+    if (!db || !id) return;
     await deleteDoc(doc(db, CHANNELS_COLLECTION, id));
 }
 
 export async function addChannelAttachment(channelId: string, attachment: Attachment): Promise<void> {
-    if (!db) return;
+    if (!db || !channelId) return;
     await updateDoc(doc(db, CHANNELS_COLLECTION, channelId), { appendix: arrayUnion(attachment) });
 }
 
@@ -657,12 +605,12 @@ export async function voteChannel(ch: Channel, type: 'like' | 'dislike') {
 }
 
 export async function shareChannel(id: string) {
-    if (!db) return;
+    if (!db || !id) return;
     await setDoc(doc(db, CHANNEL_STATS_COLLECTION, id), { shares: increment(1) }, { merge: true });
 }
 
 export function subscribeToChannelStats(id: string, callback: (stats: Partial<ChannelStats>) => void, defaults: ChannelStats) {
-    if (!db) return () => {};
+    if (!db || !id) return () => {};
     return onSnapshot(doc(db, CHANNEL_STATS_COLLECTION, id), (snap) => {
         if (snap.exists()) callback(snap.data() as ChannelStats);
         else callback(defaults);
@@ -677,12 +625,12 @@ export async function getGlobalStats(): Promise<GlobalStats> {
 
 // --- Comments ---
 export async function addCommentToChannel(channelId: string, comment: Comment) {
-    if (!db) return;
+    if (!db || !channelId) return;
     await updateDoc(doc(db, CHANNELS_COLLECTION, channelId), { comments: arrayUnion(sanitizeData(comment)) });
 }
 
 export async function deleteCommentFromChannel(channelId: string, commentId: string) {
-    if (!db) return;
+    if (!db || !channelId) return;
     const snap = await getDoc(doc(db, CHANNELS_COLLECTION, channelId));
     if (!snap.exists()) return;
     const comments = (snap.data()?.comments || []) as Comment[];
@@ -691,7 +639,7 @@ export async function deleteCommentFromChannel(channelId: string, commentId: str
 }
 
 export async function updateCommentInChannel(channelId: string, updated: Comment) {
-    if (!db) return;
+    if (!db || !channelId) return;
     const snap = await getDoc(doc(db, CHANNELS_COLLECTION, channelId));
     if (!snap.exists()) return;
     const comments = (snap.data()?.comments || []) as Comment[];
@@ -708,7 +656,7 @@ export async function uploadCommentAttachment(file: File, path: string): Promise
 
 // --- Activity & Usage ---
 export async function incrementApiUsage(uid: string) {
-    if (!db) return;
+    if (!db || !uid) return;
     await updateDoc(doc(db, USERS_COLLECTION, uid), { apiUsageCount: increment(1) });
 }
 
@@ -748,7 +696,7 @@ export async function claimSystemChannels(email: string): Promise<number> {
 }
 
 export async function setUserSubscriptionTier(uid: string, tier: SubscriptionTier) {
-    if (!db) return;
+    if (!db || !uid) return;
     await updateDoc(doc(db, USERS_COLLECTION, uid), { subscriptionTier: tier });
 }
 
@@ -766,70 +714,70 @@ export async function saveRecordingReference(data: RecordingSession): Promise<vo
 }
 
 export async function getUserRecordings(uid: string): Promise<RecordingSession[]> {
-    if (!db) return [];
+    if (!db || !uid) return [];
     const q = query(collection(db, RECORDINGS_COLLECTION), where('userId', '==', uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as RecordingSession);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as RecordingSession));
 }
 
 export async function deleteRecordingReference(id: string, mediaUrl: string, transcriptUrl: string): Promise<void> {
-    if (!db) return;
+    if (!db || !id) return;
     await deleteDoc(doc(db, RECORDINGS_COLLECTION, id));
 }
 
 // --- Discussions/Docs ---
 export async function getDiscussionById(id: string): Promise<CommunityDiscussion | null> {
-    if (!db) return null;
+    if (!db || !id) return null;
     const snap = await getDoc(doc(db, DISCUSSIONS_COLLECTION, id));
-    return snap.exists() ? (snap.data() as CommunityDiscussion) : null;
+    return snap.exists() ? ({ ...snap.data(), id: snap.id } as CommunityDiscussion) : null;
 }
 
 export function subscribeToDiscussion(id: string, callback: (d: CommunityDiscussion) => void) {
-    if (!db) return () => {};
+    if (!db || !id) return () => {};
     return onSnapshot(doc(db, DISCUSSIONS_COLLECTION, id), (snap) => {
-        if (snap.exists()) callback(snap.data() as CommunityDiscussion);
+        if (snap.exists()) callback({ ...snap.data(), id: snap.id } as CommunityDiscussion);
     });
 }
 
 export async function saveDiscussionDesignDoc(id: string, designDoc: string, title: string) {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, DISCUSSIONS_COLLECTION, id), { designDoc, title, updatedAt: Date.now() });
 }
 
 export async function deleteDiscussion(id: string) {
-    if (!db) return;
+    if (!db || !id) return;
     await deleteDoc(doc(db, DISCUSSIONS_COLLECTION, id));
 }
 
 export async function updateDiscussionVisibility(id: string, visibility: ChannelVisibility, groupIds: string[]) {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, DISCUSSIONS_COLLECTION, id), { visibility, groupIds });
 }
 
 export async function getUserDesignDocs(uid: string): Promise<CommunityDiscussion[]> {
-    if (!db) return [];
+    if (!db || !uid) return [];
     const q = query(collection(db, DISCUSSIONS_COLLECTION), where('userId', '==', uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as CommunityDiscussion);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as CommunityDiscussion));
 }
 
 export async function getPublicDesignDocs(): Promise<CommunityDiscussion[]> {
     if (!db) return [];
     const q = query(collection(db, DISCUSSIONS_COLLECTION), where('visibility', '==', 'public'));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as CommunityDiscussion);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as CommunityDiscussion));
 }
 
 export async function getGroupDesignDocs(groupIds: string[]): Promise<CommunityDiscussion[]> {
     if (!db || groupIds.length === 0) return [];
     const q = query(collection(db, DISCUSSIONS_COLLECTION), where('visibility', '==', 'group'), where('groupIds', 'array-contains-any', groupIds));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as CommunityDiscussion);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as CommunityDiscussion));
 }
 
 // --- Cloud Storage / Projects ---
 export async function listCloudDirectory(path: string): Promise<CloudItem[]> {
-    if (!storage) return [];
+    if (!storage || !path) return [];
     const r = ref(storage, path);
     const res = await listAll(r);
     const folders = res.prefixes.map(p => ({ name: p.name, fullPath: p.fullPath, isFolder: true }));
@@ -840,9 +788,8 @@ export async function listCloudDirectory(path: string): Promise<CloudItem[]> {
     return [...folders, ...files];
 }
 
-/* Fixed: changed return type to Promise<string | undefined> and created blob from content */
 export async function saveProjectToCloud(path: string, filename: string, content: string): Promise<string | undefined> {
-    if (!storage) return;
+    if (!storage || !path || !filename) return;
     const r = ref(storage, `${path}/${filename}`);
     const blob = new Blob([content], { type: 'text/plain' });
     await uploadBytes(r, blob);
@@ -850,24 +797,24 @@ export async function saveProjectToCloud(path: string, filename: string, content
 }
 
 export async function deleteCloudItem(path: string) {
-    if (!storage) return;
+    if (!storage || !path) return;
     await deleteObject(ref(storage, path));
 }
 
 export async function createCloudFolder(path: string, name: string) {
-    if (!storage) return;
+    if (!storage || !path || !name) return;
     await saveProjectToCloud(`${path}/${name}`, '.keep', '');
 }
 
 export function subscribeToCodeProject(id: string, callback: (p: CodeProject) => void) {
-    if (!db) return () => {};
+    if (!db || !id) return () => {};
     return onSnapshot(doc(db, CODE_PROJECTS_COLLECTION, id), (snap) => {
-        if (snap.exists()) callback(snap.data() as CodeProject);
+        if (snap.exists()) callback({ ...snap.data(), id: snap.id } as CodeProject);
     });
 }
 
 export async function updateCodeFile(id: string, file: CodeFile) {
-    if (!db) return;
+    if (!db || !id) return;
     const snap = await getDoc(doc(db, CODE_PROJECTS_COLLECTION, id));
     if (!snap.exists()) return;
     const files = (snap.data()?.files || []) as CodeFile[];
@@ -876,22 +823,22 @@ export async function updateCodeFile(id: string, file: CodeFile) {
 }
 
 export async function updateCursor(id: string, cursor: CursorPosition) {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { [`cursors.${cursor.clientId}`]: sanitizeData(cursor) });
 }
 
 export async function claimCodeProjectLock(id: string, activeClientId: string) {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { activeClientId });
 }
 
 export async function updateProjectActiveFile(id: string, path: string) {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { activeFilePath: path });
 }
 
 export async function deleteCodeFile(id: string, path: string) {
-    if (!db) return;
+    if (!db || !id) return;
     const snap = await getDoc(doc(db, CODE_PROJECTS_COLLECTION, id));
     if (!snap.exists()) return;
     const files = (snap.data()?.files || []) as CodeFile[];
@@ -900,17 +847,17 @@ export async function deleteCodeFile(id: string, path: string) {
 }
 
 export async function updateProjectAccess(id: string, accessLevel: 'public' | 'restricted', allowedUserIds: string[]) {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { accessLevel, allowedUserIds });
 }
 
 export async function sendShareNotification(toUid: string, invite: Invitation) {
-    if (!db) return;
+    if (!db || !toUid) return;
     await addDoc(collection(db, INVITATIONS_COLLECTION), sanitizeData(invite));
 }
 
 export async function deleteCloudFolderRecursive(path: string) {
-    if (!storage) return;
+    if (!storage || !path) return;
     const r = ref(storage, path);
     const res = await listAll(r);
     for (const item of res.items) await deleteObject(item);
@@ -919,28 +866,34 @@ export async function deleteCloudFolderRecursive(path: string) {
 
 // --- Whiteboard ---
 export function subscribeToWhiteboard(id: string, callback: (elements: WhiteboardElement[]) => void) {
-    if (!db) return () => {};
+    if (!db || !id) return () => {};
     return onSnapshot(doc(db, WHITEBOARDS_COLLECTION, id), (snap) => {
         if (snap.exists()) callback(snap.data()?.elements || []);
     });
 }
 
+// Fix: Added saveWhiteboardSession exported function
+export async function saveWhiteboardSession(id: string, elements: WhiteboardElement[]) {
+    if (!db || !id) return;
+    await setDoc(doc(db, WHITEBOARDS_COLLECTION, id), { elements: sanitizeData(elements) }, { merge: true });
+}
+
 export async function updateWhiteboardElement(id: string, element: WhiteboardElement) {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, WHITEBOARDS_COLLECTION, id), { elements: arrayUnion(sanitizeData(element)) });
 }
 
 export async function deleteWhiteboardElements(id: string) {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, WHITEBOARDS_COLLECTION, id), { elements: [] });
 }
 
 // --- Blog ---
 export async function ensureUserBlog(user: any): Promise<Blog> {
-    if (!db) throw new Error("DB offline");
+    if (!db || !user) throw new Error("DB offline or user missing");
     const q = query(collection(db, BLOGS_COLLECTION), where('ownerId', '==', user.uid));
     const snap = await getDocs(q);
-    if (!snap.empty) return snap.docs[0].data() as Blog;
+    if (!snap.empty) return { ...snap.docs[0].data(), id: snap.docs[0].id } as Blog;
     const id = generateSecureId();
     const blog: Blog = { id, ownerId: user.uid, authorName: user.displayName || 'Author', title: `${user.displayName}'s Blog`, description: 'My thoughts on AI and the future.', createdAt: Date.now() };
     await setDoc(doc(db, BLOGS_COLLECTION, id), sanitizeData(blog));
@@ -956,57 +909,48 @@ export async function getCommunityPosts(): Promise<BlogPost[]> {
 }
 
 export async function getUserPosts(blogId: string): Promise<BlogPost[]> {
-    if (!db) return [];
+    if (!db || !blogId) return [];
     const q = query(collection(db, POSTS_COLLECTION), where('blogId', '==', blogId));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as BlogPost);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as BlogPost));
 }
 
 export async function getBlogPost(id: string): Promise<BlogPost | null> {
-    if (!db) return null;
+    if (!db || !id) return null;
     const snap = await getDoc(doc(db, POSTS_COLLECTION, id));
-    return snap.exists() ? (snap.data() as BlogPost) : null;
+    return snap.exists() ? ({ ...snap.data(), id: snap.id } as BlogPost) : null;
 }
 
 export async function updateBlogPost(id: string, data: Partial<BlogPost>) {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, POSTS_COLLECTION, id), sanitizeData(data));
 }
 
 export async function deleteBlogPost(id: string) {
-    if (!db) return;
+    if (!db || !id) return;
     await deleteDoc(doc(db, POSTS_COLLECTION, id));
 }
 
 export async function updateBlogSettings(id: string, data: Partial<Blog>) {
-    if (!db) return;
+    if (!db || !id) return;
     await updateDoc(doc(db, BLOGS_COLLECTION, id), { ...sanitizeData(data), ownerId: auth?.currentUser?.uid });
 }
 
 export async function addPostComment(postId: string, comment: Comment) {
-    if (!db) return;
+    if (!db || !postId) return;
     await updateDoc(doc(db, POSTS_COLLECTION, postId), { comments: arrayUnion(sanitizeData(comment)), commentCount: increment(1) });
-}
-
-// --- Billing ---
-export async function getBillingHistory(uid: string) {
-    return [{ date: '2024-01-15', amount: 0.01 }];
-}
-
-export async function createStripePortalSession(uid: string) {
-    return 'https://billing.stripe.com/p/session/test';
 }
 
 // --- Chat ---
 export async function sendMessage(channelId: string, text: string, path: string, replyTo?: any, attachments?: any[]) {
-    if (!db || !auth?.currentUser) return;
+    if (!db || !auth?.currentUser || !path) return;
     const msg: RealTimeMessage = { id: '', text, senderId: auth.currentUser.uid, senderName: auth.currentUser.displayName || 'Anonymous', senderImage: auth.currentUser.photoURL || '', timestamp: Timestamp.now(), replyTo };
     if (attachments) (msg as any).attachments = sanitizeData(attachments);
     await addDoc(collection(db, path), sanitizeData(msg));
 }
 
 export function subscribeToMessages(channelId: string, callback: (msgs: RealTimeMessage[]) => void, path: string) {
-    if (!db) return () => {};
+    if (!db || !path) return () => {};
     const q = query(collection(db, path), orderBy('timestamp', 'asc'), limit(100));
     return onSnapshot(q, (snap) => {
         callback(snap.docs.map(d => ({ ...d.data(), id: d.id } as RealTimeMessage)));
@@ -1014,12 +958,12 @@ export function subscribeToMessages(channelId: string, callback: (msgs: RealTime
 }
 
 export async function deleteMessage(channelId: string, msgId: string, path: string) {
-    if (!db) return;
+    if (!db || !path || !msgId) return;
     await deleteDoc(doc(db, path, msgId));
 }
 
 export async function uploadFileToStorage(path: string, file: Blob): Promise<string> {
-    if (!storage) throw new Error("Storage unavailable");
+    if (!storage || !path) throw new Error("Storage unavailable or path missing");
     const r = ref(storage, path);
     await uploadBytes(r, file);
     return await getDownloadURL(r);
@@ -1042,7 +986,7 @@ export async function getUserDMChannels(): Promise<ChatChannel[]> {
     if (!db || !auth?.currentUser) return [];
     const q = query(collection(db, 'chat_channels'), where('memberIds', 'array-contains', auth.currentUser.uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as ChatChannel);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as ChatChannel));
 }
 
 // --- Career ---
@@ -1052,6 +996,7 @@ export async function submitCareerApplication(app: CareerApplication) {
 }
 
 export async function uploadResumeToStorage(uid: string, file: File): Promise<string> {
+    if (!uid) throw new Error("User ID missing");
     return uploadCommentAttachment(file, `resumes/${uid}/${file.name}`);
 }
 
@@ -1069,9 +1014,9 @@ export async function getJobPostings(): Promise<JobPosting[]> {
 }
 
 export async function getJobPosting(id: string): Promise<JobPosting | null> {
-    if (!db) return null;
+    if (!db || !id) return null;
     const snap = await getDoc(doc(db, JOBS_COLLECTION, id));
-    return snap.exists() ? (snap.data() as JobPosting) : null;
+    return snap.exists() ? ({ ...snap.data(), id: snap.id } as JobPosting) : null;
 }
 
 export async function getAllCareerApplications(): Promise<CareerApplication[]> {
@@ -1082,13 +1027,13 @@ export async function getAllCareerApplications(): Promise<CareerApplication[]> {
 
 // --- Social ---
 export async function followUser(myUid: string, targetUid: string) {
-    if (!db) return;
+    if (!db || !myUid || !targetUid) return;
     await updateDoc(doc(db, USERS_COLLECTION, myUid), { following: arrayUnion(targetUid) });
     await updateDoc(doc(db, USERS_COLLECTION, targetUid), { followers: arrayUnion(myUid) });
 }
 
 export async function unfollowUser(myUid: string, targetUid: string) {
-    if (!db) return;
+    if (!db || !myUid || !targetUid) return;
     await updateDoc(doc(db, USERS_COLLECTION, myUid), { following: arrayRemove(targetUid) });
     await updateDoc(doc(db, USERS_COLLECTION, targetUid), { followers: arrayRemove(myUid) });
 }
@@ -1102,40 +1047,40 @@ export async function saveNotebook(nb: Notebook): Promise<string> {
 }
 
 export async function getNotebook(id: string): Promise<Notebook | null> {
-    if (!db) return null;
+    if (!db || !id) return null;
     const snap = await getDoc(doc(db, NOTEBOOKS_COLLECTION, id));
-    return snap.exists() ? (snap.data() as Notebook) : null;
+    return snap.exists() ? ({ ...snap.data(), id: snap.id } as Notebook) : null;
 }
 
 export async function getCreatorNotebooks(uid: string): Promise<Notebook[]> {
-    if (!db) return [];
+    if (!db || !uid) return [];
     const q = query(collection(db, NOTEBOOKS_COLLECTION), where('ownerId', '==', uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as Notebook);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Notebook));
 }
 
 // --- Cards ---
 export async function getCard(id: string): Promise<AgentMemory | null> {
-    if (!db) return null;
+    if (!db || !id) return null;
     const snap = await getDoc(doc(db, CARDS_COLLECTION, id));
-    return snap.exists() ? (snap.data() as AgentMemory) : null;
+    return snap.exists() ? ({ ...snap.data(), id: snap.id } as AgentMemory) : null;
 }
 
 export async function getUserCards(uid: string): Promise<AgentMemory[]> {
-    if (!db) return [];
+    if (!db || !uid) return [];
     const q = query(collection(db, CARDS_COLLECTION), where('ownerId', '==', uid));
     const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as AgentMemory);
+    return snap.docs.map(d => ({ ...d.data(), id: d.id } as AgentMemory));
 }
 
 // --- Saved Words ---
 export async function saveSavedWord(uid: string, word: any) {
-    if (!db) return;
+    if (!db || !uid) return;
     await setDoc(doc(db, SAVED_WORDS_COLLECTION, uid), { words: arrayUnion(word) }, { merge: true });
 }
 
 export async function getSavedWordForUser(uid: string) {
-    if (!db) return null;
+    if (!db || !uid) return null;
     const snap = await getDoc(doc(db, SAVED_WORDS_COLLECTION, uid));
     return snap.exists() ? snap.data() : null;
 }

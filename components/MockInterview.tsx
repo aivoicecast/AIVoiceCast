@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -23,6 +22,12 @@ interface MockInterviewReport {
   idealAnswers?: { question: string, expectedAnswer: string, rationale: string }[];
   learningMaterial: string; 
   todoList?: string[];
+}
+
+interface MockInterviewProps {
+  onBack: () => void;
+  userProfile: UserProfile | null;
+  onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
 }
 
 const getCodeTool: any = {
@@ -172,7 +177,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       ]);
       
       const localBackupsRaw = localStorage.getItem('mock_interview_backups') || '[]';
-      const localBackups = JSON.parse(localBackupsRaw) as MockInterviewRecording[];
+      const localBackups = (JSON.parse(localBackupsRaw) as MockInterviewRecording[])
+          .filter(b => b && b.id && b.id.trim() !== ""); // HARD FILTER: Remove ID-less local ghosts
+      
       const myFilteredBackups = localBackups.filter(b => b.userId === (currentUser?.uid || 'guest'));
       
       const myMap = new Map<string, MockInterviewRecording>();
@@ -186,6 +193,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const combined = Array.from(myMap.values());
       setMyInterviews(combined.sort((a, b) => b.timestamp - a.timestamp));
       setPublicInterviews(publicData.sort((a, b) => b.timestamp - a.timestamp));
+      
+      // Cleanup ghost local storage
+      if (localBackups.length !== JSON.parse(localBackupsRaw).length) {
+          localStorage.setItem('mock_interview_backups', JSON.stringify(localBackups));
+      }
     } catch (e) {
         console.error("Ledger retrieval error", e);
     } finally { setLoading(false); }
@@ -193,6 +205,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   const handleToggleSelect = (id: string, e: React.MouseEvent) => {
       e.stopPropagation();
+      if (!id || id.trim() === "") return;
       const next = new Set(selectedIds);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -201,25 +214,40 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   const handleSelectAll = () => {
       const list = hubTab === 'history' ? myInterviews : publicInterviews;
-      if (selectedIds.size === list.length) {
+      // Filter out any potential ID-less items from the list itself
+      const validIds = list.filter(i => i.id && i.id.trim() !== "").map(i => i.id);
+      
+      if (selectedIds.size === validIds.length) {
           setSelectedIds(new Set());
       } else {
-          setSelectedIds(new Set(list.map(i => i.id)));
+          setSelectedIds(new Set(validIds));
       }
   };
 
   const handleDeleteSelected = async () => {
-      if (selectedIds.size === 0) return;
-      const count = selectedIds.size;
+      const idsToPurge = Array.from(selectedIds).filter(id => id && id.trim() !== "");
+      if (idsToPurge.length === 0) return;
+      
+      const count = idsToPurge.length;
       const confirmMsg = `Permanently delete ${count} selected technical evaluations? This will remove records from the cloud ledger.`;
       if (!confirm(confirmMsg)) return;
 
       setIsBulkDeleting(true);
+      let failedCount = 0;
+      let permissionDeniedCount = 0;
+      
       try {
-          const idsToPurge = Array.from(selectedIds);
           for (const id of idsToPurge) {
-              await deleteInterview(id);
+              try {
+                  await deleteInterview(id);
+              } catch (e: any) {
+                  console.error(`Failed to purge doc ${id}:`, e);
+                  if (e.message?.includes('permission')) permissionDeniedCount++;
+                  else failedCount++;
+              }
           }
+          
+          // Update local history cache
           const localBackupsRaw = localStorage.getItem('mock_interview_backups') || '[]';
           const localBackups = JSON.parse(localBackupsRaw) as MockInterviewRecording[];
           const nextLocal = localBackups.filter(b => !selectedIds.has(b.id));
@@ -227,8 +255,15 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           
           await loadInterviews();
           setSelectedIds(new Set());
+          
+          if (permissionDeniedCount > 0 || failedCount > 0) {
+              let msg = `Purge completed with issues.`;
+              if (permissionDeniedCount > 0) msg += `\n- ${permissionDeniedCount} items denied (you aren't the owner).`;
+              if (failedCount > 0) msg += `\n- ${failedCount} network errors.`;
+              alert(msg);
+          }
       } catch (e: any) {
-          alert("Purge partially failed: " + e.message);
+          alert("Atomic purge failed: " + e.message);
       } finally {
           setIsBulkDeleting(false);
       }
@@ -275,7 +310,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       if (currentView === 'coaching') {
           prompt = `RESUMING COACHING SESSION. You are a supportive Senior Career Coach. Reviewing report for ${currentDisplayName}. Evaluation Score: ${currentReport?.score}. Summary: ${currentReport?.summary}. History recap: ${historyText.substring(Math.max(0, historyText.length - 2000))}`;
       } else {
-          // Fix: Ensuring currentMode and historyText are string literals within the template to avoid unknown issues
           prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${String(currentMode)}. History recap: ${historyText.substring(Math.max(0, historyText.length - 2000))}. IMPORTANT: Monitor and acknowledge messages typed in the chat box. Use 'create_interview_file' to provide a new technical challenge to the candidate without overwriting previous work. Use 'update_active_file' to modify the focused file.`;
       }
       
@@ -308,27 +342,31 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             const setter = currentView === 'coaching' ? setCoachingTranscript : setTranscript;
             setter(prev => {
               const role = isUser ? 'user' : 'ai';
+              // Fix: cast text to string to prevent unknown type errors
+              const textStr = text as string;
               if (prev.length > 0 && prev[prev.length - 1].role === role) {
                 const last = prev[prev.length - 1];
-                return [...prev.slice(0, -1), { ...last, text: last.text + text }];
+                return [...prev.slice(0, -1), { ...last, text: last.text + textStr }];
               }
-              return [...prev, { role, text, timestamp: Date.now() }];
+              return [...prev, { role, text: textStr, timestamp: Date.now() }];
             });
           },
-          onToolCall: async (toolCall) => {
+          onToolCall: async (toolCall: any) => {
               for (const fc of toolCall.functionCalls) {
                   if (fc.name === 'get_current_code') {
                       const code = activeCodeFilesRef.current[0]?.content || "// No code written yet.";
                       service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: code } }]);
                       logApi("AI Read Candidate Code");
                   } else if (fc.name === 'update_active_file') {
-                      const { new_content } = fc.args;
+                      // Fix: cast fc.args to any to prevent unknown type errors on destructuring
+                      const { new_content } = fc.args as any;
                       setInitialStudioFiles(prev => prev.map((f, i) => i === 0 ? { ...f, content: new_content } : f));
                       if (activeCodeFilesRef.current[0]) activeCodeFilesRef.current[0].content = new_content;
                       service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: "Editor updated successfully." } }]);
                       logApi("AI Updated Solution File");
                   } else if (fc.name === 'create_interview_file') {
-                      const { filename, content } = fc.args;
+                      // Fix: cast fc.args to any
+                      const { filename, content } = fc.args as any;
                       const newFile: CodeFile = {
                         name: filename, path: `drive://${currentSessionId}/${filename}`, 
                         language: getLanguageFromExt(filename) as any,
@@ -385,11 +423,13 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                   if (!isUser) setIsAiThinking(false);
                   setCoachingTranscript(prev => {
                       const role = isUser ? 'user' : 'ai';
+                      // Fix: cast text to string
+                      const textStr = text as string;
                       if (prev.length > 0 && prev[prev.length - 1].role === role) {
                           const last = prev[prev.length - 1];
-                          return [...prev.slice(0, -1), { ...last, text: last.text + text }];
+                          return [...prev.slice(0, -1), { ...last, text: last.text + textStr }];
                       }
-                      return [...prev, { role, text, timestamp: Date.now() }];
+                      return [...prev, { role, text: textStr, timestamp: Date.now() }];
                   });
               }
           });
@@ -421,7 +461,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     
     try {
         logApi("Capturing Screen...");
-        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" } as any, audio: true });
     } catch(e) { logApi("Screen capture declined.", "warn"); }
 
     try {
@@ -533,27 +573,31 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         onVolumeUpdate: () => {},
         onTranscript: (text, isUser) => {
           const role = isUser ? 'user' : 'ai';
+          // Fix: cast text to string
+          const textStr = text as string;
           setTranscript(prev => {
             if (prev.length > 0 && prev[prev.length - 1].role === role) {
               const last = prev[prev.length - 1];
-              return [...prev.slice(0, -1), { ...last, text: last.text + text }];
+              return [...prev.slice(0, -1), { ...last, text: last.text + textStr }];
             }
-            return [...prev, { role, text, timestamp: Date.now() }];
+            return [...prev, { role, text: textStr, timestamp: Date.now() }];
           });
         },
-        onToolCall: async (toolCall) => {
+        onToolCall: async (toolCall: any) => {
           for (const fc of toolCall.functionCalls) {
               if (fc.name === 'get_current_code') {
                   const code = activeCodeFilesRef.current[0]?.content || "// No code written yet.";
                   service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: code } }]);
               } else if (fc.name === 'update_active_file') {
-                  const { new_content } = fc.args;
+                  // Fix: cast fc.args to any
+                  const { new_content } = fc.args as any;
                   setInitialStudioFiles(prev => prev.map((f, i) => i === 0 ? { ...f, content: new_content } : f));
                   if (activeCodeFilesRef.current[0]) activeCodeFilesRef.current[0].content = new_content;
                   service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: "Editor updated." } }]);
                   logApi("AI Wrote Problem Specification");
               } else if (fc.name === 'create_interview_file') {
-                  const { filename, content } = fc.args;
+                  // Fix: cast fc.args to any
+                  const { filename, content } = fc.args as any;
                   const newFile: CodeFile = {
                     name: filename, path: `drive://${uuid}/${filename}`, 
                     language: getLanguageFromExt(filename) as any,
@@ -825,7 +869,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Portfolio</h3>
                         <button onClick={handleSyncResume} className="text-[10px] font-black text-slate-500 hover:text-indigo-400 flex items-center gap-1 transition-colors uppercase tracking-widest"><RefreshCcw size={12}/> Sync Profile</button>
                     </div>
-                    <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume or sync from profile..." className="w-full h-48 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-indigo-500/50 transition-all"/>
+                    <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume or sync from profile..." className="w-full h-48 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-indigo-500/50 transition-all"/>
                   </div>
                 </div>
                 <div className="space-y-6">
@@ -925,7 +969,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             {isAiThinking && <div className="flex flex-col items-start animate-fade-in"><span className="text-[9px] uppercase font-black tracking-widest mb-1 text-emerald-400">AI Coach Thinking...</span><div className="bg-slate-800 text-slate-200 rounded-2xl rounded-tl-sm p-4 border border-slate-700"><Loader2 className="animate-spin text-indigo-400" size={18} /></div></div>}
                         </div>
                         <div className="p-6 border-t border-slate-800 bg-slate-900/50">
-                            <form className="flex gap-4 max-w-4xl mx-auto" onSubmit={(e) => { e.preventDefault(); const input = (e.target as any).message; if(input.value.trim()) { handleSendTextMessage(input.value); input.value = ''; } }}>
+                            <form className="flex gap-4 max-w-4xl mx-auto" onSubmit={(e) => { e.preventDefault(); const form = e.target as HTMLFormElement; const input = form.elements.namedItem('message') as HTMLInputElement; if(input.value && input.value.trim()) { handleSendTextMessage(input.value); input.value = ''; } }}>
                                 <input name="message" type="text" className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl px-6 py-4 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner" placeholder="Discuss feedback with the coach..."/>
                                 <button type="submit" className="p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center"><Send size={24}/></button>
                             </form>

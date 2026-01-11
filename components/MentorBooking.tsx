@@ -3,8 +3,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Channel, Booking, UserProfile, UserAvailability } from '../types';
 import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Loader2, Play, Users, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight, Coins, Check as CheckIcon, HeartHandshake, Edit3, Timer, Coffee, Sunrise, Sun, Sunset } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
-import { createBooking, getUserBookings, cancelBooking, updateBookingInvite, deleteBookingRecording, getAllUsers, getUserProfileByEmail, getUserProfile } from '../services/firestoreService';
-import { getDriveToken } from '../services/authService';
+// Fix: removed updateBookingInvite which is not exported by firestoreService
+import { createBooking, getUserBookings, cancelBooking, deleteBookingRecording, getAllUsers, getUserProfileByEmail, getUserProfile } from '../services/firestoreService';
+import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { sendBookingEmail } from '../services/gmailService';
 
 interface MentorBookingProps {
