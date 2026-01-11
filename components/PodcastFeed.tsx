@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture } from '../types';
-import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List } from 'lucide-react';
+import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { CreatorProfileModal } from './CreatorProfileModal';
 import { PodcastListTable, SortKey } from './PodcastListTable';
@@ -30,7 +30,8 @@ interface PodcastFeedProps {
   handleVote?: (id: string, type: 'like' | 'dislike', e: React.MouseEvent) => void;
   
   filterMode?: 'foryou' | 'following' | 'mine';
-  isFeedActive?: boolean; // Controls whether logic/playback is enabled
+  isFeedActive?: boolean; 
+  searchQuery?: string;
 }
 
 const MobileFeedCard = ({ 
@@ -514,7 +515,7 @@ const MobileFeedCard = ({
 export const PodcastFeed: React.FC<PodcastFeedProps> = ({ 
   channels, onChannelClick, onStartLiveSession, userProfile, globalVoice, onRefresh, onMessageCreator,
   t, currentUser, setChannelToEdit, setIsSettingsModalOpen, onCommentClick, handleVote, filterMode = 'foryou',
-  isFeedActive = true 
+  isFeedActive = true, searchQuery = ''
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
@@ -550,11 +551,22 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
       }
   }, [userProfile, channels]);
 
+  const filteredChannels = useMemo(() => {
+    if (!searchQuery.trim()) return channels;
+    const q = searchQuery.toLowerCase();
+    return channels.filter(c => 
+        c.title.toLowerCase().includes(q) || 
+        c.description.toLowerCase().includes(q) || 
+        c.author.toLowerCase().includes(q) || 
+        c.tags.some(tag => tag.toLowerCase().includes(q))
+    );
+  }, [channels, searchQuery]);
+
   const sortedChannels = useMemo(() => {
       if (!isFeedActive) return []; 
       
-      let baseList = channels;
-      if (filterMode === 'mine') baseList = channels.filter(c => currentUser && c.ownerId === currentUser.uid);
+      let baseList = filteredChannels;
+      if (filterMode === 'mine') baseList = filteredChannels.filter(c => currentUser && c.ownerId === currentUser.uid);
       
       const sorted = [...baseList].sort((a, b) => {
           let valA: any = a[sortConfig.key as keyof Channel];
@@ -574,14 +586,16 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
       });
 
       return sorted;
-  }, [channels, currentUser, isFeedActive, filterMode, sortConfig]);
+  }, [filteredChannels, currentUser, isFeedActive, filterMode, sortConfig]);
 
   const recommendedChannels = useMemo(() => {
       if (!isFeedActive) return []; 
-      if (filterMode === 'mine') return channels.filter(c => currentUser && c.ownerId === currentUser.uid).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      if (filterMode === 'following') return [...channels].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       
-      const scored = channels.map(ch => {
+      let baseList = filteredChannels;
+      if (filterMode === 'mine') return baseList.filter(c => currentUser && c.ownerId === currentUser.uid).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      if (filterMode === 'following') return [...baseList].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      
+      const scored = baseList.map(ch => {
           let score = 0;
           
           // CRITICAL PERSONA PRIORITIZATION
@@ -595,7 +609,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
       });
       scored.sort((a, b) => b.score - a.score);
       return scored.map(s => s.channel);
-  }, [channels, userProfile, filterMode, currentUser, isFeedActive]);
+  }, [filteredChannels, userProfile, filterMode, currentUser, isFeedActive]);
 
   useEffect(() => { 
       if (!isFeedActive) return; 
@@ -627,10 +641,15 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
         <div className="h-full overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-800">
             <div className="max-w-7xl mx-auto space-y-6">
                 <div className="flex justify-between items-center">
-                    <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                        <span className="bg-indigo-600 w-2 h-8 rounded-full"></span> 
-                        {filterMode === 'mine' ? 'My Workshops' : 'Knowledge Registry'}
-                    </h2>
+                    <div>
+                        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                            <span className="bg-indigo-600 w-2 h-8 rounded-full"></span> 
+                            {filterMode === 'mine' ? 'My Workshops' : 'Knowledge Registry'}
+                        </h2>
+                        {searchQuery && (
+                            <p className="text-xs text-indigo-400 font-bold uppercase tracking-widest mt-1">Filtering by: "{searchQuery}"</p>
+                        )}
+                    </div>
                     <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
                         <button className="p-2 text-indigo-400 bg-slate-800 rounded-lg shadow-sm" title="Table Layout"><List size={18}/></button>
                     </div>
@@ -652,7 +671,21 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
     <>
     <div ref={containerRef} className="h-[calc(100vh-64px)] w-full bg-black overflow-y-scroll snap-y snap-mandatory scroll-smooth no-scrollbar relative">
         {recommendedChannels.length === 0 ? (
-             <div className="h-full w-full flex flex-col items-center justify-center p-8 text-center space-y-6"><div className="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center"><Heart size={32} className="text-slate-600" /></div><div><h3 className="text-xl font-bold text-white mb-2">No Podcasts Here Yet</h3><p className="text-slate-400 text-sm max-w-xs mx-auto">{filterMode === 'following' ? "Follow creators or like channels to build your personal feed." : filterMode === 'mine' ? "You haven't created any podcasts yet." : "We couldn't find any podcasts matching your criteria."}</p></div>{filterMode === 'following' && <button onClick={onRefresh} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-full transition-colors border border-slate-700">Discover Content</button>}</div>
+             <div className="h-full w-full flex flex-col items-center justify-center p-8 text-center space-y-6">
+                <div className="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center">
+                    <SearchX size={32} className="text-slate-600" />
+                </div>
+                <div>
+                    <h3 className="text-xl font-bold text-white mb-2">{searchQuery ? 'No Matches Found' : 'No Podcasts Here Yet'}</h3>
+                    <p className="text-slate-400 text-sm max-w-xs mx-auto">
+                        {searchQuery ? `We couldn't find any results for "${searchQuery}" in ${filterMode === 'mine' ? 'your workshops' : 'the registry'}.` : 
+                         filterMode === 'following' ? "Follow creators or like channels to build your personal feed." : 
+                         filterMode === 'mine' ? "You haven't created any podcasts yet." : 
+                         "We couldn't find any podcasts matching your criteria."}
+                    </p>
+                </div>
+                {searchQuery && <button onClick={() => {}} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition-colors">Clear Search</button>}
+             </div>
         ) : (
             recommendedChannels.map((channel) => (
                 <div key={channel.id} data-id={channel.id} className="feed-card h-full w-full snap-start">
