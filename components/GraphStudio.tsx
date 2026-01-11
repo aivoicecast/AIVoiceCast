@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-/* Added CheckCircle to imports */
 import { ArrowLeft, Sparkles, Wand2, Plus, Trash2, Maximize2, Settings2, RefreshCw, Loader2, Info, ChevronRight, Share2, Grid3X3, Circle, Activity, Play, Check, AlertCircle, ShieldAlert, RefreshCcw, Terminal, Zap, CloudDownload, Globe, CheckCircle } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -42,79 +41,99 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
       console.log(`[GraphStudio] ${msg}`);
   }, []);
 
-  const injectScript = (id: string, src: string, onReady: () => void, onError: (err: any) => void) => {
-    if (document.getElementById(id)) {
-        addLog(`Script ${id} already exists in DOM.`, "info");
-        return;
+  const injectScript = useCallback((id: string, src: string, onReady: () => void, onError: (err: any) => void) => {
+    const existing = document.getElementById(id);
+    if (existing) {
+        addLog(`Refreshing existing script node: ${id}`, "info");
+        existing.remove();
     }
 
-    addLog(`Fired Network Request for ${id}...`, "network");
+    addLog(`Initiating network request: ${src}`, "network");
     const script = document.createElement('script');
     script.id = id;
     script.src = src;
-    script.async = true;
+    // Removing async to ensure sequential parse in case of dependencies, though these are standalone
     script.onload = () => {
-        addLog(`Source for ${id} loaded and parsed successfully.`, "info");
+        addLog(`Handshake successful for ${id}.`, "info");
         onReady();
     };
     script.onerror = (e) => {
-        addLog(`Network failure or blocked script: ${id}`, "error");
+        addLog(`Network protocol error on ${id}. Endpoint might be unreachable.`, "error");
         onError(e);
     };
     document.head.appendChild(script);
-  };
+  }, [addLog]);
 
   const initializeEngine = useCallback(() => {
     const Plotly = (window as any).Plotly;
-    const math = (window as any).math;
+    const math = (window as any).math || (window as any).mathjs;
 
-    if (Plotly) setPlotlyStatus('ready');
-    else {
+    addLog("Analyzing window environment for existing binaries...");
+
+    if (Plotly) {
+        setPlotlyStatus('ready');
+        addLog("Plotly Engine verified in global namespace.", "info");
+    } else {
         setPlotlyStatus('loading');
         injectScript(
             'plotly-cdn-runtime', 
             'https://cdn.plot.ly/plotly-2.27.0.min.js', 
             () => setPlotlyStatus('ready'),
-            () => setPlotlyStatus('error')
+            () => {
+                setPlotlyStatus('error');
+                addLog("Plotly failed. Retrying with unpkg fallback...", "warn");
+                injectScript('plotly-fallback', 'https://unpkg.com/plotly.js-dist-min@2.27.0/plotly.min.js', () => setPlotlyStatus('ready'), () => setPlotlyStatus('error'));
+            }
         );
     }
 
-    if (math) setMathStatus('ready');
-    else {
+    if (math) {
+        setMathStatus('ready');
+        addLog("Math Parser verified in global namespace.", "info");
+    } else {
         setMathStatus('loading');
+        // Swapping to unpkg for primary injection as it's often faster for mathjs
         injectScript(
             'mathjs-cdn-runtime', 
-            'https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.2.1/math.all.min.js', 
+            'https://unpkg.com/mathjs@12.2.1/lib/browser/math.js', 
             () => setMathStatus('ready'),
-            () => setMathStatus('error')
+            () => {
+                setMathStatus('error');
+                addLog("Math.js primary failed. Trying cdnjs fallback...", "warn");
+                injectScript('mathjs-fallback', 'https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.2.1/math.all.min.js', () => setMathStatus('ready'), () => setMathStatus('error'));
+            }
         );
     }
-  }, [addLog]);
+  }, [addLog, injectScript]);
 
   useEffect(() => {
     let mounted = true;
-    addLog("Component mounted. Starting engine discovery...");
     initializeEngine();
 
-    // Secondary Polling for safety (in case scripts were already in index.html but not yet attached)
+    // Aggressive polling for 30 seconds
     const interval = setInterval(() => {
         if (!mounted) return;
         const Plotly = (window as any).Plotly;
-        const math = (window as any).math;
+        const math = (window as any).math || (window as any).mathjs;
 
         if (Plotly && plotlyStatus !== 'ready') {
             setPlotlyStatus('ready');
-            addLog("Plotly detected on window.", "info");
+            addLog("Async detection: Plotly active.", "info");
         }
         if (math && mathStatus !== 'ready') {
             setMathStatus('ready');
-            addLog("Math.js detected on window.", "info");
+            addLog("Async detection: Math.js active.", "info");
         }
 
         if (Plotly && math) {
             clearInterval(interval);
         } else {
-            setRetryCount(c => c + 1);
+            setRetryCount(c => {
+                if (c > 30) {
+                    addLog("Warning: Handbook timeout approaching. Check developer console for CORS/CSP errors.", "warn");
+                }
+                return c + 1;
+            });
         }
     }, 1000);
 
@@ -125,7 +144,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
   }, [initializeEngine, addLog, plotlyStatus, mathStatus]);
 
   const handleForceHandshake = () => {
-      addLog("Manual restart requested.", "info");
+      addLog("User-initiated emergency handshake restart.", "info");
       setPlotlyStatus('waiting');
       setMathStatus('waiting');
       setRetryCount(0);
@@ -142,10 +161,9 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
     if (!graphRef.current || !libsReady) return;
     
     const Plotly = (window as any).Plotly;
-    const math = (window as any).math;
+    const math = (window as any).math || (window as any).mathjs;
 
     if (graphRef.current.clientWidth === 0 || graphRef.current.clientHeight === 0) {
-        addLog("Zero dimension container. Deferring render...", "info");
         setTimeout(renderGraph, 300);
         return;
     }
@@ -220,7 +238,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
     Plotly.react(graphRef.current, data, layout, { responsive: true, displayModeBar: false }).finally(() => {
         setIsPlotting(false);
     });
-  }, [equations, mode, libsReady, addLog]);
+  }, [equations, mode, libsReady]);
 
   useEffect(() => {
     window.addEventListener('resize', handleResize);
