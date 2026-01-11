@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Sparkles, Wand2, Plus, Trash2, Maximize2, Settings2, RefreshCw, Loader2, Info, ChevronRight, Share2, Grid3X3, Circle, Activity, Play, Check, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Sparkles, Wand2, Plus, Trash2, Maximize2, Settings2, RefreshCw, Loader2, Info, ChevronRight, Share2, Grid3X3, Circle, Activity, Play, Check, AlertCircle, ShieldAlert, RefreshCcw } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
 interface GraphStudioProps {
@@ -25,27 +25,43 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [isPlotting, setIsPlotting] = useState(false);
   const [libsReady, setLibsReady] = useState(false);
+  const [libError, setLibError] = useState<string | null>(null);
   const [errorIds, setErrorIds] = useState<Set<string>>(new Set());
   const graphRef = useRef<HTMLDivElement>(null);
   const detectionRetryRef = useRef<number>(0);
 
-  // Robust Library Detection
+  // Robust Library Detection with Debugging
   useEffect(() => {
     let mounted = true;
+    console.log("[GraphStudio] Initializing Neural Engine Detection...");
+    
     const detect = () => {
         if (!mounted) return;
         const Plotly = (window as any).Plotly;
         const math = (window as any).math;
         
-        if (Plotly && math) {
+        const hasPlotly = !!Plotly;
+        const hasMath = !!math;
+
+        if (hasPlotly && hasMath) {
+            console.log("[GraphStudio] Engine components verified. Plotly & Math.js ACTIVE.");
             setLibsReady(true);
+            setLibError(null);
             return;
         }
 
-        // Retry with backoff or fixed interval
-        if (detectionRetryRef.current < 50) {
+        // Diagnostic Logging
+        if (detectionRetryRef.current % 5 === 0) {
+            console.warn(`[GraphStudio] Detection Poll #${detectionRetryRef.current}: Plotly=${hasPlotly}, Math=${hasMath}`);
+        }
+
+        if (detectionRetryRef.current < 60) {
             detectionRetryRef.current++;
             setTimeout(detect, 200);
+        } else {
+            console.error("[GraphStudio] Engine timed out. Libraries failed to attach to window.");
+            const missing = !hasPlotly && !hasMath ? "Plotly & Math.js" : !hasPlotly ? "Plotly" : "Math.js";
+            setLibError(`Critical Failure: ${missing} not found after 12s.`);
         }
     };
 
@@ -53,25 +69,34 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
     return () => { mounted = false; };
   }, []);
 
+  const handleForceReload = () => {
+      window.location.reload();
+  };
+
   const handleResize = () => {
     if (graphRef.current && (window as any).Plotly) {
       (window as any).Plotly.Plots.resize(graphRef.current);
     }
   };
 
-  // Fixed: Added useCallback to React imports to resolve missing name error
   const renderGraph = useCallback(() => {
     if (!graphRef.current || !libsReady) return;
     
     const Plotly = (window as any).Plotly;
     const math = (window as any).math;
 
-    // Check if container has size. Layout shifts can cause 0 size temporarily.
+    if (!Plotly || !math) {
+        console.error("[GraphStudio] Libraries lost mid-render. Re-detecting...");
+        setLibsReady(false);
+        return;
+    }
+
+    // Defensive check for zero-size container
     if (graphRef.current.clientWidth === 0 || graphRef.current.clientHeight === 0) {
-        // If not ready, wait 100ms and try again once.
+        console.warn("[GraphStudio] Container has zero dimensions. Waiting for layout stability...");
         setTimeout(() => {
             if (graphRef.current && graphRef.current.clientWidth > 0) renderGraph();
-        }, 100);
+        }, 200);
         return;
     }
 
@@ -192,7 +217,6 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
         displayModeBar: false
     };
 
-    // Use .react for faster differential updates
     Plotly.react(graphRef.current, data, layout, config).finally(() => {
         setIsPlotting(false);
     });
@@ -211,14 +235,14 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
     setIsAiThinking(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const prompt = `Convert this natural language request for a math graph into a pure mathematical expression that math.js can evaluate. 
+      const promptText = `Convert this natural language request for a math graph into a pure mathematical expression that math.js can evaluate. 
       For 2D, use 'x' as variable. For 3D, use 'x' and 'y'. For Polar, use 'theta'.
       Return ONLY a JSON object: { "expression": "string", "mode": "2d" | "3d" | "polar", "explanation": "string" }
       Request: "${aiPrompt}"`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: prompt,
+        contents: promptText,
         config: { responseMimeType: 'application/json' }
       });
 
@@ -342,7 +366,19 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
         </div>
 
         <div className="p-4 border-t border-slate-800 bg-slate-950/50">
-            {!libsReady ? (
+            {libError ? (
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-[9px] text-red-400 font-bold uppercase tracking-widest">
+                        <AlertCircle size={10}/> {libError}
+                    </div>
+                    <button 
+                        onClick={handleForceReload}
+                        className="w-full py-2 bg-red-950/30 border border-red-500/30 rounded-lg text-[9px] font-black text-red-200 uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-red-900/50"
+                    >
+                        <RefreshCcw size={10}/> Force Script Recovery
+                    </button>
+                </div>
+            ) : !libsReady ? (
                 <div className="flex items-center gap-2 text-[9px] text-amber-400 font-bold uppercase tracking-widest">
                     <Loader2 size={10} className="animate-spin"/> Initializing Engine...
                 </div>
@@ -385,7 +421,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
                         </div>
                         <div className="w-px h-4 bg-slate-700"></div>
                         <div className="flex items-center gap-2 text-[10px] font-black text-emerald-400 uppercase tracking-widest">
-                            <Circle size={10} fill="currentColor" className="animate-pulse"/> {libsReady ? 'Sync Active' : 'Offline'}
+                            <Circle size={10} fill="currentColor" className={libsReady ? 'animate-pulse' : ''}/> {libsReady ? 'Sync Active' : 'Waiting...'}
                         </div>
                     </div>
                 </div>
