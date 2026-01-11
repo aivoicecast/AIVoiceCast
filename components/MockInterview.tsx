@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -43,14 +44,27 @@ const getCodeTool: any = {
 
 const updateActiveFileTool: any = {
   name: "update_active_file",
-  description: "Update the content of the active code file in the editor. Use this to provide the problem statement, examples, and function template to the candidate.",
+  description: "Update the content of the active code file in the editor. Use this to modify existing work or add comments.",
   parameters: {
     type: Type.OBJECT,
     properties: {
       new_content: { type: Type.STRING, description: "The full content for the file, including headers and comments." },
-      summary: { type: Type.STRING, description: "Brief description of the changes (e.g., 'Added problem statement')" }
+      summary: { type: Type.STRING, description: "Brief description of the changes." }
     },
     required: ["new_content"]
+  }
+};
+
+const createInterviewFileTool: any = {
+  name: "create_interview_file",
+  description: "Create a new file in the interview environment. Use this to provide a new technical challenge or problem statement without overwriting previous work.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      filename: { type: Type.STRING, description: "Name of the file (e.g. 'problem_2.py')" },
+      content: { type: Type.STRING, description: "Initial content, including the problem statement and template." }
+    },
+    required: ["filename", "content"]
   }
 };
 
@@ -164,13 +178,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const localBackups = JSON.parse(localBackupsRaw) as MockInterviewRecording[];
       const myFilteredBackups = localBackups.filter(b => b.userId === (currentUser?.uid || 'guest'));
       
-      // Strict Deduplication Logic
       const myMap = new Map<string, MockInterviewRecording>();
-      
-      // 1. Prioritize Cloud Data
       userData.forEach(rec => myMap.set(rec.id, rec));
-      
-      // 2. Overlay Local Data for IDs not yet in cloud
       myFilteredBackups.forEach(backup => {
           if (!myMap.has(backup.id)) {
               myMap.set(backup.id, backup);
@@ -178,7 +187,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       });
 
       const combined = Array.from(myMap.values());
-
       setMyInterviews(combined.sort((a, b) => b.timestamp - a.timestamp));
       setPublicInterviews(publicData.sort((a, b) => b.timestamp - a.timestamp));
     } catch (e) {
@@ -219,7 +227,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       if (view === 'coaching') {
           prompt = `RESUMING COACHING SESSION. You are a supportive Senior Career Coach. Reviewing report for ${currentUser?.displayName}. Evaluation Score: ${report?.score}. Summary: ${report?.summary}. History recap: ${historyText.substring(historyText.length - 2000)}`;
       } else {
-          prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${mode}. History recap: ${historyText.substring(historyText.length - 2000)}. IMPORTANT: Monitor and acknowledge messages typed in the chat box. They are high-priority candidate responses. Use 'update_active_file' to provide or refine the problem description directly in the editor.`;
+          prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${mode}. History recap: ${historyText.substring(historyText.length - 2000)}. IMPORTANT: Monitor and acknowledge messages typed in the chat box. Use 'create_interview_file' to provide a new technical challenge to the candidate without overwriting previous work. Use 'update_active_file' to modify the focused file.`;
       }
       
       const service = new GeminiLiveService();
@@ -267,13 +275,24 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                   } else if (fc.name === 'update_active_file') {
                       const { new_content } = fc.args;
                       setInitialStudioFiles(prev => prev.map((f, i) => i === 0 ? { ...f, content: new_content } : f));
-                      activeCodeFilesRef.current[0].content = new_content;
+                      if (activeCodeFilesRef.current[0]) activeCodeFilesRef.current[0].content = new_content;
                       service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: "Editor updated successfully." } }]);
                       logApi("AI Updated Solution File");
+                  } else if (fc.name === 'create_interview_file') {
+                      const { filename, content } = fc.args;
+                      const newFile: CodeFile = {
+                        name: filename, path: `drive://${currentSessionId}/${filename}`, 
+                        language: getLanguageFromExt(filename) as any,
+                        content, loaded: true, isDirectory: false, isModified: false
+                      };
+                      setInitialStudioFiles(prev => [newFile, ...prev]);
+                      activeCodeFilesRef.current = [newFile, ...activeCodeFilesRef.current];
+                      service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: `Created and focused new file: ${filename}` } }]);
+                      logApi(`AI Created New File: ${filename}`);
                   }
               }
           }
-        }, [{ functionDeclarations: [getCodeTool, updateActiveFileTool] }]);
+        }, [{ functionDeclarations: [getCodeTool, updateActiveFileTool, createInterviewFileTool] }]);
       } catch (err: any) { logApi(`Init Failure: ${err.message}`, "error"); }
     }, backoffTime);
   };
@@ -450,7 +469,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       liveServiceRef.current = service;
       const sysPrompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. Job: ${jobDesc}. 
       GOAL: Greet the candidate. 
-      IMPORTANT: You MUST write the technical challenge, clear examples, and an empty function template with standard headers for ${language} directly into the solution file using the 'update_active_file' tool. Do not just speak the problem description.`;
+      IMPORTANT: You MUST write the technical challenge, clear examples, and an empty function template with standard headers for ${language} directly into a solution file using the 'update_active_file' or 'create_interview_file' tool. Do not just speak the problem description. Use 'create_interview_file' for each distinct part of the interview to keep history preserved.`;
       
       await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', sysPrompt, {
         onOpen: () => {
@@ -481,13 +500,24 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               } else if (fc.name === 'update_active_file') {
                   const { new_content } = fc.args;
                   setInitialStudioFiles(prev => prev.map((f, i) => i === 0 ? { ...f, content: new_content } : f));
-                  activeCodeFilesRef.current[0].content = new_content;
+                  if (activeCodeFilesRef.current[0]) activeCodeFilesRef.current[0].content = new_content;
                   service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: "Editor updated." } }]);
                   logApi("AI Wrote Problem Specification");
+              } else if (fc.name === 'create_interview_file') {
+                  const { filename, content } = fc.args;
+                  const newFile: CodeFile = {
+                    name: filename, path: `drive://${uuid}/${filename}`, 
+                    language: getLanguageFromExt(filename) as any,
+                    content, loaded: true, isDirectory: false, isModified: false
+                  };
+                  setInitialStudioFiles(prev => [newFile, ...prev]);
+                  activeCodeFilesRef.current = [newFile, ...activeCodeFilesRef.current];
+                  service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: `Created new file: ${filename}` } }]);
+                  logApi(`AI Created New File: ${filename}`);
               }
           }
         }
-      }, [{ functionDeclarations: [getCodeTool, updateActiveFileTool] }]);
+      }, [{ functionDeclarations: [getCodeTool, updateActiveFileTool, createInterviewFileTool] }]);
       
       setView('interview');
     } catch (e: any) { alert("Startup failed."); setView('hub'); } finally { setIsStarting(false); }
@@ -571,8 +601,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       
       const localBackupsRaw = localStorage.getItem('mock_interview_backups') || '[]';
       const localBackups = JSON.parse(localBackupsRaw) as MockInterviewRecording[];
-      
-      // Idempotent local save: update existing or push new
       const existingIdx = localBackups.findIndex(b => b.id === rec.id);
       if (existingIdx !== -1) {
           localBackups[existingIdx] = rec;
@@ -581,7 +609,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       }
       
       localStorage.setItem('mock_interview_backups', JSON.stringify(localBackups.slice(-20))); 
-      
       await saveInterviewRecording(rec);
       
       setSynthesisPercent(100);
@@ -849,5 +876,26 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     </div>
   );
 };
+
+function getLanguageFromExt(filename: string): string {
+    if (!filename) return 'text';
+    const ext = filename.split('.').pop()?.toLowerCase();
+    if (ext === 'jsx') return 'javascript (react)';
+    if (ext === 'tsx') return 'typescript (react)';
+    if (ext === 'js') return 'javascript';
+    if (ext === 'ts') return 'typescript';
+    if (ext === 'py') return 'python';
+    if (['cpp', 'hpp', 'cc', 'cxx'].includes(ext || '')) return 'c++';
+    if (ext === 'c' || ext === 'h') return 'c';
+    if (ext === 'java') return 'java';
+    if (ext === 'rs') return 'rust';
+    if (ext === 'go') return 'go';
+    if (ext === 'cs') return 'c#';
+    if (ext === 'html') return 'html';
+    if (ext === 'css') return 'css';
+    if (ext === 'json') return 'json';
+    if (ext === 'md') return 'markdown';
+    return 'text';
+}
 
 export default MockInterview;

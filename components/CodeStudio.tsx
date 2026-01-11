@@ -165,30 +165,36 @@ const RichCodeEditor = ({ code, onChange, onCursorMove, language, readOnly, font
     };
 
     return (
-        <Editor
-            height="100%"
-            defaultLanguage={monacoLang}
-            language={monacoLang}
-            value={code}
-            theme="vs-dark"
-            onChange={handleEditorChange}
-            onMount={handleEditorDidMount}
-            options={{
-                fontSize: fontSize,
-                readOnly: readOnly,
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                padding: { top: 16, bottom: 16 },
-                tabSize: 4,
-                insertSpaces: indentMode === 'spaces',
-                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                renderControlCharacters: true,
-                renderWhitespace: 'selection',
-                cursorBlinking: 'smooth',
-                smoothScrolling: true
-            }}
-        />
+        <div className="w-full h-full relative" style={{ letterSpacing: 'normal', textAlign: 'left' }}>
+            <Editor
+                height="100%"
+                defaultLanguage={monacoLang}
+                language={monacoLang}
+                value={code}
+                theme="vs-dark"
+                onChange={handleEditorChange}
+                onMount={handleEditorDidMount}
+                options={{
+                    fontSize: fontSize,
+                    readOnly: readOnly,
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    fixedOverflowWidgets: true,
+                    padding: { top: 16, bottom: 16 },
+                    tabSize: 4,
+                    insertSpaces: indentMode === 'spaces',
+                    fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
+                    fontLigatures: true,
+                    renderControlCharacters: true,
+                    renderWhitespace: 'none',
+                    cursorBlinking: 'smooth',
+                    smoothScrolling: true,
+                    lineHeight: fontSize * 1.5,
+                    stopRenderingLineAfter: -1
+                }}
+            />
+        </div>
     );
 };
 
@@ -342,7 +348,7 @@ const Slot: React.FC<SlotProps> = ({
                       </div>
                   </div>
                   <div className="flex-1 flex flex-col overflow-hidden">
-                      <div className="flex-1 overflow-hidden">
+                      <div className="flex-1 overflow-hidden relative">
                           {vMode === 'preview' ? (
                               lang === 'whiteboard' ? (
                                   <div className="w-full h-full"><Whiteboard isReadOnly={isReadOnly} /></div>
@@ -804,6 +810,9 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
         const lang = getLanguageFromExt(file.name);
         setSlotViewModes(prev => ({ ...prev, [slotIndex]: ['markdown', 'plantuml', 'pdf', 'whiteboard'].includes(lang) ? 'preview' : 'code' }));
         if (onFileChange) onFileChange(file);
+        
+        // AUTO-FOCUS the newly updated slot
+        setFocusedSlot(slotIndex);
       }
       if (isLive && lockStatus === 'mine' && file?.path) updateProjectActiveFile(project.id, file.path);
   };
@@ -925,6 +934,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
     return root;
   }, [cloudItems]);
 
+  // Fix: replaced broken 'searchQuery' reference with correctly defined 'githubSearchQuery'
   const filteredRepos = useMemo(() => {
       if (!githubSearchQuery.trim()) return githubRepos;
       return githubRepos.filter(r => r.full_name.toLowerCase().includes(githubSearchQuery.toLowerCase()));
@@ -978,86 +988,20 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
                   {activeTab === 'github' && (
                       <div className="flex-1 flex flex-col overflow-hidden">
                           {!githubToken ? (
-                              <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4">
-                                  <button onClick={handleGithubLogin} className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-gap-2">
-                                      <Github size={14}/> Connect GitHub
-                                  </button>
-                                  <div className="flex flex-col gap-2 mt-4 text-center">
-                                      <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest leading-relaxed">Problems connecting?</p>
-                                      <button onClick={() => setShowManualToken(true)} className="text-[10px] text-indigo-400 hover:text-white underline font-bold uppercase tracking-widest">Use Access Token</button>
-                                  </div>
-                              </div>
+                              <div className="p-12 text-center flex flex-col items-center justify-center h-full gap-4"><button onClick={handleGithubLogin} className="px-6 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-gap-2"><Github size={14}/> Connect GitHub</button><div className="flex flex-col gap-2 mt-4 text-center"><p className="text-[10px] text-slate-500 uppercase font-black tracking-widest leading-relaxed">Problems connecting?</p><button onClick={() => setShowManualToken(true)} className="text-[10px] text-indigo-400 hover:text-white underline font-bold uppercase tracking-widest">Use Access Token</button></div></div>
                           ) : isGithubLoading ? (
-                              <div className="flex-1 flex flex-col items-center justify-center text-indigo-400 gap-4">
-                                  <Loader2 className="animate-spin" size={32}/>
-                                  <span className="text-[10px] font-black uppercase tracking-widest">Fetching Repos...</span>
-                              </div>
+                              <div className="flex-1 flex flex-col items-center justify-center text-indigo-400 gap-4"><Loader2 className="animate-spin" size={32}/><span className="text-[10px] font-black uppercase tracking-widest">Fetching Repos...</span></div>
                           ) : githubTree.length > 0 ? (
                               <div className="flex-1 flex flex-col overflow-hidden">
-                                  <div className="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
-                                      <div className="flex items-center gap-2 overflow-hidden">
-                                          <Github size={12} className="text-slate-500"/>
-                                          <span className="text-[10px] font-bold text-indigo-300 truncate uppercase tracking-widest">{project.github?.owner}/{project.github?.repo}</span>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                          <button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); setGithubTree([]); }} className="text-slate-500 hover:text-red-400" title="Disconnect GitHub"><LogIn size={12} className="rotate-180"/></button>
-                                          <button onClick={() => setGithubTree([])} className="text-slate-500 hover:text-white" title="Change Repository"><RefreshCw size={12}/></button>
-                                      </div>
-                                  </div>
-                                  <div className="flex-1 overflow-y-auto scrollbar-hide py-2">
-                                      {githubTree.map(node => (
-                                          <FileTreeItem 
-                                              key={node.id} 
-                                              node={node} 
-                                              depth={0} 
-                                              activeId={activeFile?.path} 
-                                              onSelect={handleExplorerSelect} 
-                                              onToggle={toggleFolder} 
-                                              onShare={()=>{}} 
-                                              expandedIds={expandedIds} 
-                                              loadingIds={loadingIds}
-                                          />
-                                      ))}
-                                  </div>
+                                  <div className="p-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between"><div className="flex items-center gap-2 overflow-hidden"><Github size={12} className="text-slate-500"/><span className="text-[10px] font-bold text-indigo-300 truncate uppercase tracking-widest">{project.github?.owner}/{project.github?.repo}</span></div><div className="flex items-center gap-2"><button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); setGithubTree([]); }} className="text-slate-500 hover:text-red-400" title="Disconnect GitHub"><LogIn size={12} className="rotate-180"/></button><button onClick={() => setGithubTree([])} className="text-slate-500 hover:text-white" title="Change Repository"><RefreshCw size={12}/></button></div></div>
+                                  <div className="flex-1 overflow-y-auto scrollbar-hide py-2">{githubTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path} onSelect={handleExplorerSelect} onToggle={toggleFolder} onShare={()=>{}} expandedIds={expandedIds} loadingIds={loadingIds}/>)}</div>
                               </div>
                           ) : (
                               <div className="flex-1 flex flex-col overflow-hidden">
-                                  <div className="p-3">
-                                      <div className="relative">
-                                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" size={14}/>
-                                          <input 
-                                              type="text" 
-                                              value={githubSearchQuery} 
-                                              onChange={e => setGithubSearchQuery(e.target.value)} 
-                                              placeholder="Search repositories..." 
-                                              className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-                                          />
-                                      </div>
-                                  </div>
-                                  <div className="flex-1 overflow-y-auto scrollbar-hide">
-                                      {filteredRepos.length === 0 ? (
-                                          <div className="p-8 text-center text-slate-600 text-xs italic">No repositories found.</div>
-                                      ) : (
-                                          filteredRepos.map(repo => (
-                                              <button 
-                                                  key={repo.id} 
-                                                  onClick={() => handleSelectRepo(repo)}
-                                                  className="w-full text-left p-3 border-b border-slate-800 hover:bg-slate-800 transition-colors group"
-                                              >
-                                                  <div className="flex items-center justify-between mb-1">
-                                                      <span className="text-xs font-bold text-slate-300 group-hover:text-white truncate">{repo.name}</span>
-                                                      <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${repo.private ? 'bg-amber-900/20 text-amber-500 border-amber-900/50' : 'bg-emerald-900/20 text-emerald-500 border-emerald-900/50'}`}>
-                                                          {repo.private ? 'Private' : 'Public'}
-                                                      </span>
-                                                  </div>
-                                                  <p className="text-[10px] text-slate-500 line-clamp-1">{repo.description || 'No description provided.'}</p>
-                                              </button>
-                                          ))
-                                      )}
-                                  </div>
-                                  <div className="p-3 bg-slate-950 border-t border-slate-800 text-center">
-                                      <button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); }} className="text-[9px] font-black text-slate-500 uppercase hover:text-red-400">Logout GitHub</button>
-                                  </div>
+                                  {/* Fix: replaced broken 'searchQuery' reference with 'githubSearchQuery' and its setter */}
+                                  <div className="p-3"><div className="relative"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" size={14}/><input type="text" value={githubSearchQuery} onChange={e => setGithubSearchQuery(e.target.value)} placeholder="Search repositories..." className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"/></div></div>
+                                  <div className="flex-1 overflow-y-auto scrollbar-hide">{filteredRepos.length === 0 ? <div className="p-8 text-center text-slate-600 text-xs italic">No repositories found.</div> : filteredRepos.map(repo => <button key={repo.id} onClick={() => handleSelectRepo(repo)} className="w-full text-left p-3 border-b border-slate-800 hover:bg-slate-800 transition-colors group"><div className="flex items-center justify-between mb-1"><span className="text-xs font-bold text-slate-300 group-hover:text-white truncate">{repo.name}</span><span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${repo.private ? 'bg-amber-900/20 text-amber-500 border-amber-900/50' : 'bg-emerald-900/20 text-emerald-500 border-emerald-900/50'}`}>{repo.private ? 'Private' : 'Public'}</span></div><p className="text-[10px] text-slate-500 line-clamp-1">{repo.description || 'No description provided.'}</p></button>)}</div>
+                                  <div className="p-3 bg-slate-950 border-t border-slate-800 text-center"><button onClick={() => { localStorage.removeItem('github_token'); setGithubToken(null); }} className="text-[9px] font-black text-slate-500 uppercase hover:text-red-400">Logout GitHub</button></div>
                               </div>
                           )}
                       </div>
@@ -1088,7 +1032,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
       {showShareModal && shareUrl && (
           <ShareModal 
             isOpen={true} 
-            onClose={() => setShowShareModal(false)}
+            onClose={() => setShowShareModal(false)} 
             onShare={handleUpdateAccess}
             link={shareUrl} 
             title={project.name}
@@ -1102,40 +1046,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
       {showManualToken && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm p-6 shadow-2xl animate-fade-in-up">
-                  <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-lg font-bold text-white flex items-center gap-2"><Key className="text-indigo-400" size={18}/> Manual Token Fallback</h3>
-                      <button onClick={() => setShowManualToken(false)} className="text-slate-500 hover:text-white"><X size={20}/></button>
-                  </div>
-                  <div className="space-y-4">
-                      <div className="p-3 bg-amber-900/20 border border-amber-500/30 rounded-xl flex items-start gap-3">
-                          <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16}/>
-                          <div className="space-y-2">
-                             <p className="text-[10px] text-amber-200 leading-relaxed font-bold">CONFLICT DETECTED:</p>
-                             <p className="text-[10px] text-amber-200 leading-relaxed">
-                                {githubLinkingError || "OAuth linking failed because your GitHub is already linked to another account."}
-                             </p>
-                             <p className="text-[10px] text-amber-200 leading-relaxed italic">
-                                Use a Personal Access Token (PAT) to bypass this conflict.
-                             </p>
-                          </div>
-                      </div>
-                      <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">GitHub Access Token</label>
-                          <input 
-                            type="password" 
-                            value={manualToken}
-                            onChange={e => setManualToken(e.target.value)}
-                            placeholder="ghp_..."
-                            className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-indigo-200 outline-none focus:border-indigo-500 font-mono"
-                          />
-                      </div>
-                      <div className="flex flex-col gap-2">
-                          <button onClick={handleSetManualToken} disabled={!manualToken.trim()} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg disabled:opacity-50 transition-all active:scale-95">Save & Connect</button>
-                          <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer" className="text-[10px] text-slate-500 hover:text-indigo-400 flex items-center justify-center gap-1 mt-1 transition-colors">
-                              How to generate a token? <ExternalLink size={10}/>
-                          </a>
-                      </div>
-                  </div>
+                  <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center gap-2"><Key className="text-indigo-400" size={18}/> Manual Token Fallback</h3><button onClick={() => setShowManualToken(false)} className="text-slate-500 hover:text-white"><X size={20}/></button></div>
+                  <div className="space-y-4"><div className="p-3 bg-amber-900/20 border border-amber-500/30 rounded-xl flex items-start gap-3"><AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16}/><div className="space-y-2"><p className="text-[10px] text-amber-200 leading-relaxed font-bold">CONFLICT DETECTED:</p><p className="text-[10px] text-amber-200 leading-relaxed">{githubLinkingError || "OAuth linking failed because your GitHub is already linked to another account."}</p><p className="text-[10px] text-amber-200 leading-relaxed italic">Use a Personal Access Token (PAT) to bypass this conflict.</p></div></div><div className="space-y-2"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">GitHub Access Token</label><input type="password" value={manualToken} onChange={e => setManualToken(e.target.value)} placeholder="ghp_..." className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-indigo-200 outline-none focus:border-indigo-500 font-mono"/></div><div className="flex flex-col gap-2"><button onClick={handleSetManualToken} disabled={!manualToken.trim()} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg disabled:opacity-50 transition-all active:scale-95">Save & Connect</button><a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer" className="text-[10px] text-slate-500 hover:text-indigo-400 flex items-center justify-center gap-1 mt-1 transition-colors">How to generate a token? <ExternalLink size={10}/></a></div></div>
               </div>
           </div>
       )}
