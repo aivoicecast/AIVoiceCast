@@ -442,10 +442,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         onError: (e) => { if (activeServiceIdRef.current === service.id) { setIsAiConnected(false); handleReconnectAi(true); } },
         onVolumeUpdate: () => {},
         onTranscript: (text, isUser) => {
-          if (activeServiceIdRef.current !== service.id) return;
-          if (!isUser) setIsAiThinking(false);
+          const role = isUser ? 'user' : 'ai';
           setTranscript(prev => {
-            const role = isUser ? 'user' : 'ai';
             if (prev.length > 0 && prev[prev.length - 1].role === role) {
               const last = prev[prev.length - 1];
               return [...prev.slice(0, -1), { ...last, text: last.text + text }];
@@ -545,7 +543,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       await saveInterviewRecording(rec);
       setSynthesisPercent(100);
       setView('report');
-      loadInterviews(); // Refresh history
+      loadInterviews(); // Refresh history list
     } else {
         alert("Evaluation failed. Session archived to local history for manual review.");
         setView('hub');
@@ -595,6 +593,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             )}
           </div>
         </div>
+        {(view === 'report' || view === 'coaching') && (
+            <div className="flex items-center gap-2">
+                <button 
+                    onClick={() => { setView('hub'); loadInterviews(); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-black uppercase tracking-widest border border-slate-700 active:scale-95 transition-all"
+                >
+                    <History size={14}/>
+                    <span>History Hub</span>
+                </button>
+            </div>
+        )}
         {view === 'interview' && (
           <div className="flex items-center gap-4">
             <div className={`px-4 py-1.5 rounded-2xl border bg-slate-950/50 flex items-center gap-2 ${timeLeft < 300 ? 'border-red-500/50 text-red-400 animate-pulse' : 'border-indigo-500/30 text-indigo-400'}`}>
@@ -621,7 +630,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             <div className="space-y-8">
               <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 w-fit mx-auto sm:mx-0 shadow-lg">
                 <button onClick={() => setHubTab('history')} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'history' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><History size={14}/> My History</button>
-                <button onClick={() => setHubTab('explore')} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'explore' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><Compass size={14}/> Global Discovery</button>
+                <button onClick={() => setHubTab('explore')} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'explore' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><Compass size={14}/> Community Discovery</button>
               </div>
               
               <div className="animate-fade-in-up">
@@ -688,7 +697,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 </div>
                 <div className="flex-1 overflow-hidden relative flex flex-col bg-slate-950">
                     <CodeStudio 
-                        onBack={() => {}} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={() => {}} 
+                        onBack={() => {}} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={onStartLiveSession as any} 
                         initialFiles={initialStudioFiles} externalChatContent={transcript.map(t => ({ role: t.role, text: t.text }))}
                         onSendExternalMessage={handleSendTextMessage} isInterviewerMode={true} isAiThinking={isAiThinking}
                         onFileChange={(f) => { 
@@ -724,7 +733,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800"><h4 className="text-xs font-black text-amber-400 uppercase tracking-widest mb-4 flex items-center gap-2"><AlertCircle size={14}/> Growth Areas</h4><ul className="space-y-2">{report.areasForImprovement.map((s, i) => (<li key={i} className="text-xs text-slate-300 flex items-start gap-2"><Minus size={14} className="text-amber-500 shrink-0 mt-0.5"/> {s}</li>))}</ul></div>
                     </div>
                     <div className="text-left w-full bg-slate-950 p-8 rounded-[2rem] border border-slate-800"><h3 className="font-bold text-white mb-4 flex items-center gap-2"><BookOpen className="text-indigo-400" size={18}/> Learning Path</h3><div className="prose prose-invert prose-sm max-w-none"><MarkdownView content={report.learningMaterial} /></div></div>
-                    <button onClick={() => setView('hub')} className="px-10 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all">Return to Hub</button>
+                    <button onClick={() => { setView('hub'); loadInterviews(); }} className="px-10 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all">Return to Hub</button>
                 </div>
               ) : <Loader2 size={32} className="animate-spin text-indigo-400" />}
             </div>
