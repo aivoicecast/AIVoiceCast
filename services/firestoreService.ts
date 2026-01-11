@@ -840,10 +840,12 @@ export async function listCloudDirectory(path: string): Promise<CloudItem[]> {
     return [...folders, ...files];
 }
 
-export async function saveProjectToCloud(path: string, filename: string, content: string): Promise<void> {
+/* Fixed: changed return type to Promise<string | undefined> and created blob from content */
+export async function saveProjectToCloud(path: string, filename: string, content: string): Promise<string | undefined> {
     if (!storage) return;
     const r = ref(storage, `${path}/${filename}`);
-    await uploadBytes(r, file);
+    const blob = new Blob([content], { type: 'text/plain' });
+    await uploadBytes(r, blob);
     return await getDownloadURL(r);
 }
 

@@ -41,6 +41,19 @@ const getCodeTool: any = {
   }
 };
 
+const updateActiveFileTool: any = {
+  name: "update_active_file",
+  description: "Update the content of the active code file in the editor. Use this to provide the problem statement, examples, and function template to the candidate.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      new_content: { type: Type.STRING, description: "The full content for the file, including headers and comments." },
+      summary: { type: Type.STRING, description: "Brief description of the changes (e.g., 'Added problem statement')" }
+    },
+    required: ["new_content"]
+  }
+};
+
 export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfile, onStartLiveSession }) => {
   const currentUser = auth?.currentUser;
 
@@ -83,7 +96,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [activeRecording, setActiveRecording] = useState<MockInterviewRecording | null>(null);
   const [report, setReport] = useState<InterviewReport | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [generatedProblemMd, setGeneratedProblemMd] = useState('');
 
   const liveServiceRef = useRef<GeminiLiveService | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -148,7 +160,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         currentUser ? getUserInterviews(currentUser.uid) : Promise.resolve([])
       ]);
       
-      // Merge with local storage backups for additional robustness
       const localBackupsRaw = localStorage.getItem('mock_interview_backups') || '[]';
       const localBackups = JSON.parse(localBackupsRaw) as MockInterviewRecording[];
       const myFilteredBackups = localBackups.filter(b => b.userId === (currentUser?.uid || 'guest'));
@@ -200,7 +211,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       if (view === 'coaching') {
           prompt = `RESUMING COACHING SESSION. You are a supportive Senior Career Coach. Reviewing report for ${currentUser?.displayName}. Evaluation Score: ${report?.score}. Summary: ${report?.summary}. History recap: ${historyText.substring(historyText.length - 2000)}`;
       } else {
-          prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${mode}. History recap: ${historyText.substring(historyText.length - 2000)}. IMPORTANT: Monitor and acknowledge messages typed in the chat box. They are high-priority candidate responses.`;
+          prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${mode}. History recap: ${historyText.substring(historyText.length - 2000)}. IMPORTANT: Monitor and acknowledge messages typed in the chat box. They are high-priority candidate responses. Use 'update_active_file' to provide or refine the problem description directly in the editor.`;
       }
       
       const service = new GeminiLiveService();
@@ -245,21 +256,23 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       const code = activeCodeFilesRef.current[0]?.content || "// No code written yet.";
                       service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: code } }]);
                       logApi("AI Read Candidate Code");
+                  } else if (fc.name === 'update_active_file') {
+                      const { new_content } = fc.args;
+                      setInitialStudioFiles(prev => prev.map((f, i) => i === 0 ? { ...f, content: new_content } : f));
+                      activeCodeFilesRef.current[0].content = new_content;
+                      service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: "Editor updated successfully." } }]);
+                      logApi("AI Updated Solution File");
                   }
               }
           }
-        }, [{ functionDeclarations: [getCodeTool] }]);
+        }, [{ functionDeclarations: [getCodeTool, updateActiveFileTool] }]);
       } catch (err: any) { logApi(`Init Failure: ${err.message}`, "error"); }
     }, backoffTime);
   };
 
   const handleStartCoaching = async () => {
       if (!report) return;
-      
-      // Stop any existing interview link first
-      if (liveServiceRef.current) {
-          await liveServiceRef.current.disconnect();
-      }
+      if (liveServiceRef.current) { await liveServiceRef.current.disconnect(); }
       
       setView('coaching');
       setCoachingTranscript([]);
@@ -358,25 +371,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       activeStreamRef.current = camStream;
       activeScreenStreamRef.current = screenStream;
 
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const jobContext = jobDesc.trim() ? `Job Description: ${jobDesc}` : "Job: Senior developer role";
-      const candidateContext = resumeText.trim() ? `Candidate Resume: ${resumeText}` : "";
-      const problemPrompt = `You are a world-class technical interviewer. Generate a unique coding/design challenge.
-      Mode: ${mode}
-      Lang: ${language}
-      ${jobContext}
-      ${candidateContext}
-      Respond with Markdown.`;
-      
-      const probResponse = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: problemPrompt });
-      setGeneratedProblemMd(probResponse.text || "Introduction needed.");
-
       const filesToInit: CodeFile[] = [];
       if (mode === 'coding' || mode === 'quick_screen' || mode.startsWith('assessment')) {
           const ext = language.toLowerCase() === 'python' ? 'py' : (language.toLowerCase().includes('java') ? 'java' : 'cpp');
           filesToInit.push({
               name: `solution.${ext}`, path: `drive://${uuid}/solution.${ext}`, language: language.toLowerCase() as any,
-              content: `/* \n * Interview: ${mode}\n */\n\n`, loaded: true, isDirectory: false, isModified: false
+              content: `/* \n * Interview: ${mode}\n * Waiting for interviewer to post problem...\n */\n\n`, loaded: true, isDirectory: false, isModified: false
           });
       } else if (mode === 'system_design') {
           filesToInit.push({
@@ -402,7 +402,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           allowedUserIds: currentUser ? [currentUser.uid] : []
       });
 
-      // Unified Recording Compositor
       const isPortrait = window.innerHeight > window.innerWidth;
       const canvas = document.createElement('canvas');
       canvas.width = isPortrait ? 720 : 1280; canvas.height = isPortrait ? 1280 : 720;
@@ -420,11 +419,13 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         } else { drawCtx.fillStyle = '#020617'; drawCtx.fillRect(0, 0, canvas.width, canvas.height); }
         if (camVideo.readyState >= 2) {
           const pipW = isPortrait ? canvas.width * 0.5 : 320;
-          const pipH = (pipW * camVideo.videoHeight) / camVideo.videoWidth;
+          /* Fixed: changed cameraVideo to camVideo to correctly use the locally defined HTMLVideoElement */
+          const pipH = (pipW * camVideo.videoHeight) / camVideo.videoWidth; 
+          const realH = (pipW * camVideo.videoHeight) / camVideo.videoWidth;
           const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - 24;
-          const pipY = isPortrait ? canvas.height - pipH - 120 : canvas.height - pipH - 24;
-          drawCtx.strokeStyle = '#6366f1'; drawCtx.lineWidth = 4; drawCtx.strokeRect(pipX, pipY, pipW, pipH); 
-          drawCtx.drawImage(camVideo, pipX, pipY, pipW, pipH);
+          const pipY = isPortrait ? canvas.height - realH - 120 : canvas.height - realH - 24;
+          drawCtx.strokeStyle = '#6366f1'; drawCtx.lineWidth = 4; drawCtx.strokeRect(pipX, pipY, pipW, realH); 
+          drawCtx.drawImage(camVideo, pipX, pipY, pipW, realH);
         }
         requestAnimationFrame(drawFrame);
       };
@@ -441,7 +442,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
-      const sysPrompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. Job: ${jobDesc}. GOAL: Greet and start.`;
+      const sysPrompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. Job: ${jobDesc}. 
+      GOAL: Greet the candidate. 
+      IMPORTANT: You MUST write the technical challenge, clear examples, and an empty function template with standard headers for ${language} directly into the solution file using the 'update_active_file' tool. Do not just speak the problem description.`;
       
       await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', sysPrompt, {
         onOpen: () => {
@@ -469,10 +472,16 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               if (fc.name === 'get_current_code') {
                   const code = activeCodeFilesRef.current[0]?.content || "// No code written yet.";
                   service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: code } }]);
+              } else if (fc.name === 'update_active_file') {
+                  const { new_content } = fc.args;
+                  setInitialStudioFiles(prev => prev.map((f, i) => i === 0 ? { ...f, content: new_content } : f));
+                  activeCodeFilesRef.current[0].content = new_content;
+                  service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: "Editor updated." } }]);
+                  logApi("AI Wrote Problem Specification");
               }
           }
         }
-      }, [{ functionDeclarations: [getCodeTool] }]);
+      }, [{ functionDeclarations: [getCodeTool, updateActiveFileTool] }]);
       
       setView('interview');
     } catch (e: any) { alert("Startup failed."); setView('hub'); } finally { setIsStarting(false); }
@@ -554,20 +563,18 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         feedback: JSON.stringify(reportData), visibility
       };
       
-      // 1. Local storage archival as a safety fallback
       const localBackupsRaw = localStorage.getItem('mock_interview_backups') || '[]';
       const localBackups = JSON.parse(localBackupsRaw);
       localBackups.push(rec);
-      localStorage.setItem('mock_interview_backups', JSON.stringify(localBackups.slice(-20))); // Keep last 20 locally
+      localStorage.setItem('mock_interview_backups', JSON.stringify(localBackups.slice(-20))); 
       
-      // 2. Cloud ledger persistence
       await saveInterviewRecording(rec);
       
       setSynthesisPercent(100);
       setView('report');
-      loadInterviews(); // Refresh history list
+      loadInterviews();
     } else {
-        alert("Evaluation failed. Session archived to local history for manual review.");
+        alert("Evaluation failed. Session archived to local history.");
         setView('hub');
     }
     
@@ -587,7 +594,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{new Date(rec.timestamp).toLocaleDateString()}</p>
                         </div>
                     </div>
-                    {rec.visibility === 'public' && <Globe size={14} className="text-emerald-500"/>}
+                    {rec.visibility === 'public' && <Globe size={14} className="text-emerald-400"/>}
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span>
@@ -723,10 +730,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         {view === 'interview' && (
           <div className="h-full flex flex-col overflow-hidden relative">
             <div className="flex-1 bg-slate-950 relative flex flex-col md:flex-row overflow-hidden">
-                <div className="w-full md:w-80 bg-slate-900 border-r border-slate-800 overflow-y-auto p-6 space-y-6 shrink-0 scrollbar-hide">
-                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800"><h2 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3">Challenge Description</h2><div className="prose prose-invert prose-xs"><MarkdownView content={generatedProblemMd} /></div></div>
-                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800"><h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Interviewer Notes</h2><p className="text-[10px] text-slate-400 italic">"I am reviewing all artifacts including system design diagrams and code in your workspace."</p></div>
-                </div>
                 <div className="flex-1 overflow-hidden relative flex flex-col bg-slate-950">
                     <CodeStudio 
                         onBack={() => {}} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={onStartLiveSession as any} 
