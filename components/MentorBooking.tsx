@@ -76,6 +76,19 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
     return members.filter(m => m.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || m.email?.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [members, searchQuery]);
 
+  // Reactive Availability: Always use latest userProfile if booking for self
+  const currentTargetAvailability = useMemo(() => {
+      const isSelf = currentUser && bookingMember?.uid === currentUser.uid;
+      const target = isSelf ? userProfile : bookingMember;
+      
+      // Default to 24/7 if AI mentor, or 7-day 9-6 if member has no settings
+      if (!bookingMember && selectedMentor) {
+          return { enabled: true, startHour: 0, endHour: 23, days: [0,1,2,3,4,5,6] };
+      }
+      
+      return target?.availability || { enabled: true, startHour: 9, endHour: 18, days: [0, 1, 2, 3, 4, 5, 6] };
+  }, [bookingMember, selectedMentor, userProfile, currentUser]);
+
   // CALC SLOTS LOGIC
   const availableSlots = useMemo(() => {
       if (!selectedDate) return [];
@@ -85,8 +98,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
       const d = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]), 12, 0, 0);
       const dayOfWeek = d.getDay();
       
-      // If AI mentor, assume 24/7 availability. If member, use their profile.
-      const availability = bookingMember ? (bookingMember.availability || { enabled: true, startHour: 9, endHour: 18, days: [1,2,3,4,5] }) : { enabled: true, startHour: 0, endHour: 23, days: [0,1,2,3,4,5,6] };
+      const availability = currentTargetAvailability;
       
       if (!availability.enabled || !availability.days.includes(dayOfWeek)) return [];
 
@@ -109,7 +121,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
           const isBusy = mentorBookings.some(b => b.date === selectedDate && b.time === s.start);
           return { ...s, isBusy };
       });
-  }, [bookingMember, selectedMentor, selectedDate, duration, mentorBookings]);
+  }, [currentTargetAvailability, selectedDate, duration, mentorBookings]);
 
   const groupedSlots = useMemo(() => {
       const groups = {
@@ -166,6 +178,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
 
   if (bookingMember || selectedMentor) {
       const isSelf = currentUser && bookingMember?.uid === currentUser.uid;
+      const daysStr = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].filter((_, i) => currentTargetAvailability.days.includes(i)).join(', ');
       
       return (
         <div className="max-w-5xl mx-auto my-8 animate-fade-in-up">
@@ -173,9 +186,19 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
                 <div className="p-8 border-b border-slate-800 flex items-center gap-6 bg-slate-950/50">
                     <button onClick={() => { setSelectedMentor(null); setBookingMember(null); }} className="p-3 hover:bg-slate-800 rounded-2xl text-slate-400 transition-colors"><ArrowLeft size={24} /></button>
                     <img src={bookingMember ? (bookingMember.photoURL || `https://ui-avatars.com/api/?name=${bookingMember.displayName}`) : selectedMentor!.imageUrl} className="w-20 h-20 rounded-[2rem] border-4 border-indigo-500 shadow-xl object-cover" />
-                    <div>
-                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">{bookingMember ? (isSelf ? 'My Availability (Test)' : bookingMember.displayName) : selectedMentor!.title}</h2>
-                        <p className="text-sm font-bold text-indigo-400 uppercase tracking-widest">{bookingMember ? (isSelf ? 'Self-Booking Profile' : 'Domain Expert') : 'AI Strategic Mentor'}</p>
+                    <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">{bookingMember ? (isSelf ? 'My Availability (Test)' : bookingMember.displayName) : selectedMentor!.title}</h2>
+                            {isSelf && <span className="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase">Syncing Live</span>}
+                        </div>
+                        <div className="flex items-center gap-4 mt-1">
+                            <p className="text-sm font-bold text-indigo-400 uppercase tracking-widest">{bookingMember ? (isSelf ? 'Self-Booking Profile' : 'Domain Expert') : 'AI Strategic Mentor'}</p>
+                            <div className="h-4 w-px bg-slate-800"></div>
+                            <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                <Clock size={12} className="text-emerald-500"/>
+                                <span>{currentTargetAvailability.startHour}:00 - {currentTargetAvailability.endHour}:00 ({daysStr})</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div className="p-8 md:p-12 space-y-10">
@@ -217,7 +240,10 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
                                         <div className="flex flex-col items-center gap-3">
                                             <ShieldAlert size={32} className="text-slate-700"/>
                                             <p>Member is currently away or outside office hours on this date.</p>
-                                            <p className="text-[9px] font-bold uppercase">Check Professional Profile for regular availability</p>
+                                            <div className="mt-2 p-2 bg-slate-950 rounded-lg">
+                                                <p className="text-[9px] font-bold uppercase text-indigo-400">Current detected availability:</p>
+                                                <p className="text-[9px] text-slate-500 mt-1 uppercase">{daysStr} @ {currentTargetAvailability.startHour}:00 - {currentTargetAvailability.endHour}:00</p>
+                                            </div>
                                         </div>
                                     </div>
                                 ) : (
