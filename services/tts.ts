@@ -3,8 +3,7 @@ import { base64ToBytes, decodeRawPcm, getGlobalAudioContext, hashString } from '
 import { getCachedAudioBuffer, cacheAudioBuffer } from '../utils/db';
 import { OPENAI_API_KEY } from './private_keys';
 import { auth, storage } from './firebaseConfig';
-// FIXED: Using @firebase/ scoped packages
-import { ref, getDownloadURL } from '@firebase/storage';
+import { ref, getDownloadURL } from 'firebase/storage';
 
 export type TtsErrorType = 'none' | 'quota' | 'network' | 'unknown' | 'auth';
 

@@ -2,8 +2,8 @@ import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
   Timestamp, writeBatch, documentId
-} from '@firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, listAll, getMetadata, deleteObject } from '@firebase/storage';
+} from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, listAll, getMetadata, deleteObject } from 'firebase/storage';
 import { db, auth, storage } from './firebaseConfig';
 import { 
   UserProfile, Channel, ChannelStats, Comment, Attachment, Group, ChatChannel, RealTimeMessage, 
@@ -518,7 +518,6 @@ export async function getGroupMembers(uids: string[]): Promise<UserProfile[]> {
 
 export async function removeMemberFromGroup(groupId: string, memberId: string): Promise<void> {
     if (!db) return;
-    // FIXED: corrected typo gROUPS_COLLECTION to GROUPS_COLLECTION and added missing db argument
     await updateDoc(doc(db, GROUPS_COLLECTION, groupId), { memberIds: arrayRemove(memberId) });
 }
 
@@ -695,7 +694,7 @@ export async function updateCommentInChannel(channelId: string, updated: Comment
     const snap = await getDoc(doc(db, CHANNELS_COLLECTION, channelId));
     if (!snap.exists()) return;
     const comments = (snap.data()?.comments || []) as Comment[];
-    const next = comments.map(c => c.id === updated.id ? sanitizeData(updated) : c);
+    const next = comments.map(c => i === updated.id ? sanitizeData(updated) : c);
     await updateDoc(doc(db, CHANNELS_COLLECTION, channelId), { comments: next });
 }
 
@@ -840,10 +839,15 @@ export async function listCloudDirectory(path: string): Promise<CloudItem[]> {
     return [...folders, ...files];
 }
 
-export async function saveProjectToCloud(path: string, filename: string, content: string): Promise<void> {
+/**
+ * Saves project content to private cloud storage.
+ * Support returning download URL, and converted string content to a Blob for uploadBytes.
+ */
+export async function saveProjectToCloud(path: string, filename: string, content: string): Promise<string | undefined> {
     if (!storage) return;
     const r = ref(storage, `${path}/${filename}`);
-    await uploadBytes(r, file);
+    const blob = new Blob([content], { type: 'text/plain' });
+    await uploadBytes(r, blob);
     return await getDownloadURL(r);
 }
 
@@ -854,7 +858,9 @@ export async function deleteCloudItem(path: string) {
 
 export async function createCloudFolder(path: string, name: string) {
     if (!storage) return;
-    await saveProjectToCloud(`${path}/${name}`, '.keep', '');
+    const r = ref(storage, `${path}/${name}/.keep`);
+    const blob = new Blob([''], { type: 'text/plain' });
+    await uploadBytes(r, blob);
 }
 
 export function subscribeToCodeProject(id: string, callback: (p: CodeProject) => void) {

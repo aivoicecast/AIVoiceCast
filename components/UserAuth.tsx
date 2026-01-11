@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-// FIXED: Using @firebase/ scoped packages
-import { onAuthStateChanged } from '@firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { signInWithGoogle, signOut } from '../services/authService';
 import { getAuthInstance } from '../services/firebaseConfig';
 import { LogOut, User as UserIcon, Loader2 } from 'lucide-react';
