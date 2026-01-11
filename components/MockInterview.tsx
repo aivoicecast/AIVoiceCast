@@ -164,12 +164,20 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const localBackups = JSON.parse(localBackupsRaw) as MockInterviewRecording[];
       const myFilteredBackups = localBackups.filter(b => b.userId === (currentUser?.uid || 'guest'));
       
-      const combined = [...userData];
+      // Strict Deduplication Logic
+      const myMap = new Map<string, MockInterviewRecording>();
+      
+      // 1. Prioritize Cloud Data
+      userData.forEach(rec => myMap.set(rec.id, rec));
+      
+      // 2. Overlay Local Data for IDs not yet in cloud
       myFilteredBackups.forEach(backup => {
-          if (!combined.some(existing => existing.id === backup.id)) {
-              combined.push(backup);
+          if (!myMap.has(backup.id)) {
+              myMap.set(backup.id, backup);
           }
       });
+
+      const combined = Array.from(myMap.values());
 
       setMyInterviews(combined.sort((a, b) => b.timestamp - a.timestamp));
       setPublicInterviews(publicData.sort((a, b) => b.timestamp - a.timestamp));
@@ -419,8 +427,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         } else { drawCtx.fillStyle = '#020617'; drawCtx.fillRect(0, 0, canvas.width, canvas.height); }
         if (camVideo.readyState >= 2) {
           const pipW = isPortrait ? canvas.width * 0.5 : 320;
-          /* Fixed: changed cameraVideo to camVideo to correctly use the locally defined HTMLVideoElement */
-          const pipH = (pipW * camVideo.videoHeight) / camVideo.videoWidth; 
           const realH = (pipW * camVideo.videoHeight) / camVideo.videoWidth;
           const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - 24;
           const pipY = isPortrait ? canvas.height - realH - 120 : canvas.height - realH - 24;
@@ -564,8 +570,16 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       };
       
       const localBackupsRaw = localStorage.getItem('mock_interview_backups') || '[]';
-      const localBackups = JSON.parse(localBackupsRaw);
-      localBackups.push(rec);
+      const localBackups = JSON.parse(localBackupsRaw) as MockInterviewRecording[];
+      
+      // Idempotent local save: update existing or push new
+      const existingIdx = localBackups.findIndex(b => b.id === rec.id);
+      if (existingIdx !== -1) {
+          localBackups[existingIdx] = rec;
+      } else {
+          localBackups.push(rec);
+      }
+      
       localStorage.setItem('mock_interview_backups', JSON.stringify(localBackups.slice(-20))); 
       
       await saveInterviewRecording(rec);
