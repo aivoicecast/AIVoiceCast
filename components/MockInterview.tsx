@@ -442,8 +442,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         onError: (e) => { if (activeServiceIdRef.current === service.id) { setIsAiConnected(false); handleReconnectAi(true); } },
         onVolumeUpdate: () => {},
         onTranscript: (text, isUser) => {
-          const role = isUser ? 'user' : 'ai';
+          if (activeServiceIdRef.current !== service.id) return;
+          if (!isUser) setIsAiThinking(false);
           setTranscript(prev => {
+            const role = isUser ? 'user' : 'ai';
             if (prev.length > 0 && prev[prev.length - 1].role === role) {
               const last = prev[prev.length - 1];
               return [...prev.slice(0, -1), { ...last, text: last.text + text }];
@@ -630,7 +632,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             <div className="space-y-8">
               <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 w-fit mx-auto sm:mx-0 shadow-lg">
                 <button onClick={() => setHubTab('history')} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'history' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><History size={14}/> My History</button>
-                <button onClick={() => setHubTab('explore')} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'explore' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><Compass size={14}/> Community Discovery</button>
+                <button onClick={() => setHubTab('explore')} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'explore' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><Compass size={14}/> Global Discovery</button>
               </div>
               
               <div className="animate-fade-in-up">

@@ -78,6 +78,13 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
+    // MOCK INTERVIEWS (FIX: ADDED FOR v4.3.0)
+    match /mock_interviews/{interviewId} {
+      allow read: if resource.data.visibility == 'public' || isOwner(resource.data.userId) || isAdmin();
+      allow write: if isAuthenticated();
+    }
+
+    // ----------------------------------------------------------------------
     // SHARED ASSETS & UTILITY APPS
     match /invitations/{inviteId} { allow read, write: if isAuthenticated(); }
     match /bookings/{bookingId} { allow read, write: if isAuthenticated(); }

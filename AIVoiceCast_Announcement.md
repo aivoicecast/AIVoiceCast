@@ -1,21 +1,21 @@
 
-# Welcome to AIVoiceCast v4.2.2: The Resilient Prism Edition
+# Welcome to AIVoiceCast v4.3.0: The Verified Ledger Edition
 
 **By Admin** | *Posted in Platform Updates*
 
-The era of passive listening is over. Traditional podcasts are great for consumption, but AIVoiceCast transforms consumption into creation. With the release of **v4.2.2**, we have focused on **long-term stability** and **neural resilience**.
+The era of passive listening is over. Traditional podcasts are great for consumption, but AIVoiceCast transforms consumption into creation. With the release of **v4.3.0**, we have focused on **Verified Technical Evaluations** and **Ledger Continuity**.
 
-## What's New in v4.2.2?
+## What's New in v4.3.0?
 
-### 1. 🛡️ Neural Link Resilience
+### 1. 🛡️ Verified Technical Ledger
+The Mock Interview system is now strictly atomic. 
+*   **Persistent Evaluations:** Every coding, system design, or behavioral interview is archived to the cloud ledger.
+*   **Global Discovery:** Explore public evaluations from top candidates across the community to learn standard-setting technical answers.
+
+### 2. 🧠 Neural Link Resilience
 The Live Studio now supports meetings of unlimited length.
 *   **Neural Rotation:** Every 5 minutes, the system silently refreshes your connection to the AI to prevent infrastructure timeouts.
 *   **Context Continuity:** The AI "remembers" the recent conversation across these refreshes, ensuring a seamless flow even during hour-long recorded sessions.
-
-### 2. 🧠 Neural Lab Scratchpad
-Interactive AI notebooks are here. Chained prompts, context-aware execution, and deep visual reasoning are now part of your standard workflow.
-*   **Context Chaining:** AI "remembers" the logic from previous cells.
-*   **Prompt Cells:** Directly execute complex tasks with Gemini-3-Flash.
 
 ### 3. 📂 Code Studio with Google Drive & Cloud Integration
 The Code Studio has been completely re-architected to serve as your primary cloud IDE.

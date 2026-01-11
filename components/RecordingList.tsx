@@ -822,7 +822,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                   ))}
               </div>
               <div className="p-3 border-t border-slate-800 bg-slate-950 flex justify-between items-center">
-                  <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">Protocol Version 4.2.1-SYN</p>
+                  <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">Protocol Version v4.3.0-SYN</p>
                   <button onClick={() => setSyncLogs([])} className="text-[10px] text-slate-500 hover:text-white underline font-bold uppercase">Clear Logs</button>
               </div>
           </div>

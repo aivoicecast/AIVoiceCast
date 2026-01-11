@@ -14,7 +14,7 @@ export const APP_COMPARISON_DOC: CommunityDiscussion = {
   designDoc: `
 # AIVoiceCast: System Architecture & Neural OS Specification
 
-**Revision:** 4.2.2 | **Author:** Lead Architect | **Date:** Dec 20, 2025
+**Revision:** 4.3.0 | **Author:** Lead Architect | **Date:** Dec 20, 2025
 
 ## 1. Philosophical Transition
 AIVoiceCast has evolved from a "Podcast Player" into a **Knowledge Operating System**. The core design philosophy shifts from *passive consumption* to *active creation and transaction*. 
@@ -43,7 +43,7 @@ Unlike professional editors (OnlineGDB, Coderbyte) that utilize Docker container
 | **Security** | Sandbox required | Client-side safe | Total Isolation (Predicted) |
 
 ## 4. VoiceCoin Financial Protocol (VCFP)
-v4.2.0 introduces the **VoiceCoin Protocol**, a decentralized-style ledger built atop Google Cloud.
+v4.2.0 introduced the **VoiceCoin Protocol**, a decentralized-style ledger built atop Google Cloud.
 
 ## 5. Multi-Backend Persistence
 To ensure maximum user control, AIVoiceCast implements a tiered persistence model:
@@ -51,7 +51,7 @@ To ensure maximum user control, AIVoiceCast implements a tiered persistence mode
 - **Trusted Data (Firestore):** Identity certificates, ledger history.
 - **User Sovereign Data (Google Drive):** Source code, published PDFs.
 
-## 6. Neural Link Resilience (v4.2.2 Updates)
+## 6. Neural Link Resilience (v4.3.0 Updates)
 To handle long-running sessions (30m+), the Neural OS implements three critical stability layers:
 
 ### A. Preemptive Neural Rotation
@@ -66,6 +66,6 @@ The system detects **HTTP 429 (Resource Exhausted)** errors and enters a "Neural
 A persistent null-text heartbeat is transmitted every **15 seconds** during silence to prevent idle-timeout disconnections from the Gemini Gateway.
 
 ## 7. Conclusion
-The v4.2.2 architecture establishes AIVoiceCast as a "Resilient Dream Machine"—a system capable of maintaining long-term neural connections for complex meetings and deep learning sessions.
+The v4.3.0 architecture establishes AIVoiceCast as a "Resilient Dream Machine"—a system capable of maintaining long-term neural connections for complex meetings and deep learning sessions.
 `
 };

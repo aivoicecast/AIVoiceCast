@@ -23,7 +23,7 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
           {/* Hero Section */}
           <section className="text-center space-y-8 animate-fade-in-up">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-900/30 border border-indigo-500/30 text-indigo-300 text-sm font-bold uppercase tracking-wider mb-4">
-              <SparkleIcon /> AIVoiceCast Platform v4.2.0
+              <SparkleIcon /> AIVoiceCast Platform v4.3.0
             </div>
             <h2 className="text-5xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-200 to-slate-400 leading-tight">
               A Shared Network of<br />Neural Intelligence.
