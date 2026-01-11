@@ -11,7 +11,6 @@ interface Equation {
   expression: string;
   visible: boolean;
   color: string;
-  error?: boolean;
 }
 
 type GraphMode = '2d' | '3d' | 'polar';
@@ -19,38 +18,43 @@ type GraphMode = '2d' | '3d' | 'polar';
 export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
   const [mode, setMode] = useState<GraphMode>('2d');
   const [equations, setEquations] = useState<Equation[]>([
-    { id: '1', expression: 'sin(x)', visible: true, color: '#22d3ee' } // Brighter Cyan
+    { id: '1', expression: 'sin(x)', visible: true, color: '#00f2ff' } // Electric Cyan
   ]);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [isPlotting, setIsPlotting] = useState(false);
   const [libsReady, setLibsReady] = useState(false);
+  const [errorIds, setErrorIds] = useState<Set<string>>(new Set());
   const graphRef = useRef<HTMLDivElement>(null);
+  const checkIntervalRef = useRef<any>(null);
 
   // Constants for graphing
   const RANGE_2D = 10;
   const RANGE_3D = 5;
-  const POINTS_2D = 500;
-  const POINTS_3D = 40;
+  const POINTS_2D = 800; // Increased resolution
+  const POINTS_3D = 45;
 
-  // Poll for libraries on mount
+  // Robust Library Detection
   useEffect(() => {
-    const checkLibs = setInterval(() => {
-        if ((window as any).Plotly && (window as any).math) {
+    const detect = () => {
+        const Plotly = (window as any).Plotly;
+        const math = (window as any).math;
+        if (Plotly && math) {
             setLibsReady(true);
-            clearInterval(checkLibs);
-            renderGraph();
+            if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
+            return true;
         }
-    }, 100);
-    return () => clearInterval(checkLibs);
-  }, []);
+        return false;
+    };
 
-  useEffect(() => {
-    if (libsReady) {
-        const timer = setTimeout(() => renderGraph(), 100);
-        return () => clearTimeout(timer);
+    if (!detect()) {
+        checkIntervalRef.current = setInterval(detect, 200);
     }
-  }, [equations, mode, libsReady]);
+
+    return () => {
+        if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
+    };
+  }, []);
 
   const handleResize = () => {
     if (graphRef.current && (window as any).Plotly) {
@@ -60,37 +64,44 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
 
   useEffect(() => {
     window.addEventListener('resize', handleResize);
+    if (libsReady) {
+        // Small delay to ensure the container has height after mount/mode switch
+        const timer = setTimeout(() => renderGraph(), 100);
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            clearTimeout(timer);
+        };
+    }
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [equations, mode, libsReady]);
 
   const renderGraph = () => {
-    if (!graphRef.current) return;
+    if (!graphRef.current || !libsReady) return;
     
     const Plotly = (window as any).Plotly;
     const math = (window as any).math;
 
-    if (!Plotly || !math) return;
+    // Check if container has size
+    if (graphRef.current.clientWidth === 0 || graphRef.current.clientHeight === 0) {
+        console.warn("Container not ready for plotting");
+        return;
+    }
 
     setIsPlotting(true);
     const data: any[] = [];
-    const updatedEquations = [...equations];
-    let hasChanges = false;
+    const newErrorIds = new Set<string>();
 
-    equations.forEach((eq, index) => {
+    equations.forEach((eq) => {
       if (!eq.expression.trim() || !eq.visible) return;
       try {
         const compiled = math.compile(eq.expression);
-        if (updatedEquations[index].error) {
-            updatedEquations[index].error = false;
-            hasChanges = true;
-        }
 
         if (mode === '2d') {
-          const xValues = Array.from({ length: POINTS_2D }, (_, i) => -RANGE_2D + (i / POINTS_2D) * 2 * RANGE_2D);
+          const xValues = Array.from({ length: POINTS_2D }, (_, i) => -RANGE_2D + (i / (POINTS_2D - 1)) * 2 * RANGE_2D);
           const yValues = xValues.map(x => {
             try { 
                 const val = compiled.evaluate({ x }); 
-                return isFinite(val) ? val : null;
+                return (typeof val === 'number' && isFinite(val)) ? val : null;
             } catch { return null; }
           });
           data.push({
@@ -104,8 +115,8 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
           });
         } 
         else if (mode === '3d') {
-          const xValues = Array.from({ length: POINTS_3D }, (_, i) => -RANGE_3D + (i / POINTS_3D) * 2 * RANGE_3D);
-          const yValues = Array.from({ length: POINTS_3D }, (_, i) => -RANGE_3D + (i / POINTS_3D) * 2 * RANGE_3D);
+          const xValues = Array.from({ length: POINTS_3D }, (_, i) => -RANGE_3D + (i / (POINTS_3D - 1)) * 2 * RANGE_3D);
+          const yValues = Array.from({ length: POINTS_3D }, (_, i) => -RANGE_3D + (i / (POINTS_3D - 1)) * 2 * RANGE_3D);
           const zValues: number[][] = [];
           
           for (let i = 0; i < yValues.length; i++) {
@@ -113,7 +124,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
             for (let j = 0; j < xValues.length; j++) {
               try {
                 const val = compiled.evaluate({ x: xValues[j], y: yValues[i] });
-                row.push(isFinite(val) ? val : 0);
+                row.push((typeof val === 'number' && isFinite(val)) ? val : 0);
               } catch { row.push(0); }
             }
             zValues.push(row);
@@ -124,15 +135,16 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
             type: 'surface',
             name: eq.expression,
             colorscale: 'Viridis',
-            showscale: false
+            showscale: false,
+            opacity: 0.9
           });
         }
         else if (mode === 'polar') {
-          const thetaValues = Array.from({ length: POINTS_2D }, (_, i) => (i / POINTS_2D) * 2 * Math.PI);
+          const thetaValues = Array.from({ length: POINTS_2D }, (_, i) => (i / (POINTS_2D - 1)) * 2 * Math.PI);
           const rValues = thetaValues.map(theta => {
             try { 
                 const val = compiled.evaluate({ theta }); 
-                return isFinite(val) ? val : null;
+                return (typeof val === 'number' && isFinite(val)) ? val : null;
             } catch { return null; }
           });
           data.push({
@@ -145,40 +157,38 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
           });
         }
       } catch (err) {
-        if (!updatedEquations[index].error) {
-            updatedEquations[index].error = true;
-            hasChanges = true;
-        }
+        newErrorIds.add(eq.id);
       }
     });
 
-    if (hasChanges) setEquations(updatedEquations);
+    // Update error icons without triggering a full re-plot
+    if (newErrorIds.size !== errorIds.size) setErrorIds(newErrorIds);
 
     const layout = {
       autosize: true,
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
-      margin: { t: 20, r: 20, b: 40, l: 40 },
+      margin: { t: 40, r: 40, b: 60, l: 60 },
       showlegend: mode !== '3d' && data.length > 1,
-      font: { color: '#94a3b8', family: 'Inter, sans-serif', size: 10 },
+      font: { color: '#94a3b8', family: 'Inter, sans-serif', size: 11 },
       xaxis: { 
-          gridcolor: '#334155', // Lighter grid
-          zerolinecolor: '#94a3b8', // Visible zero line
+          gridcolor: '#334155', 
+          zerolinecolor: '#ffffff', // Stark white zero line
           zerolinewidth: 2,
-          tickcolor: '#475569',
-          title: mode === '2d' ? 'x' : undefined
+          tickcolor: '#64748b',
+          title: { text: mode === '2d' ? 'x-axis' : undefined, font: { weight: 'bold' } }
       },
       yaxis: { 
-          gridcolor: '#334155', // Lighter grid
-          zerolinecolor: '#94a3b8', // Visible zero line
+          gridcolor: '#334155', 
+          zerolinecolor: '#ffffff', // Stark white zero line
           zerolinewidth: 2,
-          tickcolor: '#475569',
-          title: mode === '2d' ? 'y' : undefined
+          tickcolor: '#64748b',
+          title: { text: mode === '2d' ? 'y-axis' : undefined, font: { weight: 'bold' } }
       },
       scene: {
-        xaxis: { backgroundcolor: '#020617', gridcolor: '#334155', showbackground: true, zerolinecolor: '#94a3b8' },
-        yaxis: { backgroundcolor: '#020617', gridcolor: '#334155', showbackground: true, zerolinecolor: '#94a3b8' },
-        zaxis: { backgroundcolor: '#020617', gridcolor: '#334155', showbackground: true, zerolinecolor: '#94a3b8' }
+        xaxis: { backgroundcolor: '#020617', gridcolor: '#334155', showbackground: true, zerolinecolor: '#ffffff' },
+        yaxis: { backgroundcolor: '#020617', gridcolor: '#334155', showbackground: true, zerolinecolor: '#ffffff' },
+        zaxis: { backgroundcolor: '#020617', gridcolor: '#334155', showbackground: true, zerolinecolor: '#ffffff' }
       },
       polar: {
         bgcolor: 'rgba(0,0,0,0)',
@@ -193,7 +203,8 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
         staticPlot: false 
     };
 
-    Plotly.react(graphRef.current, data, layout, config).then(() => {
+    // Use newPlot to ensure complete re-rendering on major changes
+    Plotly.newPlot(graphRef.current, data, layout, config).then(() => {
         setIsPlotting(false);
     });
   };
@@ -234,12 +245,12 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
   };
 
   const addEquation = () => {
-    const randomColors = ['#f472b6', '#38bdf8', '#fbbf24', '#a78bfa', '#4ade80'];
+    const randomColors = ['#00f2ff', '#f472b6', '#38bdf8', '#fbbf24', '#a78bfa', '#4ade80'];
     setEquations([...equations, { id: Date.now().toString(), expression: '', visible: true, color: randomColors[equations.length % randomColors.length] }]);
   };
 
   const updateEquation = (id: string, expression: string) => {
-    setEquations(equations.map(e => e.id === id ? { ...e, expression, error: false } : e));
+    setEquations(equations.map(e => e.id === id ? { ...e, expression } : e));
   };
 
   const removeEquation = (id: string) => {
@@ -259,7 +270,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
       {/* Sidebar Controls */}
       <div className="w-80 border-r border-slate-800 bg-slate-900/50 flex flex-col shrink-0">
         <div className="p-4 border-b border-slate-800 flex items-center gap-3">
-          <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400">
+          <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
             <ArrowLeft size={20} />
           </button>
           <h2 className="font-black uppercase tracking-tighter italic text-indigo-400">Neural Graph</h2>
@@ -290,11 +301,11 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
             </div>
             <div className="space-y-3">
               {equations.map((eq) => (
-                <div key={eq.id} className={`group relative bg-slate-950 border rounded-xl p-3 transition-all ${eq.error ? 'border-red-500 shadow-lg shadow-red-950/20' : 'border-slate-800 focus-within:border-indigo-500/50'}`}>
+                <div key={eq.id} className={`group relative bg-slate-950 border rounded-xl p-3 transition-all ${errorIds.has(eq.id) ? 'border-red-500 shadow-lg shadow-red-950/20' : 'border-slate-800 focus-within:border-indigo-500/50'}`}>
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: eq.color }}></div>
                     <span className="text-[9px] font-mono text-slate-600 uppercase tracking-tighter">f({mode === 'polar' ? 'θ' : mode === '3d' ? 'x,y' : 'x'})</span>
-                    {eq.error && <AlertCircle size={10} className="text-red-500 animate-pulse"/>}
+                    {errorIds.has(eq.id) && <AlertCircle size={10} className="text-red-500 animate-pulse"/>}
                     <button onClick={() => removeEquation(eq.id)} className="ml-auto opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-opacity">
                       <Trash2 size={12}/>
                     </button>
@@ -327,7 +338,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
                 value={aiPrompt}
                 onChange={e => setAiPrompt(e.target.value)}
                 placeholder="Describe a function... (e.g., 'A hyperbolic paraboloid')"
-                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 outline-none focus:border-indigo-500 resize-none h-24 transition-all"
+                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 outline-none focus:border-indigo-500 resize-none h-24 transition-all shadow-inner"
               />
               <button
                 onClick={handleAiAssist}
@@ -342,7 +353,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
 
         <div className="p-4 border-t border-slate-800 bg-slate-950/50">
             {!libsReady ? (
-                <div className="flex items-center gap-2 text-[9px] text-amber-400 font-bold uppercase">
+                <div className="flex items-center gap-2 text-[9px] text-amber-400 font-bold uppercase tracking-widest">
                     <Loader2 size={10} className="animate-spin"/> Initializing Engine...
                 </div>
             ) : (
@@ -370,24 +381,23 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
                </p>
            </div>
            <div className="flex gap-2">
-               <button className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-white transition-all"><Share2 size={18}/></button>
-               <button onClick={renderGraph} className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-white transition-all"><RefreshCw size={18}/></button>
+               <button onClick={handleResize} className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-white transition-all"><RefreshCw size={18}/></button>
            </div>
         </div>
 
-        <div className="flex-1 z-10 p-4 pt-0 flex flex-col">
+        <div className="flex-1 z-10 p-6 pt-0 flex flex-col">
             <div className="flex-1 bg-slate-900/60 backdrop-blur-md rounded-[3rem] border border-slate-800/50 shadow-2xl overflow-hidden relative">
                 <div ref={graphRef} className="w-full h-full" />
                 
                 {/* HUD Overlay */}
                 <div className="absolute bottom-8 right-8 flex flex-col gap-2">
-                    <div className="bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-slate-700 shadow-2xl flex items-center gap-4">
+                    <div className="bg-slate-900/90 backdrop-blur-md p-3 px-5 rounded-2xl border border-slate-700 shadow-2xl flex items-center gap-4">
                         <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                             <Grid3X3 size={14}/> {mode === '3d' ? '3D Proj' : '2D Plane'}
                         </div>
                         <div className="w-px h-4 bg-slate-700"></div>
                         <div className="flex items-center gap-2 text-[10px] font-black text-emerald-400 uppercase tracking-widest">
-                            <Circle size={10} fill="currentColor" className="animate-pulse"/> Real-time
+                            <Circle size={10} fill="currentColor" className="animate-pulse"/> {libsReady ? 'Sync Active' : 'Offline'}
                         </div>
                     </div>
                 </div>
