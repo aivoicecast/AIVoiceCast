@@ -3,6 +3,9 @@ import { Chapter } from '../types';
 import { incrementApiUsage } from './firestoreService';
 import { auth } from './firebaseConfig';
 
+/**
+ * Generates a structured learning curriculum based on a podcast's title and description.
+ */
 export async function generateCurriculum(
   topic: string, 
   context: string,
@@ -16,14 +19,14 @@ export async function generateCurriculum(
       : 'Output Language: English.';
 
     const prompt = `
-      You are an expert curriculum designer. Design a 10-chapter learning path for a podcast about: "${topic}".
+      You are an expert curriculum designer. Design a 10-chapter learning path for an educational podcast about: "${topic}".
       Context: ${context}
       ${langInstruction}
       
       Requirements:
       1. Exactly 10 chapters.
       2. Each chapter should have 3-5 specific sub-topics (lessons).
-      3. Topics should progress from fundamentals to advanced concepts.
+      3. Topics should progress logically from fundamentals to advanced concepts.
       
       Return ONLY a JSON array with this structure:
       [
@@ -42,7 +45,10 @@ export async function generateCurriculum(
       config: { responseMimeType: 'application/json' }
     });
 
-    const parsed = JSON.parse(response.text || "[]");
+    const text = response.text;
+    if (!text) throw new Error("Empty AI response");
+
+    const parsed = JSON.parse(text);
     if (auth.currentUser) incrementApiUsage(auth.currentUser.uid);
 
     return parsed.map((ch: any, cIdx: number) => ({

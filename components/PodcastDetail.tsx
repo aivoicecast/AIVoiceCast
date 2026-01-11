@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile } from '../types';
 import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, RefreshCcw, Wand2 } from 'lucide-react';
@@ -44,8 +43,9 @@ const UI_TEXT = {
     playAudio: "Listen to Lecture", pauseAudio: "Pause Audio", stopAudio: "Stop Audio",
     buffering: "Neural Synthesis...", regenerate: "Neural Re-synthesis",
     regenerating: "Re-synthesizing...",
-    regenCurriculum: "Neural Re-structure",
-    regenCurriculumDesc: "AI is re-mapping the entire curriculum..."
+    regenCurriculum: "Re-structure Curriculum",
+    regenCurriculumDesc: "AI is re-mapping the entire curriculum...",
+    regenLecture: "Re-synthesize Selected Lecture"
   },
   zh: {
     back: "返回", curriculum: "课程大纲", selectTopic: "选择一个课程开始阅读",
@@ -60,18 +60,22 @@ const UI_TEXT = {
     playAudio: "播放讲座音频", pauseAudio: "暂停播放", stopAudio: "停止播放",
     buffering: "神经合成中...", regenerate: "神经重构",
     regenerating: "正在重构...",
-    regenCurriculum: "神经大纲重构",
-    regenCurriculumDesc: "AI 正在重新规划整个课程大纲..."
+    regenCurriculum: "重构课程大纲",
+    regenCurriculumDesc: "AI 正在重新规划整个课程大纲...",
+    regenLecture: "重新合成当前讲座"
   }
 };
 
-export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, language, currentUser, onStartLiveSession, userProfile, onUpdateChannel }) => {
+export const PodcastDetail: React.FC<PodcastDetailProps> = ({ 
+    channel, onBack, language, currentUser, onStartLiveSession, userProfile, onUpdateChannel 
+}) => {
   const t = UI_TEXT[language];
   const [activeLecture, setActiveLecture] = useState<GeneratedLecture | null>(null);
   const [isLoadingLecture, setIsLoadingLecture] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isRegeneratingCurriculum, setIsRegeneratingCurriculum] = useState(false);
   const [activeSubTopicId, setActiveSubTopicId] = useState<string | null>(null);
+  const [activeSubTopicTitle, setActiveSubTopicTitle] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
 
@@ -117,30 +121,31 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
   const handleTopicClick = async (topicTitle: string, subTopicId?: string) => {
     stopPlaybackInternal();
     setActiveSubTopicId(subTopicId || null);
+    setActiveSubTopicTitle(topicTitle);
     setActiveLecture(null);
     setIsLoadingLecture(true);
     try {
         const cacheKey = `lecture_${channel.id}_${subTopicId}_${language}`;
         const cached = await getCachedLectureScript(cacheKey);
         if (cached) { setActiveLecture(cached); return; }
-        const script = await generateLectureScript(topicTitle, channel.description, language);
+        const script = await generateLectureScript(topicTitle, channel.description, language, channel.id, channel.voiceName);
         if (script) { setActiveLecture(script); await cacheLectureScript(cacheKey, script); }
     } finally { setIsLoadingLecture(false); }
   };
 
-  const handleRegenerate = async () => {
-    if (!activeSubTopicId || !activeLecture) return;
+  const handleRegenerateLecture = async () => {
+    if (!activeSubTopicId || !activeSubTopicTitle) return;
     
     const confirmMsg = language === 'zh' 
-        ? "确定要重新生成讲座内容吗？这将会覆盖当前的缓存。" 
-        : "Are you sure you want to re-synthesize this lecture? This will overwrite the existing cached content.";
+        ? "确定要重新生成当前选中的讲座内容吗？这将会覆盖现有的缓存。" 
+        : "Are you sure you want to re-synthesize the selected lecture script? This will bypass the cache.";
         
     if (!confirm(confirmMsg)) return;
 
     stopPlaybackInternal();
     setIsRegenerating(true);
     try {
-        const script = await generateLectureScript(activeLecture.topic, channel.description, language);
+        const script = await generateLectureScript(activeSubTopicTitle, channel.description, language, channel.id, channel.voiceName);
         if (script) {
             const cacheKey = `lecture_${channel.id}_${activeSubTopicId}_${language}`;
             await cacheLectureScript(cacheKey, script);
@@ -155,14 +160,15 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
 
   const handleRegenerateCurriculum = async () => {
     const confirmMsg = language === 'zh'
-        ? "确定要重新生成整个课程大纲吗？这将会彻底改变现有的章节结构。"
-        : "Are you sure you want to re-synthesize the entire curriculum? This will completely rebuild the chapter and lesson structure.";
+        ? "确定要重新生成整个课程大纲吗？这将会彻底改变现有的章节结构并清除现有脚本缓存。"
+        : "Are you sure you want to re-synthesize the entire curriculum? This will completely rebuild the chapter structure.";
     
     if (!confirm(confirmMsg)) return;
 
     setIsRegeneratingCurriculum(true);
     stopPlaybackInternal();
     setActiveSubTopicId(null);
+    setActiveSubTopicTitle(null);
     setActiveLecture(null);
 
     try {
@@ -170,12 +176,11 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
         if (newChapters) {
             setChapters(newChapters);
             
-            // If it's a user-owned channel or local channel, persist the change
+            // Persist the change
             const updatedChannel = { ...channel, chapters: newChapters };
             if (onUpdateChannel) {
                 onUpdateChannel(updatedChannel);
             } else {
-                // Fallback: save to local DB if it's a local channel
                 await saveUserChannel(updatedChannel);
             }
         }
@@ -283,20 +288,32 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
                       <BookOpen size={16} className="text-indigo-400" />
                       {t.curriculum}
                     </h3>
-                    <button 
-                      onClick={handleRegenerateCurriculum}
-                      disabled={isRegeneratingCurriculum}
-                      className={`p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 rounded-lg border border-slate-700 transition-all ${isRegeneratingCurriculum ? 'animate-pulse opacity-50' : ''}`}
-                      title={t.regenCurriculum}
-                    >
-                      {isRegeneratingCurriculum ? <Loader2 size={14} className="animate-spin"/> : <RefreshCcw size={14}/>}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {activeSubTopicId && (
+                            <button 
+                              onClick={handleRegenerateLecture}
+                              disabled={isRegenerating}
+                              className={`p-1.5 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-500/20 transition-all ${isRegenerating ? 'animate-pulse' : ''}`}
+                              title={t.regenLecture}
+                            >
+                              {isRegenerating ? <Loader2 size={14} className="animate-spin"/> : <Wand2 size={14}/>}
+                            </button>
+                        )}
+                        <button 
+                          onClick={handleRegenerateCurriculum}
+                          disabled={isRegeneratingCurriculum}
+                          className={`p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 rounded-lg border border-slate-700 transition-all ${isRegeneratingCurriculum ? 'animate-pulse opacity-50' : ''}`}
+                          title={t.regenCurriculum}
+                        >
+                          {isRegeneratingCurriculum ? <Loader2 size={14} className="animate-spin"/> : <RefreshCcw size={14}/>}
+                        </button>
+                    </div>
                 </div>
                 <div className="divide-y divide-slate-800">
                     {isRegeneratingCurriculum ? (
                       <div className="p-12 text-center space-y-4 bg-slate-950/50">
                         <Loader2 size={32} className="text-indigo-500 animate-spin mx-auto" />
-                        <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest leading-relaxed">{t.regenCurriculumDesc}</p>
+                        <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest leading-relaxed px-4">{t.regenCurriculumDesc}</p>
                       </div>
                     ) : (
                       chapters.map((ch) => (
@@ -336,15 +353,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
                             <span>{isBuffering ? t.buffering : isPlaying ? t.stopAudio : t.playAudio}</span>
                         </button>
                         
-                        <button 
-                            onClick={handleRegenerate}
-                            disabled={isRegenerating}
-                            className={`p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 rounded-xl border border-slate-700 transition-all shadow-lg ${isRegenerating ? 'animate-pulse opacity-50' : ''}`}
-                            title={t.regenerate}
-                        >
-                            {isRegenerating ? <Loader2 size={18} className="animate-spin"/> : <RefreshCcw size={18}/>}
-                        </button>
-
                         <button onClick={handleShareLecture} className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-all shadow-lg" title="Share URI"><Share2 size={18}/></button>
                     </div>
                 </div>
