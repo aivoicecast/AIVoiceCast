@@ -1,9 +1,6 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, ReaderTheme, UserAvailability } from '../types';
-// Fixed error: Added missing 'Info' to lucide-react imports
 import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive, Calendar, Clock, Info } from 'lucide-react';
-// Fix: removed getBillingHistory and createStripePortalSession which are not exported by firestoreService
 import { logUserActivity, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut, getDriveToken, connectGoogleDrive } from '../services/authService';
 import { clearAudioCache } from '../services/tts';
@@ -21,7 +18,7 @@ interface SettingsModalProps {
 }
 
 const THEME_OPTIONS: { id: ReaderTheme, label: string, icon: any, desc: string }[] = [
-    { id: 'slate', label: 'Slate', icon: Palette, desc: 'Classic AIVoiceCast dark' },
+    { id: 'slate', label: 'Slate', icon: Palette, desc: 'Classic Neural Prism dark' },
     { id: 'light', label: 'Paper', icon: Sun, desc: 'Clean high-contrast light' },
     { id: 'dark', label: 'Night', icon: Moon, desc: 'Deep black for reading' },
     { id: 'sepia', label: 'Sepia', icon: Coffee, desc: 'Warm low-eye-strain' }
@@ -192,9 +189,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
   };
 
-  // Fixed error: Defined missing 'handleLogout' function
   const handleLogout = async () => {
-    if (confirm("Sign out of AIVoiceCast?")) {
+    if (confirm("Sign out of Neural Prism?")) {
         await signOut();
         onClose();
     }
@@ -455,7 +451,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                         <div className="p-4 bg-slate-950 border border-indigo-500/10 rounded-2xl text-[10px] text-slate-500 leading-relaxed font-medium">
                             <Info size={14} className="inline mr-2 mb-0.5 text-indigo-400"/>
-                            AIVoiceCast enforces a 5-minute cooldown between sessions. Bookings are aligned to :05 and :35 minute starts.
+                            Neural Prism enforces a 5-minute cooldown between sessions. Bookings are aligned to :05 and :35 minute starts.
                         </div>
                     </div>
                 </div>
@@ -465,7 +461,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="space-y-6 animate-fade-in">
                     <div>
                         <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2"><Heart className="text-pink-500" /> Your Interests</h3>
-                        <p className="text-sm text-slate-400">Select topics you love to personalize your feed and recommendations.</p>
+                        <p className="text-sm text-slate-400">Select topics you love to personalize your spectrum and recommendations.</p>
                     </div>
                     <div className="space-y-6">
                         {Object.keys(TOPIC_CATEGORIES).map(category => (
@@ -497,7 +493,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <div className="p-2 bg-indigo-600 rounded-lg text-white shadow-lg shadow-indigo-900/20"><PenTool size={20}/></div>
                         <div>
                             <h3 className="text-sm font-bold text-white">Neural Check Profile</h3>
-                            <p className="text-xs text-slate-400">Save your professional details once to generate verified checks in seconds.</p>
+                            <p className="text-xs text-slate-400">Save your professional details once to generate refracted assets in seconds.</p>
                         </div>
                     </div>
 
@@ -515,7 +511,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><HashIcon size={12} className="text-indigo-400"/> Next Check Number</label>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><HashIcon size={12} className="text-indigo-400"/> Next Asset Number</label>
                                 <input 
                                     type="number"
                                     value={nextCheckNumber}

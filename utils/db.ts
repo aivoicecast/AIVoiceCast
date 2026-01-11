@@ -1,13 +1,12 @@
-
 import { Channel, RecordingSession } from '../types';
 
-const DB_NAME = 'AIVoiceCast_AudioCache';
+const DB_NAME = 'NeuralPrism_Cache';
 const STORE_NAME = 'audio_segments';
 const TEXT_STORE_NAME = 'lecture_scripts';
 const CHANNELS_STORE_NAME = 'user_channels'; 
 const RECORDINGS_STORE_NAME = 'local_recordings';
 const IDENTITY_STORE_NAME = 'identity_keys';
-const VERSION = 7; // Bumped version for reliability
+const VERSION = 7; 
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -15,12 +14,12 @@ function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve, reject) => {
-    console.log(`[IDB] Opening Database: ${DB_NAME} v${VERSION}`);
+    console.log(`[IDB] Opening Neural Cache: ${DB_NAME} v${VERSION}`);
     const request = indexedDB.open(DB_NAME, VERSION);
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBRequest).result;
-      console.log("[IDB] Upgrade needed. Creating object stores...");
+      console.log("[IDB] Prism Refraction Upgrade...");
       
       if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
       if (!db.objectStoreNames.contains(TEXT_STORE_NAME)) db.createObjectStore(TEXT_STORE_NAME);
@@ -30,18 +29,17 @@ function openDB(): Promise<IDBDatabase> {
     };
 
     request.onsuccess = () => {
-        console.log("[IDB] Connection established successfully.");
         resolve(request.result);
     };
     
     request.onerror = () => {
-      console.error("[IDB] Critical database error:", request.error);
+      console.error("[IDB] Neural cache error:", request.error);
       dbPromise = null;
       reject(request.error);
     };
 
     request.onblocked = () => {
-        console.warn("[IDB] Upgrade blocked by another tab.");
+        console.warn("[IDB] Upgrade blocked by another Prism instance.");
         dbPromise = null;
     };
   });
@@ -56,15 +54,10 @@ export async function getLocalRecordings(): Promise<RecordingSession[]> {
             const transaction = db.transaction(RECORDINGS_STORE_NAME, 'readonly');
             const store = transaction.objectStore(RECORDINGS_STORE_NAME);
             const request = store.getAll();
-            request.onsuccess = () => {
-                const results = request.result || [];
-                console.log(`[IDB] Loaded ${results.length} local recordings.`);
-                resolve(results);
-            };
+            request.onsuccess = () => resolve(request.result || []);
             request.onerror = () => reject(request.error);
         });
     } catch(e) { 
-        console.error("[IDB] Failed to get recordings:", e);
         return []; 
     }
 }
@@ -76,15 +69,10 @@ export async function saveLocalRecording(session: RecordingSession & { blob: Blo
             const transaction = db.transaction(RECORDINGS_STORE_NAME, 'readwrite');
             const store = transaction.objectStore(RECORDINGS_STORE_NAME);
             const request = store.put(session);
-            request.onsuccess = () => {
-                console.log(`[IDB] Successfully saved recording: ${session.id}`);
-                resolve();
-            };
+            request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
-    } catch(e) {
-        console.error("[IDB] Save operation failed:", e);
-    }
+    } catch(e) {}
 }
 
 export async function deleteLocalRecording(id: string): Promise<void> {

@@ -1,4 +1,3 @@
-
 import { Booking } from '../types';
 
 /**
@@ -28,20 +27,20 @@ export async function sendBookingEmail(
     let subject = '';
     if (isHost) {
         subject = isP2P 
-            ? `[AIVoiceCast] Mentorship Request Sent: ${booking.mentorName}` 
-            : `[AIVoiceCast] AI Session Confirmed: ${booking.mentorName}`;
+            ? `[Neural Prism] Mentorship Request Sent: ${booking.mentorName}` 
+            : `[Neural Prism] Interactive Session Confirmed: ${booking.mentorName}`;
     } else {
-        subject = `[AIVoiceCast] New Mentorship Request from ${booking.hostName}`;
+        subject = `[Neural Prism] New Mentorship Request from ${booking.hostName}`;
     }
 
     // Determine Body
     const intro = isHost 
-        ? `Hello ${recipientName}, your request to book a session with ${booking.mentorName} is being processed.`
-        : `Hello ${recipientName}, ${booking.hostName} has requested a mentorship session with you.`;
+        ? `Hello ${recipientName}, your request to refract intelligence with ${booking.mentorName} is being processed.`
+        : `Hello ${recipientName}, ${booking.hostName} has requested an interactive session with you via the Neural Prism.`;
 
     const statusNote = isHost
-        ? (isP2P ? "This request is pending mentor approval." : "This AI session is confirmed.")
-        : "Please log in to AIVoiceCast to Accept or Decline this request in your Notifications tab.";
+        ? (isP2P ? "This request is pending peer approval on the ledger." : "This session is confirmed in the hub.")
+        : "Please log in to the Neural Prism to Accept or Decline this request in your Notifications tab.";
 
     const body = `
 ${intro}
@@ -56,10 +55,10 @@ Time: ${booking.time} (Duration: ${booking.duration}m)
 Ends: ${booking.endTime}
 ------------------------------------------
 
-You can manage your sessions in the "Mentorship Hub" within the AIVoiceCast Neural OS.
+You can manage your spectrum of activities in the "Explore Hub" within the Neural Prism Platform.
 
 Happy Learning,
-The AIVoiceCast Neural OS
+The Neural Prism Core
     `.trim();
 
     const email = [
@@ -87,8 +86,8 @@ The AIVoiceCast Neural OS
             throw new Error(err.error?.message || "Gmail API failed to send email.");
         }
         
-        console.log(`[Gmail] Email sent successfully to ${recipientEmail}`);
+        console.log(`[Gmail] Notification dispatched to ${recipientEmail}`);
     } catch (error) {
-        console.error(`[Gmail] Failed to send email to ${recipientEmail}:`, error);
+        console.error(`[Gmail] Notification failed for ${recipientEmail}:`, error);
     }
 }

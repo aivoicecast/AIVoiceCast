@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { X, Check, Zap, Loader2, Sparkles, Crown, CreditCard, AlertCircle, ShieldCheck, Coins } from 'lucide-react';
 import { UserProfile, SubscriptionTier } from '../types';
@@ -57,7 +56,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, use
         <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 shrink-0">
           <div>
              <h2 className="text-2xl font-bold text-white">Upgrade Plan</h2>
-             <p className="text-slate-400 text-sm">Unlock the full power of AIVoiceCast.</p>
+             <p className="text-slate-400 text-sm">Unlock the full spectrum of the Neural Prism.</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
             <X size={24} />
@@ -82,8 +81,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, use
                        <Check size={28} strokeWidth={3}/>
                    </div>
                    <div className="text-emerald-200 text-center">
-                       <p className="text-xl font-bold">Welcome to Pro!</p>
-                       <p className="text-sm opacity-80">Your membership has been activated successfully.</p>
+                       <p className="text-xl font-bold">Refraction Complete!</p>
+                       <p className="text-sm opacity-80">Your Pro membership has been activated successfully.</p>
                    </div>
                </div>
            )}
@@ -96,9 +95,9 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, use
                  <div className="text-4xl font-bold text-white mb-6">$0 <span className="text-sm font-normal text-slate-500">/mo</span></div>
                  
                  <ul className="space-y-4 mb-8 flex-1">
-                    <li className="flex items-center gap-3 text-sm text-slate-300"><Check size={18} className="text-emerald-500"/> Unlimited Listening</li>
+                    <li className="flex items-center gap-3 text-sm text-slate-300"><Check size={18} className="text-emerald-500"/> Activity Hub Access</li>
                     <li className="flex items-center gap-3 text-sm text-slate-300"><Check size={18} className="text-emerald-500"/> 5 AI Generation Credits</li>
-                    <li className="flex items-center gap-3 text-sm text-slate-300"><Check size={18} className="text-emerald-500"/> Public Groups Only</li>
+                    <li className="flex items-center gap-3 text-sm text-slate-300"><Check size={18} className="text-emerald-500"/> Public Communities Only</li>
                     <li className="flex items-center gap-3 text-sm text-slate-300"><Coins size={18} className="text-amber-500"/> <strong>100 Coins</strong> / mo</li>
                  </ul>
 
@@ -124,13 +123,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, use
                         <span className="text-xs text-slate-500 decoration-slate-600 line-through">$29.00</span>
                     </div>
                  </div>
-                 <p className="text-xs text-slate-400 mb-6">Immediate access to all premium features.</p>
+                 <p className="text-xs text-slate-400 mb-6">Immediate access to the full spectrum.</p>
                  
                  <ul className="space-y-4 mb-8 flex-1">
-                    <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> <strong>Unlimited</strong> AI Generation</li>
+                    <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> <strong>Unlimited</strong> AI Refraction</li>
                     <li className="flex items-center gap-3 text-sm text-white"><Coins size={18} className="text-amber-500"/> <strong>2,900 Coins</strong> / mo ($29 value)</li>
-                    <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> Private Channels & Groups</li>
-                    <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> Code Studio Pro (Git Sync)</li>
+                    <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> Private Workshops & Labs</li>
+                    <li className="flex items-center gap-3 text-sm text-white"><Check size={18} className="text-indigo-400"/> Builder Studio Pro (Git Sync)</li>
                  </ul>
 
                  {!effectiveUid ? (
@@ -162,7 +161,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, use
            
            <div className="mt-8 text-center text-xs text-slate-500">
               <p>Platform upgrade processed via internal neural fabric.</p>
-              <p className="mt-1">By upgrading, you agree to the community terms of service.</p>
+              <p className="mt-1">By upgrading, you join a community dedicated to human potential.</p>
            </div>
         </div>
       </div>

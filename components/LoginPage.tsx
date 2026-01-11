@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2 } from 'lucide-react';
+import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2, Sparkles } from 'lucide-react';
 import { signInWithGoogle } from '../services/authService';
 import { BrandLogo } from './BrandLogo';
 
@@ -43,32 +42,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
              <BrandLogo size={96} />
           </div>
 
-          <h1 className="text-4xl font-black text-white mb-2 tracking-tighter uppercase italic">AIVoiceCast</h1>
+          <h1 className="text-4xl font-black text-white mb-2 tracking-tighter uppercase italic">Neural Prism</h1>
           <p className="text-slate-400 text-sm mb-10 font-medium">
-            <span className="text-indigo-400 font-bold uppercase tracking-widest">Knowledge OS</span><br/> 
-            AI-native learning, synced to your personal Google Drive.
+            <span className="text-indigo-400 font-bold uppercase tracking-widest">Intelligence Hub</span><br/> 
+            Refracting AI for your daily activities.
           </p>
 
           <div className="space-y-4 mb-10">
               <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
                   <ShieldCheck className="text-emerald-400" size={20}/>
                   <div className="text-left">
-                      <p className="text-xs font-bold text-white uppercase">Secure Entry</p>
-                      <p className="text-[10px] text-slate-500">Google Account mandatory for all members.</p>
+                      <p className="text-xs font-bold text-white uppercase">Sovereign Entry</p>
+                      <p className="text-[10px] text-slate-500">Secure Google Account handshake required.</p>
                   </div>
               </div>
               <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
-                  <HardDrive className="text-indigo-400" size={20}/>
+                  <Sparkles className="text-indigo-400" size={20}/>
                   <div className="text-left">
-                      <p className="text-xs font-bold text-white uppercase">Cloud Sync</p>
-                      <p className="text-[10px] text-slate-500">Recordings and projects save directly to your Drive.</p>
+                      <p className="text-xs font-bold text-white uppercase">Refracted Logic</p>
+                      <p className="text-[10px] text-slate-500">20+ specialized tools for projects and growth.</p>
                   </div>
               </div>
               <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
-                  <Share2 className="text-purple-400" size={20}/>
+                  <HardDrive className="text-purple-400" size={20}/>
                   <div className="text-left">
-                      <p className="text-xs font-bold text-white uppercase">Native Sharing</p>
-                      <p className="text-[10px] text-slate-500">Share files with any valid Google member.</p>
+                      <p className="text-xs font-bold text-white uppercase">Personal Storage</p>
+                      <p className="text-[10px] text-slate-500">Archives save directly to your own Google Drive.</p>
                   </div>
               </div>
           </div>
@@ -89,7 +88,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
           </button>
           
           <div className="mt-10 flex justify-center gap-8">
-              <button onClick={onMissionClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold tracking-[0.2em] transition-colors">Mission</button>
+              <button onClick={onMissionClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold tracking-[0.2em] transition-colors">Vision</button>
               <button onClick={onPrivacyClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold tracking-[0.2em] transition-colors">Privacy</button>
           </div>
       </div>
