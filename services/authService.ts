@@ -1,3 +1,4 @@
+
 import { 
     GoogleAuthProvider, 
     GithubAuthProvider,
@@ -16,10 +17,11 @@ export async function signInWithGoogle(): Promise<User | null> {
 
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/drive.file');
-    // force-ssl scope is required to DELETE videos, whereas .upload is write-only.
     provider.addScope('https://www.googleapis.com/auth/youtube.force-ssl'); 
     provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
     provider.addScope('https://www.googleapis.com/auth/userinfo.email');
+    // ADDED: Gmail send scope for booking confirmations
+    provider.addScope('https://www.googleapis.com/auth/gmail.send');
     
     provider.setCustomParameters({
         prompt: 'select_account'

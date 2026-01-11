@@ -4,6 +4,8 @@ import { Channel, Booking, UserProfile } from '../types';
 import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Loader2, Play, Users, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight, Coins, Check as CheckIcon, HeartHandshake, Edit3, Timer, Coffee, Sunrise, Sun, Sunset } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { createBooking, getUserBookings, cancelBooking, updateBookingInvite, deleteBookingRecording, getAllUsers, getUserProfileByEmail, getUserProfile } from '../services/firestoreService';
+import { getDriveToken } from '../services/authService';
+import { sendBookingConfirmationEmail } from '../services/gmailService';
 
 interface MentorBookingProps {
   currentUser: any;
@@ -163,11 +165,22 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
             status: isP2P ? 'pending' : 'scheduled', type: isP2P ? 'p2p' : 'ai', createdAt: Date.now(),
             coinPrice: isP2P ? 50 : 0
         };
-        await createBooking(newBooking);
-        alert(isP2P ? "Request sent to mentor!" : "AI session booked!");
+        const bookingId = await createBooking(newBooking);
+        newBooking.id = bookingId;
+
+        // SEND GMAIL CONFIRMATION
+        const token = getDriveToken();
+        if (token) {
+            await sendBookingConfirmationEmail(token, newBooking, currentUser.email);
+        }
+
+        alert(isP2P ? "Request sent! Check your email for confirmation." : "AI session booked! Confirmation sent to your inbox.");
         setActiveTab('my_bookings');
         setSelectedMentor(null); setBookingMember(null); setTopic(''); setSelectedSlot(null);
-    } catch(e) { alert("Booking failed."); } finally { setIsBooking(false); }
+    } catch(e) { 
+        console.error(e);
+        alert("Booking failed."); 
+    } finally { setIsBooking(false); }
   };
 
   const handleCancel = async (id: string) => {
