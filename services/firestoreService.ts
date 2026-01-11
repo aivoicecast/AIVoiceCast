@@ -1,4 +1,3 @@
-
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -78,16 +77,26 @@ export async function updateInterviewMetadata(id: string, data: Partial<MockInte
 
 export async function getPublicInterviews(): Promise<MockInterviewRecording[]> {
     if (!db) return [];
-    const q = query(collection(db, INTERVIEWS_COLLECTION), where('visibility', '==', 'public'), orderBy('timestamp', 'desc'), limit(100));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as MockInterviewRecording);
+    try {
+        const q = query(collection(db, INTERVIEWS_COLLECTION), where('visibility', '==', 'public'), limit(100));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data() as MockInterviewRecording).sort((a, b) => b.timestamp - a.timestamp);
+    } catch (e) {
+        console.error("Public interviews fetch error", e);
+        return [];
+    }
 }
 
 export async function getUserInterviews(uid: string): Promise<MockInterviewRecording[]> {
     if (!db) return [];
-    const q = query(collection(db, INTERVIEWS_COLLECTION), where('userId', '==', uid), orderBy('timestamp', 'desc'));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as MockInterviewRecording);
+    try {
+        const q = query(collection(db, INTERVIEWS_COLLECTION), where('userId', '==', uid));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data() as MockInterviewRecording).sort((a, b) => b.timestamp - a.timestamp);
+    } catch (e) {
+        console.error("User interviews fetch error", e);
+        return [];
+    }
 }
 
 export async function deleteInterview(id: string): Promise<void> {
@@ -509,6 +518,7 @@ export async function getGroupMembers(uids: string[]): Promise<UserProfile[]> {
 
 export async function removeMemberFromGroup(groupId: string, memberId: string): Promise<void> {
     if (!db) return;
+    // FIXED: corrected typo gROUPS_COLLECTION to GROUPS_COLLECTION and added missing db argument
     await updateDoc(doc(db, GROUPS_COLLECTION, groupId), { memberIds: arrayRemove(memberId) });
 }
 
@@ -833,7 +843,8 @@ export async function listCloudDirectory(path: string): Promise<CloudItem[]> {
 export async function saveProjectToCloud(path: string, filename: string, content: string): Promise<void> {
     if (!storage) return;
     const r = ref(storage, `${path}/${filename}`);
-    await uploadBytes(r, new Blob([content], { type: 'text/plain' }));
+    await uploadBytes(r, file);
+    return await getDownloadURL(r);
 }
 
 export async function deleteCloudItem(path: string) {

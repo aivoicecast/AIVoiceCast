@@ -147,7 +147,20 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         getPublicInterviews(),
         currentUser ? getUserInterviews(currentUser.uid) : Promise.resolve([])
       ]);
-      setMyInterviews(userData.sort((a, b) => b.timestamp - a.timestamp));
+      
+      // Merge with local storage backups for additional robustness
+      const localBackupsRaw = localStorage.getItem('mock_interview_backups') || '[]';
+      const localBackups = JSON.parse(localBackupsRaw) as MockInterviewRecording[];
+      const myFilteredBackups = localBackups.filter(b => b.userId === (currentUser?.uid || 'guest'));
+      
+      const combined = [...userData];
+      myFilteredBackups.forEach(backup => {
+          if (!combined.some(existing => existing.id === backup.id)) {
+              combined.push(backup);
+          }
+      });
+
+      setMyInterviews(combined.sort((a, b) => b.timestamp - a.timestamp));
       setPublicInterviews(publicData.sort((a, b) => b.timestamp - a.timestamp));
     } catch (e) {
         console.error("Ledger retrieval error", e);
@@ -442,10 +455,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         onError: (e) => { if (activeServiceIdRef.current === service.id) { setIsAiConnected(false); handleReconnectAi(true); } },
         onVolumeUpdate: () => {},
         onTranscript: (text, isUser) => {
-          if (activeServiceIdRef.current !== service.id) return;
-          if (!isUser) setIsAiThinking(false);
+          const role = isUser ? 'user' : 'ai';
           setTranscript(prev => {
-            const role = isUser ? 'user' : 'ai';
             if (prev.length > 0 && prev[prev.length - 1].role === role) {
               const last = prev[prev.length - 1];
               return [...prev.slice(0, -1), { ...last, text: last.text + text }];
@@ -542,7 +553,16 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
         feedback: JSON.stringify(reportData), visibility
       };
+      
+      // 1. Local storage archival as a safety fallback
+      const localBackupsRaw = localStorage.getItem('mock_interview_backups') || '[]';
+      const localBackups = JSON.parse(localBackupsRaw);
+      localBackups.push(rec);
+      localStorage.setItem('mock_interview_backups', JSON.stringify(localBackups.slice(-20))); // Keep last 20 locally
+      
+      // 2. Cloud ledger persistence
       await saveInterviewRecording(rec);
+      
       setSynthesisPercent(100);
       setView('report');
       loadInterviews(); // Refresh history list
@@ -638,12 +658,22 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               <div className="animate-fade-in-up">
                 {hubTab === 'history' ? (
                   <>
-                    <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter mb-6">Verified Session History</h3>
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Verified Session History</h3>
+                        <button onClick={loadInterviews} className="text-[10px] font-black text-indigo-400 flex items-center gap-1.5 hover:text-white transition-colors uppercase tracking-widest">
+                            <RefreshCw size={12} className={loading ? 'animate-spin' : ''}/> Sync Ledger
+                        </button>
+                    </div>
                     {loading ? <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : myInterviews.length === 0 ? <div className="py-20 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">No archived ledger entries.</div> : renderInterviewsList(myInterviews)}
                   </>
                 ) : (
                   <>
-                    <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter mb-6">Global Community Evaluations</h3>
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Global Community Evaluations</h3>
+                        <button onClick={loadInterviews} className="text-[10px] font-black text-indigo-400 flex items-center gap-1.5 hover:text-white transition-colors uppercase tracking-widest">
+                            <RefreshCw size={12} className={loading ? 'animate-spin' : ''}/> Refresh Discovery
+                        </button>
+                    </div>
                     {loading ? <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : publicInterviews.length === 0 ? <div className="py-20 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">No public evaluations discovered yet.</div> : renderInterviewsList(publicInterviews)}
                   </>
                 )}
