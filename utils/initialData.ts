@@ -1,3 +1,4 @@
+
 import { Channel, ChannelVisibility } from '../types';
 import { OFFLINE_CHANNEL_ID } from './offlineContent';
 
@@ -92,22 +93,22 @@ export const TOPIC_CATEGORIES: Record<string, string[]> = {
 export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: OFFLINE_CHANNEL_ID,
-    title: 'AIVoiceCast',
-    description: 'The self-documenting guide to the AIVoiceCast platform. Learn how we built the new Application Suite: Code Studio, Card Workshop, Career Center, and the underlying AI architecture.',
-    author: 'Self-Documenting',
+    title: 'Neural Prism Platform',
+    description: 'The self-documenting guide to the Neural Prism Platform. Learn how we refract AI super-intelligence into 20+ specialized tools: Code Studio, Card Workshop, Career Hub, and more.',
+    author: 'Prism Architect',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the lead architect of AIVoiceCast. You explain the technical implementation of the platform, focusing on the new "Application Suite" architecture, the Card Workshop (HTML5 Canvas/PDF), and the Code Studio (Virtual File Systems).',
+    systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on the metaphorical "Prism" that turns complex AI into user-friendly rainbow tools like Code Studio (Neural Simulation) and Card Workshop (HTML5 Canvas/PDF).',
     likes: 9999,
     dislikes: 0,
     comments: [],
-    tags: ['Architecture', 'React', 'Canvas', 'GenAI'],
-    imageUrl: '', // Removed third-party image API
-    welcomeMessage: "Welcome. This platform is a testament to the power of Google AI Studio, Gemini 3, and OpenAI APIs. We have evolved beyond a simple player into a comprehensive Knowledge OS—ready to generate, teach, and build alongside you.",
+    tags: ['Architecture', 'NeuralPrism', 'Accessibility', 'GenAI'],
+    imageUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&q=80', 
+    welcomeMessage: "Welcome to Neural Prism. This platform refracts the power of Google Gemini 3 into a spectrum of accessible tools. We have evolved beyond a simple player into an Intelligence Hub—ready to help you create, learn, and grow.",
     starterPrompts: [
-      "How does the Card Workshop generate PDFs?",
+      "What is the Magic Prism metaphor?",
       "Explain the Virtual File System in Code Studio",
-      "Architecture of the new Application Suite",
-      "How do AI Agents interact with the Canvas?"
+      "Architecture of the new Rainbow Suite",
+      "How do AI Agents interact with the Neural Canvas?"
     ],
     createdAt: INITIAL_DATE
   },
@@ -122,7 +123,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     dislikes: 12,
     comments: [],
     tags: ['Tech', 'Career', 'Education'],
-    imageUrl: '', // Removed third-party image API
+    imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&q=80',
     welcomeMessage: "Welcome. I am ready to evaluate your technical skills. Shall we start with a Dynamic Programming problem or a distributed systems design challenge?",
     starterPrompts: [
       "Ask me a hard difficulty Graph question",
@@ -143,7 +144,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     dislikes: 5,
     comments: [],
     tags: ['Linux', 'OS', 'Engineering'],
-    imageUrl: '', // Removed third-party image API
+    imageUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&q=80',
     welcomeMessage: "Kernel mode engaged. What subsystem shall we audit today? I suggest looking at the VFS layer or the eBPF verifier logic.",
     starterPrompts: [
       "Explain the CFS scheduler in detail",
@@ -157,21 +158,21 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: 'default-gem',
     title: 'Default Gem Assistant',
-    description: 'The standard AIVoiceCast general assistant. Master the platform features: Live Studio, Code Studio, and VoiceCoin.',
+    description: 'The standard Neural Prism general assistant. Master the platform features: Live Studio, Code Studio, and Neural Assets.',
     author: 'Gemini Standard',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are Default Gem, the helpful and creative AI assistant for AIVoiceCast. You help users navigate the platform. You explain the Knowledge OS concept, the Neural Execution Engine in Code Studio, and how VoiceCoin powers the decentralized community.',
+    systemInstruction: 'You are Default Gem, the helpful and creative AI assistant for the Neural Prism platform. You help users navigate the hub. You explain the "Magic Prism" concept, the Neural Execution Engine in Code Studio, and how the platform empowers daily human activities.',
     likes: 1500,
     dislikes: 1,
     comments: [],
-    tags: ['Onboarding', 'Tutorial', 'Knowledge OS'],
-    imageUrl: '', // Removed third-party image API
-    welcomeMessage: "Hello! I'm Default Gem. I'm here to help you master the AIVoiceCast Knowledge OS. Where shall we begin our tour?",
+    tags: ['Onboarding', 'Tutorial', 'Neural Prism'],
+    imageUrl: 'https://images.unsplash.com/photo-1620712943543-bcc4628c7215?w=600&q=80',
+    welcomeMessage: "Hello! I'm Default Gem. I'm here to help you master the Neural Prism platform. Where shall we begin our tour of the rainbow tools?",
     starterPrompts: [
-      "What is a Knowledge OS?",
+      "What is Neural Prism?",
       "How does the Neural Execution Engine work?",
-      "Explain VoiceCoin and digital identity",
-      "How do I create my first interactive podcast?"
+      "Explain the decentralized identity model",
+      "How do I create my first interactive activity?"
     ],
     createdAt: INITIAL_DATE
   }

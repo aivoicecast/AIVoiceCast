@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -108,74 +109,74 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 const UI_TEXT = {
   en: {
-    appTitle: "AIVoiceCast",
-    directory: "Explore", 
-    myFeed: "My Feed",
-    live: "Live Studio",
-    search: "Search topics...",
-    create: "New Podcast",
-    magic: "Magic Creator",
-    host: "Host",
-    featured: "Featured",
-    categories: "Categories",
-    all: "All Podcasts",
-    calendar: "Calendar",
-    mentorship: "Mentorship",
-    groups: "Groups",
-    recordings: "Recordings",
-    docs: "Document Studio",
-    lectures: "Lectures",
-    podcasts: "Podcasts",
-    mission: "Mission & Manifesto",
-    code: "Code Studio",
-    whiteboard: "Whiteboard",
-    blog: "Community Blog",
-    chat: "Team Chat",
-    careers: "Careers",
-    notebooks: "Neural Lab",
-    cards: "Card Workshop",
-    icons: "Icon Lab",
-    shipping: "Shipping Lab",
-    checks: "Check Designer",
-    fullscreen: "Toggle Fullscreen",
-    wallet: "Coin Wallet",
-    mockInterview: "Mock Interview",
-    graph: "Neural Graph"
+    appTitle: "Neural Prism",
+    directory: "Explore Hub", 
+    myFeed: "Personal Stream",
+    live: "Interactive Studio",
+    search: "Search for activities...",
+    create: "Craft Tool",
+    magic: "Neural Magic",
+    host: "Guide",
+    featured: "Spotlight",
+    categories: "Activities",
+    all: "All Experience",
+    calendar: "Schedule",
+    mentorship: "Experts",
+    groups: "Communities",
+    recordings: "History",
+    docs: "Paperwork",
+    lectures: "Guided Learning",
+    podcasts: "Knowledge Hub",
+    mission: "Vision & Prism",
+    code: "Builder Studio",
+    whiteboard: "Visual Canvas",
+    blog: "Community Voice",
+    chat: "Team Space",
+    careers: "Talent Hub",
+    notebooks: "Research Lab",
+    cards: "Gift Workshop",
+    icons: "Brand Lab",
+    shipping: "Logistics Lab",
+    checks: "Finance Lab",
+    fullscreen: "Toggle Immersion",
+    wallet: "Neural Assets",
+    mockInterview: "Career Prep",
+    graph: "Logic Visualizer"
   },
   zh: {
-    appTitle: "AI 播客",
-    directory: "探索",
-    myFeed: "我的订阅",
-    live: "直播中",
-    search: "搜索主题...",
-    create: "创建播客",
-    magic: "魔法创建",
-    host: "主播",
-    featured: "精选",
-    categories: "分类",
-    all: "全部播客",
-    calendar: "日历",
-    mentorship: "导师",
-    groups: "群组",
-    recordings: "录音",
-    docs: "文档工作室",
-    lectures: "课程",
-    podcasts: "播客",
-    mission: "使命与宣言",
-    code: "代码工作室",
-    whiteboard: "白板",
-    blog: "社区博客",
-    chat: "团队聊天",
-    careers: "职业发展",
-    notebooks: "神经实验室",
-    cards: "贺卡工坊",
-    icons: "图标生成器",
+    appTitle: "神经棱镜",
+    directory: "探索中心",
+    myFeed: "个人动态",
+    live: "互动空间",
+    search: "搜索活动...",
+    create: "创建工具",
+    magic: "神经魔法",
+    host: "向导",
+    featured: "焦点",
+    categories: "活动分类",
+    all: "全部体验",
+    calendar: "日程安排",
+    mentorship: "专家导师",
+    groups: "社区群组",
+    recordings: "历史存档",
+    docs: "文档空间",
+    lectures: "引导式学习",
+    podcasts: "知识中心",
+    mission: "愿景与棱镜",
+    code: "构建者工作室",
+    whiteboard: "视觉画布",
+    blog: "社区声音",
+    chat: "团队空间",
+    careers: "人才中心",
+    notebooks: "研究实验室",
+    cards: "礼物工坊",
+    icons: "品牌实验室",
     shipping: "物流实验室",
-    checks: "支票设计器",
-    fullscreen: "全屏切换",
-    wallet: "虚拟钱包",
-    mockInterview: "模拟面试",
-    graph: "神经图形"
+    checks: "财务实验室",
+    fullscreen: "沉浸模式",
+    wallet: "神经资产",
+    mockInterview: "职业准备",
+    graph: "逻辑可视化"
   }
 };
 
@@ -210,7 +211,6 @@ const App: React.FC = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isDriveSyncing, setIsDriveSyncing] = useState(false);
-  const [activeTab, setActiveTab] = useState('categories');
   const [searchQuery, setSearchQuery] = useState('');
   const [publicChannels, setPublicChannels] = useState<Channel[]>([]);
   const [userChannels, setUserChannels] = useState<Channel[]>([]);
@@ -240,7 +240,7 @@ const App: React.FC = () => {
   } | null>(null);
 
   const allApps = useMemo(() => [
-    { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); setActiveTab('categories'); }, color: 'text-indigo-400' },
+    { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); }, color: 'text-indigo-400' },
     { id: 'mock_interview', label: t.mockInterview, icon: Video, action: () => handleSetViewState('mock_interview'), color: 'text-red-500' },
     { id: 'graph_studio', label: t.graph, icon: Activity, action: () => handleSetViewState('graph_studio'), color: 'text-emerald-400' },
     { id: 'wallet', label: t.wallet, icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400' },
@@ -404,7 +404,7 @@ const App: React.FC = () => {
             <BrandLogo size={80} className="animate-pulse" />
             <div className="flex flex-col items-center gap-2">
                 <Loader2 className="animate-spin text-indigo-500" size={32} />
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-[0.3em]">Initializing OS</span>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-[0.3em]">Igniting Neural Prism</span>
             </div>
         </div>
       );
@@ -427,7 +427,7 @@ const App: React.FC = () => {
                 <button 
                   onClick={() => { setIsAppsMenuOpen(!isAppsMenuOpen); setIsUserMenuOpen(false); }} 
                   className={`p-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 ${isAppsMenuOpen ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                  aria-label="App Launcher"
+                  aria-label="Activity Launcher"
                 >
                   <LayoutGrid size={20} />
                   <ChevronDown size={14} className={`transition-transform duration-200 ${isAppsMenuOpen ? 'rotate-180' : ''}`} />
@@ -438,7 +438,7 @@ const App: React.FC = () => {
                     <div className="fixed inset-0 z-[100]" onClick={() => setIsAppsMenuOpen(false)}></div>
                     <div className="absolute left-0 top-full mt-2 w-72 md:w-[480px] bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-fade-in-up z-[110] flex flex-col border-indigo-500/20">
                       <div className="p-3 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Neural OS Apps ({allApps.length})</span>
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Neural Prism Tools ({allApps.length})</span>
                       </div>
                       <div className="max-h-[80vh] md:max-h-none overflow-y-auto p-1 grid grid-cols-1 md:grid-cols-2 gap-0.5 scrollbar-hide">
                         {allApps.map((app, idx) => (
@@ -456,16 +456,16 @@ const App: React.FC = () => {
                         ))}
                       </div>
                       <div className="p-3 bg-slate-950 border-t border-slate-800 flex justify-center">
-                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Platform v4.3.1</p>
+                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Neural Prism v4.4.0</p>
                       </div>
                     </div>
                   </>
                 )}
               </div>
 
-              <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.location.href = window.location.origin}>
+              <div className="flex items-center gap-3 cursor-pointer group" onClick={() => handleSetViewState('directory')}>
                  <BrandLogo size={32} />
-                 <h1 className="text-xl font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400 transition-colors">AIVoiceCast</h1>
+                 <h1 className="text-xl font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400 transition-colors">Neural Prism</h1>
               </div>
            </div>
 
@@ -495,7 +495,7 @@ const App: React.FC = () => {
            <div className="flex items-center gap-2 sm:gap-4">
               {isDriveSyncing && (
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-900/20 text-indigo-400 rounded-full border border-indigo-500/30 animate-pulse">
-                      <Cloud size={14}/><span className="text-[10px] font-bold uppercase hidden lg:inline">Syncing Drive...</span>
+                      <Cloud size={14}/><span className="text-[10px] font-bold uppercase hidden lg:inline">Syncing Hub...</span>
                   </div>
               )}
               {userProfile && (
@@ -517,7 +517,7 @@ const App: React.FC = () => {
         </header>
 
         <main className="flex-1 overflow-hidden relative">
-            {viewState === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice={globalVoice} currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={handleVote} searchQuery={searchQuery} /> )}
+            {viewState === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice={globalVoice} currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={handleVote} searchQuery={searchQuery} onNavigate={(v) => handleSetViewState(v as any)} /> )}
             {viewState === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} /> )}
             {viewState === 'live_session' && liveSessionParams && ( 
               <LiveSession 

@@ -10,62 +10,55 @@ export const APP_COMPARISON_DOC: CommunityDiscussion = {
   transcript: [],
   createdAt: 1766016000000, 
   isManual: true,
-  title: "AIVoiceCast: The Knowledge OS Specification",
+  title: "Neural Prism: The Human-AI Interface Spec",
   designDoc: `
-# AIVoiceCast: System Architecture & Neural OS Specification
+# Neural Prism: Architecture of Accessibility
 
-**Revision:** 4.3.0 | **Author:** Lead Architect | **Date:** Dec 20, 2025
+**Revision:** 4.4.0 | **Author:** Lead Architect | **Date:** Dec 22, 2025
 
-## 1. Philosophical Transition
-AIVoiceCast has evolved from a "Podcast Player" into a **Knowledge Operating System**. The core design philosophy shifts from *passive consumption* to *active creation and transaction*. 
+## 1. Philosophical Refraction
+The Neural Prism Platform moves beyond the "Knowledge OS" model. Our core architecture acts as a **refractive lens** for AI Super-Intelligence. 
 
-## 2. The Application Suite Architecture
-The platform now manages a modular suite of apps within a single \`ViewState\` lifecycle.
+### The Input-Output Model:
+- **Input:** High-dimensional, complex AI reasoning (Gemini 3 Pro).
+- **Refraction:** Contextual adaptation and daily-activity mapping.
+- **Output:** The "Rainbow Spectrum"—a user-friendly suite of 20+ specialized tools.
 
-| Domain | Application | Backend Storage | Engine |
-| :--- | :--- | :--- | :--- |
-| **Code** | Code Studio | Drive / GitHub / Cloud | Neural Simulation (Flash) |
-| **Design** | Whiteboard / Icon Lab | Firestore / Storage | Flash Image |
-| **Finance** | Coin Wallet / Check Lab | Web Crypto / Ledger | ECDSA P-256 |
-| **Utility** | Shipping Lab | Local / Google Drive | Flash Pro |
-| **Research** | Neural Lab | Firestore / IDB | Flash (API) |
+## 2. Spectrum Components
+The platform manages a modular suite of tools designed for daily human life.
 
-## 3. Neural Execution Engine (Simulation Logic)
-Unlike professional editors (OnlineGDB, Coderbyte) that utilize Docker containers for real execution, AIVoiceCast implements **Heuristic Logic Tracing**.
+| Activity Category | Tools | Technology |
+| :--- | :--- | :--- |
+| **Daily Living** | Shipping Lab / Check Lab / Gift Workshop | Flash Image / PDF-Gen |
+| **Professional** | Interview Prep / Talent Hub / Careers | Live Audio / Vision |
+| **Logic & Dev** | Builder Studio / Research Lab / Visualizer | Neural Simulation |
+| **Community** | Team Space / Communities / Mentorship | Real-time Ledger |
 
-### Comparison Table: Execution Paradigms
+## 3. Human-Centric Logic (Simulation)
+We prioritize **Heuristic Tracing** over traditional execution. This ensures that users can interact with logic in a "safe, conversational sandbox."
 
-| Feature | Docker (OnlineGDB) | Wasm (StackBlitz) | Neural Sim (AIVoiceCast) |
-| :--- | :--- | :--- | :--- |
-| **Backend** | Remote Linux Server | Browser Runtime | AI Model (Gemini Flash) |
-| **Integrity** | 100% Machine Precise | 100% Machine Precise | 98% Heuristic Precision |
-| **Flexibility** | Needs specific install | Needs Wasm Port | Language Agnostic (Any) |
-| **Security** | Sandbox required | Client-side safe | Total Isolation (Predicted) |
+### Why Human-Centric Beats Real Runtimes:
+1. **Explainability:** The system can explain *why* something happens in human terms.
+2. **Speed:** Instant results without the "boot time" of real servers.
+3. **Safety:** High-risk code is simulated, never truly executed on hardware.
 
-## 4. VoiceCoin Financial Protocol (VCFP)
-v4.2.0 introduced the **VoiceCoin Protocol**, a decentralized-style ledger built atop Google Cloud.
+## 4. Federated Contribution
+Every member of the Neural Prism community is a "Prism Contributor." The platform supports an exponential growth model where members can:
+- Define new activity types.
+- Curate custom knowledge paths.
+- Sign and verify transactions via the VoiceCoin Ledger.
 
-## 5. Multi-Backend Persistence
-To ensure maximum user control, AIVoiceCast implements a tiered persistence model:
-- **Hot Data (IndexedDB):** Audio cache and ephemeral session states.
-- **Trusted Data (Firestore):** Identity certificates, ledger history.
-- **User Sovereign Data (Google Drive):** Source code, published PDFs.
+## 5. Privacy & Sovereignty
+Intelligence is Refracted, not Retained. 
+- **Ephemeral Sessions:** Logic processing is stateless by default.
+- **Personal Storage:** All created assets (PDFs, Code, Records) are funneled directly into the user's private Google Drive.
 
-## 6. Neural Link Resilience (v4.3.0 Updates)
-To handle long-running sessions (30m+), the Neural OS implements three critical stability layers:
+## 6. Stability Protocols
+v4.4.0 maintains the "Resilient Dream Machine" standard:
+- **Preemptive Rotation:** Continuous AI availability for long-running human activities.
+- **Multi-modal Grounding:** The AI sees the user's physical or digital context in real-time.
 
-### A. Preemptive Neural Rotation
-WebSockets are prone to infrastructure-level timeouts (approx. 5 mins). The OS automatically recycles the link every **300 seconds** (±10s jitter).
-- **Graceful Handover:** The rotation only triggers during AI silence.
-- **Context Stitching:** The last 25 turns of the transcript are injected into the new session's \`systemInstruction\` to preserve continuity.
-
-### B. Neural Cooling & Rate Management
-The system detects **HTTP 429 (Resource Exhausted)** errors and enters a "Neural Cooling" state. This prevents aggressive retry-looping and protects the user's API quota.
-
-### C. Heartbeat Keep-Alive
-A persistent null-text heartbeat is transmitted every **15 seconds** during silence to prevent idle-timeout disconnections from the Gemini Gateway.
-
-## 7. Conclusion
-The v4.3.0 architecture establishes AIVoiceCast as a "Resilient Dream Machine"—a system capable of maintaining long-term neural connections for complex meetings and deep learning sessions.
+## 7. Vision Statement
+The Neural Prism is the final bridge between superhuman AI capacity and daily human utility. We make complexity invisible and intelligence colorful.
 `
 };

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ArrowLeft, Book } from 'lucide-react';
+import { ArrowLeft, Book, Sparkles } from 'lucide-react';
 import { MarkdownView } from './MarkdownView';
 
 interface UserManualProps {
@@ -8,60 +8,51 @@ interface UserManualProps {
 }
 
 const MANUAL_CONTENT = `
-# 🎙️ AIVoiceCast User Guide
+# 🌈 Neural Prism: Your Daily AI Hub
 
-**The world's first decentralized, AI-native interactive knowledge community.**
+**Making the world's most powerful AI super-intelligence simple for everyone.**
 
-AIVoiceCast is not just a podcast player. It is a **Generative Knowledge Engine**. Unlike Spotify or Apple Podcasts where you consume static audio, AIVoiceCast generates custom curriculums, synthesizes lectures on-demand, and allows you to **talk back** to the host in real-time.
-
----
-
-### 🚀 The Neural Execution Engine (Exclusive)
-One of the most powerful features in Code Studio is the "Run" button. But unlike other platforms, we don't use real servers to run your code. We use **Neural Simulation**.
-
-*   **What is it?** We prompt **Gemini 3 Flash** to act as a Linux terminal. It "reads" your code and predicts the output.
-*   **Socratic Debugging:** You can ask the AI *why* it predicted a certain output, and it will explain the logic step-by-step.
+Neural Prism is not just a platform; it is a lens. We take the complex capabilities of Google Gemini 3 and turn them into a spectrum of **20+ specialized tools** that help you with your daily activities—from building projects to organizing your life.
 
 ---
 
-### 1. ⚡ The Live Studio (Real-Time Voice)
-This is the core differentiator. You can interrupt the podcast and talk to the host.
-
-*   **Start a Session**: Click **"Start Live Chat"** on any channel page.
-*   **Multimodal Vision**:
-    *   **Screen Share**: Share your screen and let the AI review your code or diagrams.
-    *   **Camera**: Show physical objects or whiteboards for analysis.
-
-#### 🛡️ Extended Session Stability
-Recording a 30+ minute meeting? AIVoiceCast v4.2.2 includes **Neural Rotation**. 
-*   Every 5 minutes, the link is refreshed to prevent idle-timeouts. 
-*   You will see a brief "Refining Link" pulse; the AI will maintain perfect continuity of your conversation during this swap.
-*   **Heartbeats:** The system sends silent signals every 15 seconds to keep the AI "awake" during long pauses.
+### 🪄 The Vision: AI for Daily Life
+Forget complex command prompts. Our tools are designed for real-world tasks:
+- **Finance Hub**: Design verified checks and manage neural assets.
+- **Logistics Lab**: Create professional shipping labels with neural address parsing.
+- **Gift Workshop**: Speak your wish and generate a unique holiday card with custom music.
+- **Career Hub**: Get evaluated by an AI interviewer or find a human mentor.
 
 ---
 
-### 2. Getting Started
-*   **Sign In**: Click the **User Icon** in the top right to sign in with your Google Account. This enables cloud sync and social features.
-*   **API Key**: To use AI features, you must set your Google Gemini API Key in the **Menu (☰) -> Set API Key**.
+### 1. ⚡ Interactive Guides (Knowledge Hub)
+Instead of static podcasts, interact with guides who know everything about their topic.
+*   **Ask Anything**: You can interrupt the guide at any time and have a natural conversation.
+*   **Visual Aid**: Share your screen or camera. The guide can "see" what you are working on and provide instant feedback.
 
-### 3. Discover & Listen
-*   **The Feed**: Browse existing channels by category.
-*   **Lecture Player**: Click on a channel to view the **Curriculum**.
-    *   **Select a Topic**: Click any lesson.
-    *   **Generate Audio**: Click the **Lightning Bolt** button if audio is missing.
+---
 
-### 4. Create Your Own Podcast
-You don't need a microphone to be a creator here. You need an idea.
+### 2. 🏗️ Builder Studio (Builder's Paradise)
+Create software or write documents with an AI pair-partner.
+*   **Neural Simulation**: Run code instantly. Instead of using real servers, we use "Imagination" (Neural Simulation) to predict the outcome safely and quickly.
+*   **Collaboration**: Invite friends to your studio and work together in real-time.
 
-*   **🪄 Magic Voice Creator** (Recommended): Click the **Magic** button and speak your idea.
-*   **📝 Manual / Import**: Click **New Podcast (+)** and paste a document or URL.
+---
 
-### 5. 💻 Code Studio (IDE)
-A full-featured code editor with an embedded AI pair programmer.
-*   **AI Pair Programming**: Ask the AI to "Refactor this function" or "Fix the bug".
+### 3. 🎨 Visual Labs
+*   **Brand Lab**: Generate professional app icons from simple descriptions.
+*   **Visual Canvas**: A collaborative infinite whiteboard for mapping out your ideas.
 
-### 6. 🎨 Whiteboard
-A collaborative infinite canvas for systems design. Draw architectures and let the AI analyze them.
+---
+
+### 4. 📂 Getting Started
+*   **Sign In**: Use your Google Account for seamless sync. Everything you do is saved to your personal Google Drive for privacy.
+*   **The Magic Button**: Not sure where to start? Click the **Neural Magic** button and just *speak* your goal. We'll find the right tool for you.
+
+---
+
+### 🚀 Join the Spectrum
+Neural Prism is built to grow. As a member, you can contribute new tools and activities to the hub, helping us expand the spectrum of human potential.
 `;
 
 export const UserManual: React.FC<UserManualProps> = ({ onBack }) => {
@@ -72,7 +63,7 @@ export const UserManual: React.FC<UserManualProps> = ({ onBack }) => {
           <ArrowLeft size={24} />
         </button>
         <h1 className="text-xl font-bold tracking-widest uppercase text-slate-400 flex items-center gap-2">
-            <Book size="20" className="text-indigo-400"/> User Guide
+            <Book size="20" className="text-indigo-400"/> Activity Manual
         </h1>
       </div>
 

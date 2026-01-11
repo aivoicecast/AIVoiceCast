@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ArrowLeft, Zap, Heart, Users, BrainCircuit, Rocket, Code, Palette, Wallet, Truck, Box } from 'lucide-react';
+import { ArrowLeft, Zap, Heart, Users, BrainCircuit, Rocket, Code, Palette, Wallet, Truck, Box, Sparkles } from 'lucide-react';
 
 interface MissionManifestoProps {
   onBack: () => void;
@@ -14,7 +14,7 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
         <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full transition-colors">
           <ArrowLeft size={24} />
         </button>
-        <h1 className="text-xl font-bold tracking-widest uppercase text-slate-400">Mission Statement</h1>
+        <h1 className="text-xl font-bold tracking-widest uppercase text-slate-400">Mission & Vision</h1>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800">
@@ -23,14 +23,27 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
           {/* Hero Section */}
           <section className="text-center space-y-8 animate-fade-in-up">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-900/30 border border-indigo-500/30 text-indigo-300 text-sm font-bold uppercase tracking-wider mb-4">
-              <SparkleIcon /> AIVoiceCast Platform v4.3.0
+              <Sparkles size={16} className="text-indigo-400"/> Neural Prism Platform v4.4.0
             </div>
             <h2 className="text-5xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-200 to-slate-400 leading-tight">
-              A Shared Network of<br />Neural Intelligence.
+              Complex Intelligence.<br />Beautifully Accessible.
             </h2>
             <p className="text-xl md:text-2xl text-slate-400 max-w-2xl mx-auto leading-relaxed">
-              Evolving from a simple podcast tool into a comprehensive <span className="text-white font-bold">Knowledge Operating System</span>. We empower creators to build, learn, and transact in the AI era.
+              We pass <span className="text-white font-bold">AI Super-Intelligence</span> through our Magic Prism, resulting in a spectrum of tools that are user-friendly, daily-ready, and deeply human.
             </p>
+          </section>
+
+          {/* The Prism Metaphor */}
+          <section className="bg-gradient-to-br from-indigo-950/40 to-slate-950 p-12 rounded-[3rem] border border-indigo-500/20 shadow-2xl relative overflow-hidden">
+             <div className="relative z-10 flex flex-col items-center text-center space-y-6">
+                <div className="w-20 h-20 bg-white/10 rounded-3xl rotate-45 flex items-center justify-center border border-white/20 shadow-2xl">
+                    <Sparkles size={40} className="text-indigo-400 -rotate-45"/>
+                </div>
+                <h3 className="text-3xl font-black text-white italic tracking-tight uppercase">The Magic Prism Effect</h3>
+                <p className="text-lg text-slate-300 max-w-2xl leading-relaxed">
+                  Raw AI models are overwhelming. Our platform acts as a refractive lens, turning powerful but complex logic into 20+ specialized "rainbow" tools. From creating holiday cards to auditing code, we make intelligence accessible to every human being.
+                </p>
+             </div>
           </section>
 
           {/* Core Pillars */}
@@ -39,9 +52,9 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
               <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-indigo-500/20">
                 <Zap className="text-indigo-400 w-8 h-8" />
               </div>
-              <h3 className="text-2xl font-bold text-white mb-4">Augmented Growth</h3>
+              <h3 className="text-2xl font-bold text-white mb-4">Daily Assistance</h3>
               <p className="text-slate-400 leading-relaxed text-sm">
-                Move 5x faster by delegating repetitive tasks to the Neural Prism. Focus your human intelligence on high-level strategy and creative synthesis.
+                AI that helps with your errands, your career, and your creative hobbies. Tools that fit into your context, not the other way around.
               </p>
             </div>
 
@@ -49,9 +62,9 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
               <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-emerald-500/20">
                 <Heart className="text-emerald-400 w-8 h-8" />
               </div>
-              <h3 className="text-2xl font-bold text-white mb-4">Open Knowledge</h3>
+              <h3 className="text-2xl font-bold text-white mb-4">Human First</h3>
               <p className="text-slate-400 leading-relaxed text-sm">
-                Break the silos of information. Share your learning paths, code repositories, and technical specifications with a global community of peers.
+                We believe AI should amplify the human soul. Every tool is designed to save you time so you can focus on what makes you unique.
               </p>
             </div>
 
@@ -59,9 +72,9 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
               <div className="w-14 h-14 bg-pink-500/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-pink-500/20">
                 <Users className="text-pink-400 w-8 h-8" />
               </div>
-              <h3 className="text-2xl font-bold text-white mb-4">Peer Economy</h3>
+              <h3 className="text-2xl font-bold text-white mb-4">Open Spectrum</h3>
               <p className="text-slate-400 leading-relaxed text-sm">
-                A sustainable ecosystem powered by VoiceCoin. Mentor others, contribute quality content, and earn rewards validated by cryptographic identity.
+                Our toolset grows exponentially because every member can contribute. Add the tools you need and share them with the world.
               </p>
             </div>
           </section>
@@ -72,34 +85,34 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
             
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
               <div className="space-y-8">
-                <h3 className="text-3xl font-black text-white italic uppercase tracking-tighter">The Application Suite</h3>
+                <h3 className="text-3xl font-black text-white italic uppercase tracking-tighter">The 20+ Rainbow Tools</h3>
                 <div className="grid grid-cols-1 gap-6">
                   <div className="flex gap-4">
                     <div className="p-3 bg-blue-500/20 rounded-xl text-blue-400 shrink-0 h-fit"><Code size={20}/></div>
                     <div>
-                      <h4 className="font-bold text-white text-sm">Code Studio</h4>
-                      <p className="text-xs text-slate-500 mt-1">Multi-backend IDE with Google Drive and GitHub integration. Peer-to-peer live coding sessions.</p>
+                      <h4 className="font-bold text-white text-sm">Daily Utility</h4>
+                      <p className="text-xs text-slate-500 mt-1">Shipping labs, check designers, and logistics assistants for your home and business.</p>
                     </div>
                   </div>
                   <div className="flex gap-4">
                     <div className="p-3 bg-pink-500/20 rounded-xl text-pink-400 shrink-0 h-fit"><Palette size={20}/></div>
                     <div>
-                      <h4 className="font-bold text-white text-sm">Creative Labs</h4>
-                      <p className="text-xs text-slate-500 mt-1">Neural Icon Lab and Card Workshop for high-fidelity generative asset creation.</p>
+                      <h4 className="font-bold text-white text-sm">Creative Expression</h4>
+                      <p className="text-xs text-slate-500 mt-1">Generative icons, holiday workshops, and visual canvases for your imagination.</p>
                     </div>
                   </div>
                   <div className="flex gap-4">
                     <div className="p-3 bg-amber-500/20 rounded-xl text-amber-400 shrink-0 h-fit"><Wallet size={20}/></div>
                     <div>
-                      <h4 className="font-bold text-white text-sm">VoiceCoin Protocol</h4>
-                      <p className="text-xs text-slate-500 mt-1">Decentralized financial layer for secure peer-to-peer transactions and identity management.</p>
+                      <h4 className="font-bold text-white text-sm">Intelligence Exchange</h4>
+                      <p className="text-xs text-slate-500 mt-1">Secure neural assets and wallets to trade knowledge and mentorship value.</p>
                     </div>
                   </div>
                   <div className="flex gap-4">
-                    <div className="p-3 bg-emerald-500/20 rounded-xl text-emerald-400 shrink-0 h-fit"><Truck size={20}/></div>
+                    <div className="p-3 bg-emerald-500/20 rounded-xl text-emerald-400 shrink-0 h-fit"><Users size={20}/></div>
                     <div>
-                      <h4 className="font-bold text-white text-sm">Shipping & Logistics</h4>
-                      <p className="text-xs text-slate-500 mt-1">Neural-assisted shipping labels and professional document design suite.</p>
+                      <h4 className="font-bold text-white text-sm">Growth & Careers</h4>
+                      <p className="text-xs text-slate-500 mt-1">Mock interviews, career guidance, and expert hubs to accelerate your path.</p>
                     </div>
                   </div>
                 </div>
@@ -111,7 +124,7 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
                     </div>
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-slate-900 border border-slate-700 rounded-[3rem] -rotate-12 flex flex-col items-center justify-center shadow-2xl">
                          <BrainCircuit size={64} className="text-indigo-400 mb-4" />
-                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Neural OS Core</span>
+                         <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Neural Core</span>
                     </div>
                  </div>
               </div>
@@ -121,11 +134,11 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
           {/* Footer Quote */}
           <div className="text-center pt-12 border-t border-slate-900">
             <p className="text-2xl font-serif italic text-slate-400">
-              "We don't build tools to replace the creator; we build an OS to amplify the human soul."
+              "We don't build tools for AI; we build a Prism for Humanity."
             </p>
             <div className="mt-8 flex flex-col items-center">
                 <div className="w-12 h-px bg-indigo-500 mb-4"></div>
-                <p className="text-sm font-bold text-white uppercase tracking-[0.4em]">AIVoiceCast Community</p>
+                <p className="text-sm font-bold text-white uppercase tracking-[0.4em]">Neural Prism Community</p>
             </div>
           </div>
 
@@ -134,9 +147,3 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
     </div>
   );
 };
-
-const SparkleIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <path d="M12 2L14.39 9.61L22 12L14.39 14.39L12 22L9.61 14.39L2 12L9.61 9.61L12 2Z" />
-  </svg>
-);

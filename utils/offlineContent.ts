@@ -1,15 +1,16 @@
+
 import { Chapter, GeneratedLecture } from '../types';
 
-export const OFFLINE_CHANNEL_ID = 'aivoicecast-platform-official-v2';
+export const OFFLINE_CHANNEL_ID = 'neural-prism-platform-official';
 
 export const OFFLINE_CURRICULUM: Chapter[] = [
   {
     id: 'ch-1',
-    title: 'Evolution of the Platform',
+    title: 'Evolution of the Prism',
     subTopics: [
-      { id: 'ch-1-sub-1', title: 'From Player to Operating System' },
-      { id: 'ch-1-sub-2', title: 'The Unified App Suite Pattern' },
-      { id: 'ch-1-sub-3', title: 'Context-Aware Layouts' }
+      { id: 'ch-1-sub-1', title: 'From Player to Intelligence Hub' },
+      { id: 'ch-1-sub-2', title: 'The Rainbow Tool Pattern' },
+      { id: 'ch-1-sub-3', title: 'Context-Aware Activities' }
     ]
   },
   {
@@ -23,52 +24,34 @@ export const OFFLINE_CURRICULUM: Chapter[] = [
   },
   {
     id: 'ch-3',
-    title: 'The Card Workshop',
+    title: 'Visual Labs',
     subTopics: [
       { id: 'ch-3-sub-1', title: 'HTML Canvas to PDF' },
-      { id: 'ch-3-sub-2', title: 'Generative Art with Gemini' },
+      { id: 'ch-3-sub-2', title: 'Generative Art Refraction' },
       { id: 'ch-3-sub-3', title: 'Packaging Assets with JSZip' }
     ]
   },
   {
     id: 'ch-4',
-    title: 'Generative Publishing',
+    title: 'Generative Knowledge',
     subTopics: [
       { id: 'ch-4-sub-1', title: 'Instant Book Synthesis' },
       { id: 'ch-4-sub-2', title: 'Automated Table of Contents' },
       { id: 'ch-4-sub-3', title: 'From Audio to Print' }
-    ]
-  },
-  {
-    id: 'ch-5',
-    title: 'Social & Career Graph',
-    subTopics: [
-      { id: 'ch-5-sub-1', title: 'RBAC with Firestore Rules' },
-      { id: 'ch-5-sub-2', title: 'The Invite System Logic' },
-      { id: 'ch-5-sub-3', title: 'Job Board Data Model' }
-    ]
-  },
-  {
-    id: 'ch-6',
-    title: 'AI Integration Strategy',
-    subTopics: [
-      { id: 'ch-6-sub-1', title: 'Prompt Engineering for Personas' },
-      { id: 'ch-6-sub-2', title: 'Function Calling in Live Mode' },
-      { id: 'ch-6-sub-3', title: 'Multimodal Input (Screen/Cam)' }
     ]
   }
 ];
 
 // Map of "Topic Title" -> GeneratedLecture
 export const OFFLINE_LECTURES: Record<string, GeneratedLecture> = {
-  "From Player to Operating System": {
-    topic: "From Player to Operating System",
+  "From Player to Intelligence Hub": {
+    topic: "From Player to Intelligence Hub",
     professorName: "Lead Architect",
     studentName: "Developer",
     sections: [
       {
         speaker: "Teacher",
-        text: "In v1, AIVoiceCast was just a list of audio tracks. In v4.1.0, it is an Operating System for knowledge work. We introduced the concept of 'App Suites'."
+        text: "In v1, we were just a player. In v4.4.0, Neural Prism is an Intelligence Hub for human activities. We introduced the concept of 'Rainbow Tools'."
       },
       {
         speaker: "Student",
@@ -76,7 +59,7 @@ export const OFFLINE_LECTURES: Record<string, GeneratedLecture> = {
       },
       {
         speaker: "Teacher",
-        text: "Yes, but we shifted from a simple Router to a `ViewState` manager. The App component now acts as a window manager. It switches context between the Podcast Player, Code Studio, and Card Workshop without reloading the page."
+        text: "Yes, but we shifted from a simple list to a 'Refractive Interface'. The platform switches context between the Activity Hub, Builder Studio, and Finance Lab without friction, focusing on human context first."
       }
     ]
   },
@@ -87,7 +70,7 @@ export const OFFLINE_LECTURES: Record<string, GeneratedLecture> = {
     sections: [
       {
         speaker: "Teacher",
-        text: "Members can now generate a full-length book from any curriculum. By iterating through the 'Chapters' and 'Sub-topics', our engine uses Gemini to draft complete lecture scripts and then assembles them into a high-resolution PDF."
+        text: "Members can now generate a full-length book from any curriculum. Our engine uses Gemini to draft complete lecture scripts and then assembles them into a high-resolution PDF."
       },
       {
         speaker: "Student",

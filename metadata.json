@@ -1,6 +1,6 @@
 {
-  "name": "AIVoiceCast Platform",
-  "description": "A decentralized AI operating system and shared network of learning. Create, code, and collaborate with domain-specific AI personas.",
+  "name": "Neural Prism Platform",
+  "description": "Making AI super-intelligence truly accessible. A spectrum of 20+ specialized tools designed for your daily human activities.",
   "requestFramePermissions": [
     "microphone",
     "camera",
