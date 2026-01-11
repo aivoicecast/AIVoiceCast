@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Channel, Booking, UserProfile } from '../types';
+import { Channel, Booking, UserProfile, UserAvailability } from '../types';
 import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Loader2, Play, Users, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight, Coins, Check as CheckIcon, HeartHandshake, Edit3, Timer, Coffee, Sunrise, Sun, Sunset } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { createBooking, getUserBookings, cancelBooking, updateBookingInvite, deleteBookingRecording, getAllUsers, getUserProfileByEmail, getUserProfile } from '../services/firestoreService';
@@ -20,6 +20,13 @@ interface Slot {
     duration: 25 | 55;
     isBusy: boolean;
 }
+
+const DEFAULT_AVAILABILITY: UserAvailability = {
+    enabled: true,
+    startHour: 9,
+    endHour: 18,
+    days: [0, 1, 2, 3, 4, 5, 6]
+};
 
 export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userProfile, channels, onStartLiveSession }) => {
   const [activeTab, setActiveTab] = useState<'members' | 'ai_mentors' | 'my_bookings'>('members');
@@ -70,7 +77,8 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
     setLoadingMembers(true);
     try {
       const users = await getAllUsers();
-      setMembers(currentUser ? users.filter(u => u.uid !== currentUser.uid) : users);
+      // Keep everyone including current user so they can test their own booking page
+      setMembers(users);
     } catch(e) { console.error(e); } finally { setLoadingMembers(false); }
   };
 
@@ -78,32 +86,35 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
     return members.filter(m => m.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || m.email?.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [members, searchQuery]);
 
-  // Reactive Availability: Always use latest userProfile if booking for self
+  // Reactive Availability: Deep merge defaults to avoid :00 - :00 display
   const currentTargetAvailability = useMemo(() => {
       const isSelf = currentUser && bookingMember?.uid === currentUser.uid;
       const target = isSelf ? userProfile : bookingMember;
       
-      // Default to 24/7 if AI mentor
       if (!bookingMember && selectedMentor) {
-          return { enabled: true, startHour: 0, endHour: 23, days: [0,1,2,3,4,5,6] };
+          return { ...DEFAULT_AVAILABILITY, startHour: 0, endHour: 23 };
       }
-      
-      // Fallback: Default to 9-6, all 7 days if no settings found
-      return target?.availability || { enabled: true, startHour: 9, endHour: 18, days: [0, 1, 2, 3, 4, 5, 6] };
+
+      const rawAvail = target?.availability;
+      if (!rawAvail) return DEFAULT_AVAILABILITY;
+
+      // Deep Merge: ensure properties like startHour exist even if object is partial
+      return {
+          enabled: rawAvail.enabled ?? DEFAULT_AVAILABILITY.enabled,
+          startHour: typeof rawAvail.startHour === 'number' ? rawAvail.startHour : DEFAULT_AVAILABILITY.startHour,
+          endHour: typeof rawAvail.endHour === 'number' ? rawAvail.endHour : DEFAULT_AVAILABILITY.endHour,
+          days: Array.isArray(rawAvail.days) ? rawAvail.days : DEFAULT_AVAILABILITY.days
+      };
   }, [bookingMember, selectedMentor, userProfile, currentUser]);
 
-  // CALC SLOTS LOGIC
   const availableSlots = useMemo(() => {
       if (!selectedDate) return [];
       
-      // Robust dayOfWeek calculation using midday to avoid timezone shifts
       const dateParts = selectedDate.split('-');
       const d = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]), 12, 0, 0);
       const dayOfWeek = d.getDay();
       
       const availability = currentTargetAvailability;
-      
-      // Safety: Ensure days array exists before calling includes
       const activeDays = availability.days || [0, 1, 2, 3, 4, 5, 6];
       
       if (!availability.enabled || !activeDays.includes(dayOfWeek)) return [];
@@ -116,7 +127,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
           const hourStr = h.toString().padStart(2, '0');
           if (duration === 25) {
               slots.push({ start: `${hourStr}:05`, end: `${hourStr}:30`, duration: 25, isBusy: false });
-              slots.push({ start: `${hourStr}:35`, end: `${(h + (35+25 >= 60 ? 1 : 0)).toString().padStart(2, '0')}:${(35+25)%60 === 0 ? '00' : '00'}`, duration: 25, isBusy: false });
+              slots.push({ start: `${hourStr}:35`, end: `${(h + (35+25 >= 60 ? 1 : 0)).toString().padStart(2, '0')}:00`, duration: 25, isBusy: false });
           } else {
               slots.push({ start: `${hourStr}:05`, end: `${(h + 1).toString().padStart(2, '0')}:00`, duration: 55, isBusy: false });
               slots.push({ start: `${hourStr}:35`, end: `${(h + 1).toString().padStart(2, '0')}:30`, duration: 55, isBusy: false });
@@ -130,11 +141,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
   }, [currentTargetAvailability, selectedDate, duration, mentorBookings]);
 
   const groupedSlots = useMemo(() => {
-      const groups = {
-          morning: [] as Slot[],
-          afternoon: [] as Slot[],
-          evening: [] as Slot[]
-      };
+      const groups = { morning: [] as Slot[], afternoon: [] as Slot[], evening: [] as Slot[] };
       availableSlots.forEach(s => {
           const h = parseInt(s.start.split(':')[0]);
           if (h < 12) groups.morning.push(s);
@@ -172,7 +179,6 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
         const bookingId = await createBooking(newBooking);
         newBooking.id = bookingId;
 
-        // SEND GMAIL CONFIRMATION
         const token = getDriveToken();
         if (token) {
             await sendBookingConfirmationEmail(token, newBooking, currentUser.email);
@@ -198,6 +204,10 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
       const activeDaysArray = currentTargetAvailability.days || [0, 1, 2, 3, 4, 5, 6];
       const daysStr = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].filter((_, i) => activeDaysArray.includes(i)).join(', ');
       
+      // Formatting hours for display to avoid ":00"
+      const startDisplay = `${currentTargetAvailability.startHour}:00`;
+      const endDisplay = `${currentTargetAvailability.endHour}:00`;
+
       return (
         <div className="max-w-5xl mx-auto my-8 animate-fade-in-up">
             <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden">
@@ -206,15 +216,15 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
                     <img src={bookingMember ? (bookingMember.photoURL || `https://ui-avatars.com/api/?name=${bookingMember.displayName}`) : selectedMentor!.imageUrl} className="w-20 h-20 rounded-[2rem] border-4 border-indigo-500 shadow-xl object-cover" />
                     <div className="flex-1">
                         <div className="flex items-center gap-3">
-                            <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">{bookingMember ? (isSelf ? 'My Availability (Test)' : bookingMember.displayName) : selectedMentor!.title}</h2>
-                            {isSelf && <span className="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase">Syncing Live</span>}
+                            <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">{bookingMember ? (isSelf ? 'My Availability (Live)' : bookingMember.displayName) : selectedMentor!.title}</h2>
+                            {isSelf && <span className="bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase shadow-lg shadow-emerald-900/40">Synced</span>}
                         </div>
                         <div className="flex items-center gap-4 mt-1">
-                            <p className="text-sm font-bold text-indigo-400 uppercase tracking-widest">{bookingMember ? (isSelf ? 'Self-Booking Profile' : 'Domain Expert') : 'AI Strategic Mentor'}</p>
+                            <p className="text-sm font-bold text-indigo-400 uppercase tracking-widest">{bookingMember ? (isSelf ? 'Member Profile Preview' : 'Domain Expert') : 'AI Strategic Mentor'}</p>
                             <div className="h-4 w-px bg-slate-800"></div>
                             <div className="flex items-center gap-1.5 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                                 <Clock size={12} className="text-emerald-500"/>
-                                <span>{currentTargetAvailability.startHour}:00 - {currentTargetAvailability.endHour}:00 ({daysStr})</span>
+                                <span>{startDisplay} - {endDisplay} ({daysStr})</span>
                             </div>
                         </div>
                     </div>
@@ -258,9 +268,10 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
                                         <div className="flex flex-col items-center gap-3">
                                             <ShieldAlert size={32} className="text-slate-700"/>
                                             <p>Member is currently away or outside office hours on this date.</p>
-                                            <div className="mt-2 p-2 bg-slate-950 rounded-lg">
-                                                <p className="text-[9px] font-bold uppercase text-indigo-400">Current detected availability:</p>
-                                                <p className="text-[9px] text-slate-500 mt-1 uppercase">{daysStr} @ {currentTargetAvailability.startHour}:00 - {currentTargetAvailability.endHour}:00</p>
+                                            <div className="mt-4 p-4 bg-slate-950 rounded-2xl border border-slate-800">
+                                                <p className="text-[10px] font-black uppercase text-indigo-400 tracking-widest mb-1">Current detected availability:</p>
+                                                <p className="text-xs text-slate-300 uppercase font-bold">{daysStr}</p>
+                                                <p className="text-xl font-black text-white mt-1">{startDisplay} - {endDisplay}</p>
                                             </div>
                                         </div>
                                     </div>
