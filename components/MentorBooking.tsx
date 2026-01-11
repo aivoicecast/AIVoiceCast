@@ -5,7 +5,7 @@ import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCir
 import { auth } from '../services/firebaseConfig';
 import { createBooking, getUserBookings, cancelBooking, updateBookingInvite, deleteBookingRecording, getAllUsers, getUserProfileByEmail, getUserProfile } from '../services/firestoreService';
 import { getDriveToken } from '../services/authService';
-import { sendBookingConfirmationEmail } from '../services/gmailService';
+import { sendBookingEmail } from '../services/gmailService';
 
 interface MentorBookingProps {
   currentUser: any;
@@ -181,10 +181,16 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userP
 
         const token = getDriveToken();
         if (token) {
-            await sendBookingConfirmationEmail(token, newBooking, currentUser.email);
+            // SEND TO HOST
+            await sendBookingEmail(token, newBooking, currentUser.email, currentUser.displayName || 'Host', true);
+            
+            // SEND TO MENTOR (If Peer-to-Peer)
+            if (isP2P && bookingMember?.email) {
+                await sendBookingEmail(token, newBooking, bookingMember.email, bookingMember.displayName, false);
+            }
         }
 
-        alert(isP2P ? "Request sent! Check your email for confirmation." : "AI session booked! Confirmation sent to your inbox.");
+        alert(isP2P ? "Request sent! Notification emails dispatched to both parties." : "AI session booked! Confirmation sent to your inbox.");
         setActiveTab('my_bookings');
         setSelectedMentor(null); setBookingMember(null); setTopic(''); setSelectedSlot(null);
     } catch(e) { 

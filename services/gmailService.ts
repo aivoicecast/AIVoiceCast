@@ -13,20 +13,40 @@ function base64urlEncode(str: string): string {
 
 /**
  * Sends a booking confirmation email via the Gmail API.
+ * Supports different templates for the Host and the Mentor.
  */
-export async function sendBookingConfirmationEmail(accessToken: string, booking: Booking, userEmail: string): Promise<void> {
+export async function sendBookingEmail(
+    accessToken: string, 
+    booking: Booking, 
+    recipientEmail: string,
+    recipientName: string,
+    isHost: boolean
+): Promise<void> {
     const isP2P = booking.type === 'p2p';
     
-    const subject = isP2P 
-        ? `[AIVoiceCast] Mentorship Request: ${booking.mentorName}` 
-        : `[AIVoiceCast] AI Session Confirmed: ${booking.mentorName}`;
+    // Determine Subject
+    let subject = '';
+    if (isHost) {
+        subject = isP2P 
+            ? `[AIVoiceCast] Mentorship Request Sent: ${booking.mentorName}` 
+            : `[AIVoiceCast] AI Session Confirmed: ${booking.mentorName}`;
+    } else {
+        subject = `[AIVoiceCast] New Mentorship Request from ${booking.hostName}`;
+    }
+
+    // Determine Body
+    const intro = isHost 
+        ? `Hello ${recipientName}, your request to book a session with ${booking.mentorName} is being processed.`
+        : `Hello ${recipientName}, ${booking.hostName} has requested a mentorship session with you.`;
+
+    const statusNote = isHost
+        ? (isP2P ? "This request is pending mentor approval." : "This AI session is confirmed.")
+        : "Please log in to AIVoiceCast to Accept or Decline this request in your Notifications tab.";
 
     const body = `
-Hello ${booking.hostName},
+${intro}
 
-${isP2P 
-    ? `Your request to book a session with ${booking.mentorName} has been sent.` 
-    : `Your interactive session with AI Mentor ${booking.mentorName} is confirmed.`}
+${statusNote}
 
 SESSION DETAILS:
 ------------------------------------------
@@ -36,14 +56,14 @@ Time: ${booking.time} (Duration: ${booking.duration}m)
 Ends: ${booking.endTime}
 ------------------------------------------
 
-You can join this session from your "Schedule" tab in the AIVoiceCast Mentorship Hub.
+You can manage your sessions in the "Mentorship Hub" within the AIVoiceCast Neural OS.
 
 Happy Learning,
 The AIVoiceCast Neural OS
     `.trim();
 
     const email = [
-        `To: ${userEmail}`,
+        `To: ${recipientEmail}`,
         `Subject: ${subject}`,
         'Content-Type: text/plain; charset="UTF-8"',
         '',
@@ -67,9 +87,8 @@ The AIVoiceCast Neural OS
             throw new Error(err.error?.message || "Gmail API failed to send email.");
         }
         
-        console.log("[Gmail] Confirmation email sent successfully.");
+        console.log(`[Gmail] Email sent successfully to ${recipientEmail}`);
     } catch (error) {
-        console.error("[Gmail] Failed to send email:", error);
-        // We don't block the UI for email failures, just log them.
+        console.error(`[Gmail] Failed to send email to ${recipientEmail}:`, error);
     }
 }
