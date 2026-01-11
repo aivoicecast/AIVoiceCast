@@ -83,7 +83,6 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const channelId = crypto.randomUUID();
-    const imagePrompt = encodeURIComponent(`${title} ${description} digital art masterpiece`);
     
     const [year, month, day] = releaseDate.split('-').map(Number);
     const targetDate = new Date(year, month - 1, day);
@@ -104,7 +103,7 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
       dislikes: 0,
       comments: [],
       tags: ['Community', 'AI'],
-      imageUrl: `https://image.pollinations.ai/prompt/${imagePrompt}?width=600&height=400&nologo=true`,
+      imageUrl: '', // Removed automatic image generation
       createdAt: targetDate.getTime(),
       chapters: importedChapters 
     };

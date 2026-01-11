@@ -101,7 +101,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     dislikes: 0,
     comments: [],
     tags: ['Architecture', 'React', 'Canvas', 'GenAI'],
-    imageUrl: 'https://image.pollinations.ai/prompt/futuristic%20AI%20interface%20holographic%20dashboard%20glowing%20nodes%20dark%20cyberpunk%208k?width=600&height=400&nologo=true',
+    imageUrl: '', // Removed third-party image API
     welcomeMessage: "Welcome. This platform is a testament to the power of Google AI Studio, Gemini 3, and OpenAI APIs. We have evolved beyond a simple player into a comprehensive Knowledge OS—ready to generate, teach, and build alongside you.",
     starterPrompts: [
       "How does the Card Workshop generate PDFs?",
@@ -122,7 +122,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     dislikes: 12,
     comments: [],
     tags: ['Tech', 'Career', 'Education'],
-    imageUrl: 'https://image.pollinations.ai/prompt/coding%20interview%20computer%20screen%20cyberpunk%20tech%20office?width=600&height=400&nologo=true',
+    imageUrl: '', // Removed third-party image API
     welcomeMessage: "Welcome. I am ready to evaluate your technical skills. Shall we start with a Dynamic Programming problem or a distributed systems design challenge?",
     starterPrompts: [
       "Ask me a hard difficulty Graph question",
@@ -143,7 +143,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     dislikes: 5,
     comments: [],
     tags: ['Linux', 'OS', 'Engineering'],
-    imageUrl: 'https://image.pollinations.ai/prompt/linux%20penguin%20server%20room%20matrix%20code%20green?width=600&height=400&nologo=true',
+    imageUrl: '', // Removed third-party image API
     welcomeMessage: "Kernel mode engaged. What subsystem shall we audit today? I suggest looking at the VFS layer or the eBPF verifier logic.",
     starterPrompts: [
       "Explain the CFS scheduler in detail",
@@ -165,7 +165,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     dislikes: 1,
     comments: [],
     tags: ['Onboarding', 'Tutorial', 'Knowledge OS'],
-    imageUrl: 'https://image.pollinations.ai/prompt/glowing%20indigo%20gemstone%20abstract%20digital%20art%208k?width=600&height=400&nologo=true',
+    imageUrl: '', // Removed third-party image API
     welcomeMessage: "Hello! I'm Default Gem. I'm here to help you master the AIVoiceCast Knowledge OS. Where shall we begin our tour?",
     starterPrompts: [
       "What is a Knowledge OS?",

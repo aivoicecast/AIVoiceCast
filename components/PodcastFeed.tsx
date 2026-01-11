@@ -1,9 +1,9 @@
-
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture } from '../types';
-import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles } from 'lucide-react';
+import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { CreatorProfileModal } from './CreatorProfileModal';
+import { PodcastListTable, SortKey } from './PodcastListTable';
 import { followUser, unfollowUser } from '../services/firestoreService';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { synthesizeSpeech } from '../services/tts';
@@ -402,8 +402,8 @@ const MobileFeedCard = ({
     return (
         <div className="h-full w-full snap-start relative flex flex-col justify-center bg-slate-900 border-b border-slate-800 overflow-hidden">
             <div className="absolute inset-0">
-                <img src={channel.imageUrl} alt={channel.title} className="w-full h-full object-cover opacity-60" loading={isActive ? "eager" : "lazy"} />
-                <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/90"></div>
+                <div className="absolute inset-0 bg-slate-950"></div>
+                <div className="absolute inset-0 bg-gradient-to-b from-indigo-900/10 via-transparent to-black/90"></div>
                 
                 {isAutoplayBlocked && isActive && (
                     <div className="absolute inset-0 z-40 bg-black/50 backdrop-blur-md flex flex-col items-center justify-center animate-fade-in">
@@ -478,7 +478,9 @@ const MobileFeedCard = ({
 
             <div className="absolute right-2 bottom-40 flex flex-col items-center gap-6 z-30">
                 <div className="relative mb-2 cursor-pointer" onClick={(e) => { e.stopPropagation(); onProfileClick(e, channel); }}>
-                    <img src={channel.imageUrl} className={`w-12 h-12 rounded-full border-2 object-cover ${isActive && playbackState === 'playing' ? 'animate-spin-slow' : ''}`} alt="Creator" />
+                    <div className={`w-12 h-12 rounded-full border-2 bg-indigo-950 flex items-center justify-center text-white font-black text-xl ${isActive && playbackState === 'playing' ? 'animate-spin-slow' : ''}`}>
+                        {channel.author[0].toUpperCase()}
+                    </div>
                     {!isFollowed && channel.ownerId && (
                         <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-red-500 rounded-full p-0.5 border border-white" onClick={(e) => onToggleFollow(e, channel.id, channel.ownerId)}><Plus size={12} color="white" strokeWidth={4} /></div>
                     )}
@@ -517,6 +519,16 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
+  
+  // Table sorting state
+  const [sortConfig, setSortConfig] = useState<{key: SortKey, direction: 'asc' | 'desc'}>({ key: 'likes', direction: 'desc' });
+
+  const handleSort = (key: SortKey) => {
+    setSortConfig(prev => ({
+        key,
+        direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+    }));
+  };
 
   useEffect(() => {
       const handleResize = () => setIsDesktop(window.innerWidth >= 768);
@@ -537,6 +549,32 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
           setFollowedChannels(new Set(channelIds));
       }
   }, [userProfile, channels]);
+
+  const sortedChannels = useMemo(() => {
+      if (!isFeedActive) return []; 
+      
+      let baseList = channels;
+      if (filterMode === 'mine') baseList = channels.filter(c => currentUser && c.ownerId === currentUser.uid);
+      
+      const sorted = [...baseList].sort((a, b) => {
+          let valA: any = a[sortConfig.key as keyof Channel];
+          let valB: any = b[sortConfig.key as keyof Channel];
+          
+          if (sortConfig.key === 'likes') {
+              valA = a.likes || 0;
+              valB = b.likes || 0;
+          } else if (sortConfig.key === 'createdAt') {
+              valA = a.createdAt || 0;
+              valB = b.createdAt || 0;
+          }
+
+          if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+          if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+          return 0;
+      });
+
+      return sorted;
+  }, [channels, currentUser, isFeedActive, filterMode, sortConfig]);
 
   const recommendedChannels = useMemo(() => {
       if (!isFeedActive) return []; 
@@ -586,19 +624,27 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
 
   if (isDesktop) {
       return (
-        <>
         <div className="h-full overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-800">
-            <div className="max-w-7xl mx-auto">
-                <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><span className="bg-indigo-600 w-2 h-8 rounded-full"></span> Explore Podcasts</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {recommendedChannels.map(channel => (
-                        <ChannelCard key={channel.id} channel={channel} handleChannelClick={onChannelClick} handleVote={handleVote || (() => {})} currentUser={currentUser} setChannelToEdit={setChannelToEdit || (() => {})} setIsSettingsModalOpen={setIsSettingsModalOpen || (() => {})} globalVoice={globalVoice} t={t || { host: 'Host' }} onCommentClick={onCommentClick || (() => {})} isLiked={userProfile?.likedChannelIds?.includes(channel.id)} onCreatorClick={(e) => { e.stopPropagation(); setViewingCreator(channel); }} />
-                    ))}
+            <div className="max-w-7xl mx-auto space-y-6">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                        <span className="bg-indigo-600 w-2 h-8 rounded-full"></span> 
+                        {filterMode === 'mine' ? 'My Workshops' : 'Knowledge Registry'}
+                    </h2>
+                    <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                        <button className="p-2 text-indigo-400 bg-slate-800 rounded-lg shadow-sm" title="Table Layout"><List size={18}/></button>
+                    </div>
                 </div>
+                
+                <PodcastListTable 
+                    channels={sortedChannels} 
+                    onChannelClick={onChannelClick} 
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                    globalVoice={globalVoice}
+                />
             </div>
         </div>
-        {viewingCreator && <CreatorProfileModal isOpen={true} onClose={() => setViewingCreator(null)} channel={viewingCreator} onMessage={() => { if (onMessageCreator && viewingCreator.ownerId) onMessageCreator(viewingCreator.ownerId, viewingCreator.author); setViewingCreator(null); }} onChannelClick={(id) => { setViewingCreator(null); onChannelClick(id); }} currentUser={currentUser} />}
-        </>
       );
   }
 

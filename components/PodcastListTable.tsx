@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Channel } from '../types';
 import { ArrowUp, ArrowDown, Play, MessageSquare, Heart, Calendar, Hash } from 'lucide-react';
@@ -67,20 +66,6 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
               >
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-4">
-                    <div className="relative w-12 h-12 flex-shrink-0">
-                      <img 
-                        src={channel.imageUrl} 
-                        alt={channel.title} 
-                        className="w-full h-full object-cover rounded-lg border border-slate-700 shadow-sm"
-                        onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            if (!target.src.includes('placehold.co')) target.src = `https://placehold.co/100x100/1e293b/white?text=IMG`;
-                        }}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40 rounded-lg">
-                         <Play size={16} className="text-white fill-white" />
-                      </div>
-                    </div>
                     <div className="min-w-0">
                       <h4 className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors truncate max-w-[200px] md:max-w-xs">
                         {channel.title}

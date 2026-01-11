@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from '@google/genai';
 import { Channel, Chapter } from '../types';
 import { incrementApiUsage, getUserProfile } from './firestoreService';
@@ -78,8 +77,7 @@ export async function generateChannelFromPrompt(
         "tags": ["..."],
         "welcomeMessage": "Greeting...",
         "starterPrompts": ["..."],
-        "chapters": [ { "title": "Main Path", "subTopics": [ {"title": "Lesson 1: ..."} ] } ],
-        "imagePrompt": "..."
+        "chapters": [ { "title": "Main Path", "subTopics": [ {"title": "Lesson 1: ..."} ] } ]
       }
     `;
 
@@ -117,7 +115,7 @@ export async function generateChannelFromPrompt(
       dislikes: 0,
       comments: [],
       tags: parsed.tags || ['AI', 'Generated'],
-      imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(parsed.imagePrompt || parsed.title)}?width=600&height=400&nologo=true`,
+      imageUrl: '', // Removed third-party image API
       welcomeMessage: parsed.welcomeMessage,
       starterPrompts: parsed.starterPrompts,
       createdAt: Date.now(),
@@ -209,7 +207,7 @@ export async function generateChannelFromDocument(
       voiceName: parsed.voiceName || 'Zephyr',
       systemInstruction: parsed.systemInstruction,
       likes: 0, dislikes: 0, comments: [], tags: parsed.tags || [],
-      imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(parsed.title)}?width=600&height=400&nologo=true`,
+      imageUrl: '', // Removed third-party image API
       createdAt: Date.now(),
       chapters: parsed.chapters?.map((ch: any, i: number) => ({ id: `ch-${i}`, title: ch.title, subTopics: ch.subTopics.map((s: any, j: number) => ({ id: `s-${i}-${j}`, title: s.title || s })) })) || []
     };
