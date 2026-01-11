@@ -7,9 +7,8 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
-// Added missing 'Send' icon to the imports list from lucide-react
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, FileSearch, RefreshCcw, HeartHandshake, Speech, Send } from 'lucide-react';
-import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, FileSearch, RefreshCcw, HeartHandshake, Speech, Send, History, Compass } from 'lucide-react';
+import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext, stopAllPlatformAudio } from '../utils/audioUtils';
 
 interface MockInterviewProps {
   onBack: () => void;
@@ -46,8 +45,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const currentUser = auth?.currentUser;
 
   const [view, setView] = useState<'hub' | 'prep' | 'interview' | 'report' | 'coaching'>('hub');
-  const [interviews, setInterviews] = useState<MockInterviewRecording[]>([]);
+  const [hubTab, setHubTab] = useState<'history' | 'explore'>('history');
+  const [myInterviews, setMyInterviews] = useState<MockInterviewRecording[]>([]);
+  const [publicInterviews, setPublicInterviews] = useState<MockInterviewRecording[]>([]);
   const [loading, setLoading] = useState(true);
+  
   const [isRecording, setIsRecording] = useState(false);
   const [isAiConnected, setIsAiConnected] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
@@ -75,7 +77,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [coachingTranscript, setCoachingTranscript] = useState<TranscriptItem[]>([]);
   const [initialStudioFiles, setInitialStudioFiles] = useState<CodeFile[]>([]);
   
-  // UUID for the current project session
   const [currentSessionId, setCurrentSessionId] = useState<string>('');
   const activeCodeFilesRef = useRef<CodeFile[]>([]);
 
@@ -97,7 +98,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setApiLogs(prev => [{timestamp: Date.now(), msg, type}, ...prev].slice(0, 50));
   };
 
-  // Sync resume from profile if it becomes available and the field is empty
   useEffect(() => {
     if (userProfile?.resumeText && !resumeText) {
       setResumeText(userProfile.resumeText);
@@ -134,7 +134,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   useEffect(() => {
     loadInterviews();
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => { 
+        if (timerRef.current) clearInterval(timerRef.current);
+        if (liveServiceRef.current) liveServiceRef.current.disconnect();
+    };
   }, [currentUser]);
 
   const loadInterviews = async () => {
@@ -144,10 +147,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         getPublicInterviews(),
         currentUser ? getUserInterviews(currentUser.uid) : Promise.resolve([])
       ]);
-      const combined = [...publicData, ...userData];
-      const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
-      setInterviews(unique.sort((a, b) => b.timestamp - a.timestamp));
-    } catch (e) {} finally { setLoading(false); }
+      setMyInterviews(userData.sort((a, b) => b.timestamp - a.timestamp));
+      setPublicInterviews(publicData.sort((a, b) => b.timestamp - a.timestamp));
+    } catch (e) {
+        console.error("Ledger retrieval error", e);
+    } finally { setLoading(false); }
   };
 
   const handleSendTextMessage = (text: string) => {
@@ -238,8 +242,15 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   const handleStartCoaching = async () => {
       if (!report) return;
+      
+      // Stop any existing interview link first
+      if (liveServiceRef.current) {
+          await liveServiceRef.current.disconnect();
+      }
+      
       setView('coaching');
       setCoachingTranscript([]);
+      setIsAiConnected(false);
       logApi("Initializing AI Coaching Session...");
 
       const service = new GeminiLiveService();
@@ -300,8 +311,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const handleStartInterview = async () => {
     setIsStarting(true);
     isEndingRef.current = false;
-    
-    // UUID Generation for the specific project space
     const uuid = generateSecureId();
     setCurrentSessionId(uuid);
 
@@ -339,64 +348,48 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const jobContext = jobDesc.trim() ? `Job Description: ${jobDesc}` : "Job: Senior developer role";
       const candidateContext = resumeText.trim() ? `Candidate Resume: ${resumeText}` : "";
-      const problemPrompt = `You are a world-class technical interviewer. Based on the following information, generate a unique, challenging coding or system design task for a candidate.
-      
-      Interview Mode: ${mode}
-      Preferred Language: ${language}
+      const problemPrompt = `You are a world-class technical interviewer. Generate a unique coding/design challenge.
+      Mode: ${mode}
+      Lang: ${language}
       ${jobContext}
       ${candidateContext}
-      
-      Respond with Markdown formatted problem description.`;
+      Respond with Markdown.`;
       
       const probResponse = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: problemPrompt });
       setGeneratedProblemMd(probResponse.text || "Introduction needed.");
 
-      // Workspace Initialization
       const filesToInit: CodeFile[] = [];
-
       if (mode === 'coding' || mode === 'quick_screen' || mode.startsWith('assessment')) {
           const ext = language.toLowerCase() === 'python' ? 'py' : (language.toLowerCase().includes('java') ? 'java' : 'cpp');
-          const solutionFile: CodeFile = {
+          filesToInit.push({
               name: `solution.${ext}`, path: `drive://${uuid}/solution.${ext}`, language: language.toLowerCase() as any,
-              content: `/* \n * Interview Challenge: ${mode}\n * Session UUID: ${uuid}\n */\n\n`,
-              loaded: true, isDirectory: false, isModified: false
-          };
-          filesToInit.push(solutionFile);
+              content: `/* \n * Interview: ${mode}\n */\n\n`, loaded: true, isDirectory: false, isModified: false
+          });
       } else if (mode === 'system_design') {
-          // Auto-open Drawing and Documentation frames for System Design
-          const drawFile: CodeFile = {
+          filesToInit.push({
               name: 'architecture.draw', path: `drive://${uuid}/architecture.draw`, language: 'whiteboard',
               content: '[]', loaded: true, isDirectory: false, isModified: false
-          };
-          const docFile: CodeFile = {
+          }, {
               name: 'design_spec.md', path: `drive://${uuid}/design_spec.md`, language: 'markdown',
-              content: `# System Design: ${jobDesc || 'New Architecture'}\n\n## Overview\n\n## Components\n\n## Trade-offs\n`,
-              loaded: true, isDirectory: false, isModified: false
-          };
-          filesToInit.push(drawFile, docFile);
+              content: `# System Design: ${jobDesc || 'New Architecture'}\n`, loaded: true, isDirectory: false, isModified: false
+          });
       } else {
-          // Behavioral / General
           filesToInit.push({
               name: 'scratchpad.md', path: `drive://${uuid}/scratchpad.md`, language: 'markdown',
-              content: `# Interview Scratchpad\n\n- Key points to remember...\n`,
-              loaded: true, isDirectory: false, isModified: false
+              content: `# Scratchpad\n`, loaded: true, isDirectory: false, isModified: false
           });
       }
 
       activeCodeFilesRef.current = [...filesToInit];
       setInitialStudioFiles([...filesToInit]);
 
-      // Initialize the project in Firestore for real-time UUID-linked saving
       await saveCodeProject({
-          id: uuid,
-          name: `Interview_${mode}_${new Date().toLocaleDateString()}`,
-          files: filesToInit,
-          lastModified: Date.now(),
-          accessLevel: 'restricted',
+          id: uuid, name: `Interview_${mode}_${new Date().toLocaleDateString()}`,
+          files: filesToInit, lastModified: Date.now(), accessLevel: 'restricted',
           allowedUserIds: currentUser ? [currentUser.uid] : []
       });
 
-      // Recording logic
+      // Unified Recording Compositor
       const isPortrait = window.innerHeight > window.innerWidth;
       const canvas = document.createElement('canvas');
       canvas.width = isPortrait ? 720 : 1280; canvas.height = isPortrait ? 1280 : 720;
@@ -435,7 +428,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
-      const sysPrompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. Job Description: ${jobDesc}. IMPORTANT: You are monitoring the candidate's speech AND their typed chat messages. You are also monitoring a code project with ID: ${uuid}. Respond naturally to all inputs. GOAL: Introduce yourself and start the challenge.`;
+      const sysPrompt = `Role: Senior Interviewer. Mode: ${mode}. Candidate: ${currentUser?.displayName}. Resume: ${resumeText}. Job: ${jobDesc}. GOAL: Greet and start.`;
       
       await service.connect(mode === 'behavioral' ? 'Zephyr' : 'Software Interview Voice', sysPrompt, {
         onOpen: () => {
@@ -477,186 +470,113 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const handleEndInterview = async () => {
     if (isEndingRef.current) return;
 
-    const confirmEnd = window.confirm("Finish interview now? AI will perform a full audit of all saved project files (including diagrams and design docs) and chat history.");
+    const confirmEnd = window.confirm("Finalize and generate report? This will audit all code, diagrams, and transcripts.");
     if (!confirmEnd) return;
 
     isEndingRef.current = true;
     setIsGeneratingReport(true);
     startSmoothProgress();
     
-    if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-    }
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
 
-    setSynthesisStep('Closing neural link...');
-    try {
-        if (liveServiceRef.current) {
-            await liveServiceRef.current.disconnect();
-        }
-    } catch (e) { console.error("Error disconnecting live service", e); }
-    
+    setSynthesisStep('De-linking Neural Core...');
+    if (liveServiceRef.current) { await liveServiceRef.current.disconnect(); }
     setIsAiConnected(false);
     setIsRecording(false);
 
-    setSynthesisStep('Syncing Project State...');
+    setSynthesisStep('Syncing Artifacts...');
     try {
-        // Ensure final project state is saved to Firestore under UUID
         await saveCodeProject({
-            id: currentSessionId,
-            name: `Interview_${mode}_${new Date().toLocaleDateString()}`,
-            files: activeCodeFilesRef.current,
-            lastModified: Date.now(),
-            accessLevel: 'restricted',
+            id: currentSessionId, name: `Interview_${mode}_${new Date().toLocaleDateString()}`,
+            files: activeCodeFilesRef.current, lastModified: Date.now(), accessLevel: 'restricted',
             allowedUserIds: currentUser ? [currentUser.uid] : []
         });
-    } catch (e) { console.error("Final sync failed", e); }
+    } catch (e) {}
 
-    setSynthesisStep('Finalizing Recording...');
-    try {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-            const blobPromise = new Promise<Blob>((resolve) => {
-                const rec = mediaRecorderRef.current!;
-                rec.onstop = () => resolve(new Blob(videoChunksRef.current, { type: 'video/webm' }));
-                rec.stop();
-            });
-            videoBlobRef.current = await blobPromise;
-        }
-    } catch (e) { console.error("Error stopping recorder", e); }
+    setSynthesisStep('Closing Video Channel...');
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        const blobPromise = new Promise<Blob>((resolve) => {
+            const rec = mediaRecorderRef.current!;
+            rec.onstop = () => resolve(new Blob(videoChunksRef.current, { type: 'video/webm' }));
+            rec.stop();
+        });
+        videoBlobRef.current = await blobPromise;
+    }
 
     try {
         activeStreamRef.current?.getTracks().forEach(t => t.stop());
         activeScreenStreamRef.current?.getTracks().forEach(t => t.stop());
     } catch (e) {}
 
-    setSynthesisStep('Analyzing Ledger & Artifacts...');
-    let reportData: InterviewReport | null = null;
-    
-    // Explicitly identify diagram and design files for the AI
-    const projectFilesContext = activeCodeFilesRef.current.map(f => {
-        let typeInfo = `FILE: ${f.name}\n`;
-        if (f.name.endsWith('.draw')) typeInfo += `TYPE: System Architecture Diagram (Whiteboard JSON)\n`;
-        if (f.name.endsWith('.md')) typeInfo += `TYPE: Technical Design Specification (Markdown)\n`;
-        return `${typeInfo}CONTENT:\n${f.content}`;
-    }).join('\n\n---\n\n');
-
+    setSynthesisStep('Analyzing Cognitive Performance...');
+    const projectFilesContext = activeCodeFilesRef.current.map(f => `FILE: ${f.name}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
     const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
 
-    // Attempt Evaluation with retries
     const tryEvaluate = async (attempt: number): Promise<InterviewReport | null> => {
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            
-            const prompt = `AUDIT REPORT: Technical Interview Session.
-            UUID: ${currentSessionId}
-            MODE: ${mode}
-            LANGUAGE: ${language}
-            JOB_SPEC: ${jobDesc}
-            
-            Verified Transcript Archive:
-            ${transcriptText}
-            
-            Verified Project Artifacts (Diagrams, Specs, Code):
-            ${projectFilesContext}
-            
-            CRITICAL EVALUATION TASKS:
-            1. Analyze System Design Artifacts: If ".draw" or ".md" files are present, evaluate them as the primary solution for system design tasks.
-            2. Consistency Check: Ensure the candidate's implementation in diagrams/code matches their verbal/chat reasoning.
-            3. Technical Accuracy: Evaluate logic, scalability, and architectural patterns.
-            4. Communication: Assess how clearly they explained their choices.
-            
-            Return ONLY a valid JSON object. 
-            Schema:
-            - score (0-100)
-            - technicalSkills (concise summary)
-            - communication (concise summary)
-            - collaboration (concise summary)
-            - strengths (string array)
-            - areasForImprovement (string array)
-            - verdict (one of: 'Strong Hire', 'Hire', 'No Hire', 'Strong No Hire')
-            - summary (paragraph)
-            - learningMaterial (detailed Markdown including suggested improvements to diagrams or code)`;
+            const prompt = `AUDIT REPORT: Technical Interview. 
+            MODE: ${mode} JOB_SPEC: ${jobDesc}
+            TRANSCRIPT: ${transcriptText}
+            ARTIFACTS: ${projectFilesContext}
+            Return ONLY JSON: score(0-100), technicalSkills, communication, collaboration, strengths[], areasForImprovement[], verdict, summary, learningMaterial(Markdown).`;
 
             const response = await ai.models.generateContent({
                 model: attempt === 1 ? 'gemini-3-pro-preview' : 'gemini-3-flash-preview',
                 contents: prompt,
-                config: { 
-                  responseMimeType: 'application/json',
-                  thinkingConfig: { thinkingBudget: attempt === 1 ? 4000 : 0 }
-                }
+                config: { responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: attempt === 1 ? 4000 : 0 } }
             });
-            
-            let text = (response.text || "").trim();
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
-            if (jsonMatch) text = jsonMatch[0];
-            
-            return JSON.parse(text);
-        } catch (e) {
-            console.warn(`Evaluation Attempt ${attempt} failed:`, e);
-            return null;
-        }
+            return JSON.parse(response.text || "null");
+        } catch (e) { return null; }
     };
 
-    // Retry Loop
-    reportData = await tryEvaluate(1);
-    if (!reportData) {
-        setSynthesisStep('Retrying Neural Trace...');
-        reportData = await tryEvaluate(2);
-    }
+    let reportData = await tryEvaluate(1);
+    if (!reportData) { setSynthesisStep('Re-scanning neural trace...'); reportData = await tryEvaluate(2); }
 
     if (reportData) {
       setReport(reportData);
-      setSynthesisStep('Archiving to Cloud Ledger...');
+      setSynthesisStep('Saving to Cloud Ledger...');
       const rec: MockInterviewRecording = {
-        id: currentSessionId, 
-        userId: currentUser?.uid || 'guest', 
-        userName: currentUser?.displayName || 'Guest',
-        mode, 
-        language, 
-        jobDescription: jobDesc, 
-        timestamp: Date.now(), 
-        videoUrl: "", 
+        id: currentSessionId, userId: currentUser?.uid || 'guest', userName: currentUser?.displayName || 'Guest',
+        mode, language, jobDescription: jobDesc, timestamp: Date.now(), videoUrl: "", 
         transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
-        feedback: JSON.stringify(reportData), 
-        visibility
+        feedback: JSON.stringify(reportData), visibility
       };
-      
-      try {
-          await saveInterviewRecording(rec);
-          setActiveRecording(rec);
-          setSynthesisPercent(100);
-          setView('report');
-      } catch (e) { 
-          console.error("Persistence failed", e);
-          alert("Session archived locally, but cloud ledger sync failed. Check your history later.");
-          setView('hub');
-      }
+      await saveInterviewRecording(rec);
+      setSynthesisPercent(100);
+      setView('report');
+      loadInterviews(); // Refresh history
     } else {
-        setSynthesisStep('Saving Emergency Archive...');
-        const failRec: MockInterviewRecording = {
-            id: currentSessionId, 
-            userId: currentUser?.uid || 'guest', 
-            userName: currentUser?.displayName || 'Guest',
-            mode, 
-            language, 
-            jobDescription: jobDesc, 
-            timestamp: Date.now(), 
-            videoUrl: "", 
-            transcript: transcript.map(t => ({ role: t.role, text: t.text, timestamp: t.timestamp })),
-            feedback: "Neural Evaluation Engine Timed Out. Your files (including diagrams and specs) are preserved for manual review.", 
-            visibility
-        };
-        await saveInterviewRecording(failRec);
+        alert("Evaluation failed. Session archived to local history for manual review.");
         setView('hub');
-        alert("A transient error occurred during artifact evaluation. Your transcript and project files (including short_uri.draw and short_ui.md) have been safely archived to your history for review.");
     }
     
     setIsGeneratingReport(false);
-    if (synthesisIntervalRef.current) {
-        clearInterval(synthesisIntervalRef.current);
-        synthesisIntervalRef.current = null;
-    }
+    if (synthesisIntervalRef.current) clearInterval(synthesisIntervalRef.current);
   };
+
+  const renderInterviewsList = (list: MockInterviewRecording[]) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {list.map(rec => (
+            <div key={rec.id} onClick={() => { setActiveRecording(rec); setReport(JSON.parse(rec.feedback || '{}')); setView('report'); }} className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-6 hover:border-indigo-500/50 transition-all group cursor-pointer shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-bold">{rec.userName[0]}</div>
+                        <div>
+                            <h4 className="font-bold text-white text-sm truncate max-w-[120px]">@{rec.userName}</h4>
+                            <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{new Date(rec.timestamp).toLocaleDateString()}</p>
+                        </div>
+                    </div>
+                    {rec.visibility === 'public' && <Globe size={14} className="text-emerald-500"/>}
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span>
+                    <span className="text-[9px] font-mono text-slate-700">ID: {rec.id.substring(0, 6)}</span>
+                </div>
+            </div>
+        ))}
+    </div>
+  );
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
@@ -680,27 +600,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             <div className={`px-4 py-1.5 rounded-2xl border bg-slate-950/50 flex items-center gap-2 ${timeLeft < 300 ? 'border-red-500/50 text-red-400 animate-pulse' : 'border-indigo-500/30 text-indigo-400'}`}>
                 <Timer size={14}/><span className="font-mono text-base font-black tabular-nums">{formatTime(timeLeft)}</span>
             </div>
-            <button 
-                onClick={handleEndInterview} 
-                className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-red-900/20 active:scale-95 transition-all"
-            >
-                End Session
-            </button>
+            <button onClick={handleEndInterview} className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-red-900/20 active:scale-95 transition-all">End Session</button>
           </div>
-        )}
-        {view === 'coaching' && (
-            <div className="flex items-center gap-4">
-                <div className="px-4 py-1.5 rounded-2xl border border-emerald-500/30 text-emerald-400 bg-slate-950/50 flex items-center gap-2">
-                    <HeartHandshake size={14} className="animate-pulse" />
-                    <span className="text-[10px] font-black uppercase tracking-widest">Post-Interview Coaching</span>
-                </div>
-                <button 
-                    onClick={() => setView('report')} 
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-black uppercase tracking-widest border border-slate-700 active:scale-95 transition-all"
-                >
-                    Back to Report
-                </button>
-            </div>
         )}
       </header>
 
@@ -716,24 +617,25 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               </div>
               <div className="relative z-10 hidden lg:block"><div className="w-64 h-64 bg-slate-950 rounded-[3rem] border-8 border-indigo-400/30 flex items-center justify-center rotate-3 shadow-2xl"><Bot size={100} className="text-indigo-400 animate-pulse"/></div></div>
             </div>
-            <div className="space-y-6">
-              <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Verified Session History</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {loading ? <div className="col-span-full py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : interviews.length === 0 ? <div className="col-span-full py-20 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">No archived ledger entries.</div> : interviews.map(rec => (
-                  <div key={rec.id} onClick={() => { setActiveRecording(rec); setReport(JSON.parse(rec.feedback || '{}')); setView('report'); }} className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-6 hover:border-indigo-500/50 transition-all group cursor-pointer shadow-xl relative overflow-hidden">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-bold">{rec.userName[0]}</div>
-                            <div>
-                                <h4 className="font-bold text-white text-sm">@{rec.userName}</h4>
-                                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{new Date(rec.timestamp).toLocaleDateString()}</p>
-                            </div>
-                        </div>
-                        <span className="text-[8px] font-mono text-slate-700 bg-black px-1.5 py-0.5 rounded">ID: {rec.id.substring(0, 6)}</span>
-                    </div>
-                    <div><span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span></div>
-                  </div>
-                ))}
+
+            <div className="space-y-8">
+              <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 w-fit mx-auto sm:mx-0 shadow-lg">
+                <button onClick={() => setHubTab('history')} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'history' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><History size={14}/> My History</button>
+                <button onClick={() => setHubTab('explore')} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'explore' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><Compass size={14}/> Global Discovery</button>
+              </div>
+              
+              <div className="animate-fade-in-up">
+                {hubTab === 'history' ? (
+                  <>
+                    <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter mb-6">Verified Session History</h3>
+                    {loading ? <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : myInterviews.length === 0 ? <div className="py-20 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">No archived ledger entries.</div> : renderInterviewsList(myInterviews)}
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter mb-6">Global Community Evaluations</h3>
+                    {loading ? <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : publicInterviews.length === 0 ? <div className="py-20 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">No public evaluations discovered yet.</div> : renderInterviewsList(publicInterviews)}
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -744,39 +646,30 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-6">
-                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4 shadow-inner">
                     <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><FileSearch size={14}/> Job Specification</h3>
-                    <textarea 
-                        value={jobDesc} 
-                        onChange={e => setJobDesc(e.target.value)} 
-                        placeholder="Paste Job Description for targeted evaluation..." 
-                        className="w-full h-32 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-emerald-500/50 transition-all shadow-inner"
-                    />
+                    <textarea value={jobDesc} onChange={e => setJobDesc(e.target.value)} placeholder="Paste Job Description for targeted evaluation..." className="w-full h-32 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-emerald-500/50 transition-all"/>
                   </div>
-                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4 shadow-inner">
                     <div className="flex justify-between items-center px-1">
-                        <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Candidate Portfolio</h3>
-                        <button 
-                            onClick={handleSyncResume} 
-                            className="text-[10px] font-black text-slate-500 hover:text-indigo-400 flex items-center gap-1 transition-colors uppercase tracking-widest"
-                            title="Load resume from your global profile"
-                        >
-                            <RefreshCcw size={12}/> Sync Profile
-                        </button>
+                        <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><User size={14}/> Portfolio</h3>
+                        <button onClick={handleSyncResume} className="text-[10px] font-black text-slate-500 hover:text-indigo-400 flex items-center gap-1 transition-colors uppercase tracking-widest"><RefreshCcw size={12}/> Sync Profile</button>
                     </div>
-                    <textarea 
-                        value={resumeText} 
-                        onChange={e => setResumeText(e.target.value)} 
-                        placeholder="Paste resume details or sync from your profile..." 
-                        className="w-full h-48 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-indigo-500/50 transition-all shadow-inner"
-                    />
+                    <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} placeholder="Paste resume or sync from profile..." className="w-full h-48 bg-slate-950 border border-slate-700 rounded-2xl p-4 text-xs text-slate-300 outline-none resize-none focus:border-indigo-500/50 transition-all"/>
                   </div>
                 </div>
                 <div className="space-y-6">
-                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4">
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4 shadow-inner">
                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Target size={14}/> Evaluation Scope</h3>
                     <div className="grid grid-cols-1 gap-2">
                       {[{ id: 'coding', icon: Code, label: 'Algorithm & DS' }, { id: 'system_design', icon: Layers, label: 'System Design' }, { id: 'behavioral', icon: MessageSquare, label: 'Behavioral' }].map(m => (<button key={m.id} onClick={() => setMode(m.id as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}><div className="flex items-center gap-2"><m.icon size={14}/><span className="text-[10px] font-bold uppercase">{m.label}</span></div>{mode === m.id && <CheckCircle size={14}/>}</button>))}
+                    </div>
+                  </div>
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4 shadow-inner">
+                    <h3 className="text-xs font-black text-indigo-500 uppercase tracking-widest flex items-center gap-2"><Globe size={14}/> Visibility</h3>
+                    <div className="flex gap-2">
+                        <button onClick={() => setVisibility('public')} className={`flex-1 py-3 rounded-xl border text-[10px] font-bold uppercase transition-all ${visibility === 'public' ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>Public Ledger</button>
+                        <button onClick={() => setVisibility('private')} className={`flex-1 py-3 rounded-xl border text-[10px] font-bold uppercase transition-all ${visibility === 'private' ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>Private Link</button>
                     </div>
                   </div>
                 </div>
@@ -791,29 +684,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             <div className="flex-1 bg-slate-950 relative flex flex-col md:flex-row overflow-hidden">
                 <div className="w-full md:w-80 bg-slate-900 border-r border-slate-800 overflow-y-auto p-6 space-y-6 shrink-0 scrollbar-hide">
                     <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800"><h2 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3">Challenge Description</h2><div className="prose prose-invert prose-xs"><MarkdownView content={generatedProblemMd} /></div></div>
-                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800"><h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Interviewer Notes</h2><p className="text-[10px] text-slate-400 italic">"Focus on technical accuracy and multi-file consistency. I am reviewing all active artifacts including system design diagrams (.draw) and specs (.md) in your workspace."</p></div>
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800"><h2 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Interviewer Notes</h2><p className="text-[10px] text-slate-400 italic">"I am reviewing all artifacts including system design diagrams and code in your workspace."</p></div>
                 </div>
                 <div className="flex-1 overflow-hidden relative flex flex-col bg-slate-950">
                     <CodeStudio 
-                        onBack={() => {}} 
-                        currentUser={currentUser} 
-                        userProfile={userProfile} 
-                        onSessionStart={() => {}} 
-                        onSessionStop={() => {}} 
-                        onStartLiveSession={() => {}} 
-                        initialFiles={initialStudioFiles}
-                        externalChatContent={transcript.map(t => ({ role: t.role, text: t.text }))}
-                        onSendExternalMessage={handleSendTextMessage}
-                        isInterviewerMode={true}
-                        isAiThinking={isAiThinking}
+                        onBack={() => {}} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={() => {}} 
+                        initialFiles={initialStudioFiles} externalChatContent={transcript.map(t => ({ role: t.role, text: t.text }))}
+                        onSendExternalMessage={handleSendTextMessage} isInterviewerMode={true} isAiThinking={isAiThinking}
                         onFileChange={(f) => { 
-                            // CRITICAL: Ensure all workspace files are captured immediately for the audit ref
                             const existingIdx = activeCodeFilesRef.current.findIndex(x => x.path === f.path);
-                            if (existingIdx !== -1) {
-                                activeCodeFilesRef.current[existingIdx] = f;
-                            } else {
-                                activeCodeFilesRef.current.push(f);
-                            }
+                            if (existingIdx !== -1) activeCodeFilesRef.current[existingIdx] = f;
+                            else activeCodeFilesRef.current.push(f);
                         }}
                     />
                 </div>
@@ -831,61 +712,18 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               <Trophy className="text-amber-500" size={64}/><h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Evaluation Result</h2>
               {report ? (
                 <div className="flex flex-col items-center gap-6 w-full">
-                    <div className="flex flex-wrap justify-center gap-4">
-                        <div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800">
-                            <p className="text-[10px] text-slate-500 font-bold uppercase">Score</p>
-                            <p className="text-4xl font-black text-indigo-400">{report.score}/100</p>
-                        </div>
-                        <div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800">
-                            <p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p>
-                            <p className={`text-xl font-black uppercase ${report.verdict.includes('Hire') ? 'text-emerald-400' : 'text-red-400'}`}>{report.verdict}</p>
-                        </div>
-                    </div>
-
+                    <div className="flex flex-wrap justify-center gap-4"><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Score</p><p className="text-4xl font-black text-indigo-400">{report.score}/100</p></div><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p><p className={`text-xl font-black uppercase ${report.verdict.includes('Hire') ? 'text-emerald-400' : 'text-red-400'}`}>{report.verdict}</p></div></div>
                     <div className="bg-indigo-600/10 border border-indigo-500/30 rounded-3xl p-6 w-full flex flex-col md:flex-row items-center gap-6">
-                        <div className="p-4 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-900/40">
-                            <Speech size={32} />
-                        </div>
-                        <div className="flex-1 text-center md:text-left">
-                            <h3 className="text-lg font-bold text-white mb-1">Discuss with AI Coach</h3>
-                            <p className="text-sm text-slate-400 leading-relaxed">Start an optional follow-up session to dive deeper into this feedback and plan your growth path.</p>
-                        </div>
-                        <button 
-                            onClick={handleStartCoaching}
-                            className="px-8 py-3 bg-white text-indigo-600 font-black uppercase tracking-widest rounded-xl hover:scale-105 transition-all shadow-xl active:scale-95"
-                        >
-                            Begin Coaching
-                        </button>
+                        <div className="p-4 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-900/40"><Speech size={32} /></div>
+                        <div className="flex-1 text-center md:text-left"><h3 className="text-lg font-bold text-white mb-1">Discuss with AI Coach</h3><p className="text-sm text-slate-400 leading-relaxed">Start an optional follow-up session to dive deeper into this feedback.</p></div>
+                        <button onClick={handleStartCoaching} className="px-8 py-3 bg-white text-indigo-600 font-black uppercase tracking-widest rounded-xl hover:scale-105 transition-all shadow-xl active:scale-95">Begin Coaching</button>
                     </div>
-
                     <div className="text-left w-full bg-slate-950 p-8 rounded-[2rem] border border-slate-800"><h3 className="font-bold text-white mb-4 flex items-center gap-2"><Sparkles className="text-indigo-400" size={18}/> Summary</h3><p className="text-sm text-slate-400 leading-relaxed">{report.summary}</p></div>
-                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full text-left">
-                        <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800">
-                            <h4 className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Trophy size={14}/> Key Strengths</h4>
-                            <ul className="space-y-2">
-                                {report.strengths.map((s, i) => (
-                                    <li key={i} className="text-xs text-slate-300 flex items-start gap-2"><CheckCircle size={14} className="text-emerald-500 shrink-0 mt-0.5"/> {s}</li>
-                                ))}
-                            </ul>
-                        </div>
-                        <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800">
-                            <h4 className="text-xs font-black text-amber-400 uppercase tracking-widest mb-4 flex items-center gap-2"><AlertCircle size={14}/> Growth Areas</h4>
-                            <ul className="space-y-2">
-                                {report.areasForImprovement.map((s, i) => (
-                                    <li key={i} className="text-xs text-slate-300 flex items-start gap-2"><Minus size={14} className="text-amber-500 shrink-0 mt-0.5"/> {s}</li>
-                                ))}
-                            </ul>
-                        </div>
+                        <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800"><h4 className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-4 flex items-center gap-2"><Trophy size={14}/> Key Strengths</h4><ul className="space-y-2">{report.strengths.map((s, i) => (<li key={i} className="text-xs text-slate-300 flex items-start gap-2"><CheckCircle size={14} className="text-emerald-500 shrink-0 mt-0.5"/> {s}</li>))}</ul></div>
+                        <div className="bg-slate-900/50 p-6 rounded-2xl border border-slate-800"><h4 className="text-xs font-black text-amber-400 uppercase tracking-widest mb-4 flex items-center gap-2"><AlertCircle size={14}/> Growth Areas</h4><ul className="space-y-2">{report.areasForImprovement.map((s, i) => (<li key={i} className="text-xs text-slate-300 flex items-start gap-2"><Minus size={14} className="text-amber-500 shrink-0 mt-0.5"/> {s}</li>))}</ul></div>
                     </div>
-
-                    <div className="text-left w-full bg-slate-950 p-8 rounded-[2rem] border border-slate-800">
-                        <h3 className="font-bold text-white mb-4 flex items-center gap-2"><BookOpen className="text-indigo-400" size={18}/> Learning Path</h3>
-                        <div className="prose prose-invert prose-sm max-w-none">
-                            <MarkdownView content={report.learningMaterial} />
-                        </div>
-                    </div>
-                    
+                    <div className="text-left w-full bg-slate-950 p-8 rounded-[2rem] border border-slate-800"><h3 className="font-bold text-white mb-4 flex items-center gap-2"><BookOpen className="text-indigo-400" size={18}/> Learning Path</h3><div className="prose prose-invert prose-sm max-w-none"><MarkdownView content={report.learningMaterial} /></div></div>
                     <button onClick={() => setView('hub')} className="px-10 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all">Return to Hub</button>
                 </div>
               ) : <Loader2 size={32} className="animate-spin text-indigo-400" />}
@@ -896,110 +734,38 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         {view === 'coaching' && (
             <div className="h-full flex flex-col md:flex-row overflow-hidden bg-slate-950">
                 <div className="w-full md:w-1/3 bg-slate-900 border-r border-slate-800 flex flex-col overflow-hidden shrink-0">
-                    <div className="p-6 border-b border-slate-800 bg-slate-950/50">
-                        <h3 className="text-xs font-black text-indigo-400 uppercase tracking-[0.2em] mb-4">Evaluation Reference</h3>
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm">{report?.score}</div>
-                            <div>
-                                <p className="text-xs font-bold text-white uppercase">{report?.verdict}</p>
-                                <p className="text-[10px] text-slate-500">Discussion Context</p>
-                            </div>
-                        </div>
-                    </div>
+                    <div className="p-6 border-b border-slate-800 bg-slate-950/50"><h3 className="text-xs font-black text-indigo-400 uppercase tracking-[0.2em] mb-4">Evaluation Reference</h3><div className="flex items-center gap-3 mb-6"><div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm">{report?.score}</div><div><p className="text-xs font-bold text-white uppercase">{report?.verdict}</p><p className="text-[10px] text-slate-500">Discussion Context</p></div></div></div>
                     <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
-                        <section>
-                            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Sparkles size={12}/> Analysis Summary</h4>
-                            <p className="text-xs text-slate-400 leading-relaxed italic">"{report?.summary}"</p>
-                        </section>
-                        <section>
-                            <h4 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Trophy size={12}/> Key Strengths</h4>
-                            <ul className="space-y-1.5">
-                                {report?.strengths.map((s, i) => (
-                                    <li key={i} className="text-[10px] text-slate-300 flex items-start gap-2"><CheckCircle size={12} className="text-emerald-500 shrink-0 mt-0.5"/> {s}</li>
-                                ))}
-                            </ul>
-                        </section>
-                        <section>
-                            <h4 className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-3 flex items-center gap-2"><AlertCircle size={12}/> Top Improvements</h4>
-                            <ul className="space-y-1.5">
-                                {report?.areasForImprovement.map((s, i) => (
-                                    <li key={i} className="text-[10px] text-slate-300 flex items-start gap-2"><Minus size={12} className="text-amber-500 shrink-0 mt-0.5"/> {s}</li>
-                                ))}
-                            </ul>
-                        </section>
+                        <section><h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Sparkles size={12}/> Summary</h4><p className="text-xs text-slate-400 leading-relaxed italic">"{report?.summary}"</p></section>
+                        <section><h4 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Trophy size={12}/> Strengths</h4><ul className="space-y-1.5">{report?.strengths.map((s, i) => (<li key={i} className="text-[10px] text-slate-300 flex items-start gap-2"><CheckCircle size={12} className="text-emerald-500 shrink-0 mt-0.5"/> {s}</li>))}</ul></section>
+                        <section><h4 className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-3 flex items-center gap-2"><AlertCircle size={12}/> Growth</h4><ul className="space-y-1.5">{report?.areasForImprovement.map((s, i) => (<li key={i} className="text-[10px] text-slate-300 flex items-start gap-2"><Minus size={12} className="text-amber-500 shrink-0 mt-0.5"/> {s}</li>))}</ul></section>
                     </div>
                 </div>
-
                 <div className="flex-1 flex flex-col overflow-hidden relative">
                     <div className="flex-1 bg-slate-950 flex flex-col overflow-hidden">
                         <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide">
                             {coachingTranscript.length === 0 && (
                                 <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
-                                    <div className="p-6 bg-indigo-600/10 rounded-full border border-indigo-500/20 text-indigo-400 animate-pulse">
-                                        <Bot size={48} />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">AI Coaching Active</h3>
-                                        <p className="text-sm text-slate-500 max-w-xs mx-auto">Ask about your technical performance, how to improve your communication, or what to learn next.</p>
-                                    </div>
+                                    <div className="p-6 bg-indigo-600/10 rounded-full border border-indigo-500/20 text-indigo-400 animate-pulse"><Bot size={48} /></div>
+                                    <div><h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">AI Coaching Active</h3><p className="text-sm text-slate-500 max-w-xs mx-auto">Ask about your technical performance or growth path.</p></div>
                                 </div>
                             )}
                             {coachingTranscript.map((item, index) => (
                                 <div key={index} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                                    <span className={`text-[9px] uppercase font-black tracking-widest mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>
-                                        {item.role === 'user' ? 'You' : 'AI Coach'}
-                                    </span>
-                                    <div className={`max-w-[80%] px-5 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-xl' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}>
-                                        <MarkdownView content={item.text} />
-                                    </div>
+                                    <span className={`text-[9px] uppercase font-black tracking-widest mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : 'AI Coach'}</span>
+                                    <div className={`max-w-[80%] px-5 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-xl' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}><MarkdownView content={item.text} /></div>
                                 </div>
                             ))}
-                            {isAiThinking && (
-                                <div className="flex flex-col items-start animate-fade-in">
-                                    <span className="text-[9px] uppercase font-black tracking-widest mb-1 text-emerald-400">AI Coach Thinking...</span>
-                                    <div className="bg-slate-800 text-slate-200 rounded-2xl rounded-tl-sm p-4 border border-slate-700">
-                                        <Loader2 className="animate-spin text-indigo-400" size={18} />
-                                    </div>
-                                </div>
-                            )}
+                            {isAiThinking && <div className="flex flex-col items-start animate-fade-in"><span className="text-[9px] uppercase font-black tracking-widest mb-1 text-emerald-400">AI Coach Thinking...</span><div className="bg-slate-800 text-slate-200 rounded-2xl rounded-tl-sm p-4 border border-slate-700"><Loader2 className="animate-spin text-indigo-400" size={18} /></div></div>}
                         </div>
-                        
                         <div className="p-6 border-t border-slate-800 bg-slate-900/50">
-                            <form 
-                                className="flex gap-4 max-w-4xl mx-auto" 
-                                onSubmit={(e) => { 
-                                    e.preventDefault(); 
-                                    const input = (e.target as any).message; 
-                                    if(input.value.trim()) { 
-                                        handleSendTextMessage(input.value); 
-                                        input.value = ''; 
-                                    } 
-                                }}
-                            >
-                                <input 
-                                    name="message"
-                                    type="text" 
-                                    className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl px-6 py-4 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner" 
-                                    placeholder="Discuss your feedback with the coach..."
-                                />
-                                <button 
-                                    type="submit"
-                                    className="p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center"
-                                >
-                                    <Send size={24}/>
-                                </button>
+                            <form className="flex gap-4 max-w-4xl mx-auto" onSubmit={(e) => { e.preventDefault(); const input = (e.target as any).message; if(input.value.trim()) { handleSendTextMessage(input.value); input.value = ''; } }}>
+                                <input name="message" type="text" className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl px-6 py-4 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner" placeholder="Discuss feedback with the coach..."/>
+                                <button type="submit" className="p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center"><Send size={24}/></button>
                             </form>
                             <div className="mt-4 flex justify-center items-center gap-6">
-                                <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${isAiConnected ? 'bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-red-500'}`}></div>
-                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Neural Voice Link: {isAiConnected ? 'Active' : 'Offline'}</span>
-                                </div>
-                                <button 
-                                    onClick={() => handleReconnectAi(false)}
-                                    className="text-[9px] font-black text-indigo-400 hover:text-white uppercase tracking-widest flex items-center gap-1.5"
-                                >
-                                    <RefreshCcw size={10}/> Reset AI Connection
-                                </button>
+                                <div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isAiConnected ? 'bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-red-500'}`}></div><span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Neural Link: {isAiConnected ? 'Active' : 'Offline'}</span></div>
+                                <button onClick={() => handleReconnectAi(false)} className="text-[9px] font-black text-indigo-400 hover:text-white uppercase tracking-widest flex items-center gap-1.5"><RefreshCcw size={10}/> Reset Link</button>
                             </div>
                         </div>
                     </div>
