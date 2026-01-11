@@ -44,17 +44,18 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
   const injectScript = useCallback((id: string, src: string, onReady: () => void, onError: (err: any) => void) => {
     const existing = document.getElementById(id);
     if (existing) {
-        addLog(`Refreshing existing script node: ${id}`, "info");
-        existing.remove();
+        addLog(`Re-verifying existing script node: ${id}`, "info");
+        // If it's already there, just wait for the global to appear
+        return;
     }
 
-    addLog(`Initiating network request: ${src}`, "network");
+    addLog(`Cache miss. Initiating network request for ${id}...`, "network");
     const script = document.createElement('script');
     script.id = id;
     script.src = src;
-    // Removing async to ensure sequential parse in case of dependencies, though these are standalone
+    script.async = true;
     script.onload = () => {
-        addLog(`Handshake successful for ${id}.`, "info");
+        addLog(`Neural handshake successful for ${id}.`, "info");
         onReady();
     };
     script.onerror = (e) => {
@@ -68,39 +69,34 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
     const Plotly = (window as any).Plotly;
     const math = (window as any).math || (window as any).mathjs;
 
-    addLog("Analyzing window environment for existing binaries...");
-
+    // 1. Check Plotly (Aligned with index.html)
     if (Plotly) {
         setPlotlyStatus('ready');
-        addLog("Plotly Engine verified in global namespace.", "info");
+        addLog("Plotly Engine verified in cache.", "info");
     } else {
         setPlotlyStatus('loading');
         injectScript(
             'plotly-cdn-runtime', 
             'https://cdn.plot.ly/plotly-2.27.0.min.js', 
             () => setPlotlyStatus('ready'),
-            () => {
-                setPlotlyStatus('error');
-                addLog("Plotly failed. Retrying with unpkg fallback...", "warn");
-                injectScript('plotly-fallback', 'https://unpkg.com/plotly.js-dist-min@2.27.0/plotly.min.js', () => setPlotlyStatus('ready'), () => setPlotlyStatus('error'));
-            }
+            () => setPlotlyStatus('error')
         );
     }
 
+    // 2. Check Math.js (Aligned with index.html cdnjs)
     if (math) {
         setMathStatus('ready');
-        addLog("Math Parser verified in global namespace.", "info");
+        addLog("Math Parser verified in cache.", "info");
     } else {
         setMathStatus('loading');
-        // Swapping to unpkg for primary injection as it's often faster for mathjs
         injectScript(
             'mathjs-cdn-runtime', 
-            'https://unpkg.com/mathjs@12.2.1/lib/browser/math.js', 
+            'https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.2.1/math.all.min.js', 
             () => setMathStatus('ready'),
             () => {
                 setMathStatus('error');
-                addLog("Math.js primary failed. Trying cdnjs fallback...", "warn");
-                injectScript('mathjs-fallback', 'https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.2.1/math.all.min.js', () => setMathStatus('ready'), () => setMathStatus('error'));
+                addLog("Primary Math.js failed. Trying unpkg fallback...", "error");
+                injectScript('mathjs-fallback', 'https://unpkg.com/mathjs@12.2.1/lib/browser/math.js', () => setMathStatus('ready'), () => setMathStatus('error'));
             }
         );
     }
@@ -108,7 +104,11 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
 
   useEffect(() => {
     let mounted = true;
-    initializeEngine();
+    
+    // Give index.html scripts 500ms to register before doing anything
+    const timer = setTimeout(() => {
+        if (mounted) initializeEngine();
+    }, 500);
 
     // Aggressive polling for 30 seconds
     const interval = setInterval(() => {
@@ -128,17 +128,13 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
         if (Plotly && math) {
             clearInterval(interval);
         } else {
-            setRetryCount(c => {
-                if (c > 30) {
-                    addLog("Warning: Handbook timeout approaching. Check developer console for CORS/CSP errors.", "warn");
-                }
-                return c + 1;
-            });
+            setRetryCount(c => c + 1);
         }
     }, 1000);
 
     return () => { 
         mounted = false;
+        clearTimeout(timer);
         clearInterval(interval);
     };
   }, [initializeEngine, addLog, plotlyStatus, mathStatus]);
@@ -350,11 +346,11 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
                                 <div className={`w-3 h-3 rounded-full shadow-lg ${plotlyStatus === 'ready' ? 'bg-emerald-500 shadow-emerald-500/40' : plotlyStatus === 'error' ? 'bg-red-500' : 'bg-slate-700 animate-pulse'}`}></div>
                                 <div className="text-left">
                                     <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest block">Plotly Engine</span>
-                                    <span className="text-[9px] text-slate-500 font-bold">~3.5MB Payload</span>
+                                    <span className="text-[9px] text-slate-500 font-bold">~3.5MB Binary</span>
                                 </div>
                             </div>
                             <div className="text-right">
-                                {plotlyStatus === 'loading' && <div className="flex items-center gap-2 text-[10px] text-indigo-400 font-bold italic animate-pulse"><CloudDownload size={12}/> Downloading...</div>}
+                                {plotlyStatus === 'loading' && <div className="flex items-center gap-2 text-[10px] text-indigo-400 font-bold italic animate-pulse"><CloudDownload size={12}/> Syncing...</div>}
                                 {plotlyStatus === 'ready' && <div className="text-[10px] text-emerald-400 font-black flex items-center gap-1"><CheckCircle size={12}/> VERIFIED</div>}
                             </div>
                         </div>
@@ -364,11 +360,11 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
                                 <div className={`w-3 h-3 rounded-full shadow-lg ${mathStatus === 'ready' ? 'bg-emerald-500 shadow-emerald-500/40' : mathStatus === 'error' ? 'bg-red-500' : 'bg-slate-700 animate-pulse'}`}></div>
                                 <div className="text-left">
                                     <span className="text-[10px] font-black uppercase text-slate-300 tracking-widest block">Math Parser</span>
-                                    <span className="text-[9px] text-slate-500 font-bold">Expression Logic</span>
+                                    <span className="text-[9px] text-slate-500 font-bold">~1.2MB Logic</span>
                                 </div>
                             </div>
                             <div className="text-right">
-                                {mathStatus === 'loading' && <div className="flex items-center gap-2 text-[10px] text-indigo-400 font-bold italic animate-pulse"><CloudDownload size={12}/> Downloading...</div>}
+                                {mathStatus === 'loading' && <div className="flex items-center gap-2 text-[10px] text-indigo-400 font-bold italic animate-pulse"><CloudDownload size={12}/> Syncing...</div>}
                                 {mathStatus === 'ready' && <div className="text-[10px] text-emerald-400 font-black flex items-center gap-1"><CheckCircle size={12}/> VERIFIED</div>}
                             </div>
                         </div>
