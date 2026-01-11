@@ -1,3 +1,4 @@
+
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture } from '../types';
 import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal } from 'lucide-react';
@@ -640,7 +641,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                 {/* Neural Toolbox Quick Access */}
                 <div className="space-y-4 animate-fade-in-up">
                     <div className="flex items-center justify-between px-2">
-                        <h3 className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em]">Specialized AI Operating Suite</h3>
+                        <h3 className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em]">Specialized AI Intelligence Suite</h3>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <button 
@@ -677,7 +678,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                                 <Terminal size={24}/>
                             </div>
                             <div>
-                                <h4 className="font-bold text-white group-hover:text-indigo-400 transition-colors">Code Studio</h4>
+                                <h4 className="font-bold text-white group-hover:text-indigo-400 transition-colors">Builder Studio</h4>
                                 <p className="text-[10px] text-slate-500 uppercase font-black">Cloud Engineering</p>
                             </div>
                         </button>

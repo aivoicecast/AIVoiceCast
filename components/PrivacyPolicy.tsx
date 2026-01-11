@@ -24,7 +24,7 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
             
             <div className="bg-slate-900/50 p-8 rounded-[2rem] border border-slate-800 shadow-xl">
                 <p className="text-lg text-slate-200 font-medium">
-                    AIVoiceCast operates as a <strong>Knowledge Operating System</strong>. We prioritize user sovereignty, utilizing a hybrid storage model where sensitive creative and financial data is handled across multiple secure environments.
+                    AIVoiceCast operates as a <strong>Neural Prism Intelligence Hub</strong>. We prioritize user sovereignty, utilizing a hybrid storage model where sensitive creative and financial data is handled across multiple secure environments.
                 </p>
             </div>
 
@@ -36,7 +36,7 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
                         <h3 className="font-bold text-white flex items-center gap-2 mb-3"><HardDrive size={18} className="text-emerald-400"/> Local Browser Cache</h3>
                         <p className="text-xs text-slate-400 leading-relaxed">
                             <strong>Data:</strong> Neural audio fragments, ECDSA Private Keys, offline ledger drafts, unsaved channel curriculums.<br/>
-                            <strong>Privacy:</strong> Device-local only. This data is never transmitted to AIVoiceCast servers unless you explicitly trigger a "Cloud Sync" or "Publish" event.
+                            <strong>Privacy:</strong> Device-local only. This data is never transmitted to Neural Prism servers unless you explicitly trigger a "Cloud Sync" or "Publish" event.
                         </p>
                     </div>
 
@@ -51,15 +51,15 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
                     <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
                         <h3 className="font-bold text-white flex items-center gap-2 mb-3"><Server size={18} className="text-blue-400"/> Personal Google Drive</h3>
                         <p className="text-xs text-slate-400 leading-relaxed">
-                            <strong>Data:</strong> Code Studio source files, Generated PDF checks, Shipping labels, and meeting recordings.<br/>
-                            <strong>Privacy:</strong> AIVoiceCast acts only as a gateway. We do not store copies of your Drive files on our servers. Access is strictly via your personal OAuth token.
+                            <strong>Data:</strong> Builder Studio source files, Generated PDF checks, Shipping labels, and meeting recordings.<br/>
+                            <strong>Privacy:</strong> Neural Prism acts only as a gateway. We do not store copies of your Drive files on our servers. Access is strictly via your personal OAuth token.
                         </p>
                     </div>
 
                     <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
                         <h3 className="font-bold text-white flex items-center gap-2 mb-3"><Github size={18} className="text-white"/> Version Control</h3>
                         <p className="text-xs text-slate-400 leading-relaxed">
-                            <strong>Data:</strong> Integrated repositories in Code Studio.<br/>
+                            <strong>Data:</strong> Integrated repositories in Builder Studio.<br/>
                             <strong>Privacy:</strong> Managed directly via the GitHub API using your personal access tokens. We adhere to your repository visibility settings.
                         </p>
                     </div>
@@ -75,7 +75,7 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
                         <div>
                             <h3 className="text-lg font-bold text-white mb-2">VoiceCoin & Cryptographic Identity</h3>
                             <p className="text-sm text-slate-400">
-                                Your digital identity is generated on-device using the Web Crypto API. AIVoiceCast never sees or stores your <strong>Private Key</strong>. We only store your <strong>Certificate</strong> (Public Key signed by our Root) to enable peer-to-peer trust verification.
+                                Your digital identity is generated on-device using the Web Crypto API. Neural Prism never sees or stores your <strong>Private Key</strong>. We only store your <strong>Certificate</strong> (Public Key signed by our Root) to enable peer-to-peer trust verification.
                             </p>
                         </div>
                     </div>
@@ -85,7 +85,7 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
                         <div>
                             <h3 className="text-lg font-bold text-white mb-2">Generative Asset Rights</h3>
                             <p className="text-sm text-slate-400">
-                                Icons, Holiday Cards, and specialized neural art generated via the <strong>Neural Prism</strong> are owned by you. However, prompts and contexts used for generation are processed via Google Gemini and are subject to their service terms.
+                                Icons, Gift Workshop assets, and specialized neural art generated via the <strong>Neural Prism</strong> are owned by you. However, prompts and contexts used for generation are processed via Google Gemini and are subject to their service terms.
                             </p>
                         </div>
                     </div>
@@ -95,7 +95,7 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
                         <div>
                             <h3 className="text-lg font-bold text-white mb-2">Logistics & Shipping Data</h3>
                             <p className="text-sm text-slate-400">
-                                Address data used in the <strong>Shipping Lab</strong> or <strong>Check Designer</strong> is stored temporarily in memory for PDF generation. Permanent storage of these documents occurs only in your <strong>Personal Google Drive</strong>.
+                                Address data used in the <strong>Logistics Lab</strong> or <strong>Finance Hub</strong> is stored temporarily in memory for PDF generation. Permanent storage of these documents occurs only in your <strong>Personal Google Drive</strong>.
                             </p>
                         </div>
                     </div>
@@ -105,14 +105,14 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
             <section className="space-y-4">
                 <h2 className="text-2xl font-bold text-white">3. AI Transparency</h2>
                 <p className="text-sm">
-                    The <strong>Neural Prism</strong> engine uses Google Gemini 3.0 models. Data sent for synthesis (transcripts, code, voice) is not used to train AIVoiceCast's internal models. We utilize <em>stateless sessions</em> wherever possible to minimize the persistence of prompt data.
+                    The <strong>Neural Prism</strong> engine uses Google Gemini 3.0 models. Data sent for synthesis (transcripts, code, voice) is not used to train our internal models. We utilize <em>stateless sessions</em> wherever possible to minimize the persistence of prompt data.
                 </p>
             </section>
 
             <div className="pt-8 border-t border-slate-800 text-center text-xs text-slate-500">
-                <p>Knowledge OS Privacy Framework v4.2.0</p>
-                <p className="mt-1">Last Updated: December 20, 2025</p>
-                <p className="mt-4">For data deletion or identity revocation, contact <a href="mailto:ops@aivoicecast.com" className="text-indigo-400 hover:underline">ops@aivoicecast.com</a>.</p>
+                <p>Neural Prism Privacy Framework v4.4.0</p>
+                <p className="mt-1">Last Updated: December 22, 2025</p>
+                <p className="mt-4">For data deletion or identity revocation, contact <a href="mailto:ops@neuralprism.io" className="text-indigo-400 hover:underline">ops@neuralprism.io</a>.</p>
             </div>
         </div>
       </div>
