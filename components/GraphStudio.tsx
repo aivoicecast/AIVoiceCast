@@ -22,19 +22,27 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
   ]);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isPlotting, setIsPlotting] = useState(false);
   const graphRef = useRef<HTMLDivElement>(null);
+  const initializedRef = useRef(false);
 
   // Constants for graphing
   const RANGE_2D = 10;
   const RANGE_3D = 5;
   const POINTS_2D = 400;
-  const POINTS_3D = 50;
+  const POINTS_3D = 40; // Slightly reduced for performance on mobile
 
   useEffect(() => {
-    renderGraph();
+    // Small delay to ensure container is measured and scripts are parsed
+    const timer = setTimeout(() => {
+        renderGraph();
+    }, 150);
+    
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+        window.removeEventListener('resize', handleResize);
+        clearTimeout(timer);
+    };
   }, [equations, mode]);
 
   const handleResize = () => {
@@ -44,10 +52,22 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
   };
 
   const renderGraph = () => {
-    if (!graphRef.current || !(window as any).Plotly || !(window as any).math) return;
-
+    if (!graphRef.current) return;
+    
     const Plotly = (window as any).Plotly;
     const math = (window as any).math;
+
+    if (!Plotly || !math) {
+        console.warn("Graphing libraries not ready yet...");
+        // Retry once after 500ms if not ready
+        if (!initializedRef.current) {
+            setTimeout(renderGraph, 500);
+            initializedRef.current = true;
+        }
+        return;
+    }
+
+    setIsPlotting(true);
     const data: any[] = [];
 
     equations.filter(e => e.visible).forEach(eq => {
@@ -58,13 +78,19 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
         if (mode === '2d') {
           const xValues = Array.from({ length: POINTS_2D }, (_, i) => -RANGE_2D + (i / POINTS_2D) * 2 * RANGE_2D);
           const yValues = xValues.map(x => {
-            try { return compiled.evaluate({ x }); } catch { return null; }
+            try { 
+                const val = compiled.evaluate({ x }); 
+                return isFinite(val) ? val : null;
+            } catch { return null; }
           });
           data.push({
-            x: xValues, y: yValues,
+            x: xValues,
+            y: yValues,
+            type: 'scatter',
             mode: 'lines',
             name: eq.expression,
-            line: { color: eq.color, width: 3 }
+            line: { color: eq.color, width: 3, shape: 'spline' },
+            hoverinfo: 'x+y'
           });
         } 
         else if (mode === '3d') {
@@ -76,7 +102,8 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
             const row: number[] = [];
             for (let j = 0; j < xValues.length; j++) {
               try {
-                row.push(compiled.evaluate({ x: xValues[j], y: yValues[i] }));
+                const val = compiled.evaluate({ x: xValues[j], y: yValues[i] });
+                row.push(isFinite(val) ? val : 0);
               } catch { row.push(0); }
             }
             zValues.push(row);
@@ -93,7 +120,10 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
         else if (mode === 'polar') {
           const thetaValues = Array.from({ length: POINTS_2D }, (_, i) => (i / POINTS_2D) * 2 * Math.PI);
           const rValues = thetaValues.map(theta => {
-            try { return compiled.evaluate({ theta }); } catch { return null; }
+            try { 
+                const val = compiled.evaluate({ theta }); 
+                return isFinite(val) ? val : null;
+            } catch { return null; }
           });
           data.push({
             type: 'scatterpolar',
@@ -110,13 +140,22 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
     });
 
     const layout = {
+      autosize: true,
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
-      margin: { t: 20, r: 20, b: 20, l: 20 },
-      showlegend: mode !== '3d',
+      margin: { t: 30, r: 30, b: 30, l: 30 },
+      showlegend: mode !== '3d' && data.length > 1,
       font: { color: '#94a3b8', family: 'Inter, sans-serif' },
-      xaxis: { gridcolor: '#1e293b', zerolinecolor: '#475569' },
-      yaxis: { gridcolor: '#1e293b', zerolinecolor: '#475569' },
+      xaxis: { 
+          gridcolor: '#1e293b', 
+          zerolinecolor: '#475569',
+          title: mode === '2d' ? 'x' : undefined
+      },
+      yaxis: { 
+          gridcolor: '#1e293b', 
+          zerolinecolor: '#475569',
+          title: mode === '2d' ? 'y' : undefined
+      },
       scene: {
         xaxis: { backgroundcolor: '#020617', gridcolor: '#1e293b', showbackground: true, zerolinecolor: '#475569' },
         yaxis: { backgroundcolor: '#020617', gridcolor: '#1e293b', showbackground: true, zerolinecolor: '#475569' },
@@ -129,7 +168,15 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
       }
     };
 
-    Plotly.newPlot(graphRef.current, data, layout, { responsive: true, displayModeBar: false });
+    const config = { 
+        responsive: true, 
+        displayModeBar: false,
+        staticPlot: false 
+    };
+
+    Plotly.newPlot(graphRef.current, data, layout, config).then(() => {
+        setIsPlotting(false);
+    });
   };
 
   const handleAiAssist = async () => {
@@ -244,9 +291,10 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
             </div>
             <button 
               onClick={renderGraph}
+              disabled={isPlotting}
               className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
             >
-              <Play size={12} fill="currentColor"/>
+              {isPlotting ? <Loader2 size={12} className="animate-spin"/> : <Play size={12} fill="currentColor"/>}
               Plot Equations
             </button>
           </div>
