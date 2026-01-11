@@ -7,7 +7,8 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, FileSearch, RefreshCcw } from 'lucide-react';
+// Added missing 'Send' icon to the imports list from lucide-react
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, FileSearch, RefreshCcw, HeartHandshake, Speech, Send } from 'lucide-react';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext } from '../utils/audioUtils';
 
 interface MockInterviewProps {
@@ -44,7 +45,7 @@ const getCodeTool: any = {
 export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfile, onStartLiveSession }) => {
   const currentUser = auth?.currentUser;
 
-  const [view, setView] = useState<'hub' | 'prep' | 'interview' | 'report'>('hub');
+  const [view, setView] = useState<'hub' | 'prep' | 'interview' | 'report' | 'coaching'>('hub');
   const [interviews, setInterviews] = useState<MockInterviewRecording[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
@@ -71,6 +72,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [visibility, setVisibility] = useState<'public' | 'private'>('public');
   
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
+  const [coachingTranscript, setCoachingTranscript] = useState<TranscriptItem[]>([]);
   const [initialStudioFiles, setInitialStudioFiles] = useState<CodeFile[]>([]);
   
   // UUID for the current project session
@@ -152,7 +154,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     if (liveServiceRef.current && isAiConnected) {
         setIsAiThinking(true);
         const userMsg: TranscriptItem = { role: 'user', text, timestamp: Date.now() };
-        setTranscript(prev => [...prev, userMsg]);
+        if (view === 'coaching') {
+            setCoachingTranscript(prev => [...prev, userMsg]);
+        } else {
+            setTranscript(prev => [...prev, userMsg]);
+        }
         liveServiceRef.current.sendText(text);
         logApi("Neural Link: Transmitted chat data packet");
     }
@@ -169,15 +175,24 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
     setTimeout(async () => {
       if (isEndingRef.current) return;
-      const historyText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-      const prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${mode}. History recap: ${historyText.substring(historyText.length - 2000)}. IMPORTANT: Monitor and acknowledge messages typed in the chat box. They are high-priority candidate responses.`;
+      
+      const activeTranscript = view === 'coaching' ? coachingTranscript : transcript;
+      const historyText = activeTranscript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
+      
+      let prompt = "";
+      if (view === 'coaching') {
+          prompt = `RESUMING COACHING SESSION. You are a supportive Senior Career Coach. Reviewing report for ${currentUser?.displayName}. Evaluation Score: ${report?.score}. Summary: ${report?.summary}. History recap: ${historyText.substring(historyText.length - 2000)}`;
+      } else {
+          prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${mode}. History recap: ${historyText.substring(historyText.length - 2000)}. IMPORTANT: Monitor and acknowledge messages typed in the chat box. They are high-priority candidate responses.`;
+      }
+      
       const service = new GeminiLiveService();
       activeServiceIdRef.current = service.id;
       liveServiceRef.current = service;
 
       try {
         logApi(`Re-linking AI...`);
-        await service.connect('Software Interview Voice', prompt, {
+        await service.connect(view === 'coaching' ? 'Zephyr' : 'Software Interview Voice', prompt, {
           onOpen: () => {
             if (activeServiceIdRef.current !== service.id) return;
             setIsAiConnected(true);
@@ -197,7 +212,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           onTranscript: (text, isUser) => {
             if (activeServiceIdRef.current !== service.id) return;
             if (!isUser) setIsAiThinking(false);
-            setTranscript(prev => {
+            const setter = view === 'coaching' ? setCoachingTranscript : setTranscript;
+            setter(prev => {
               const role = isUser ? 'user' : 'ai';
               if (prev.length > 0 && prev[prev.length - 1].role === role) {
                 const last = prev[prev.length - 1];
@@ -209,7 +225,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           onToolCall: async (toolCall) => {
               for (const fc of toolCall.functionCalls) {
                   if (fc.name === 'get_current_code') {
-                      // Note: We provide the content of the "solution" file or the first file
                       const code = activeCodeFilesRef.current[0]?.content || "// No code written yet.";
                       service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: code } }]);
                       logApi("AI Read Candidate Code");
@@ -219,6 +234,56 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         }, [{ functionDeclarations: [getCodeTool] }]);
       } catch (err: any) { logApi(`Init Failure: ${err.message}`, "error"); }
     }, backoffTime);
+  };
+
+  const handleStartCoaching = async () => {
+      if (!report) return;
+      setView('coaching');
+      setCoachingTranscript([]);
+      logApi("Initializing AI Coaching Session...");
+
+      const service = new GeminiLiveService();
+      activeServiceIdRef.current = service.id;
+      liveServiceRef.current = service;
+
+      const coachPrompt = `Role: Senior Career Coach. 
+      Candidate: ${currentUser?.displayName}. 
+      Context: You just finished a technical mock interview (${mode}). 
+      EVALUATION REPORT:
+      Score: ${report.score}/100
+      Verdict: ${report.verdict}
+      Summary: ${report.summary}
+      Strengths: ${report.strengths.join(', ')}
+      Improvement Areas: ${report.areasForImprovement.join(', ')}
+      
+      GOAL: Introduce yourself as their coach. Offer to discuss their performance, explain specific feedback points, and provide guidance for their career growth. Be supportive, empathetic, but technically accurate. Use 'Zephyr' voice characteristics.`;
+
+      try {
+          await service.connect('Zephyr', coachPrompt, {
+              onOpen: () => {
+                  setIsAiConnected(true);
+                  logApi("Coaching Link Active.");
+              },
+              onClose: () => { if (activeServiceIdRef.current === service.id) setIsAiConnected(false); },
+              onError: (e) => { if (activeServiceIdRef.current === service.id) setIsAiConnected(false); },
+              onVolumeUpdate: () => {},
+              onTranscript: (text, isUser) => {
+                  if (activeServiceIdRef.current !== service.id) return;
+                  if (!isUser) setIsAiThinking(false);
+                  setCoachingTranscript(prev => {
+                      const role = isUser ? 'user' : 'ai';
+                      if (prev.length > 0 && prev[prev.length - 1].role === role) {
+                          const last = prev[prev.length - 1];
+                          return [...prev.slice(0, -1), { ...last, text: last.text + text }];
+                      }
+                      return [...prev, { role, text, timestamp: Date.now() }];
+                  });
+              }
+          });
+      } catch (e) {
+          logApi("Coach link failed.", "error");
+          setView('report');
+      }
   };
 
   const startSmoothProgress = useCallback(() => {
@@ -603,7 +668,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 <Video className="text-red-500" /> 
                 Mock Interview
             </h1>
-            {view === 'interview' && (
+            {(view === 'interview' || view === 'coaching') && (
                 <div className="flex items-center gap-1.5 text-[9px] font-black text-indigo-400 uppercase tracking-widest mt-0.5">
                     <Fingerprint size={10}/> Session Ledger: {currentSessionId.substring(0, 12)}...
                 </div>
@@ -622,6 +687,20 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 End Session
             </button>
           </div>
+        )}
+        {view === 'coaching' && (
+            <div className="flex items-center gap-4">
+                <div className="px-4 py-1.5 rounded-2xl border border-emerald-500/30 text-emerald-400 bg-slate-950/50 flex items-center gap-2">
+                    <HeartHandshake size={14} className="animate-pulse" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Post-Interview Coaching</span>
+                </div>
+                <button 
+                    onClick={() => setView('report')} 
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-black uppercase tracking-widest border border-slate-700 active:scale-95 transition-all"
+                >
+                    Back to Report
+                </button>
+            </div>
         )}
       </header>
 
@@ -752,7 +831,33 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               <Trophy className="text-amber-500" size={64}/><h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Evaluation Result</h2>
               {report ? (
                 <div className="flex flex-col items-center gap-6 w-full">
-                    <div className="flex flex-wrap justify-center gap-4"><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Score</p><p className="text-4xl font-black text-indigo-400">{report.score}/100</p></div><div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800"><p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p><p className={`text-xl font-black uppercase ${report.verdict.includes('Hire') ? 'text-emerald-400' : 'text-red-400'}`}>{report.verdict}</p></div></div>
+                    <div className="flex flex-wrap justify-center gap-4">
+                        <div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800">
+                            <p className="text-[10px] text-slate-500 font-bold uppercase">Score</p>
+                            <p className="text-4xl font-black text-indigo-400">{report.score}/100</p>
+                        </div>
+                        <div className="px-8 py-4 bg-slate-950 rounded-2xl border border-slate-800">
+                            <p className="text-[10px] text-slate-500 font-bold uppercase">Verdict</p>
+                            <p className={`text-xl font-black uppercase ${report.verdict.includes('Hire') ? 'text-emerald-400' : 'text-red-400'}`}>{report.verdict}</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-indigo-600/10 border border-indigo-500/30 rounded-3xl p-6 w-full flex flex-col md:flex-row items-center gap-6">
+                        <div className="p-4 bg-indigo-600 text-white rounded-2xl shadow-xl shadow-indigo-900/40">
+                            <Speech size={32} />
+                        </div>
+                        <div className="flex-1 text-center md:text-left">
+                            <h3 className="text-lg font-bold text-white mb-1">Discuss with AI Coach</h3>
+                            <p className="text-sm text-slate-400 leading-relaxed">Start an optional follow-up session to dive deeper into this feedback and plan your growth path.</p>
+                        </div>
+                        <button 
+                            onClick={handleStartCoaching}
+                            className="px-8 py-3 bg-white text-indigo-600 font-black uppercase tracking-widest rounded-xl hover:scale-105 transition-all shadow-xl active:scale-95"
+                        >
+                            Begin Coaching
+                        </button>
+                    </div>
+
                     <div className="text-left w-full bg-slate-950 p-8 rounded-[2rem] border border-slate-800"><h3 className="font-bold text-white mb-4 flex items-center gap-2"><Sparkles className="text-indigo-400" size={18}/> Summary</h3><p className="text-sm text-slate-400 leading-relaxed">{report.summary}</p></div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full text-left">
@@ -786,6 +891,120 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               ) : <Loader2 size={32} className="animate-spin text-indigo-400" />}
             </div>
           </div>
+        )}
+
+        {view === 'coaching' && (
+            <div className="h-full flex flex-col md:flex-row overflow-hidden bg-slate-950">
+                <div className="w-full md:w-1/3 bg-slate-900 border-r border-slate-800 flex flex-col overflow-hidden shrink-0">
+                    <div className="p-6 border-b border-slate-800 bg-slate-950/50">
+                        <h3 className="text-xs font-black text-indigo-400 uppercase tracking-[0.2em] mb-4">Evaluation Reference</h3>
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-black text-sm">{report?.score}</div>
+                            <div>
+                                <p className="text-xs font-bold text-white uppercase">{report?.verdict}</p>
+                                <p className="text-[10px] text-slate-500">Discussion Context</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
+                        <section>
+                            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2"><Sparkles size={12}/> Analysis Summary</h4>
+                            <p className="text-xs text-slate-400 leading-relaxed italic">"{report?.summary}"</p>
+                        </section>
+                        <section>
+                            <h4 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Trophy size={12}/> Key Strengths</h4>
+                            <ul className="space-y-1.5">
+                                {report?.strengths.map((s, i) => (
+                                    <li key={i} className="text-[10px] text-slate-300 flex items-start gap-2"><CheckCircle size={12} className="text-emerald-500 shrink-0 mt-0.5"/> {s}</li>
+                                ))}
+                            </ul>
+                        </section>
+                        <section>
+                            <h4 className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-3 flex items-center gap-2"><AlertCircle size={12}/> Top Improvements</h4>
+                            <ul className="space-y-1.5">
+                                {report?.areasForImprovement.map((s, i) => (
+                                    <li key={i} className="text-[10px] text-slate-300 flex items-start gap-2"><Minus size={12} className="text-amber-500 shrink-0 mt-0.5"/> {s}</li>
+                                ))}
+                            </ul>
+                        </section>
+                    </div>
+                </div>
+
+                <div className="flex-1 flex flex-col overflow-hidden relative">
+                    <div className="flex-1 bg-slate-950 flex flex-col overflow-hidden">
+                        <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide">
+                            {coachingTranscript.length === 0 && (
+                                <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
+                                    <div className="p-6 bg-indigo-600/10 rounded-full border border-indigo-500/20 text-indigo-400 animate-pulse">
+                                        <Bot size={48} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">AI Coaching Active</h3>
+                                        <p className="text-sm text-slate-500 max-w-xs mx-auto">Ask about your technical performance, how to improve your communication, or what to learn next.</p>
+                                    </div>
+                                </div>
+                            )}
+                            {coachingTranscript.map((item, index) => (
+                                <div key={index} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
+                                    <span className={`text-[9px] uppercase font-black tracking-widest mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>
+                                        {item.role === 'user' ? 'You' : 'AI Coach'}
+                                    </span>
+                                    <div className={`max-w-[80%] px-5 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-xl' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}>
+                                        <MarkdownView content={item.text} />
+                                    </div>
+                                </div>
+                            ))}
+                            {isAiThinking && (
+                                <div className="flex flex-col items-start animate-fade-in">
+                                    <span className="text-[9px] uppercase font-black tracking-widest mb-1 text-emerald-400">AI Coach Thinking...</span>
+                                    <div className="bg-slate-800 text-slate-200 rounded-2xl rounded-tl-sm p-4 border border-slate-700">
+                                        <Loader2 className="animate-spin text-indigo-400" size={18} />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="p-6 border-t border-slate-800 bg-slate-900/50">
+                            <form 
+                                className="flex gap-4 max-w-4xl mx-auto" 
+                                onSubmit={(e) => { 
+                                    e.preventDefault(); 
+                                    const input = (e.target as any).message; 
+                                    if(input.value.trim()) { 
+                                        handleSendTextMessage(input.value); 
+                                        input.value = ''; 
+                                    } 
+                                }}
+                            >
+                                <input 
+                                    name="message"
+                                    type="text" 
+                                    className="flex-1 bg-slate-950 border border-slate-800 rounded-2xl px-6 py-4 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner" 
+                                    placeholder="Discuss your feedback with the coach..."
+                                />
+                                <button 
+                                    type="submit"
+                                    className="p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center"
+                                >
+                                    <Send size={24}/>
+                                </button>
+                            </form>
+                            <div className="mt-4 flex justify-center items-center gap-6">
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full ${isAiConnected ? 'bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-red-500'}`}></div>
+                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Neural Voice Link: {isAiConnected ? 'Active' : 'Offline'}</span>
+                                </div>
+                                <button 
+                                    onClick={() => handleReconnectAi(false)}
+                                    className="text-[9px] font-black text-indigo-400 hover:text-white uppercase tracking-widest flex items-center gap-1.5"
+                                >
+                                    <RefreshCcw size={10}/> Reset AI Connection
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         )}
       </main>
 
