@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -115,7 +116,6 @@ const UI_TEXT = {
     create: "New Podcast",
     magic: "Magic Creator",
     host: "Host",
-    listeners: "Listeners",
     featured: "Featured",
     categories: "Categories",
     all: "All Podcasts",
@@ -150,7 +150,6 @@ const UI_TEXT = {
     create: "创建播客",
     magic: "魔法创建",
     host: "主播",
-    listeners: "听众",
     featured: "精选",
     categories: "分类",
     all: "全部播客",
@@ -443,7 +442,7 @@ const App: React.FC = () => {
                         ))}
                       </div>
                       <div className="p-3 bg-slate-950 border-t border-slate-800 flex justify-center">
-                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Platform v4.2.6</p>
+                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Platform v4.3.1</p>
                       </div>
                     </div>
                   </>
@@ -513,7 +512,7 @@ const App: React.FC = () => {
             {viewState === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
             {viewState === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice={globalVoice} t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={handleSchedulePodcast} /> )}
             {viewState === 'groups' && ( <div className="p-8 max-w-4xl mx-auto h-full overflow-y-auto scrollbar-hide"><GroupManager /></div> )}
-            {viewState === 'mentorship' && ( <MentorBooking currentUser={currentUser} channels={allChannels} onStartLiveSession={handleStartLiveSession} /> )}
+            {viewState === 'mentorship' && ( <MentorBooking currentUser={currentUser} userProfile={userProfile} channels={allChannels} onStartLiveSession={handleStartLiveSession} /> )}
             {viewState === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><RecordingList onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} /></div> )}
             {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} /> )}
             {(viewState === 'shipping_labels' || viewState === 'shipping_viewer') && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}

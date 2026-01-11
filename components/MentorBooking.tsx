@@ -7,6 +7,7 @@ import { createBooking, getUserBookings, cancelBooking, updateBookingInvite, del
 
 interface MentorBookingProps {
   currentUser: any;
+  userProfile?: UserProfile | null;
   channels: Channel[]; 
   onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
 }
@@ -18,7 +19,7 @@ interface Slot {
     isBusy: boolean;
 }
 
-export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, channels, onStartLiveSession }) => {
+export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, userProfile, channels, onStartLiveSession }) => {
   const [activeTab, setActiveTab] = useState<'members' | 'ai_mentors' | 'my_bookings'>('members');
   const [selectedMentor, setSelectedMentor] = useState<Channel | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -79,8 +80,12 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
   const availableSlots = useMemo(() => {
       if (!selectedDate) return [];
       
-      const dayOfWeek = new Date(selectedDate).getDay();
-      // If AI mentor, assume 24/7 availability
+      // Robust dayOfWeek calculation using midday to avoid timezone shifts
+      const dateParts = selectedDate.split('-');
+      const d = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]), 12, 0, 0);
+      const dayOfWeek = d.getDay();
+      
+      // If AI mentor, assume 24/7 availability. If member, use their profile.
       const availability = bookingMember ? (bookingMember.availability || { enabled: true, startHour: 9, endHour: 18, days: [1,2,3,4,5] }) : { enabled: true, startHour: 0, endHour: 23, days: [0,1,2,3,4,5,6] };
       
       if (!availability.enabled || !availability.days.includes(dayOfWeek)) return [];
@@ -89,7 +94,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
       const startH = availability.startHour;
       const endH = availability.endHour;
 
-      for (let h = startH; h <= endH; h++) {
+      for (let h = startH; h < endH; h++) {
           const hourStr = h.toString().padStart(2, '0');
           if (duration === 25) {
               slots.push({ start: `${hourStr}:05`, end: `${hourStr}:30`, duration: 25, isBusy: false });
@@ -160,6 +165,8 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
   };
 
   if (bookingMember || selectedMentor) {
+      const isSelf = currentUser && bookingMember?.uid === currentUser.uid;
+      
       return (
         <div className="max-w-5xl mx-auto my-8 animate-fade-in-up">
             <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden">
@@ -167,8 +174,8 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                     <button onClick={() => { setSelectedMentor(null); setBookingMember(null); }} className="p-3 hover:bg-slate-800 rounded-2xl text-slate-400 transition-colors"><ArrowLeft size={24} /></button>
                     <img src={bookingMember ? (bookingMember.photoURL || `https://ui-avatars.com/api/?name=${bookingMember.displayName}`) : selectedMentor!.imageUrl} className="w-20 h-20 rounded-[2rem] border-4 border-indigo-500 shadow-xl object-cover" />
                     <div>
-                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">{bookingMember ? bookingMember.displayName : selectedMentor!.title}</h2>
-                        <p className="text-sm font-bold text-indigo-400 uppercase tracking-widest">{bookingMember ? 'Domain Expert' : 'AI Strategic Mentor'}</p>
+                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">{bookingMember ? (isSelf ? 'My Availability (Test)' : bookingMember.displayName) : selectedMentor!.title}</h2>
+                        <p className="text-sm font-bold text-indigo-400 uppercase tracking-widest">{bookingMember ? (isSelf ? 'Self-Booking Profile' : 'Domain Expert') : 'AI Strategic Mentor'}</p>
                     </div>
                 </div>
                 <div className="p-8 md:p-12 space-y-10">
@@ -206,8 +213,12 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                                         <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Checking Availability...</span>
                                     </div>
                                 ) : availableSlots.length === 0 ? (
-                                    <div className="text-xs text-slate-600 italic p-12 text-center border-2 border-dashed border-slate-800 rounded-[2rem]">
-                                        No slots available for this day. Try another date.
+                                    <div className="text-xs text-slate-500 italic p-12 text-center border-2 border-dashed border-slate-800 rounded-[2rem] bg-slate-900/20">
+                                        <div className="flex flex-col items-center gap-3">
+                                            <ShieldAlert size={32} className="text-slate-700"/>
+                                            <p>Member is currently away or outside office hours on this date.</p>
+                                            <p className="text-[9px] font-bold uppercase">Check Professional Profile for regular availability</p>
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="space-y-8 animate-fade-in">
@@ -256,7 +267,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                                     placeholder="What are the specific goals or technical problems you want to address in this session?"
                                 />
                                 
-                                {bookingMember && (
+                                {bookingMember && !isSelf && (
                                     <div className="bg-amber-900/10 border border-amber-500/20 p-5 rounded-2xl flex items-center gap-4 animate-fade-in">
                                         <div className="p-3 bg-amber-500 text-white rounded-xl shadow-lg shadow-amber-500/20">
                                             <Coins size={20} fill="currentColor"/>
@@ -274,7 +285,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                                         disabled={isBooking || !selectedDate || !selectedSlot || !topic} 
                                         className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl shadow-indigo-900/40 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-30 disabled:grayscale"
                                     >
-                                        {isBooking ? <Loader2 className="animate-spin mx-auto" /> : 'Authorize & Book Session'}
+                                        {isBooking ? <Loader2 className="animate-spin mx-auto" /> : isSelf ? 'Lock Personal Focus Slot' : 'Authorize & Book Session'}
                                     </button>
                                     <p className="text-[9px] text-slate-500 text-center uppercase font-black tracking-widest">
                                         By clicking, you initiate the neural handshake protocol
@@ -311,6 +322,9 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                     <div className="flex-1 text-center md:text-left relative z-10">
                         <h3 className="text-xl font-bold text-white mb-2">Build a Shared Learning Network</h3>
                         <p className="text-slate-400 text-sm leading-relaxed max-w-2xl">AIVoiceCast is more than a player—it's an exchange of wisdom. Connect with experts across the community, join live coding sessions, and earn VoiceCoins by sharing your unique expertise.</p>
+                        {userProfile && (
+                            <button onClick={() => handleOpenBooking(userProfile)} className="mt-4 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-lg transition-all active:scale-95">Set My Own Availability</button>
+                        )}
                     </div>
                 </div>
 
