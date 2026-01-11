@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Sparkles, Wand2, Plus, Trash2, Maximize2, Settings2, RefreshCw, Loader2, Info, ChevronRight, Share2, Grid3X3, Circle, Activity, Play, Check } from 'lucide-react';
+import { ArrowLeft, Sparkles, Wand2, Plus, Trash2, Maximize2, Settings2, RefreshCw, Loader2, Info, ChevronRight, Share2, Grid3X3, Circle, Activity, Play, Check, AlertCircle } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
 interface GraphStudioProps {
@@ -11,6 +11,7 @@ interface Equation {
   expression: string;
   visible: boolean;
   color: string;
+  error?: boolean;
 }
 
 type GraphMode = '2d' | '3d' | 'polar';
@@ -18,32 +19,38 @@ type GraphMode = '2d' | '3d' | 'polar';
 export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
   const [mode, setMode] = useState<GraphMode>('2d');
   const [equations, setEquations] = useState<Equation[]>([
-    { id: '1', expression: 'sin(x)', visible: true, color: '#6366f1' }
+    { id: '1', expression: 'sin(x)', visible: true, color: '#22d3ee' } // Brighter Cyan
   ]);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [isPlotting, setIsPlotting] = useState(false);
+  const [libsReady, setLibsReady] = useState(false);
   const graphRef = useRef<HTMLDivElement>(null);
-  const initializedRef = useRef(false);
 
   // Constants for graphing
   const RANGE_2D = 10;
   const RANGE_3D = 5;
-  const POINTS_2D = 400;
-  const POINTS_3D = 40; // Slightly reduced for performance on mobile
+  const POINTS_2D = 500;
+  const POINTS_3D = 40;
+
+  // Poll for libraries on mount
+  useEffect(() => {
+    const checkLibs = setInterval(() => {
+        if ((window as any).Plotly && (window as any).math) {
+            setLibsReady(true);
+            clearInterval(checkLibs);
+            renderGraph();
+        }
+    }, 100);
+    return () => clearInterval(checkLibs);
+  }, []);
 
   useEffect(() => {
-    // Small delay to ensure container is measured and scripts are parsed
-    const timer = setTimeout(() => {
-        renderGraph();
-    }, 150);
-    
-    window.addEventListener('resize', handleResize);
-    return () => {
-        window.removeEventListener('resize', handleResize);
-        clearTimeout(timer);
-    };
-  }, [equations, mode]);
+    if (libsReady) {
+        const timer = setTimeout(() => renderGraph(), 100);
+        return () => clearTimeout(timer);
+    }
+  }, [equations, mode, libsReady]);
 
   const handleResize = () => {
     if (graphRef.current && (window as any).Plotly) {
@@ -51,29 +58,32 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
     }
   };
 
+  useEffect(() => {
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const renderGraph = () => {
     if (!graphRef.current) return;
     
     const Plotly = (window as any).Plotly;
     const math = (window as any).math;
 
-    if (!Plotly || !math) {
-        console.warn("Graphing libraries not ready yet...");
-        // Retry once after 500ms if not ready
-        if (!initializedRef.current) {
-            setTimeout(renderGraph, 500);
-            initializedRef.current = true;
-        }
-        return;
-    }
+    if (!Plotly || !math) return;
 
     setIsPlotting(true);
     const data: any[] = [];
+    const updatedEquations = [...equations];
+    let hasChanges = false;
 
-    equations.filter(e => e.visible).forEach(eq => {
-      if (!eq.expression.trim()) return;
+    equations.forEach((eq, index) => {
+      if (!eq.expression.trim() || !eq.visible) return;
       try {
         const compiled = math.compile(eq.expression);
+        if (updatedEquations[index].error) {
+            updatedEquations[index].error = false;
+            hasChanges = true;
+        }
 
         if (mode === '2d') {
           const xValues = Array.from({ length: POINTS_2D }, (_, i) => -RANGE_2D + (i / POINTS_2D) * 2 * RANGE_2D);
@@ -89,7 +99,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
             type: 'scatter',
             mode: 'lines',
             name: eq.expression,
-            line: { color: eq.color, width: 3, shape: 'spline' },
+            line: { color: eq.color, width: 4, shape: 'spline' },
             hoverinfo: 'x+y'
           });
         } 
@@ -135,36 +145,45 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
           });
         }
       } catch (err) {
-        console.warn("Math parse error for expression:", eq.expression, err);
+        if (!updatedEquations[index].error) {
+            updatedEquations[index].error = true;
+            hasChanges = true;
+        }
       }
     });
+
+    if (hasChanges) setEquations(updatedEquations);
 
     const layout = {
       autosize: true,
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
-      margin: { t: 30, r: 30, b: 30, l: 30 },
+      margin: { t: 20, r: 20, b: 40, l: 40 },
       showlegend: mode !== '3d' && data.length > 1,
-      font: { color: '#94a3b8', family: 'Inter, sans-serif' },
+      font: { color: '#94a3b8', family: 'Inter, sans-serif', size: 10 },
       xaxis: { 
-          gridcolor: '#1e293b', 
-          zerolinecolor: '#475569',
+          gridcolor: '#334155', // Lighter grid
+          zerolinecolor: '#94a3b8', // Visible zero line
+          zerolinewidth: 2,
+          tickcolor: '#475569',
           title: mode === '2d' ? 'x' : undefined
       },
       yaxis: { 
-          gridcolor: '#1e293b', 
-          zerolinecolor: '#475569',
+          gridcolor: '#334155', // Lighter grid
+          zerolinecolor: '#94a3b8', // Visible zero line
+          zerolinewidth: 2,
+          tickcolor: '#475569',
           title: mode === '2d' ? 'y' : undefined
       },
       scene: {
-        xaxis: { backgroundcolor: '#020617', gridcolor: '#1e293b', showbackground: true, zerolinecolor: '#475569' },
-        yaxis: { backgroundcolor: '#020617', gridcolor: '#1e293b', showbackground: true, zerolinecolor: '#475569' },
-        zaxis: { backgroundcolor: '#020617', gridcolor: '#1e293b', showbackground: true, zerolinecolor: '#475569' }
+        xaxis: { backgroundcolor: '#020617', gridcolor: '#334155', showbackground: true, zerolinecolor: '#94a3b8' },
+        yaxis: { backgroundcolor: '#020617', gridcolor: '#334155', showbackground: true, zerolinecolor: '#94a3b8' },
+        zaxis: { backgroundcolor: '#020617', gridcolor: '#334155', showbackground: true, zerolinecolor: '#94a3b8' }
       },
       polar: {
         bgcolor: 'rgba(0,0,0,0)',
-        angularaxis: { gridcolor: '#1e293b', linecolor: '#475569' },
-        radialaxis: { gridcolor: '#1e293b', linecolor: '#475569' }
+        angularaxis: { gridcolor: '#334155', linecolor: '#94a3b8' },
+        radialaxis: { gridcolor: '#334155', linecolor: '#94a3b8' }
       }
     };
 
@@ -174,7 +193,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
         staticPlot: false 
     };
 
-    Plotly.newPlot(graphRef.current, data, layout, config).then(() => {
+    Plotly.react(graphRef.current, data, layout, config).then(() => {
         setIsPlotting(false);
     });
   };
@@ -204,7 +223,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
           visible: true,
           color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')
         };
-        setEquations([newEq]); // Clear and set new for AI results
+        setEquations([newEq]); 
         setAiPrompt('');
       }
     } catch (e) {
@@ -215,11 +234,12 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
   };
 
   const addEquation = () => {
-    setEquations([...equations, { id: Date.now().toString(), expression: '', visible: true, color: '#818cf8' }]);
+    const randomColors = ['#f472b6', '#38bdf8', '#fbbf24', '#a78bfa', '#4ade80'];
+    setEquations([...equations, { id: Date.now().toString(), expression: '', visible: true, color: randomColors[equations.length % randomColors.length] }]);
   };
 
   const updateEquation = (id: string, expression: string) => {
-    setEquations(equations.map(e => e.id === id ? { ...e, expression } : e));
+    setEquations(equations.map(e => e.id === id ? { ...e, expression, error: false } : e));
   };
 
   const removeEquation = (id: string) => {
@@ -270,10 +290,11 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
             </div>
             <div className="space-y-3">
               {equations.map((eq) => (
-                <div key={eq.id} className="group relative bg-slate-950 border border-slate-800 rounded-xl p-3 focus-within:border-indigo-500/50 transition-all">
+                <div key={eq.id} className={`group relative bg-slate-950 border rounded-xl p-3 transition-all ${eq.error ? 'border-red-500 shadow-lg shadow-red-950/20' : 'border-slate-800 focus-within:border-indigo-500/50'}`}>
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-2 h-2 rounded-full" style={{ backgroundColor: eq.color }}></div>
                     <span className="text-[9px] font-mono text-slate-600 uppercase tracking-tighter">f({mode === 'polar' ? 'θ' : mode === '3d' ? 'x,y' : 'x'})</span>
+                    {eq.error && <AlertCircle size={10} className="text-red-500 animate-pulse"/>}
                     <button onClick={() => removeEquation(eq.id)} className="ml-auto opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-opacity">
                       <Trash2 size={12}/>
                     </button>
@@ -291,8 +312,8 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
             </div>
             <button 
               onClick={renderGraph}
-              disabled={isPlotting}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+              disabled={isPlotting || !libsReady}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
             >
               {isPlotting ? <Loader2 size={12} className="animate-spin"/> : <Play size={12} fill="currentColor"/>}
               Plot Equations
@@ -305,7 +326,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
               <textarea
                 value={aiPrompt}
                 onChange={e => setAiPrompt(e.target.value)}
-                placeholder="Describe a function... (e.g., 'A hyperbolic paraboloid' or 'Golden ratio spiral')"
+                placeholder="Describe a function... (e.g., 'A hyperbolic paraboloid')"
                 className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 outline-none focus:border-indigo-500 resize-none h-24 transition-all"
               />
               <button
@@ -320,12 +341,18 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
         </div>
 
         <div className="p-4 border-t border-slate-800 bg-slate-950/50">
-            <div className="flex items-center gap-3 p-3 bg-indigo-600/10 border border-indigo-500/20 rounded-xl">
-                <Info size={16} className="text-indigo-400 shrink-0"/>
-                <p className="text-[9px] text-indigo-300 leading-tight">
-                    Variables supported: <b>x</b>, <b>y</b>, <b>theta</b>. Use standard notation like <b>^2</b>, <b>sin()</b>, <b>abs()</b>.
-                </p>
-            </div>
+            {!libsReady ? (
+                <div className="flex items-center gap-2 text-[9px] text-amber-400 font-bold uppercase">
+                    <Loader2 size={10} className="animate-spin"/> Initializing Engine...
+                </div>
+            ) : (
+                <div className="flex items-center gap-3 p-3 bg-indigo-600/10 border border-indigo-500/20 rounded-xl">
+                    <Info size={16} className="text-indigo-400 shrink-0"/>
+                    <p className="text-[9px] text-indigo-300 leading-tight">
+                        Variables supported: <b>x</b>, <b>y</b>, <b>theta</b>. Use standard notation like <b>^2</b>, <b>sin()</b>, <b>abs()</b>.
+                    </p>
+                </div>
+            )}
         </div>
       </div>
 
@@ -348,8 +375,8 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
            </div>
         </div>
 
-        <div className="flex-1 z-10 p-4 pt-0">
-            <div className="w-full h-full bg-slate-900/40 backdrop-blur-md rounded-[3rem] border border-slate-800/50 shadow-2xl overflow-hidden relative">
+        <div className="flex-1 z-10 p-4 pt-0 flex flex-col">
+            <div className="flex-1 bg-slate-900/60 backdrop-blur-md rounded-[3rem] border border-slate-800/50 shadow-2xl overflow-hidden relative">
                 <div ref={graphRef} className="w-full h-full" />
                 
                 {/* HUD Overlay */}
