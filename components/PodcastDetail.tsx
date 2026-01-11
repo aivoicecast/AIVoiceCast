@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile } from '../types';
-import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, RefreshCcw, Wand2 } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { synthesizeSpeech } from '../services/tts';
 import { OFFLINE_CHANNEL_ID, OFFLINE_CURRICULUM, OFFLINE_LECTURES } from '../utils/offlineContent';
@@ -10,7 +10,6 @@ import { cacheLectureScript, getCachedLectureScript } from '../utils/db';
 import { publishChannelToFirestore } from '../services/firestoreService';
 import { getDriveToken } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive, getDriveFileSharingLink } from '../services/googleDriveService';
-// Added warmUpAudioContext to the imports from audioUtils
 import { getGlobalAudioContext, audioBufferToWavBlob, concatAudioBuffers, registerAudioOwner, stopAllPlatformAudio, logAudioEvent, isAudioOwner, getGlobalAudioGeneration, warmUpAudioContext } from '../utils/audioUtils';
 import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
@@ -41,7 +40,8 @@ const UI_TEXT = {
     noLesson: "No Lesson Selected", chooseChapter: "Choose a chapter and lesson from the menu.",
     synthesizingAudio: "Synthesizing Audio...", reading: "Reading Material", homework: "Homework & Exercises",
     playAudio: "Listen to Lecture", pauseAudio: "Pause Audio", stopAudio: "Stop Audio",
-    buffering: "Neural Synthesis..."
+    buffering: "Neural Synthesis...", regenerate: "Neural Re-synthesis",
+    regenerating: "Re-synthesizing..."
   },
   zh: {
     back: "返回", curriculum: "课程大纲", selectTopic: "选择一个课程开始阅读",
@@ -54,7 +54,8 @@ const UI_TEXT = {
     noLesson: "未选择课程", chooseChapter: "请从菜单中选择章节和课程。",
     synthesizingAudio: "正在合成音频...", reading: "延伸阅读", homework: "课后作业",
     playAudio: "播放讲座音频", pauseAudio: "暂停播放", stopAudio: "停止播放",
-    buffering: "神经合成中..."
+    buffering: "神经合成中...", regenerate: "神经重构",
+    regenerating: "正在重构..."
   }
 };
 
@@ -62,6 +63,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
   const t = UI_TEXT[language];
   const [activeLecture, setActiveLecture] = useState<GeneratedLecture | null>(null);
   const [isLoadingLecture, setIsLoadingLecture] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const [activeSubTopicId, setActiveSubTopicId] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
@@ -72,7 +74,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
   const [currentSectionIndex, setCurrentSectionIndex] = useState(-1);
   const playbackSessionRef = useRef(0);
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  // useMemo is now imported from react
   const MY_TOKEN = useMemo(() => `PodcastDetail:${channel.id}:${activeSubTopicId}`, [channel.id, activeSubTopicId]);
 
   const [chapters, setChapters] = useState<Chapter[]>(() => {
@@ -120,6 +121,31 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
     } finally { setIsLoadingLecture(false); }
   };
 
+  const handleRegenerate = async () => {
+    if (!activeSubTopicId || !activeLecture) return;
+    
+    const confirmMsg = language === 'zh' 
+        ? "确定要重新生成讲座内容吗？这将会覆盖当前的缓存。" 
+        : "Are you sure you want to re-synthesize this lecture? This will overwrite the existing cached content.";
+        
+    if (!confirm(confirmMsg)) return;
+
+    stopPlaybackInternal();
+    setIsRegenerating(true);
+    try {
+        const script = await generateLectureScript(activeLecture.topic, channel.description, language);
+        if (script) {
+            const cacheKey = `lecture_${channel.id}_${activeSubTopicId}_${language}`;
+            await cacheLectureScript(cacheKey, script);
+            setActiveLecture(script);
+        }
+    } catch (e) {
+        console.error("Regeneration failed", e);
+    } finally {
+        setIsRegenerating(false);
+    }
+  };
+
   const handlePlayLecture = async () => {
     if (!activeLecture) return;
     if (isPlaying) {
@@ -129,7 +155,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
 
     const ctx = getGlobalAudioContext();
     if (ctx.state === 'suspended') {
-        // warmUpAudioContext is now imported from audioUtils
         await warmUpAudioContext(ctx);
     }
 
@@ -170,7 +195,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
                     source.start(0);
                 });
             } else {
-                // Fallback to system voice if synthesis fails
                 await new Promise<void>((resolve) => {
                     const utterance = new SpeechSynthesisUtterance(section.text);
                     utterance.onend = () => resolve();
@@ -179,7 +203,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
                 });
             }
             
-            // Short breath between sections
             await new Promise(r => setTimeout(r, 400));
         }
     } catch (e) {
@@ -254,10 +277,30 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
                             )}
                             <span>{isBuffering ? t.buffering : isPlaying ? t.stopAudio : t.playAudio}</span>
                         </button>
+                        
+                        <button 
+                            onClick={handleRegenerate}
+                            disabled={isRegenerating}
+                            className={`p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 rounded-xl border border-slate-700 transition-all shadow-lg ${isRegenerating ? 'animate-pulse opacity-50' : ''}`}
+                            title={t.regenerate}
+                        >
+                            {isRegenerating ? <Loader2 size={18} className="animate-spin"/> : <RefreshCcw size={18}/>}
+                        </button>
+
                         <button onClick={handleShareLecture} className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-all shadow-lg" title="Share URI"><Share2 size={18}/></button>
                     </div>
                 </div>
                 
+                {isRegenerating && (
+                    <div className="bg-indigo-900/30 border border-indigo-500/30 rounded-xl p-6 flex flex-col items-center justify-center gap-4 animate-fade-in">
+                        <div className="relative">
+                            <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
+                            <Wand2 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-indigo-400" size={24} />
+                        </div>
+                        <p className="text-sm font-bold text-white uppercase tracking-widest">{t.regenerating}</p>
+                    </div>
+                )}
+
                 {isPlaying && currentSectionIndex >= 0 && (
                     <div className="bg-indigo-900/20 border border-indigo-500/30 rounded-2xl p-4 flex items-center gap-4 animate-fade-in">
                         <div className="p-3 bg-indigo-600 rounded-xl text-white shadow-lg">
@@ -275,11 +318,13 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
                     </div>
                 )}
 
-                <MarkdownView 
-                    content={`# ${activeLecture.topic}\n\n${activeLecture.sections.map((s, idx) => `**${s.speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}**: ${s.text} ${idx === currentSectionIndex ? '  🔊' : ''}`).join('\n\n')}`}
-                    initialTheme={userProfile?.preferredReaderTheme || 'slate'}
-                    showThemeSwitcher={true}
-                />
+                {!isRegenerating && (
+                    <MarkdownView 
+                        content={`# ${activeLecture.topic}\n\n${activeLecture.sections.map((s, idx) => `**${s.speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}**: ${s.text} ${idx === currentSectionIndex ? '  🔊' : ''}`).join('\n\n')}`}
+                        initialTheme={userProfile?.preferredReaderTheme || 'slate'}
+                        showThemeSwitcher={true}
+                    />
+                )}
             </div>
           ) : (<div className="h-64 flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-800 rounded-2xl bg-slate-900/30"><Info size={32} className="mb-2 opacity-20" /><h3 className="text-lg font-bold text-slate-400">{t.selectTopic}</h3></div>)}
         </div>
