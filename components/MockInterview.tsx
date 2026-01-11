@@ -225,8 +225,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   };
 
   const handleDeleteSelected = async () => {
-      // Fix: Error on line 228 - Property 'trim' does not exist on type 'unknown'
-      const idsToPurge = Array.from(selectedIds).filter((id: string) => id && id.trim() !== "");
+      // Fix: Filter selected IDs and use a type guard to ensure 'idsToPurge' is string[].
+      // This correctly handles the 'unknown' inference that can occur when converting a Set.
+      const idsToPurge = Array.from(selectedIds).filter((id): id is string => typeof id === 'string' && id.trim() !== "");
       if (idsToPurge.length === 0) return;
       
       const count = idsToPurge.length;
@@ -240,7 +241,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       try {
           for (const id of idsToPurge) {
               try {
-                  // Fix: Error on line 242 - Argument of type 'unknown' is not assignable to parameter of type 'string'
+                  // Fix: 'id' is now correctly inferred as a string.
                   await deleteInterview(id);
               } catch (e: any) {
                   console.error(`Failed to purge doc ${id}:`, e);
@@ -878,7 +879,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                   <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4 shadow-inner">
                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Target size={14}/> Evaluation Scope</h3>
                     <div className="grid grid-cols-1 gap-2">
-                      {[{ id: 'coding', icon: Code, label: 'Algorithm & DS' }, { id: 'system_design', icon: Layers, label: 'System Design' }, { id: 'behavioral', icon: MessageSquare, label: 'Behavioral' }].map(m => (<button key={m.id} onClick={() => setMode(m.id as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-50'}`}><div className="flex items-center gap-2"><m.icon size={14}/><span className="text-[10px] font-bold uppercase">{m.label}</span></div>{mode === m.id && <CheckCircle size={14}/>}</button>))}
+                      {[{ id: 'coding', icon: Code, label: 'Algorithm & DS' }, { id: 'system_design', icon: Layers, label: 'System Design' }, { id: 'behavioral', icon: MessageSquare, label: 'Behavioral' }].map(m => (<button key={m.id} onClick={() => setMode(m.id as any)} className={`p-4 rounded-2xl border text-left flex items-center justify-between transition-all ${mode === m.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border border-slate-800 text-slate-50'}`}><div className="flex items-center gap-2"><m.icon size={14}/><span className="text-[10px] font-bold uppercase">{m.label}</span></div>{mode === m.id && <CheckCircle size={14}/>}</button>))}
                     </div>
                   </div>
                   <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 space-y-4 shadow-inner">

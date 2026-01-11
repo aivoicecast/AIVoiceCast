@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture } from '../types';
-import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX } from 'lucide-react';
+import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { CreatorProfileModal } from './CreatorProfileModal';
 import { PodcastListTable, SortKey } from './PodcastListTable';
@@ -32,6 +32,7 @@ interface PodcastFeedProps {
   filterMode?: 'foryou' | 'following' | 'mine';
   isFeedActive?: boolean; 
   searchQuery?: string;
+  onNavigate?: (view: string) => void;
 }
 
 const MobileFeedCard = ({ 
@@ -87,9 +88,6 @@ const MobileFeedCard = ({
         }
     }, [transcriptHistory]);
 
-    /**
-     * CLEAN STOP - Completely resets local and global state
-     */
     const stopAudioInternal = useCallback((source: string = "Local") => {
         localSessionIdRef.current++; 
         isLoopingRef.current = false;
@@ -515,13 +513,12 @@ const MobileFeedCard = ({
 export const PodcastFeed: React.FC<PodcastFeedProps> = ({ 
   channels, onChannelClick, onStartLiveSession, userProfile, globalVoice, onRefresh, onMessageCreator,
   t, currentUser, setChannelToEdit, setIsSettingsModalOpen, onCommentClick, handleVote, filterMode = 'foryou',
-  isFeedActive = true, searchQuery = ''
+  isFeedActive = true, searchQuery = '', onNavigate
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
   
-  // Table sorting state
   const [sortConfig, setSortConfig] = useState<{key: SortKey, direction: 'asc' | 'desc'}>({ key: 'likes', direction: 'desc' });
 
   const handleSort = (key: SortKey) => {
@@ -598,7 +595,6 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
       const scored = baseList.map(ch => {
           let score = 0;
           
-          // CRITICAL PERSONA PRIORITIZATION
           if (ch.id === '1' || ch.id === '2' || ch.id === 'default-gem') score += 1000000;
           
           if (currentUser && ch.ownerId === currentUser.uid) score += 100000;
@@ -639,8 +635,56 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
   if (isDesktop) {
       return (
         <div className="h-full overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-800">
-            <div className="max-w-7xl mx-auto space-y-6">
-                <div className="flex justify-between items-center">
+            <div className="max-w-7xl mx-auto space-y-8">
+                
+                {/* Neural Toolbox Quick Access */}
+                <div className="space-y-4 animate-fade-in-up">
+                    <div className="flex items-center justify-between px-2">
+                        <h3 className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em]">Specialized AI Operating Suite</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <button 
+                            onClick={() => onNavigate?.('graph_studio')}
+                            className="flex items-center gap-4 p-5 bg-slate-900 border border-slate-800 rounded-2xl hover:border-emerald-500/50 hover:bg-emerald-900/10 transition-all text-left group shadow-xl"
+                        >
+                            <div className="p-3 bg-emerald-950/40 rounded-xl border border-emerald-500/30 text-emerald-400 group-hover:scale-110 transition-transform">
+                                <Activity size={24}/>
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-white group-hover:text-emerald-400 transition-colors">Neural Graph</h4>
+                                <p className="text-[10px] text-slate-500 uppercase font-black">Visual Math Studio</p>
+                            </div>
+                        </button>
+
+                        <button 
+                            onClick={() => onNavigate?.('mock_interview')}
+                            className="flex items-center gap-4 p-5 bg-slate-900 border border-slate-800 rounded-2xl hover:border-red-500/50 hover:bg-red-900/10 transition-all text-left group shadow-xl"
+                        >
+                            <div className="p-3 bg-red-950/40 rounded-xl border border-red-500/30 text-red-500 group-hover:scale-110 transition-transform">
+                                <Video size={24}/>
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-white group-hover:text-red-400 transition-colors">Mock Interview</h4>
+                                <p className="text-[10px] text-slate-500 uppercase font-black">Career Evaluation</p>
+                            </div>
+                        </button>
+
+                        <button 
+                            onClick={() => onNavigate?.('code_studio')}
+                            className="flex items-center gap-4 p-5 bg-slate-900 border border-slate-800 rounded-2xl hover:border-indigo-500/50 hover:bg-indigo-900/10 transition-all text-left group shadow-xl"
+                        >
+                            <div className="p-3 bg-indigo-950/40 rounded-xl border border-indigo-500/30 text-indigo-400 group-hover:scale-110 transition-transform">
+                                <Terminal size={24}/>
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-white group-hover:text-indigo-400 transition-colors">Code Studio</h4>
+                                <p className="text-[10px] text-slate-500 uppercase font-black">Cloud Engineering</p>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-4">
                     <div>
                         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                             <span className="bg-indigo-600 w-2 h-8 rounded-full"></span> 

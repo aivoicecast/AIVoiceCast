@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Sparkles, Wand2, Plus, Trash2, Maximize2, Settings2, RefreshCw, Loader2, Info, ChevronRight, Share2, Grid3X2, Circle, Activity, Play } from 'lucide-react';
+import { ArrowLeft, Sparkles, Wand2, Plus, Trash2, Maximize2, Settings2, RefreshCw, Loader2, Info, ChevronRight, Share2, Grid3X3, Circle, Activity, Play } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
 interface GraphStudioProps {
@@ -293,7 +293,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack }) => {
                 <div className="absolute bottom-8 right-8 flex flex-col gap-2">
                     <div className="bg-slate-900/80 backdrop-blur-md p-3 rounded-2xl border border-slate-700 shadow-2xl flex items-center gap-4">
                         <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                            <Grid3X2 size={14}/> {mode === '3d' ? '3D Proj' : '2D Plane'}
+                            <Grid3X3 size={14}/> {mode === '3d' ? '3D Proj' : '2D Plane'}
                         </div>
                         <div className="w-px h-4 bg-slate-700"></div>
                         <div className="flex items-center gap-2 text-[10px] font-black text-emerald-400 uppercase tracking-widest">
