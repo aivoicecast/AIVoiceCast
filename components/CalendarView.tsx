@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Channel, Booking, TodoItem } from '../types';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Briefcase, Plus, Video, CheckCircle, X, Users, Loader2, Mic, Play, Mail, Sparkles, ArrowLeft, Monitor, Filter, LayoutGrid, List, Languages, CloudSun, Wind, BookOpen, CheckSquare, Square, Trash2, StopCircle, Download, FileText, Check, Podcast, RefreshCw, Share2, Target, ExternalLink, Circle, Edit3 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Briefcase, Plus, Video, CheckCircle, X, Users, Loader2, Mic, Play, Mail, Sparkles, ArrowLeft, Monitor, Filter, LayoutGrid, List, Languages, CloudSun, Wind, BookOpen, CheckSquare, Square, Trash2, StopCircle, Download, FileText, Check, Podcast, RefreshCw, Share2, Target, ExternalLink, Circle, Edit3, Timer, Lock } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { getUserBookings, createBooking, updateBookingInvite, saveSavedWord, getSavedWordForUser } from '../services/firestoreService';
 import { fetchLocalWeather, getWeatherDescription, WeatherData } from '../utils/weatherService';
@@ -27,7 +27,6 @@ interface CalendarViewProps {
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const getStartOfDay = (date: Date) => { const d = new Date(date); d.setHours(0,0,0,0); return d; };
 const getDateKey = (date: Date | number | string) => { 
     const d = new Date(date); 
     return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; 
@@ -122,15 +121,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       const prevMonthDays = new Date(year, month, 0).getDate();
       
       const grid = [];
-      // Pad prev month
       for (let i = firstDay - 1; i >= 0; i--) {
           grid.push({ date: new Date(year, month - 1, prevMonthDays - i), current: false });
       }
-      // Current month
       for (let i = 1; i <= daysInMonth; i++) {
           grid.push({ date: new Date(year, month, i), current: true });
       }
-      // Pad next month
       const total = 42;
       const remaining = total - grid.length;
       for (let i = 1; i <= remaining; i++) {
@@ -147,7 +143,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   return (
     <div className="h-full flex flex-col p-6 space-y-6 overflow-hidden max-w-7xl mx-auto w-full animate-fade-in">
       
-      {/* Top Header Card */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 shrink-0">
           <div className="lg:col-span-2 bg-indigo-600 rounded-[2rem] p-8 shadow-2xl relative overflow-hidden flex flex-col justify-between">
               <div className="absolute top-0 right-0 p-24 bg-white/10 blur-3xl rounded-full"></div>
@@ -190,8 +185,6 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
       </div>
 
       <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
-          
-          {/* Main Grid */}
           <div className="flex-[2] bg-slate-900 border border-slate-800 rounded-[2.5rem] flex flex-col shadow-2xl overflow-hidden">
               <div className="grid grid-cols-7 border-b border-slate-800">
                   {DAYS.map(d => <div key={d} className="py-4 text-center text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">{d}</div>)}
@@ -223,18 +216,18 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               </div>
           </div>
 
-          {/* Agenda Sidebar */}
           <div className="flex-1 bg-slate-900 border border-slate-800 rounded-[2.5rem] flex flex-col shadow-2xl overflow-hidden">
               <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
                   <div>
-                      <h3 className="font-bold text-white text-lg">Agenda</h3>
+                      <h3 className="font-bold text-white text-lg">Daily Agenda</h3>
                       <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{selectedDate.toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'})}</p>
                   </div>
-                  <button onClick={() => onSchedulePodcast(selectedDate)} className="p-3 bg-indigo-600 rounded-2xl text-white hover:bg-indigo-500 transition-all shadow-lg active:scale-95" title="New Podcast Episode"><Plus size={20}/></button>
+                  <div className="flex gap-2">
+                    <button onClick={() => onSchedulePodcast(selectedDate)} className="p-3 bg-indigo-600 rounded-2xl text-white hover:bg-indigo-500 transition-all shadow-lg active:scale-95" title="New Podcast Episode"><Plus size={20}/></button>
+                  </div>
               </div>
               
               <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
-                  
                   {activeDayData.bookings.length === 0 && activeDayData.channels.length === 0 && activeDayData.todos.length === 0 && (
                       <div className="py-20 text-center text-slate-600 flex flex-col items-center gap-4">
                           <Wind size={40} className="opacity-20"/>
@@ -242,17 +235,31 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                       </div>
                   )}
 
-                  {activeDayData.bookings.map(b => (
-                      <div key={b.id} className="bg-slate-950 border border-slate-800 p-4 rounded-2xl flex items-center gap-4 group hover:border-indigo-500/50 transition-all">
-                          <div className="bg-indigo-900/20 p-3 rounded-xl text-indigo-400 group-hover:scale-110 transition-transform"><Clock size={20}/></div>
-                          <div className="flex-1 min-w-0">
-                              <p className="text-xs font-black text-indigo-400 uppercase tracking-widest">{b.time}</p>
-                              <h4 className="font-bold text-white text-sm truncate">{b.topic}</h4>
-                              <p className="text-[10px] text-slate-500 uppercase font-bold truncate">with {b.mentorName}</p>
+                  {activeDayData.bookings.sort((a,b) => a.time.localeCompare(b.time)).map(b => {
+                      const isParticipant = currentUser?.uid === b.userId || currentUser?.email === b.invitedEmail;
+                      return (
+                      <div key={b.id} className="bg-slate-950 border border-slate-800 p-4 rounded-2xl flex items-center gap-4 group hover:border-indigo-500/50 transition-all relative overflow-hidden">
+                          {isParticipant && <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500"></div>}
+                          <div className={`p-3 rounded-xl transition-transform group-hover:scale-110 ${isParticipant ? 'bg-indigo-900/20 text-indigo-400' : 'bg-slate-800 text-slate-600'}`}>
+                             {isParticipant ? <Clock size={20}/> : <Lock size={20}/>}
                           </div>
-                          {b.status === 'scheduled' && <button onClick={() => onStartLiveSession(channels.find(c => c.id === b.mentorId) || channels[0], b.topic, true, b.id)} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-all"><Play size={14} fill="currentColor"/></button>}
+                          <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs font-black text-indigo-400 uppercase tracking-widest">{b.time} - {b.endTime}</p>
+                                <span className="text-[9px] font-bold text-slate-600">{b.duration}m</span>
+                              </div>
+                              <h4 className={`font-bold text-sm truncate ${isParticipant ? 'text-white' : 'text-slate-600 italic'}`}>
+                                  {isParticipant ? b.topic : 'Restricted Focus Slot'}
+                              </h4>
+                              <p className="text-[10px] text-slate-500 uppercase font-bold truncate">
+                                  {isParticipant ? `with ${b.mentorName}` : `Private Member Session`}
+                              </p>
+                          </div>
+                          {isParticipant && b.status === 'scheduled' && (
+                              <button onClick={() => onStartLiveSession(channels.find(c => c.id === b.mentorId) || channels[0], b.topic, true, b.id)} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-all shadow-lg"><Play size={14} fill="currentColor"/></button>
+                          )}
                       </div>
-                  ))}
+                  )})}
 
                   {activeDayData.channels.map(c => (
                       <div key={c.id} onClick={() => handleChannelClick(c.id)} className="bg-emerald-950/10 border border-emerald-900/30 p-4 rounded-2xl flex items-center gap-4 cursor-pointer hover:border-emerald-500/50 transition-all">
@@ -265,7 +272,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   ))}
 
                   <div className="space-y-2 pt-4">
-                      <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2 mb-3">Today's Micro-Tasks</h4>
+                      <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2 mb-3">Today's Tasks</h4>
                       {activeDayData.todos.map(todo => (
                           <div key={todo.id} className="bg-slate-800/40 p-3 rounded-xl border border-slate-700/50 flex items-center gap-3 group">
                               <button onClick={() => toggleTodo(todo.id)} className={`p-0.5 rounded transition-all ${todo.isCompleted ? 'text-emerald-400 bg-emerald-400/10' : 'text-slate-600 hover:text-white'}`}>

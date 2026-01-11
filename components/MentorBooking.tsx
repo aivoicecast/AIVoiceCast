@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Channel, Booking, UserProfile } from '../types';
-import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Loader2, Play, Users, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight, Coins, Check as CheckIcon, HeartHandshake, Edit3 } from 'lucide-react';
+import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Loader2, Play, Users, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight, Coins, Check as CheckIcon, HeartHandshake, Edit3, Timer, Coffee } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
-import { createBooking, getUserBookings, cancelBooking, updateBookingInvite, deleteBookingRecording, getAllUsers, getUserProfileByEmail } from '../services/firestoreService';
+import { createBooking, getUserBookings, cancelBooking, updateBookingInvite, deleteBookingRecording, getAllUsers, getUserProfileByEmail, getUserProfile } from '../services/firestoreService';
 
 interface MentorBookingProps {
   currentUser: any;
@@ -11,32 +11,45 @@ interface MentorBookingProps {
   onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
 }
 
-const TIME_SLOTS = [
-  '09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00', '19:00', '20:00'
-];
+interface Slot {
+    start: string;
+    end: string;
+    duration: 25 | 55;
+    isBusy: boolean;
+}
 
 export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, channels, onStartLiveSession }) => {
   const [activeTab, setActiveTab] = useState<'members' | 'ai_mentors' | 'my_bookings'>('members');
   const [selectedMentor, setSelectedMentor] = useState<Channel | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [selectedTime, setSelectedTime] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [topic, setTopic] = useState('');
   const [isBooking, setIsBooking] = useState(false);
   const [bookingMember, setBookingMember] = useState<UserProfile | null>(null);
   
   const [myBookings, setMyBookings] = useState<Booking[]>([]);
+  const [mentorBookings, setMentorBookings] = useState<Booking[]>([]);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [sessionStartBooking, setSessionStartBooking] = useState<Booking | null>(null);
-  const [recordMeeting, setRecordMeeting] = useState(true);
+  const [duration, setDuration] = useState<25 | 55>(25);
 
   useEffect(() => {
     if (activeTab === 'my_bookings') loadBookings();
     if (activeTab === 'members') loadMembers();
   }, [activeTab, currentUser]);
+
+  useEffect(() => {
+    if (bookingMember && selectedDate) {
+        setIsLoadingBookings(true);
+        getUserBookings(bookingMember.uid, bookingMember.email).then(data => {
+            setMentorBookings(data);
+            setIsLoadingBookings(false);
+        });
+    }
+  }, [bookingMember, selectedDate]);
 
   const loadBookings = async () => {
     if (!currentUser) return;
@@ -59,30 +72,70 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
     return members.filter(m => m.displayName.toLowerCase().includes(searchQuery.toLowerCase()) || m.email?.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [members, searchQuery]);
 
+  // CALC SLOTS LOGIC
+  const availableSlots = useMemo(() => {
+      if (!bookingMember || !selectedDate) return [];
+      
+      const dayOfWeek = new Date(selectedDate).getDay();
+      const availability = bookingMember.availability || { enabled: true, startHour: 9, endHour: 18, days: [1,2,3,4,5] };
+      
+      if (!availability.enabled || !availability.days.includes(dayOfWeek)) return [];
+
+      const slots: Slot[] = [];
+      const startH = availability.startHour;
+      const endH = availability.endHour;
+
+      for (let h = startH; h < endH; h++) {
+          // Rule: Starts at :05 and :35
+          // Durations: 25 or 55. 5m break.
+          
+          const hourStr = h.toString().padStart(2, '0');
+          
+          // Slot A: Starts XX:05
+          if (duration === 25) {
+              slots.push({ start: `${hourStr}:05`, end: `${hourStr}:30`, duration: 25, isBusy: false });
+              slots.push({ start: `${hourStr}:35`, end: `${(h + (35+25 >= 60 ? 1 : 0)).toString().padStart(2, '0')}:${(35+25)%60 === 0 ? '00' : '00'}`, duration: 25, isBusy: false });
+          } else {
+              // 55 min slot starting at :05 ends at :00 (of next hour)
+              slots.push({ start: `${hourStr}:05`, end: `${(h + 1).toString().padStart(2, '0')}:00`, duration: 55, isBusy: false });
+              // 55 min slot starting at :35 ends at :30 (of next hour)
+              slots.push({ start: `${hourStr}:35`, end: `${(h + 1).toString().padStart(2, '0')}:30`, duration: 55, isBusy: false });
+          }
+      }
+
+      // Check Busy
+      return slots.map(s => {
+          const isBusy = mentorBookings.some(b => b.date === selectedDate && b.time === s.start);
+          return { ...s, isBusy };
+      });
+  }, [bookingMember, selectedDate, duration, mentorBookings]);
+
   const handleOpenBooking = (member: UserProfile) => {
       setBookingMember(member);
       setSelectedMentor(null);
+      setSelectedSlot(null);
   };
 
   const handleBookSession = async () => {
-    if (!currentUser || !selectedDate || !selectedTime || !topic.trim()) return alert("Please fill in all fields.");
+    if (!currentUser || !selectedDate || !selectedSlot || !topic.trim()) return alert("Please fill in all fields.");
     const isP2P = !!bookingMember;
     
     setIsBooking(true);
     try {
         const newBooking: Booking = {
             id: '', userId: currentUser.uid, hostName: currentUser.displayName || currentUser.email,
-            mentorId: isP2P ? 'p2p-meeting' : selectedMentor!.id,
+            mentorId: isP2P ? bookingMember!.uid : selectedMentor!.id,
             mentorName: isP2P ? bookingMember!.displayName : selectedMentor!.title,
             mentorImage: isP2P ? (bookingMember!.photoURL || `https://ui-avatars.com/api/?name=${bookingMember!.displayName}`) : selectedMentor!.imageUrl,
-            date: selectedDate, time: selectedTime, topic: topic, invitedEmail: isP2P ? bookingMember!.email : undefined,
+            date: selectedDate, time: selectedSlot.start, duration: selectedSlot.duration, endTime: selectedSlot.end, topic: topic, 
+            invitedEmail: isP2P ? bookingMember!.email : undefined,
             status: isP2P ? 'pending' : 'scheduled', type: isP2P ? 'p2p' : 'ai', createdAt: Date.now(),
             coinPrice: isP2P ? 50 : 0
         };
         await createBooking(newBooking);
         alert(isP2P ? "Request sent to mentor!" : "AI session booked!");
         setActiveTab('my_bookings');
-        setSelectedMentor(null); setBookingMember(null); setTopic(''); setSelectedDate(''); setSelectedTime('');
+        setSelectedMentor(null); setBookingMember(null); setTopic(''); setSelectedSlot(null);
     } catch(e) { alert("Booking failed."); } finally { setIsBooking(false); }
   };
 
@@ -107,17 +160,45 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                 <div className="p-10 space-y-10">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                         <div className="space-y-6">
-                            <div><h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><Calendar size={14}/> Select Date</h3><div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide">{[1,2,3,4,5,6,7].map(i => { const d = new Date(); d.setDate(d.getDate() + i); const ds = d.toISOString().split('T')[0]; return <button key={ds} onClick={() => setSelectedDate(ds)} className={`flex-shrink-0 w-20 p-4 rounded-2xl border flex flex-col items-center transition-all ${selectedDate === ds ? 'bg-indigo-600 border-indigo-500 text-white shadow-xl shadow-indigo-500/20 scale-105' : 'bg-slate-800 border-slate-700 text-slate-400'}`}><span className="text-[10px] font-black uppercase mb-1">{d.toLocaleDateString(undefined, {weekday:'short'})}</span><span className="text-lg font-black">{d.getDate()}</span></button>; })}</div></div>
-                            <div><h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><Clock size={14}/> Select Time</h3><div className="grid grid-cols-4 gap-2">{TIME_SLOTS.map(time => <button key={time} onClick={() => setSelectedTime(time)} className={`py-3 rounded-xl text-xs font-black border transition-all ${selectedTime === time ? 'bg-emerald-600 border-emerald-500 text-white shadow-xl shadow-emerald-500/20' : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-50'}`}>{time}</button>)}</div></div>
+                            <div><h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><Calendar size={14}/> 1. Select Date</h3><div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide">{[0,1,2,3,4,5,6,7].map(i => { const d = new Date(); d.setDate(d.getDate() + i); const ds = d.toISOString().split('T')[0]; return <button key={ds} onClick={() => setSelectedDate(ds)} className={`flex-shrink-0 w-20 p-4 rounded-2xl border flex flex-col items-center transition-all ${selectedDate === ds ? 'bg-indigo-600 border-indigo-500 text-white shadow-xl shadow-indigo-500/20 scale-105' : 'bg-slate-800 border-slate-700 text-slate-400'}`}><span className="text-[10px] font-black uppercase mb-1">{d.toLocaleDateString(undefined, {weekday:'short'})}</span><span className="text-lg font-black">{d.getDate()}</span></button>; })}</div></div>
+                            
+                            {bookingMember && (
+                                <div className="space-y-4">
+                                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Timer size={14}/> 2. Session Type</h3>
+                                    <div className="flex p-1 bg-slate-950 rounded-2xl border border-slate-800">
+                                        <button onClick={() => setDuration(25)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${duration === 25 ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Focus (25m)</button>
+                                        <button onClick={() => setDuration(55)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${duration === 55 ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Deep Dive (55m)</button>
+                                    </div>
+                                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Clock size={14}/> 3. Select Slot</h3>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {isLoadingBookings ? <div className="col-span-3 py-10 flex justify-center"><Loader2 className="animate-spin text-indigo-400"/></div> : availableSlots.length === 0 ? <div className="col-span-3 text-xs text-slate-600 italic p-4 text-center border border-dashed border-slate-800 rounded-xl">No slots available for this day.</div> : availableSlots.map(slot => (
+                                            <button 
+                                                key={slot.start} 
+                                                disabled={slot.isBusy}
+                                                onClick={() => setSelectedSlot(slot)} 
+                                                className={`py-3 rounded-xl text-[10px] font-black border transition-all ${slot.isBusy ? 'bg-slate-900 border-slate-800 text-slate-700 cursor-not-allowed grayscale' : selectedSlot?.start === slot.start ? 'bg-emerald-600 border-emerald-500 text-white shadow-xl shadow-emerald-500/20' : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-indigo-500'}`}
+                                            >
+                                                {slot.isBusy ? 'BUSY' : slot.start}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-slate-500 justify-center">
+                                        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Available</span>
+                                        <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-slate-800"></div> Busy</span>
+                                        <span className="flex items-center gap-1"><Coffee size={10} className="text-amber-500"/> 5m Break enforced</span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <div className="space-y-6">
                             <div><h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2"><Edit3 size={14}/> Session Topic</h3><textarea value={topic} onChange={e => setTopic(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-6 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner h-48" placeholder="What are your goals for this session?"/></div>
                             {bookingMember && <div className="bg-amber-900/20 border border-amber-500/30 p-4 rounded-2xl flex items-center gap-3"><Coins className="text-amber-400" size={20}/><div className="flex-1"><p className="text-xs font-bold text-white">Peer Session Fee: 50 Coins</p><p className="text-[9px] text-amber-200 opacity-60">Verified transfer via VoiceCoin Protocol.</p></div></div>}
+                            <button onClick={() => handleOpenBooking(currentUser)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-2"><UserPlus size={14}/> Book for Myself</button>
                         </div>
                     </div>
                     <div className="pt-6 border-t border-slate-800 flex justify-end items-center gap-6">
                         <span className="text-xs text-slate-500 font-bold uppercase italic">Finalizing Neural Link...</span>
-                        <button onClick={handleBookSession} disabled={isBooking || !selectedDate || !selectedTime || !topic} className="px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-30 disabled:grayscale">{isBooking ? <Loader2 className="animate-spin" /> : 'Authorize Session'}</button>
+                        <button onClick={handleBookSession} disabled={isBooking || !selectedDate || !selectedSlot || !topic} className="px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl transition-all hover:scale-105 active:scale-95 disabled:opacity-30 disabled:grayscale">{isBooking ? <Loader2 className="animate-spin" /> : 'Authorize Session'}</button>
                     </div>
                 </div>
             </div>
@@ -169,7 +250,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                                 <h3 className="text-xl font-bold text-white group-hover:text-indigo-400 transition-colors">{m.displayName}</h3>
                                 <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-1 mb-6">Verified Creator</p>
                                 <div className="flex flex-wrap justify-center gap-2 mb-8 h-10 overflow-hidden">{(m.interests || ['General AI', 'Research']).map(i => <span key={i} className="text-[9px] font-black uppercase bg-slate-950 text-slate-400 px-3 py-1 rounded-full border border-slate-800">#{i}</span>)}</div>
-                                <button onClick={() => handleOpenBooking(m)} className="w-full py-4 bg-slate-950 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all border border-slate-800 hover:border-indigo-500 shadow-lg flex items-center justify-center gap-2 active:scale-95"><Coins size={14}/> Book Peer Session</button>
+                                <button onClick={() => handleOpenBooking(m)} className="w-full py-4 bg-slate-950 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all border border-slate-800 hover:border-indigo-500 shadow-lg flex items-center justify-center gap-2 active:scale-95"><Coins size={14}/> View Availability</button>
                             </div>
                         </div>
                     ))}
@@ -214,6 +295,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({ currentUser, chann
                                         <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest border ${b.status === 'scheduled' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-900/50' : 'bg-amber-900/30 text-amber-400 border-amber-900/50'}`}>{b.status}</span>
                                     </div>
                                     <p className="text-sm text-slate-400 truncate italic">"{b.topic}"</p>
+                                    <p className="text-[10px] text-indigo-400 font-bold uppercase mt-1">{b.duration}m Session (Ends {b.endTime})</p>
                                 </div>
                                 <div className="flex gap-2">
                                     {b.status === 'scheduled' ? (

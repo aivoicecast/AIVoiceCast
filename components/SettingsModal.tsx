@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { UserProfile, ReaderTheme } from '../types';
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive } from 'lucide-react';
+import { UserProfile, ReaderTheme, UserAvailability } from '../types';
+// Fixed error: Added missing 'Info' to lucide-react imports
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive, Calendar, Clock, Info } from 'lucide-react';
 import { logUserActivity, getBillingHistory, createStripePortalSession, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut, getDriveToken, connectGoogleDrive } from '../services/authService';
 import { clearAudioCache } from '../services/tts';
@@ -24,12 +26,12 @@ const THEME_OPTIONS: { id: ReaderTheme, label: string, icon: any, desc: string }
     { id: 'sepia', label: 'Sepia', icon: Coffee, desc: 'Warm low-eye-strain' }
 ];
 
-const LANGUAGES = ['TypeScript', 'JavaScript', 'Python', 'C++', 'Java', 'Rust', 'Go', 'C#', 'Swift'];
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
   isOpen, onClose, user, onUpdateProfile, onUpgradeClick 
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'interests' | 'profile' | 'banking'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'interests' | 'profile' | 'availability' | 'banking'>('general');
   const [isSaving, setIsSaving] = useState(false);
   const [displayName, setDisplayName] = useState(user.displayName);
   const [defaultRepo, setDefaultRepo] = useState(user.defaultRepoUrl || '');
@@ -39,6 +41,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [recordingTarget, setRecordingTarget] = useState<'youtube' | 'drive'>(user.preferredRecordingTarget || 'drive');
   const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
   
+  // Availability State
+  const [availability, setAvailability] = useState<UserAvailability>(user.availability || {
+      days: [1, 2, 3, 4, 5],
+      startHour: 9,
+      endHour: 18,
+      enabled: true
+  });
+
   // LinkedIn Profile Simulation
   const [headline, setHeadline] = useState(user.headline || '');
   const [company, setCompany] = useState(user.company || '');
@@ -57,20 +67,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const currentTier = user.subscriptionTier || 'free';
   const isPaid = currentTier === 'pro';
 
-  const handleClearCache = () => {
-    if (confirm("Wipe local audio fragments? This can resolve playback issues.")) {
-      clearAudioCache();
-      alert("Neural cache purged.");
-    }
-  };
-
-  const handleLogout = async () => {
-    if (confirm("Sign out of AIVoiceCast?")) {
-      await signOut();
-      onClose();
-    }
-  };
-
   useEffect(() => {
       if (isOpen) {
           setSelectedInterests(user.interests || []);
@@ -87,6 +83,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setCompany(user.company || '');
           setLinkedinUrl(user.linkedinUrl || '');
           setResumeText(user.resumeText || '');
+          setAvailability(user.availability || { days: [1,2,3,4,5], startHour: 9, endHour: 18, enabled: true });
           setResumeUploadStatus('idle');
           setResumeStatusMsg('');
       }
@@ -177,7 +174,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               headline,
               company,
               linkedinUrl,
-              resumeText
+              resumeText,
+              availability
           };
 
           await updateUserProfile(user.uid, updateData);
@@ -191,6 +189,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           alert("Failed to save settings: " + e.message);
           setIsSaving(false);
       }
+  };
+
+  // Fixed error: Defined missing 'handleLogout' function
+  const handleLogout = async () => {
+    if (confirm("Sign out of AIVoiceCast?")) {
+        await signOut();
+        onClose();
+    }
+  };
+
+  const toggleDay = (day: number) => {
+    setAvailability(prev => ({
+        ...prev,
+        days: prev.days.includes(day) ? prev.days.filter(d => d !== day) : [...prev.days, day]
+    }));
   };
 
   const toggleInterest = (topic: string) => {
@@ -218,6 +231,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex border-b border-slate-800 bg-slate-900/50 shrink-0 overflow-x-auto no-scrollbar">
             <button onClick={() => setActiveTab('general')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'general' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>General</button>
             <button onClick={() => setActiveTab('profile')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'profile' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Professional</button>
+            <button onClick={() => setActiveTab('availability')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'availability' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Availability</button>
             <button onClick={() => setActiveTab('interests')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'interests' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Interests</button>
             <button onClick={() => setActiveTab('banking')} className={`flex-1 py-3 px-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'banking' ? 'border-indigo-500 text-white bg-slate-800' : 'border-transparent text-slate-400 hover:text-slate-200'}`}>Check Profile</button>
         </div>
@@ -393,6 +407,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 )}
                             </div>
                             <input type="file" ref={resumeInputRef} className="hidden" accept=".pdf,.txt" onChange={handleResumeUpload} />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'availability' && (
+                <div className="space-y-8 animate-fade-in">
+                    <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-center gap-3">
+                        <Calendar className="text-indigo-400" size={24}/>
+                        <div>
+                            <h3 className="text-sm font-bold text-white">Office Hours</h3>
+                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-0.5">Control when peers can book technical sessions with you</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        <div className="flex items-center justify-between p-4 bg-slate-950 border border-slate-800 rounded-2xl">
+                            <div><p className="text-sm font-bold text-white">Accept Appointments</p><p className="text-[10px] text-slate-500 uppercase">Enable peer discovery for mentorship</p></div>
+                            <button onClick={() => setAvailability({...availability, enabled: !availability.enabled})} className={`w-12 h-6 rounded-full transition-all relative ${availability.enabled ? 'bg-indigo-600' : 'bg-slate-700'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${availability.enabled ? 'right-1' : 'left-1'}`}></div></button>
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Available Days</label>
+                            <div className="flex gap-2">
+                                {DAYS.map((day, i) => (
+                                    <button key={day} onClick={() => toggleDay(i)} className={`flex-1 py-3 rounded-xl border text-xs font-black transition-all ${availability.days.includes(i) ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{day.charAt(0)}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><Clock size={12}/> Daily Start</label>
+                                <select value={availability.startHour} onChange={e => setAvailability({...availability, startHour: parseInt(e.target.value)})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-indigo-500">
+                                    {Array.from({length: 24}).map((_, i) => <option key={i} value={i}>{i.toString().padStart(2, '0')}:00</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><Clock size={12}/> Daily End</label>
+                                <select value={availability.endHour} onChange={e => setAvailability({...availability, endHour: parseInt(e.target.value)})} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-indigo-500">
+                                    {Array.from({length: 24}).map((_, i) => <option key={i} value={i}>{i.toString().padStart(2, '0')}:00</option>)}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="p-4 bg-slate-950 border border-indigo-500/10 rounded-2xl text-[10px] text-slate-500 leading-relaxed font-medium">
+                            <Info size={14} className="inline mr-2 mb-0.5 text-indigo-400"/>
+                            AIVoiceCast enforces a 5-minute cooldown between sessions. Bookings are aligned to :05 and :35 minute starts.
                         </div>
                     </div>
                 </div>

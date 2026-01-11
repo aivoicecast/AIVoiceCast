@@ -11,6 +11,13 @@ export interface TranscriptItem {
   timestamp: number;
 }
 
+export interface UserAvailability {
+  days: number[]; // 0-6
+  startHour: number; // 0-23
+  endHour: number; // 0-23
+  enabled: boolean;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -36,6 +43,7 @@ export interface UserProfile {
   nextCheckNumber?: number;
   defaultRepoUrl?: string;
   defaultLanguage?: string; 
+  availability?: UserAvailability;
   checkTemplate?: {
       bankName: string;
       routingNumber: string;
@@ -483,8 +491,10 @@ export interface Booking {
   mentorId: string;
   mentorName: string;
   mentorImage?: string;
-  date: string;
-  time: string;
+  date: string; // ISO Date String YYYY-MM-DD
+  time: string; // Start Time HH:mm
+  duration: 25 | 55;
+  endTime: string; // HH:mm
   topic: string;
   invitedEmail?: string;
   status: 'pending' | 'scheduled' | 'completed' | 'cancelled' | 'rejected';
