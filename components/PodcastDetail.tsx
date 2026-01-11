@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile } from '../types';
-import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2 } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { synthesizeSpeech } from '../services/tts';
 import { OFFLINE_CHANNEL_ID, OFFLINE_CURRICULUM, OFFLINE_LECTURES } from '../utils/offlineContent';
@@ -10,7 +10,8 @@ import { cacheLectureScript, getCachedLectureScript } from '../utils/db';
 import { publishChannelToFirestore } from '../services/firestoreService';
 import { getDriveToken } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive, getDriveFileSharingLink } from '../services/googleDriveService';
-import { getGlobalAudioContext, audioBufferToWavBlob, concatAudioBuffers } from '../utils/audioUtils';
+// Added warmUpAudioContext to the imports from audioUtils
+import { getGlobalAudioContext, audioBufferToWavBlob, concatAudioBuffers, registerAudioOwner, stopAllPlatformAudio, logAudioEvent, isAudioOwner, getGlobalAudioGeneration, warmUpAudioContext } from '../utils/audioUtils';
 import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -38,7 +39,9 @@ const UI_TEXT = {
     typesetting: "Typesetting Pages...", syncing: "Saving to Drive...",
     toc: "Table of Contents", prev: "Prev Lesson", next: "Next Lesson",
     noLesson: "No Lesson Selected", chooseChapter: "Choose a chapter and lesson from the menu.",
-    synthesizingAudio: "Synthesizing Audio...", reading: "Reading Material", homework: "Homework & Exercises"
+    synthesizingAudio: "Synthesizing Audio...", reading: "Reading Material", homework: "Homework & Exercises",
+    playAudio: "Listen to Lecture", pauseAudio: "Pause Audio", stopAudio: "Stop Audio",
+    buffering: "Neural Synthesis..."
   },
   zh: {
     back: "返回", curriculum: "课程大纲", selectTopic: "选择一个课程开始阅读",
@@ -49,7 +52,9 @@ const UI_TEXT = {
     typesetting: "正在排版页面...", syncing: "正在同步到 Drive...",
     toc: "目录", prev: "上一节", next: "下一节",
     noLesson: "未选择课程", chooseChapter: "请从菜单中选择章节和课程。",
-    synthesizingAudio: "正在合成音频...", reading: "延伸阅读", homework: "课后作业"
+    synthesizingAudio: "正在合成音频...", reading: "延伸阅读", homework: "课后作业",
+    playAudio: "播放讲座音频", pauseAudio: "暂停播放", stopAudio: "停止播放",
+    buffering: "神经合成中..."
   }
 };
 
@@ -61,6 +66,15 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
 
+  // Audio Playback State
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [currentSectionIndex, setCurrentSectionIndex] = useState(-1);
+  const playbackSessionRef = useRef(0);
+  const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  // useMemo is now imported from react
+  const MY_TOKEN = useMemo(() => `PodcastDetail:${channel.id}:${activeSubTopicId}`, [channel.id, activeSubTopicId]);
+
   const [chapters, setChapters] = useState<Chapter[]>(() => {
     if (channel.chapters && channel.chapters.length > 0) return channel.chapters;
     if (channel.id === OFFLINE_CHANNEL_ID) return OFFLINE_CURRICULUM;
@@ -70,7 +84,30 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
   
   const [expandedChapterId, setExpandedChapterId] = useState<string | null>(null);
 
+  const stopPlaybackInternal = useCallback(() => {
+    playbackSessionRef.current++;
+    setIsPlaying(false);
+    setIsBuffering(false);
+    setCurrentSectionIndex(-1);
+    
+    activeSourcesRef.current.forEach(source => {
+        try { source.stop(); source.disconnect(); } catch(e) {}
+    });
+    activeSourcesRef.current.clear();
+    
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+        stopPlaybackInternal();
+    };
+  }, [stopPlaybackInternal]);
+
   const handleTopicClick = async (topicTitle: string, subTopicId?: string) => {
+    stopPlaybackInternal();
     setActiveSubTopicId(subTopicId || null);
     setActiveLecture(null);
     setIsLoadingLecture(true);
@@ -81,6 +118,79 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
         const script = await generateLectureScript(topicTitle, channel.description, language);
         if (script) { setActiveLecture(script); await cacheLectureScript(cacheKey, script); }
     } finally { setIsLoadingLecture(false); }
+  };
+
+  const handlePlayLecture = async () => {
+    if (!activeLecture) return;
+    if (isPlaying) {
+        stopAllPlatformAudio(`ManualPauseDetail:${channel.id}`);
+        return;
+    }
+
+    const ctx = getGlobalAudioContext();
+    if (ctx.state === 'suspended') {
+        // warmUpAudioContext is now imported from audioUtils
+        await warmUpAudioContext(ctx);
+    }
+
+    const localSessionId = ++playbackSessionRef.current;
+    const targetGen = registerAudioOwner(MY_TOKEN, stopPlaybackInternal);
+    
+    setIsPlaying(true);
+    setIsBuffering(true);
+
+    try {
+        const hostVoice = channel.voiceName || 'Puck';
+        const studentVoice = 'Zephyr';
+
+        for (let i = 0; i < activeLecture.sections.length; i++) {
+            if (localSessionId !== playbackSessionRef.current || targetGen !== getGlobalAudioGeneration()) break;
+            
+            const section = activeLecture.sections[i];
+            const voice = section.speaker === 'Teacher' ? hostVoice : studentVoice;
+            
+            setCurrentSectionIndex(i);
+            setIsBuffering(true);
+            
+            const result = await synthesizeSpeech(section.text, voice, ctx);
+            
+            if (localSessionId !== playbackSessionRef.current || targetGen !== getGlobalAudioGeneration()) break;
+            setIsBuffering(false);
+
+            if (result.buffer) {
+                await new Promise<void>((resolve) => {
+                    const source = ctx.createBufferSource();
+                    source.buffer = result.buffer;
+                    source.connect(ctx.destination);
+                    activeSourcesRef.current.add(source);
+                    source.onended = () => {
+                        activeSourcesRef.current.delete(source);
+                        resolve();
+                    };
+                    source.start(0);
+                });
+            } else {
+                // Fallback to system voice if synthesis fails
+                await new Promise<void>((resolve) => {
+                    const utterance = new SpeechSynthesisUtterance(section.text);
+                    utterance.onend = () => resolve();
+                    utterance.onerror = () => resolve();
+                    window.speechSynthesis.speak(utterance);
+                });
+            }
+            
+            // Short breath between sections
+            await new Promise(r => setTimeout(r, 400));
+        }
+    } catch (e) {
+        console.error("Lecture playback failed", e);
+    } finally {
+        if (localSessionId === playbackSessionRef.current) {
+            setIsPlaying(false);
+            setIsBuffering(false);
+            setCurrentSectionIndex(-1);
+        }
+    }
   };
 
   const handleShareLecture = (e: React.MouseEvent) => {
@@ -95,7 +205,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
     <div className="h-full bg-slate-950 text-slate-100 flex flex-col relative overflow-y-auto pb-24">
       <div className="relative h-48 md:h-64 w-full shrink-0">
         <div className="absolute inset-0">
-            <img src={channel.imageUrl} className="w-full h-full object-cover opacity-40"/>
+            <img src={channel.imageUrl} className="w-full h-full object-cover opacity-40" alt={channel.title}/>
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent" />
         </div>
         <div className="absolute top-4 left-4 z-20 flex items-center gap-3">
@@ -122,12 +232,51 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({ channel, onBack, l
           {isLoadingLecture ? (<div className="h-64 flex flex-col items-center justify-center p-12 text-center bg-slate-900/50 rounded-2xl animate-pulse"><Loader2 size={40} className="text-indigo-500 animate-spin mb-4" /><h3 className="text-lg font-bold text-white">{t.generating}</h3></div>) : activeLecture ? (
             <div className="space-y-6 animate-fade-in">
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div><h2 className="text-xl font-bold text-white">{activeLecture.topic}</h2><p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">{t.lectureTitle}</p></div>
-                    <button onClick={handleShareLecture} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-xs flex items-center gap-2 transition-all shadow-lg"><Share2 size={14}/> Share Lecture URI</button>
+                    <div className="flex-1 min-w-0">
+                        <h2 className="text-xl font-bold text-white truncate">{activeLecture.topic}</h2>
+                        <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1 flex items-center gap-2">
+                            {isPlaying && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>}
+                            {t.lectureTitle} 
+                            {isPlaying && <span className="text-indigo-400">• Session Active</span>}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button 
+                            onClick={handlePlayLecture}
+                            className={`px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 transition-all shadow-lg active:scale-95 ${isPlaying ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}`}
+                        >
+                            {isBuffering ? (
+                                <Loader2 size={16} className="animate-spin" />
+                            ) : isPlaying ? (
+                                <Square size={16} fill="currentColor" />
+                            ) : (
+                                <Play size={16} fill="currentColor" />
+                            )}
+                            <span>{isBuffering ? t.buffering : isPlaying ? t.stopAudio : t.playAudio}</span>
+                        </button>
+                        <button onClick={handleShareLecture} className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-all shadow-lg" title="Share URI"><Share2 size={18}/></button>
+                    </div>
                 </div>
                 
+                {isPlaying && currentSectionIndex >= 0 && (
+                    <div className="bg-indigo-900/20 border border-indigo-500/30 rounded-2xl p-4 flex items-center gap-4 animate-fade-in">
+                        <div className="p-3 bg-indigo-600 rounded-xl text-white shadow-lg">
+                            <Volume2 size={24} className="animate-pulse"/>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Now Speaking</p>
+                            <p className="text-sm font-bold text-white truncate">
+                                {activeLecture.sections[currentSectionIndex].speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}
+                            </p>
+                        </div>
+                        <div className="text-[10px] font-mono text-slate-500">
+                            {currentSectionIndex + 1} / {activeLecture.sections.length}
+                        </div>
+                    </div>
+                )}
+
                 <MarkdownView 
-                    content={`# ${activeLecture.topic}\n\n${activeLecture.sections.map(s => `**${s.speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}**: ${s.text}`).join('\n\n')}`}
+                    content={`# ${activeLecture.topic}\n\n${activeLecture.sections.map((s, idx) => `**${s.speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}**: ${s.text} ${idx === currentSectionIndex ? '  🔊' : ''}`).join('\n\n')}`}
                     initialTheme={userProfile?.preferredReaderTheme || 'slate'}
                     showThemeSwitcher={true}
                 />
