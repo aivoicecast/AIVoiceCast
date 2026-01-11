@@ -8,16 +8,10 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { generateSecureId } from '../utils/idUtils';
 import CodeStudio from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
-import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, FileSearch, RefreshCcw, HeartHandshake, Speech, Send, History, Compass } from 'lucide-react';
+import { ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, SidebarClose, Code, MessageSquare, Sparkles, Languages, Clock, Camera, Bot, CloudUpload, Trophy, BarChart3, ClipboardCheck, Star, Upload, FileUp, Linkedin, FileCheck, Edit3, BookOpen, Lightbulb, Target, ListChecks, MessageCircleCode, GraduationCap, Lock, Globe, ExternalLink, PlayCircle, RefreshCw, FileDown, Briefcase, Package, Code2, StopCircle, Youtube, AlertCircle, Eye, EyeOff, SaveAll, Wifi, WifiOff, Activity, ShieldAlert, Timer, FastForward, ClipboardList, Layers, Bug, Flag, Minus, Fingerprint, FileSearch, RefreshCcw, HeartHandshake, Speech, Send, History, Compass, Square, CheckSquare } from 'lucide-react';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext, stopAllPlatformAudio } from '../utils/audioUtils';
 
-interface MockInterviewProps {
-  onBack: () => void;
-  userProfile: UserProfile | null;
-  onStartLiveSession: (channel: Channel, context?: string) => void;
-}
-
-interface InterviewReport {
+interface MockInterviewReport {
   score: number;
   technicalSkills: string;
   communication: string;
@@ -77,6 +71,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [publicInterviews, setPublicInterviews] = useState<MockInterviewRecording[]>([]);
   const [loading, setLoading] = useState(true);
   
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
   const [isRecording, setIsRecording] = useState(false);
   const [isAiConnected, setIsAiConnected] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
@@ -108,7 +105,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const activeCodeFilesRef = useRef<CodeFile[]>([]);
 
   const [activeRecording, setActiveRecording] = useState<MockInterviewRecording | null>(null);
-  const [report, setReport] = useState<InterviewReport | null>(null);
+  const [report, setReport] = useState<MockInterviewReport | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const liveServiceRef = useRef<GeminiLiveService | null>(null);
@@ -194,6 +191,49 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     } finally { setLoading(false); }
   };
 
+  const handleToggleSelect = (id: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      const next = new Set(selectedIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setSelectedIds(next);
+  };
+
+  const handleSelectAll = () => {
+      const list = hubTab === 'history' ? myInterviews : publicInterviews;
+      if (selectedIds.size === list.length) {
+          setSelectedIds(new Set());
+      } else {
+          setSelectedIds(new Set(list.map(i => i.id)));
+      }
+  };
+
+  const handleDeleteSelected = async () => {
+      if (selectedIds.size === 0) return;
+      const count = selectedIds.size;
+      const confirmMsg = `Permanently delete ${count} selected technical evaluations? This will remove records from the cloud ledger.`;
+      if (!confirm(confirmMsg)) return;
+
+      setIsBulkDeleting(true);
+      try {
+          const idsToPurge = Array.from(selectedIds);
+          for (const id of idsToPurge) {
+              await deleteInterview(id);
+          }
+          const localBackupsRaw = localStorage.getItem('mock_interview_backups') || '[]';
+          const localBackups = JSON.parse(localBackupsRaw) as MockInterviewRecording[];
+          const nextLocal = localBackups.filter(b => !selectedIds.has(b.id));
+          localStorage.setItem('mock_interview_backups', JSON.stringify(nextLocal));
+          
+          await loadInterviews();
+          setSelectedIds(new Set());
+      } catch (e: any) {
+          alert("Purge partially failed: " + e.message);
+      } finally {
+          setIsBulkDeleting(false);
+      }
+  };
+
   const handleSendTextMessage = (text: string) => {
     if (liveServiceRef.current && isAiConnected) {
         setIsAiThinking(true);
@@ -217,17 +257,26 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     const backoffTime = isAuto ? Math.min(2000 * Math.pow(2, reconnectAttemptsRef.current), 10000) : 0;
     if (isAuto) logApi(`Neural Link Retrying in ${backoffTime}ms...`, "warn");
 
+    // Capture current state to avoid closure issues and help TS inference
+    const currentView = view;
+    const currentMode = mode;
+    const currentCoachingTranscript = coachingTranscript;
+    const currentTranscript = transcript;
+    const currentReport = report;
+    const currentDisplayName = currentUser?.displayName || 'Candidate';
+
     setTimeout(async () => {
       if (isEndingRef.current) return;
       
-      const activeTranscript = view === 'coaching' ? coachingTranscript : transcript;
-      const historyText = activeTranscript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
+      const activeTranscriptList = currentView === 'coaching' ? currentCoachingTranscript : currentTranscript;
+      const historyText = activeTranscriptList.map(t => `${String(t.role).toUpperCase()}: ${t.text}`).join('\n');
       
-      let prompt = "";
-      if (view === 'coaching') {
-          prompt = `RESUMING COACHING SESSION. You are a supportive Senior Career Coach. Reviewing report for ${currentUser?.displayName}. Evaluation Score: ${report?.score}. Summary: ${report?.summary}. History recap: ${historyText.substring(historyText.length - 2000)}`;
+      let prompt: string = "";
+      if (currentView === 'coaching') {
+          prompt = `RESUMING COACHING SESSION. You are a supportive Senior Career Coach. Reviewing report for ${currentDisplayName}. Evaluation Score: ${currentReport?.score}. Summary: ${currentReport?.summary}. History recap: ${historyText.substring(Math.max(0, historyText.length - 2000))}`;
       } else {
-          prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${mode}. History recap: ${historyText.substring(historyText.length - 2000)}. IMPORTANT: Monitor and acknowledge messages typed in the chat box. Use 'create_interview_file' to provide a new technical challenge to the candidate without overwriting previous work. Use 'update_active_file' to modify the focused file.`;
+          // Fix: Ensuring currentMode and historyText are string literals within the template to avoid unknown issues
+          prompt = `RESUMING INTERVIEW SESSION. Role: Senior Interviewer. Mode: ${String(currentMode)}. History recap: ${historyText.substring(Math.max(0, historyText.length - 2000))}. IMPORTANT: Monitor and acknowledge messages typed in the chat box. Use 'create_interview_file' to provide a new technical challenge to the candidate without overwriting previous work. Use 'update_active_file' to modify the focused file.`;
       }
       
       const service = new GeminiLiveService();
@@ -236,7 +285,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
       try {
         logApi(`Re-linking AI...`);
-        await service.connect(view === 'coaching' ? 'Zephyr' : 'Software Interview Voice', prompt, {
+        await service.connect(currentView === 'coaching' ? 'Zephyr' : 'Software Interview Voice', prompt, {
           onOpen: () => {
             if (activeServiceIdRef.current !== service.id) return;
             setIsAiConnected(true);
@@ -256,7 +305,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           onTranscript: (text, isUser) => {
             if (activeServiceIdRef.current !== service.id) return;
             if (!isUser) setIsAiThinking(false);
-            const setter = view === 'coaching' ? setCoachingTranscript : setTranscript;
+            const setter = currentView === 'coaching' ? setCoachingTranscript : setTranscript;
             setter(prev => {
               const role = isUser ? 'user' : 'ai';
               if (prev.length > 0 && prev[prev.length - 1].role === role) {
@@ -568,7 +617,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     const projectFilesContext = activeCodeFilesRef.current.map(f => `FILE: ${f.name}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
     const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
 
-    const tryEvaluate = async (attempt: number): Promise<InterviewReport | null> => {
+    const tryEvaluate = async (attempt: number): Promise<MockInterviewReport | null> => {
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const prompt = `AUDIT REPORT: Technical Interview. 
@@ -623,26 +672,37 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     if (synthesisIntervalRef.current) clearInterval(synthesisIntervalRef.current);
   };
 
-  const renderInterviewsList = (list: MockInterviewRecording[]) => (
+  const renderInterviewsList = (list: MockInterviewRecording[], isMine: boolean) => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {list.map(rec => (
-            <div key={rec.id} onClick={() => { setActiveRecording(rec); setReport(JSON.parse(rec.feedback || '{}')); setView('report'); }} className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-6 hover:border-indigo-500/50 transition-all group cursor-pointer shadow-xl relative overflow-hidden">
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-bold">{rec.userName[0]}</div>
-                        <div>
-                            <h4 className="font-bold text-white text-sm truncate max-w-[120px]">@{rec.userName}</h4>
-                            <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{new Date(rec.timestamp).toLocaleDateString()}</p>
+        {list.map(rec => {
+            const isSelected = selectedIds.has(rec.id);
+            return (
+                <div key={rec.id} onClick={() => { setActiveRecording(rec); setReport(JSON.parse(rec.feedback || '{}')); setView('report'); }} className={`bg-slate-900 border ${isSelected ? 'border-indigo-500 bg-indigo-900/10' : 'border-slate-800'} rounded-[2.5rem] p-6 hover:border-indigo-500/50 transition-all group cursor-pointer shadow-xl relative overflow-hidden`}>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            {isMine && (
+                                <button 
+                                    onClick={(e) => handleToggleSelect(rec.id, e)}
+                                    className={`p-1 rounded transition-colors ${isSelected ? 'text-indigo-400' : 'text-slate-700 hover:text-slate-500'}`}
+                                >
+                                    {isSelected ? <CheckSquare size={20}/> : <Square size={20}/>}
+                                </button>
+                            )}
+                            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">{rec.userName[0]}</div>
+                            <div className="min-w-0">
+                                <h4 className="font-bold text-white text-sm truncate max-w-[100px]">@{rec.userName}</h4>
+                                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{new Date(rec.timestamp).toLocaleDateString()}</p>
+                            </div>
                         </div>
+                        {rec.visibility === 'public' && <Globe size={14} className="text-emerald-400"/>}
                     </div>
-                    {rec.visibility === 'public' && <Globe size={14} className="text-emerald-400"/>}
+                    <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span>
+                        <span className="text-[9px] font-mono text-slate-700">ID: {rec.id.substring(0, 6)}</span>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black uppercase bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30">{rec.mode.replace('_', ' ')}</span>
-                    <span className="text-[9px] font-mono text-slate-700">ID: {rec.id.substring(0, 6)}</span>
-                </div>
-            </div>
-        ))}
+            );
+        })}
     </div>
   );
 
@@ -653,7 +713,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           <button onClick={() => view === 'hub' ? onBack() : setView('hub')} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400"><ArrowLeft size={20} /></button>
           <div>
             <h1 className="text-lg font-bold text-white flex items-center gap-2">
-                <Video className="text-red-500" /> 
+                <Video className="text-red-500" size={20} /> 
                 Mock Interview
             </h1>
             {(view === 'interview' || view === 'coaching') && (
@@ -699,20 +759,41 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
             <div className="space-y-8">
               <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 w-fit mx-auto sm:mx-0 shadow-lg">
-                <button onClick={() => setHubTab('history')} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'history' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><History size={14}/> My History</button>
-                <button onClick={() => setHubTab('explore')} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'explore' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><Compass size={14}/> Global Discovery</button>
+                <button onClick={() => { setHubTab('history'); setSelectedIds(new Set()); }} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'history' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><History size={14}/> My History</button>
+                <button onClick={() => { setHubTab('explore'); setSelectedIds(new Set()); }} className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all ${hubTab === 'explore' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-white'}`}><Compass size={14}/> Global Discovery</button>
               </div>
               
               <div className="animate-fade-in-up">
                 {hubTab === 'history' ? (
                   <>
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
                         <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Verified Session History</h3>
-                        <button onClick={loadInterviews} className="text-[10px] font-black text-indigo-400 flex items-center gap-1.5 hover:text-white transition-colors uppercase tracking-widest">
-                            <RefreshCw size={12} className={loading ? 'animate-spin' : ''}/> Sync Ledger
-                        </button>
+                        
+                        <div className="flex items-center gap-2">
+                            {myInterviews.length > 0 && (
+                                <div className={`flex items-center gap-3 p-2 rounded-2xl border transition-all duration-300 ${selectedIds.size > 0 ? 'bg-indigo-600 border-indigo-400 shadow-xl' : 'bg-slate-900 border-slate-800'}`}>
+                                    <button onClick={handleSelectAll} className="flex items-center gap-2 text-[10px] font-black text-white uppercase tracking-widest px-2 hover:opacity-80">
+                                        {selectedIds.size === myInterviews.length ? <CheckSquare size={16}/> : <Square size={16}/>}
+                                        <span>{selectedIds.size === myInterviews.length ? 'Deselect' : 'All'}</span>
+                                    </button>
+                                    {selectedIds.size > 0 && (
+                                        <button 
+                                            onClick={handleDeleteSelected} 
+                                            disabled={isBulkDeleting}
+                                            className="flex items-center gap-1.5 px-4 py-1 bg-white text-indigo-600 hover:bg-red-50 hover:text-red-600 rounded-xl text-[10px] font-black uppercase transition-all disabled:opacity-50"
+                                        >
+                                            {isBulkDeleting ? <Loader2 size={12} className="animate-spin"/> : <Trash2 size={12}/>}
+                                            <span>Purge ({selectedIds.size})</span>
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                            <button onClick={loadInterviews} className="p-3 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 hover:text-indigo-400 transition-colors">
+                                <RefreshCw size={16} className={loading ? 'animate-spin' : ''}/>
+                            </button>
+                        </div>
                     </div>
-                    {loading ? <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : myInterviews.length === 0 ? <div className="py-20 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">No archived ledger entries.</div> : renderInterviewsList(myInterviews)}
+                    {loading ? <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : myInterviews.length === 0 ? <div className="py-20 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">No archived ledger entries.</div> : renderInterviewsList(myInterviews, true)}
                   </>
                 ) : (
                   <>
@@ -722,7 +803,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             <RefreshCw size={12} className={loading ? 'animate-spin' : ''}/> Refresh Discovery
                         </button>
                     </div>
-                    {loading ? <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : publicInterviews.length === 0 ? <div className="py-20 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">No public evaluations discovered yet.</div> : renderInterviewsList(publicInterviews)}
+                    {loading ? <div className="py-20 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : publicInterviews.length === 0 ? <div className="py-20 text-center text-slate-500 border border-dashed border-slate-800 rounded-3xl">No public evaluations discovered yet.</div> : renderInterviewsList(publicInterviews, false)}
                   </>
                 )}
               </div>
