@@ -25,13 +25,16 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
 }) => {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
 
+  const ADMIN_EMAILS = ['shengliang.song.ai@gmail.com', 'shengliang.song@gmail.com'];
+  const isSuperAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
+
   // DEBUG: Permission Check Logging
   useEffect(() => {
     if (currentUser) {
       console.log(`[Neural Debug] Table check for: ${currentUser.email}`);
-      console.log(`[Neural Debug] Is Super Admin? ${currentUser.email === 'shengliang.song.ai@gmail.com'}`);
+      console.log(`[Neural Debug] Is Super Admin? ${isSuperAdmin}`);
     }
-  }, [currentUser]);
+  }, [currentUser, isSuperAdmin]);
 
   const renderSortIcon = (key: SortKey) => {
     if (sortConfig.key !== key) return <div className="w-4 h-4 opacity-0 group-hover:opacity-30"><ArrowDown size={14} /></div>;
@@ -68,8 +71,6 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
       e.stopPropagation();
       if (onEdit) onEdit(channel);
   };
-
-  const isSuperAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl animate-fade-in">

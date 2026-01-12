@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile } from '../types';
 import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, RefreshCcw, Wand2, Edit3, Save, ShieldCheck } from 'lucide-react';
@@ -17,10 +16,6 @@ import { ShareModal } from './ShareModal';
 interface PodcastDetailProps {
   channel: Channel;
   onBack: () => void;
-  /**
-   * Fixed: Corrected parameter order for onStartLiveSession to match handleStartLiveSession in App.tsx.
-   * bookingId (string) must come before videoEnabled/cameraEnabled (boolean) to satisfy the type check on line 527 of App.tsx.
-   */
   onStartLiveSession: (
     channel: Channel, 
     context?: string, 
@@ -31,7 +26,7 @@ interface PodcastDetailProps {
     activeSegment?: { index: number, lectureId: string }
   ) => void;
   language: 'en' | 'zh';
-  onEditChannel?: () => void; 
+  onEditChannel?: (channel: Channel) => void; 
   onViewComments?: () => void;
   onUpdateChannel?: (updated: Channel) => void;
   currentUser: any;
@@ -50,7 +45,8 @@ const UI_TEXT = {
     regenCurriculumDesc: "AI is re-mapping the entire curriculum...",
     regenLecture: "Re-synthesize Selected Lecture",
     editScript: "Edit Script Manually",
-    saveScript: "Save Script Override"
+    saveScript: "Save Script Override",
+    editChannel: "Edit Channel Settings"
   },
   zh: {
     back: "返回", curriculum: "课程大纲", selectTopic: "选择一个课程开始阅读",
@@ -63,12 +59,13 @@ const UI_TEXT = {
     regenCurriculumDesc: "AI 正在重新规划整个课程大纲...",
     regenLecture: "重新合成当前讲座",
     editScript: "手动编辑文稿",
-    saveScript: "保存文稿修改"
+    saveScript: "保存文稿修改",
+    editChannel: "编辑频道设置"
   }
 };
 
 export const PodcastDetail: React.FC<PodcastDetailProps> = ({ 
-    channel, onBack, language, currentUser, onStartLiveSession, userProfile, onUpdateChannel 
+    channel, onBack, language, currentUser, onStartLiveSession, userProfile, onUpdateChannel, onEditChannel
 }) => {
   const t = UI_TEXT[language];
   const [activeLecture, setActiveLecture] = useState<GeneratedLecture | null>(null);
@@ -92,7 +89,8 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const MY_TOKEN = useMemo(() => `PodcastDetail:${channel.id}:${activeSubTopicId}`, [channel.id, activeSubTopicId]);
 
-  const isAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
+  const ADMIN_EMAILS = ['shengliang.song.ai@gmail.com', 'shengliang.song@gmail.com'];
+  const isAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
   const isOwner = currentUser && (channel.ownerId === currentUser.uid || isAdmin);
 
   // DEBUG: Detail Permission Logging
@@ -323,6 +321,17 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                 <div className="px-4 py-2 bg-indigo-600/30 backdrop-blur-md rounded-full border border-indigo-500/30 text-[10px] font-black uppercase tracking-widest text-indigo-300 flex items-center gap-2 shadow-xl">
                     <ShieldCheck size={14}/> Neural Architect Mode Active
                 </div>
+            )}
+        </div>
+        <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+            {isOwner && onEditChannel && (
+                <button 
+                  onClick={() => onEditChannel(channel)}
+                  className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-900/40 transition-all active:scale-95 border border-indigo-400/50"
+                >
+                    <Edit3 size={16}/>
+                    <span className="hidden sm:inline">{t.editChannel}</span>
+                </button>
             )}
         </div>
       </div>
