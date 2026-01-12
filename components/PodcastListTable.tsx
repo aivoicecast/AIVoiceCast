@@ -74,6 +74,7 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
           </thead>
           <tbody className="divide-y divide-slate-800 bg-slate-900/50">
             {channels.map((channel) => {
+              // Super Admin Access for shengliang.song.ai@gmail.com
               const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
               const isThisRegenerating = regeneratingId === channel.id;
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile } from '../types';
-import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, RefreshCcw, Wand2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, RefreshCcw, Wand2, Edit3, Save, ShieldCheck } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { generateCurriculum } from '../services/curriculumGenerator';
 import { synthesizeSpeech } from '../services/tts';
@@ -16,7 +16,7 @@ import { ShareModal } from './ShareModal';
 interface PodcastDetailProps {
   channel: Channel;
   onBack: () => void;
-  onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, videoEnabled?: boolean, cameraEnabled?: boolean, bookingId?: string, activeSegment?: { index: number, lectureId: string }) => void;
+  onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
   language: 'en' | 'zh';
   onEditChannel?: () => void; 
   onViewComments?: () => void;
@@ -35,7 +35,9 @@ const UI_TEXT = {
     regenerating: "Re-synthesizing...",
     regenCurriculum: "Re-structure Curriculum",
     regenCurriculumDesc: "AI is re-mapping the entire curriculum...",
-    regenLecture: "Re-synthesize Selected Lecture"
+    regenLecture: "Re-synthesize Selected Lecture",
+    editScript: "Edit Script Manually",
+    saveScript: "Save Script Override"
   },
   zh: {
     back: "返回", curriculum: "课程大纲", selectTopic: "选择一个课程开始阅读",
@@ -46,7 +48,9 @@ const UI_TEXT = {
     regenerating: "正在重构...",
     regenCurriculum: "重构课程大纲",
     regenCurriculumDesc: "AI 正在重新规划整个课程大纲...",
-    regenLecture: "重新合成当前讲座"
+    regenLecture: "重新合成当前讲座",
+    editScript: "手动编辑文稿",
+    saveScript: "保存文稿修改"
   }
 };
 
@@ -62,6 +66,10 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   const [activeSubTopicTitle, setActiveSubTopicTitle] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
+
+  // Manual Editing State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editBuffer, setEditBuffer] = useState('');
 
   // Audio Playback State
   const [isPlaying, setIsPlaying] = useState(false);
@@ -104,6 +112,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
 
   const handleTopicClick = async (topicTitle: string, subTopicId?: string) => {
     stopPlaybackInternal();
+    setIsEditing(false);
     setActiveSubTopicId(subTopicId || null);
     setActiveSubTopicTitle(topicTitle);
     setActiveLecture(null);
@@ -111,9 +120,17 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
     try {
         const cacheKey = `lecture_${channel.id}_${subTopicId}_${language}`;
         const cached = await getCachedLectureScript(cacheKey);
-        if (cached) { setActiveLecture(cached); return; }
+        if (cached) { 
+            setActiveLecture(cached); 
+            setEditBuffer(JSON.stringify(cached, null, 2));
+            return; 
+        }
         const script = await generateLectureScript(topicTitle, channel.description, language, channel.id, channel.voiceName);
-        if (script) { setActiveLecture(script); await cacheLectureScript(cacheKey, script); }
+        if (script) { 
+            setActiveLecture(script); 
+            setEditBuffer(JSON.stringify(script, null, 2));
+            await cacheLectureScript(cacheKey, script); 
+        }
     } finally { setIsLoadingLecture(false); }
   };
 
@@ -127,6 +144,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
     if (!confirm(confirmMsg)) return;
 
     stopPlaybackInternal();
+    setIsEditing(false);
     setIsRegenerating(true);
     try {
         const script = await generateLectureScript(activeSubTopicTitle, channel.description, language, channel.id, channel.voiceName);
@@ -134,12 +152,27 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
             const cacheKey = `lecture_${channel.id}_${activeSubTopicId}_${language}`;
             await cacheLectureScript(cacheKey, script);
             setActiveLecture(script);
+            setEditBuffer(JSON.stringify(script, null, 2));
         }
     } catch (e) {
         console.error("Regeneration failed", e);
     } finally {
         setIsRegenerating(false);
     }
+  };
+
+  const handleSaveManualEdit = async () => {
+      if (!activeSubTopicId) return;
+      try {
+          const parsed = JSON.parse(editBuffer);
+          setActiveLecture(parsed);
+          const cacheKey = `lecture_${channel.id}_${activeSubTopicId}_${language}`;
+          await cacheLectureScript(cacheKey, parsed);
+          setIsEditing(false);
+          alert("Lecture script manually updated.");
+      } catch (e) {
+          alert("Invalid JSON format. Please ensure the script matches the expected structure.");
+      }
   };
 
   const handleRegenerateCurriculum = async () => {
@@ -151,6 +184,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
 
     setIsRegeneratingCurriculum(true);
     stopPlaybackInternal();
+    setIsEditing(false);
     setActiveSubTopicId(null);
     setActiveSubTopicTitle(null);
     setActiveLecture(null);
@@ -252,6 +286,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   };
 
   const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
+  const isAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
 
   return (
     <div className="h-full bg-slate-950 text-slate-100 flex flex-col relative overflow-y-auto pb-24">
@@ -262,6 +297,11 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
         </div>
         <div className="absolute top-4 left-4 z-20 flex items-center gap-3">
             <button onClick={onBack} className="flex items-center space-x-2 px-4 py-2 bg-black/40 backdrop-blur-md rounded-full hover:bg-white/10 transition-colors border border-white/10 text-sm font-medium"><ArrowLeft size={16} /><span>{t.back}</span></button>
+            {isAdmin && (
+                <div className="px-4 py-2 bg-indigo-600/30 backdrop-blur-md rounded-full border border-indigo-500/30 text-[10px] font-black uppercase tracking-widest text-indigo-300 flex items-center gap-2 shadow-xl">
+                    <ShieldCheck size={14}/> Neural Architect Mode Active
+                </div>
+            )}
         </div>
       </div>
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-8 grid grid-cols-12 gap-8">
@@ -339,6 +379,16 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                             <span>{isBuffering ? t.buffering : isPlaying ? t.stopAudio : t.playAudio}</span>
                         </button>
                         
+                        {isOwner && (
+                            <button 
+                                onClick={() => setIsEditing(!isEditing)}
+                                className={`p-2.5 rounded-xl border transition-all shadow-lg ${isEditing ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700'}`}
+                                title={t.editScript}
+                            >
+                                <Edit3 size={18}/>
+                            </button>
+                        )}
+
                         <button onClick={handleShareLecture} className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-all shadow-lg" title="Share URI"><Share2 size={18}/></button>
                     </div>
                 </div>
@@ -370,7 +420,21 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                     </div>
                 )}
 
-                {!isRegenerating && (
+                {isEditing ? (
+                    <div className="space-y-4 animate-fade-in">
+                        <div className="flex items-center justify-between px-2">
+                            <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Manual Script Overwrite (JSON)</label>
+                            <button onClick={handleSaveManualEdit} className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all active:scale-95">
+                                <Save size={14}/> {t.saveScript}
+                            </button>
+                        </div>
+                        <textarea 
+                            value={editBuffer}
+                            onChange={(e) => setEditBuffer(e.target.value)}
+                            className="w-full h-[600px] bg-slate-900 border border-slate-700 rounded-xl p-6 text-sm font-mono text-indigo-200 outline-none focus:ring-2 focus:ring-indigo-500/30 leading-relaxed shadow-inner"
+                        />
+                    </div>
+                ) : !isRegenerating && (
                     <MarkdownView 
                         content={`# ${activeLecture.topic}\n\n${activeLecture.sections.map((s, idx) => `**${s.speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}**: ${s.text} ${idx === currentSectionIndex ? '  🔊' : ''}`).join('\n\n')}`}
                         initialTheme={userProfile?.preferredReaderTheme || 'slate'}
