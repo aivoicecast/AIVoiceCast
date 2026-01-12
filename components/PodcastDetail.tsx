@@ -7,14 +7,10 @@ import { synthesizeSpeech } from '../services/tts';
 import { OFFLINE_CHANNEL_ID, OFFLINE_CURRICULUM, OFFLINE_LECTURES } from '../utils/offlineContent';
 import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
 import { cacheLectureScript, getCachedLectureScript, saveUserChannel } from '../utils/db';
-import { publishChannelToFirestore } from '../services/firestoreService';
-import { getDriveToken } from '../services/authService';
-import { ensureCodeStudioFolder, uploadToDrive, getDriveFileSharingLink } from '../services/googleDriveService';
-import { getGlobalAudioContext, audioBufferToWavBlob, concatAudioBuffers, registerAudioOwner, stopAllPlatformAudio, logAudioEvent, isAudioOwner, getGlobalAudioGeneration, warmUpAudioContext } from '../utils/audioUtils';
+import { getGlobalAudioContext, registerAudioOwner, stopAllPlatformAudio, getGlobalAudioGeneration, warmUpAudioContext } from '../utils/audioUtils';
 import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import JSZip from 'jszip';
 import { ShareModal } from './ShareModal';
 
 interface PodcastDetailProps {
@@ -33,14 +29,8 @@ const UI_TEXT = {
   en: {
     back: "Back", curriculum: "Curriculum", selectTopic: "Select a lesson to begin reading",
     generating: "Preparing Material...", genDesc: "Our AI is drafting the lecture script.",
-    lectureTitle: "Lecture Script", downloadPdf: "Download PDF", downloadBook: "Synthesize Book",
-    downloadAudioBook: "Synthesize + Audio", downloadExisting: "Open in Drive",
-    exporting: "Drafting PDF...", preparingBook: "Assembling Course Book...",
-    typesetting: "Typesetting Pages...", syncing: "Saving to Drive...",
-    toc: "Table of Contents", prev: "Prev Lesson", next: "Next Lesson",
-    noLesson: "No Lesson Selected", chooseChapter: "Choose a chapter and lesson from the menu.",
-    synthesizingAudio: "Synthesizing Audio...", reading: "Reading Material", homework: "Homework & Exercises",
-    playAudio: "Listen to Lecture", pauseAudio: "Pause Audio", stopAudio: "Stop Audio",
+    lectureTitle: "Lecture Script", downloadPdf: "Download PDF",
+    playAudio: "Listen to Lecture", stopAudio: "Stop Audio",
     buffering: "Neural Synthesis...", regenerate: "Neural Re-synthesis",
     regenerating: "Re-synthesizing...",
     regenCurriculum: "Re-structure Curriculum",
@@ -50,14 +40,8 @@ const UI_TEXT = {
   zh: {
     back: "返回", curriculum: "课程大纲", selectTopic: "选择一个课程开始阅读",
     generating: "正在准备材料...", genDesc: "AI 正在编写讲座脚本。",
-    lectureTitle: "讲座文稿", downloadPdf: "下载 PDF", downloadBook: "全书合成",
-    downloadAudioBook: "合成 + 音频", downloadExisting: "在 Drive 中打开",
-    exporting: "正在生成 PDF...", preparingBook: "正在汇编课程书籍...",
-    typesetting: "正在排版页面...", syncing: "正在同步到 Drive...",
-    toc: "目录", prev: "上一节", next: "下一节",
-    noLesson: "未选择课程", chooseChapter: "请从菜单中选择章节和课程。",
-    synthesizingAudio: "正在合成音频...", reading: "延伸阅读", homework: "课后作业",
-    playAudio: "播放讲座音频", pauseAudio: "暂停播放", stopAudio: "停止播放",
+    lectureTitle: "讲座文稿", downloadPdf: "下载 PDF",
+    playAudio: "播放讲座音频", stopAudio: "停止播放",
     buffering: "神经合成中...", regenerate: "神经重构",
     regenerating: "正在重构...",
     regenCurriculum: "重构课程大纲",
@@ -175,8 +159,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
         const newChapters = await generateCurriculum(channel.title, channel.description, language);
         if (newChapters) {
             setChapters(newChapters);
-            
-            // Persist the change
             const updatedChannel = { ...channel, chapters: newChapters };
             if (onUpdateChannel) {
                 onUpdateChannel(updatedChannel);
