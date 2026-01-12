@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Channel } from '../types';
-import { ArrowUp, ArrowDown, Play, MessageSquare, Heart, Calendar, Hash, RefreshCcw, Loader2 } from 'lucide-react';
+import { ArrowUp, ArrowDown, Play, MessageSquare, Heart, Calendar, Hash, RefreshCcw, Loader2, ShieldCheck } from 'lucide-react';
 
 export type SortKey = 'title' | 'voiceName' | 'likes' | 'createdAt' | 'author';
 
@@ -23,6 +24,14 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
   channels, onChannelClick, sortConfig, onSort, globalVoice, onRegenerate, currentUser
 }) => {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+
+  // DEBUG: Permission Check Logging
+  useEffect(() => {
+    if (currentUser) {
+      console.log(`[Neural Debug] Table check for: ${currentUser.email}`);
+      console.log(`[Neural Debug] Is Super Admin? ${currentUser.email === 'shengliang.song.ai@gmail.com'}`);
+    }
+  }, [currentUser]);
 
   const renderSortIcon = (key: SortKey) => {
     if (sortConfig.key !== key) return <div className="w-4 h-4 opacity-0 group-hover:opacity-30"><ArrowDown size={14} /></div>;
@@ -55,8 +64,16 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
       }
   };
 
+  const isSuperAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl animate-fade-in">
+      {isSuperAdmin && (
+          <div className="bg-indigo-600/20 border-b border-indigo-500/30 p-2 px-6 flex items-center gap-2">
+              <ShieldCheck size={14} className="text-indigo-400" />
+              <span className="text-[9px] font-black text-indigo-300 uppercase tracking-widest">Admin Controls Enabled: Full Neural Override</span>
+          </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead className="bg-slate-950 border-b border-slate-800">
@@ -74,8 +91,7 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
           </thead>
           <tbody className="divide-y divide-slate-800 bg-slate-900/50">
             {channels.map((channel) => {
-              // Super Admin Access for shengliang.song.ai@gmail.com
-              const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
+              const isOwner = currentUser && (channel.ownerId === currentUser.uid || isSuperAdmin);
               const isThisRegenerating = regeneratingId === channel.id;
 
               return (
@@ -141,10 +157,10 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
                             <button 
                               onClick={(e) => handleRegenClick(e, channel)}
                               disabled={isThisRegenerating}
-                              className={`p-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg border border-slate-700 transition-all ${isThisRegenerating ? 'animate-pulse' : ''}`}
-                              title="Neural Re-structure (Regenerate Curriculum)"
+                              className={`p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg border border-indigo-400 transition-all ${isThisRegenerating ? 'animate-pulse' : ''}`}
+                              title="REGENERATE ENTIRE CURRICULUM"
                             >
-                               {isThisRegenerating ? <Loader2 size={14} className="animate-spin"/> : <RefreshCcw size={14} />}
+                               {isThisRegenerating ? <Loader2 size={16} className="animate-spin"/> : <RefreshCcw size={16} />}
                             </button>
                         )}
                         <button className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded shadow-lg flex items-center gap-1">

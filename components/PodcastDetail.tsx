@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile } from '../types';
 import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, RefreshCcw, Wand2, Edit3, Save, ShieldCheck } from 'lucide-react';
@@ -16,7 +17,19 @@ import { ShareModal } from './ShareModal';
 interface PodcastDetailProps {
   channel: Channel;
   onBack: () => void;
-  onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
+  /**
+   * Fixed: Corrected parameter order for onStartLiveSession to match handleStartLiveSession in App.tsx.
+   * bookingId (string) must come before videoEnabled/cameraEnabled (boolean) to satisfy the type check on line 527 of App.tsx.
+   */
+  onStartLiveSession: (
+    channel: Channel, 
+    context?: string, 
+    recordingEnabled?: boolean, 
+    bookingId?: string, 
+    videoEnabled?: boolean, 
+    cameraEnabled?: boolean, 
+    activeSegment?: { index: number, lectureId: string }
+  ) => void;
   language: 'en' | 'zh';
   onEditChannel?: () => void; 
   onViewComments?: () => void;
@@ -78,6 +91,18 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   const playbackSessionRef = useRef(0);
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const MY_TOKEN = useMemo(() => `PodcastDetail:${channel.id}:${activeSubTopicId}`, [channel.id, activeSubTopicId]);
+
+  const isAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
+  const isOwner = currentUser && (channel.ownerId === currentUser.uid || isAdmin);
+
+  // DEBUG: Detail Permission Logging
+  useEffect(() => {
+    if (currentUser) {
+      console.log(`[Neural Debug] Detail View Permission Check: ${currentUser.email}`);
+      console.log(`[Neural Debug] Is Admin? ${isAdmin}`);
+      console.log(`[Neural Debug] Is Owner? ${isOwner} (Channel Owner: ${channel.ownerId})`);
+    }
+  }, [currentUser, channel, isAdmin, isOwner]);
 
   const [chapters, setChapters] = useState<Chapter[]>(() => {
     if (channel.chapters && channel.chapters.length > 0) return channel.chapters;
@@ -285,9 +310,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       setShowShareModal(true);
   };
 
-  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
-  const isAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
-
   return (
     <div className="h-full bg-slate-950 text-slate-100 flex flex-col relative overflow-y-auto pb-24">
       <div className="relative h-48 md:h-64 w-full shrink-0">
@@ -317,20 +339,20 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                             <button 
                               onClick={handleRegenerateLecture}
                               disabled={isRegenerating}
-                              className={`p-1.5 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white rounded-lg border border-indigo-500/20 transition-all ${isRegenerating ? 'animate-pulse' : ''}`}
+                              className={`p-1.5 bg-indigo-600 text-white hover:bg-indigo-500 rounded-lg border border-indigo-400 shadow-lg transition-all ${isRegenerating ? 'animate-pulse' : ''}`}
                               title={t.regenLecture}
                             >
-                              {isRegenerating ? <Loader2 size={14} className="animate-spin"/> : <Wand2 size={14}/>}
+                              {isRegenerating ? <Loader2 size={16} className="animate-spin"/> : <Wand2 size={16}/>}
                             </button>
                         )}
                         {isOwner && (
                             <button 
                               onClick={handleRegenerateCurriculum}
                               disabled={isRegeneratingCurriculum}
-                              className={`p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 rounded-lg border border-slate-700 transition-all ${isRegeneratingCurriculum ? 'animate-pulse opacity-50' : ''}`}
+                              className={`p-1.5 bg-indigo-600 text-white hover:bg-indigo-500 rounded-lg border border-indigo-400 shadow-lg transition-all ${isRegeneratingCurriculum ? 'animate-pulse opacity-50' : ''}`}
                               title={t.regenCurriculum}
                             >
-                              {isRegeneratingCurriculum ? <Loader2 size={14} className="animate-spin"/> : <RefreshCcw size={14}/>}
+                              {isRegeneratingCurriculum ? <Loader2 size={16} className="animate-spin"/> : <RefreshCcw size={16}/>}
                             </button>
                         )}
                     </div>
