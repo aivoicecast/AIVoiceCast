@@ -1,15 +1,15 @@
 
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture } from '../types';
-import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal } from 'lucide-react';
+import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCcw } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { CreatorProfileModal } from './CreatorProfileModal';
 import { PodcastListTable, SortKey } from './PodcastListTable';
 import { followUser, unfollowUser } from '../services/firestoreService';
 import { generateLectureScript } from '../services/lectureGenerator';
+import { generateCurriculum } from '../services/curriculumGenerator';
 import { synthesizeSpeech } from '../services/tts';
 import { getCachedLectureScript, cacheLectureScript, getUserChannels } from '../utils/db';
-import { OPENAI_API_KEY } from '../services/private_keys';
 import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
 import { OFFLINE_CHANNEL_ID, OFFLINE_CURRICULUM, OFFLINE_LECTURES } from '../utils/offlineContent';
 import { warmUpAudioContext, getGlobalAudioContext, stopAllPlatformAudio, registerAudioOwner, logAudioEvent, isAudioOwner, getGlobalAudioGeneration } from '../utils/audioUtils';
@@ -22,6 +22,7 @@ interface PodcastFeedProps {
   globalVoice: string;
   onRefresh?: () => void;
   onMessageCreator?: (creatorId: string, creatorName: string) => void;
+  onUpdateChannel?: (updated: Channel) => Promise<void>;
   
   t?: any;
   currentUser?: any;
@@ -512,7 +513,7 @@ const MobileFeedCard = ({
 };
 
 export const PodcastFeed: React.FC<PodcastFeedProps> = ({ 
-  channels, onChannelClick, onStartLiveSession, userProfile, globalVoice, onRefresh, onMessageCreator,
+  channels, onChannelClick, onStartLiveSession, userProfile, globalVoice, onRefresh, onMessageCreator, onUpdateChannel,
   t, currentUser, setChannelToEdit, setIsSettingsModalOpen, onCommentClick, handleVote, filterMode = 'foryou',
   isFeedActive = true, searchQuery = '', onNavigate
 }) => {
@@ -595,9 +596,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
       
       const scored = baseList.map(ch => {
           let score = 0;
-          
           if (ch.id === '1' || ch.id === '2' || ch.id === 'default-gem') score += 1000000;
-          
           if (currentUser && ch.ownerId === currentUser.uid) score += 100000;
           if (userProfile?.interests?.length) { if (userProfile.interests.some(i => ch.tags.includes(i))) score += 20; }
           if (ch.createdAt) { const ageHours = (Date.now() - ch.createdAt) / (1000 * 60 * 60); if (ageHours < 1) score += 50; }
@@ -631,6 +630,22 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
   const handleComment = (e: React.MouseEvent, channel: Channel) => { e.stopPropagation(); if(onCommentClick) onCommentClick(channel); };
   const handleScrollToNext = (currentChannelId: string) => { const idx = recommendedChannels.findIndex(c => c.id === currentChannelId); if (idx !== -1 && idx < recommendedChannels.length - 1) { const nextId = recommendedChannels[idx + 1].id; const nextEl = document.querySelector(`[data-id="${nextId}"]`); if (nextEl) nextEl.scrollIntoView({ behavior: 'smooth' }); } };
 
+  const handleRegenerateCurriculum = async (channel: Channel) => {
+    const confirmMsg = "Are you sure you want to re-synthesize the entire curriculum? This will completely rebuild the chapter structure using AI.";
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const newChapters = await generateCurriculum(channel.title, channel.description, 'en');
+        if (newChapters && onUpdateChannel) {
+            await onUpdateChannel({ ...channel, chapters: newChapters });
+            alert("Neural structure refreshed successfully!");
+        }
+    } catch (e: any) {
+        console.error("Regen failed", e);
+        alert("Failed to regenerate curriculum: " + e.message);
+    }
+  };
+
   if (!isFeedActive) return null;
 
   if (isDesktop) {
@@ -661,7 +676,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                             onClick={() => onNavigate?.('mock_interview')}
                             className="flex items-center gap-4 p-5 bg-slate-900 border border-slate-800 rounded-2xl hover:border-red-500/50 hover:bg-red-900/10 transition-all text-left group shadow-xl"
                         >
-                            <div className="p-3 bg-red-950/40 rounded-xl border border-red-500/30 text-red-500 group-hover:scale-110 transition-transform">
+                            <div className="p-3 bg-red-950/40 rounded-xl border border-emerald-500/30 text-red-500 group-hover:scale-110 transition-transform">
                                 <Video size={24}/>
                             </div>
                             <div>
@@ -706,6 +721,8 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                     sortConfig={sortConfig}
                     onSort={handleSort}
                     globalVoice={globalVoice}
+                    onRegenerate={handleRegenerateCurriculum}
+                    currentUser={currentUser}
                 />
             </div>
         </div>
@@ -729,7 +746,6 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                          "We couldn't find any podcasts matching your criteria."}
                     </p>
                 </div>
-                {searchQuery && <button onClick={() => {}} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition-colors">Clear Search</button>}
              </div>
         ) : (
             recommendedChannels.map((channel) => (

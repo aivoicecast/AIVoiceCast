@@ -1,6 +1,7 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 import { Channel } from '../types';
-import { ArrowUp, ArrowDown, Play, MessageSquare, Heart, Calendar, Hash } from 'lucide-react';
+import { ArrowUp, ArrowDown, Play, MessageSquare, Heart, Calendar, Hash, RefreshCcw, Loader2 } from 'lucide-react';
 
 export type SortKey = 'title' | 'voiceName' | 'likes' | 'createdAt' | 'author';
 
@@ -15,12 +16,15 @@ interface PodcastListTableProps {
   sortConfig: SortConfig;
   onSort: (key: SortKey) => void;
   globalVoice: string;
+  onRegenerate?: (channel: Channel) => Promise<void>;
+  currentUser?: any;
 }
 
 export const PodcastListTable: React.FC<PodcastListTableProps> = ({ 
-  channels, onChannelClick, sortConfig, onSort, globalVoice 
+  channels, onChannelClick, sortConfig, onSort, globalVoice, onRegenerate, currentUser
 }) => {
-  
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+
   const renderSortIcon = (key: SortKey) => {
     if (sortConfig.key !== key) return <div className="w-4 h-4 opacity-0 group-hover:opacity-30"><ArrowDown size={14} /></div>;
     return sortConfig.direction === 'asc' 
@@ -40,6 +44,18 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
     </th>
   );
 
+  const handleRegenClick = async (e: React.MouseEvent, channel: Channel) => {
+      e.stopPropagation();
+      if (!onRegenerate) return;
+      
+      setRegeneratingId(channel.id);
+      try {
+          await onRegenerate(channel);
+      } finally {
+          setRegeneratingId(null);
+      }
+  };
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl animate-fade-in">
       <div className="overflow-x-auto">
@@ -58,73 +74,87 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800 bg-slate-900/50">
-            {channels.map((channel) => (
-              <tr 
-                key={channel.id} 
-                onClick={() => onChannelClick(channel.id)}
-                className="hover:bg-slate-800/80 transition-colors cursor-pointer group"
-              >
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-4">
-                    <div className="min-w-0">
-                      <h4 className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors truncate max-w-[200px] md:max-w-xs">
-                        {channel.title}
-                      </h4>
-                      <p className="text-xs text-slate-500 truncate max-w-[200px] md:max-w-xs mt-0.5">
-                        {channel.description}
-                      </p>
+            {channels.map((channel) => {
+              const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
+              const isThisRegenerating = regeneratingId === channel.id;
+
+              return (
+                <tr 
+                  key={channel.id} 
+                  onClick={() => onChannelClick(channel.id)}
+                  className="hover:bg-slate-800/80 transition-colors cursor-pointer group"
+                >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-4">
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors truncate max-w-[200px] md:max-w-xs">
+                          {channel.title}
+                        </h4>
+                        <p className="text-xs text-slate-500 truncate max-w-[200px] md:max-w-xs mt-0.5">
+                          {channel.description}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`text-xs font-medium px-2 py-1 rounded border ${globalVoice === channel.voiceName ? 'bg-indigo-900/30 text-indigo-300 border-indigo-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
-                    {channel.voiceName}
-                  </span>
-                </td>
+                  </td>
+                  
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`text-xs font-medium px-2 py-1 rounded border ${globalVoice === channel.voiceName ? 'bg-indigo-900/30 text-indigo-300 border-indigo-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                      {channel.voiceName.split(' gen-')[0]}
+                    </span>
+                  </td>
 
-                <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
-                   <div className="text-xs text-slate-300">{channel.author}</div>
-                </td>
+                  <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+                     <div className="text-xs text-slate-300">{channel.author}</div>
+                  </td>
 
-                <td className="px-6 py-4 hidden lg:table-cell">
-                  <div className="flex flex-wrap gap-1 max-w-[200px]">
-                    {channel.tags.slice(0, 2).map(tag => (
-                      <span key={tag} className="text-[10px] text-slate-500 bg-slate-900 border border-slate-700 px-1.5 py-0.5 rounded">
-                        #{tag}
-                      </span>
-                    ))}
-                    {channel.tags.length > 2 && <span className="text-[10px] text-slate-600">+{channel.tags.length - 2}</span>}
-                  </div>
-                </td>
-
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center gap-3 text-xs font-mono">
-                    <div className="flex items-center gap-1 text-emerald-400/80">
-                       <Heart size={12} fill="currentColor" /> {channel.likes}
+                  <td className="px-6 py-4 hidden lg:table-cell">
+                    <div className="flex flex-wrap gap-1 max-w-[200px]">
+                      {channel.tags.slice(0, 2).map(tag => (
+                        <span key={tag} className="text-[10px] text-slate-500 bg-slate-900 border border-slate-700 px-1.5 py-0.5 rounded">
+                          #{tag}
+                        </span>
+                      ))}
                     </div>
-                    <div className="flex items-center gap-1 text-indigo-400/80">
-                       <MessageSquare size={12} /> {channel.comments?.length || 0}
+                  </td>
+
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center gap-3 text-xs font-mono">
+                      <div className="flex items-center gap-1 text-emerald-400/80">
+                         <Heart size={12} fill="currentColor" /> {channel.likes}
+                      </div>
+                      <div className="flex items-center gap-1 text-indigo-400/80">
+                         <MessageSquare size={12} /> {channel.comments?.length || 0}
+                      </div>
                     </div>
-                  </div>
-                </td>
+                  </td>
 
-                <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                     <Calendar size={12} />
-                     <span>{channel.createdAt ? new Date(channel.createdAt).toLocaleDateString() : '-'}</span>
-                  </div>
-                </td>
+                  <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                       <Calendar size={12} />
+                       <span>{channel.createdAt ? new Date(channel.createdAt).toLocaleDateString() : '-'}</span>
+                    </div>
+                  </td>
 
-                <td className="px-6 py-4 text-right">
-                   <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded shadow-lg flex items-center gap-1 ml-auto">
-                         <Play size={12} fill="currentColor" /> Play
-                      </button>
-                   </div>
-                </td>
-              </tr>
-            ))}
+                  <td className="px-6 py-4 text-right">
+                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end gap-2">
+                        {isOwner && (
+                            <button 
+                              onClick={(e) => handleRegenClick(e, channel)}
+                              disabled={isThisRegenerating}
+                              className={`p-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg border border-slate-700 transition-all ${isThisRegenerating ? 'animate-pulse' : ''}`}
+                              title="Neural Re-structure (Regenerate Curriculum)"
+                            >
+                               {isThisRegenerating ? <Loader2 size={14} className="animate-spin"/> : <RefreshCcw size={14} />}
+                            </button>
+                        )}
+                        <button className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded shadow-lg flex items-center gap-1">
+                           <Play size={12} fill="currentColor" /> Play
+                        </button>
+                     </div>
+                  </td>
+                </tr>
+              );
+            })}
             
             {channels.length === 0 && (
                 <tr>
