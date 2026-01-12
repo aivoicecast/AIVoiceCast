@@ -1,4 +1,3 @@
-
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture } from '../types';
 import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCcw } from 'lucide-react';
@@ -646,6 +645,13 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
     }
   };
 
+  const handleEditFromTable = (channel: Channel) => {
+      if (setChannelToEdit && setIsSettingsModalOpen) {
+          setChannelToEdit(channel);
+          setIsSettingsModalOpen(true);
+      }
+  };
+
   if (!isFeedActive) return null;
 
   if (isDesktop) {
@@ -722,6 +728,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                     onSort={handleSort}
                     globalVoice={globalVoice}
                     onRegenerate={handleRegenerateCurriculum}
+                    onEdit={handleEditFromTable}
                     currentUser={currentUser}
                 />
             </div>

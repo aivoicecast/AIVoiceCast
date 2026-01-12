@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { Channel } from '../types';
-import { ArrowUp, ArrowDown, Play, MessageSquare, Heart, Calendar, Hash, RefreshCcw, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowUp, ArrowDown, Play, MessageSquare, Heart, Calendar, Hash, RefreshCcw, Loader2, ShieldCheck, Edit3 } from 'lucide-react';
 
 export type SortKey = 'title' | 'voiceName' | 'likes' | 'createdAt' | 'author';
 
@@ -17,11 +16,12 @@ interface PodcastListTableProps {
   onSort: (key: SortKey) => void;
   globalVoice: string;
   onRegenerate?: (channel: Channel) => Promise<void>;
+  onEdit?: (channel: Channel) => void;
   currentUser?: any;
 }
 
 export const PodcastListTable: React.FC<PodcastListTableProps> = ({ 
-  channels, onChannelClick, sortConfig, onSort, globalVoice, onRegenerate, currentUser
+  channels, onChannelClick, sortConfig, onSort, globalVoice, onRegenerate, onEdit, currentUser
 }) => {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
 
@@ -62,6 +62,11 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
       } finally {
           setRegeneratingId(null);
       }
+  };
+
+  const handleEditClick = (e: React.MouseEvent, channel: Channel) => {
+      e.stopPropagation();
+      if (onEdit) onEdit(channel);
   };
 
   const isSuperAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
@@ -154,14 +159,23 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
                   <td className="px-6 py-4 text-right">
                      <div className="flex items-center justify-end gap-2">
                         {isOwner && (
-                            <button 
-                              onClick={(e) => handleRegenClick(e, channel)}
-                              disabled={isThisRegenerating}
-                              className={`p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg shadow-lg border border-indigo-400 transition-all ${isThisRegenerating ? 'animate-pulse' : ''}`}
-                              title="REGENERATE ENTIRE CURRICULUM"
-                            >
-                               {isThisRegenerating ? <Loader2 size={16} className="animate-spin"/> : <RefreshCcw size={16} />}
-                            </button>
+                            <>
+                                <button 
+                                  onClick={(e) => handleEditClick(e, channel)}
+                                  className="p-2 bg-slate-800 hover:bg-indigo-600 text-slate-400 hover:text-white rounded-lg shadow-lg border border-slate-700 hover:border-indigo-400 transition-all"
+                                  title="EDIT CHANNEL SETTINGS"
+                                >
+                                   <Edit3 size={16} />
+                                </button>
+                                <button 
+                                  onClick={(e) => handleRegenClick(e, channel)}
+                                  disabled={isThisRegenerating}
+                                  className={`p-2 bg-slate-800 hover:bg-indigo-600 text-slate-400 hover:text-white rounded-lg shadow-lg border border-slate-700 hover:border-indigo-400 transition-all ${isThisRegenerating ? 'animate-pulse' : ''}`}
+                                  title="REGENERATE ENTIRE CURRICULUM"
+                                >
+                                   {isThisRegenerating ? <Loader2 size={16} className="animate-spin"/> : <RefreshCcw size={16} />}
+                                </button>
+                            </>
                         )}
                         <button className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded shadow-lg flex items-center gap-1">
                            <Play size={12} fill="currentColor" /> Play
