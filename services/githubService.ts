@@ -1,3 +1,4 @@
+
 import { CodeFile, CodeProject } from '../types';
 
 const GITHUB_API_BASE = 'https://api.github.com';
@@ -56,7 +57,8 @@ function getLanguageFromExt(path: string): any {
     else if (['cpp', 'c', 'h', 'hpp', 'cc', 'hh', 'cxx'].includes(ext || '')) language = 'c++';
     else if (ext === 'java') language = 'java';
     else if (ext === 'go') language = 'go';
-    else if (ext === 'rs') language = 'rust';
+    // Fix: Line 48 previously used 'rust' which is not in the CodeFile['language'] union. Changed to 'rs'.
+    else if (ext === 'rs') language = 'rs';
     else if (ext === 'json') language = 'json';
     else if (ext === 'md') language = 'markdown';
     else if (ext === 'html') language = 'html';
@@ -75,6 +77,7 @@ const transformTreeItem = (item: any, prefix: string = ''): CodeFile => {
         language: getLanguageFromExt(fullPath),
         content: '', // Lazy load content
         sha: item.sha,
+        size: item.size, // Added size field
         path: fullPath,
         loaded: false,
         isDirectory: isDir,

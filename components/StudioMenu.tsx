@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { UserProfile, SubscriptionTier, GlobalStats, Channel } from '../types';
-import { getUserProfile, getGlobalStats, updateUserProfile } from '../services/firestoreService';
-import { Sparkles, BarChart2, Plus, Wand2, Crown, Settings, Book, Users, LogIn, Terminal, Cloud, Globe, Mic, LayoutGrid, HardDrive, AlertCircle, Gift, CreditCard, Languages, MousePointer2, Rocket, Shield, LogOut } from 'lucide-react';
+import { getGlobalStats, isUserAdmin, ADMIN_GROUP } from '../services/firestoreService';
+import { Sparkles, BarChart2, Plus, Wand2, Crown, Settings, Book, Users, LogIn, Terminal, Cloud, Globe, Mic, LayoutGrid, HardDrive, AlertCircle, Gift, CreditCard, Languages, MousePointer2, Rocket, Shield, LogOut, ShieldCheck } from 'lucide-react';
 import { VOICES } from '../utils/initialData';
 import { signOut } from '../services/authService';
 
@@ -27,17 +28,20 @@ interface StudioMenuProps {
   language: 'en' | 'zh';
   setLanguage: (lang: 'en' | 'zh') => void;
   allApps?: any[];
+  isSuperAdmin?: boolean;
 }
 
 export const StudioMenu: React.FC<StudioMenuProps> = ({
   isUserMenuOpen, setIsUserMenuOpen, userProfile, setUserProfile, currentUser,
   setIsCreateModalOpen, setIsVoiceCreateOpen, onUpgradeClick, setIsSettingsModalOpen, onOpenUserGuide, onNavigate, onOpenPrivacy,
   className, channels = [],
-  language, setLanguage
+  language, setLanguage, isSuperAdmin: propSuperAdmin
 }) => {
   const [globalStats, setGlobalStats] = useState<GlobalStats>({ totalLogins: 0, uniqueUsers: 0 });
   
-  const isSuperAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
+  const isSuperAdmin = propSuperAdmin !== undefined ? propSuperAdmin : isUserAdmin(userProfile);
+  const isGroupAdmin = isUserAdmin(userProfile);
+  const isEmailAdmin = currentUser?.email === 'shengliang.song.ai@gmail.com';
   
   useEffect(() => {
       if (isUserMenuOpen) { getGlobalStats().then(setGlobalStats); }
@@ -58,7 +62,22 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
       <div className={`${className ? className : 'absolute right-0 top-full mt-2 w-72'} bg-slate-900 border border-slate-700 rounded-xl shadow-2xl animate-fade-in-up max-h-[calc(100vh-6rem)] overflow-y-auto overflow-x-hidden z-[100] flex flex-col`} onClick={(e) => e.stopPropagation()}>
          <div className="p-4 border-b border-slate-800 bg-slate-950/90 flex flex-col items-center gap-3">
             <img src={currentUser.photoURL} className="w-12 h-12 rounded-full border border-indigo-500 shadow-md" />
-            <div className="text-center"><h3 className="text-sm font-bold text-white">{currentUser.displayName}</h3><p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Active Member</p></div>
+            <div className="text-center">
+                <h3 className="text-sm font-bold text-white">{currentUser.displayName}</h3>
+                <div className="flex flex-col items-center gap-1 mt-1">
+                    <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Active Member</p>
+                    {isGroupAdmin && (
+                        <div className="flex items-center gap-1 text-[9px] font-black text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/20 uppercase tracking-tighter">
+                            <ShieldCheck size={10}/> Verified Architect
+                        </div>
+                    )}
+                    {isEmailAdmin && !isGroupAdmin && (
+                        <div className="flex items-center gap-1 text-[9px] font-black text-indigo-400 bg-indigo-950/40 px-2 py-0.5 rounded border border-indigo-500/20 uppercase tracking-tighter">
+                            <Shield size={10}/> System Root
+                        </div>
+                    )}
+                </div>
+            </div>
          </div>
          
          <div className="p-2 space-y-1 flex-1">
@@ -71,9 +90,26 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
             <button onClick={() => { onOpenUserGuide(); setIsUserMenuOpen(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Book size={16} /><span>User Guide</span></button>
             <button onClick={() => { onOpenPrivacy(); setIsUserMenuOpen(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Shield size={16} /><span>Privacy Policy</span></button>
             <button onClick={() => { setIsSettingsModalOpen(true); setIsUserMenuOpen(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Settings size={16} /><span>Settings</span></button>
-            {isSuperAdmin && (<><div className="h-px bg-slate-800 my-2 mx-2" /><button onClick={() => { onNavigate('firestore_debug'); setIsUserMenuOpen(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-xs text-red-400 hover:bg-red-900/10 rounded-lg transition-colors"><Terminal size={16}/> <span>Admin Inspector</span></button></>)}
+            
+            {/* Admin Section - Positioned prominently after Settings */}
+            {isSuperAdmin && (
+                <>
+                    <div className="h-px bg-slate-800 my-2 mx-2" />
+                    <button 
+                        onClick={() => { onNavigate('firestore_debug'); setIsUserMenuOpen(false); }} 
+                        className="w-full flex items-center space-x-3 px-3 py-3 text-xs font-black uppercase tracking-widest text-red-400 hover:bg-red-900/20 rounded-lg transition-all border border-red-900/30 group"
+                    >
+                        <div className="p-1.5 bg-red-900/30 rounded-md group-hover:bg-red-600 group-hover:text-white transition-colors">
+                            <Terminal size={16}/>
+                        </div>
+                        <span>Admin Inspector</span>
+                    </button>
+                </>
+            )}
          </div>
-         <div className="p-2 border-t border-slate-800 bg-slate-950/50 mt-auto"><button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-bold text-red-400 hover:text-white hover:bg-red-900/40 rounded-lg transition-all"><LogOut size={16} /><span>Sign Out</span></button></div>
+         <div className="p-2 border-t border-slate-800 bg-slate-950/50 mt-auto">
+            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-bold text-red-400 hover:text-white hover:bg-red-900/40 rounded-lg transition-all"><LogOut size={16} /><span>Sign Out</span></button>
+         </div>
       </div>
     </>
   );

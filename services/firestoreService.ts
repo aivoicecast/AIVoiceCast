@@ -42,8 +42,16 @@ const NOTEBOOKS_COLLECTION = 'notebooks';
 const INVITATIONS_COLLECTION = 'invitations';
 const INTERVIEWS_COLLECTION = 'mock_interviews';
 
-export const ADMIN_EMAILS = ['shengliang.song.ai@gmail.com'];
-export const ADMIN_EMAIL = ADMIN_EMAILS[0];
+export const ADMIN_GROUP = 'admin_neural_prism';
+
+/**
+ * Helper to check if a profile belongs to the admin group.
+ * Defensive against undefined groups array.
+ */
+export const isUserAdmin = (profile: UserProfile | null): boolean => {
+    if (!profile || !profile.groups || !Array.isArray(profile.groups)) return false;
+    return profile.groups.includes(ADMIN_GROUP);
+};
 
 /**
  * Robustly sanitizes data for Firestore, stripping non-serializable fields
@@ -55,9 +63,93 @@ const sanitizeData = (data: any) => {
         if (value instanceof HTMLElement || value instanceof MediaStream || value instanceof AudioContext) return undefined;
         return value;
     }));
-    cleaned.adminOwnerEmail = ADMIN_EMAIL; 
     return cleaned; 
 };
+
+// --- Admin & Cleanup ---
+
+/**
+ * Generic delete for any collection in the Inspector.
+ */
+export async function deleteFirestoreDoc(collectionName: string, docId: string): Promise<void> {
+    if (!db) throw new Error("Database offline.");
+    await deleteDoc(doc(db, collectionName, docId));
+}
+
+/**
+ * Destructive Purge: Deletes documents in batches.
+ * Limited to 500 docs per call for safety.
+ */
+export async function purgeFirestoreCollection(collectionName: string): Promise<number> {
+    if (!db) throw new Error("Database offline.");
+    
+    try {
+        const q = query(collection(db, collectionName), limit(500));
+        const snap = await getDocs(q);
+        
+        if (snap.empty) return 0;
+        
+        const batch = writeBatch(db);
+        snap.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        
+        await batch.commit();
+        return snap.size;
+    } catch (e) {
+        console.error(`[Admin] Purge of ${collectionName} failed:`, e);
+        throw e;
+    }
+}
+
+/**
+ * Scans the users collection for multiple documents sharing the same email.
+ * Keeps only the one with the latest 'lastLogin'.
+ */
+export async function cleanupDuplicateUsers(): Promise<number> {
+    if (!db) return 0;
+    
+    try {
+        const snap = await getDocs(collection(db, USERS_COLLECTION));
+        const users = snap.docs.map(d => ({ ...d.data(), uid: d.id } as UserProfile));
+        
+        const emailGroups: Record<string, UserProfile[]> = {};
+        
+        users.forEach(u => {
+            if (!u.email) return;
+            const email = u.email.toLowerCase().trim();
+            if (!emailGroups[email]) emailGroups[email] = [];
+            emailGroups[email].push(u);
+        });
+
+        let deletedCount = 0;
+        const batch = writeBatch(db);
+
+        Object.keys(emailGroups).forEach(email => {
+            const group = emailGroups[email];
+            if (group.length > 1) {
+                // Sort by lastLogin descending to keep the most active one
+                group.sort((a, b) => (b.lastLogin || 0) - (a.lastLogin || 0));
+                
+                // Keep the first one (index 0), delete the rest
+                for (let i = 1; i < group.length; i++) {
+                    const docRef = doc(db, USERS_COLLECTION, group[i].uid);
+                    batch.delete(docRef);
+                    deletedCount++;
+                }
+            }
+        });
+
+        if (deletedCount > 0) {
+            await batch.commit();
+        }
+        
+        return deletedCount;
+    } catch (e) {
+        console.error("[Cleanup] Duplicate purge failed:", e);
+        throw e;
+    }
+}
 
 // --- Mock Interviews ---
 export async function saveInterviewRecording(recording: MockInterviewRecording): Promise<string> {
@@ -98,15 +190,11 @@ export async function getUserInterviews(uid: string): Promise<MockInterviewRecor
     }
 }
 
-/**
- * CRITICAL FIX: Ensures document reference always has exactly 2 segments (Collection + ID).
- * Prevents "Document references must have an even number of segments" error.
- */
 export async function deleteInterview(id: string): Promise<void> {
     if (!db) throw new Error("Database offline.");
     if (!id || typeof id !== 'string' || id.trim() === "") {
         console.error("[Firestore] Attempted to delete interview with invalid ID:", id);
-        return; // Silently skip to prevent crash
+        return; 
     }
     
     try {
@@ -123,7 +211,6 @@ export async function deleteInterview(id: string): Promise<void> {
 // --- Coins & Wallet ---
 export const DEFAULT_MONTHLY_GRANT = 1000000;
 
-// Fix: Added registerIdentity function used by CoinWallet.tsx
 export async function registerIdentity(uid: string, publicKey: string, certificate: string) {
     if (!db || !uid) return;
     await updateDoc(doc(db, USERS_COLLECTION, uid), { publicKey, certificate });
@@ -413,7 +500,7 @@ export async function syncUserProfile(user: any): Promise<void> {
   try {
       const snap = await getDoc(userRef);
       if (!snap.exists()) {
-        await setDoc(userRef, { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL, createdAt: Date.now(), lastLogin: Date.now(), subscriptionTier: 'free', apiUsageCount: 0, groups: [], coinBalance: DEFAULT_MONTHLY_GRANT, lastCoinGrantAt: Date.now(), adminOwnerEmail: ADMIN_EMAIL });
+        await setDoc(userRef, { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL, createdAt: Date.now(), lastLogin: Date.now(), subscriptionTier: 'free', apiUsageCount: 0, groups: [], coinBalance: DEFAULT_MONTHLY_GRANT, lastCoinGrantAt: Date.now() });
         await setDoc(doc(db, 'stats', 'global'), { uniqueUsers: increment(1) }, { merge: true });
       } else {
         await updateDoc(userRef, { uid: user.uid, lastLogin: Date.now(), photoURL: user.photoURL || snap.data()?.photoURL, displayName: user.displayName || snap.data()?.displayName });
@@ -431,6 +518,11 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
 export async function updateUserProfile(uid: string, data: Partial<UserProfile>): Promise<void> {
     if (!db || !uid) return;
     await updateDoc(doc(db, USERS_COLLECTION, uid), sanitizeData(data));
+}
+
+export async function deleteUser(uid: string): Promise<void> {
+    if (!db || !uid) return;
+    await deleteDoc(doc(db, USERS_COLLECTION, uid));
 }
 
 export async function getAllUsers(): Promise<UserProfile[]> {
@@ -489,7 +581,17 @@ export async function sendInvitation(groupId: string, toEmail: string): Promise<
     if (!db || !auth?.currentUser || !groupId) return;
     const groupSnap = await getDoc(doc(db, GROUPS_COLLECTION, groupId));
     if (!groupSnap.exists()) return;
-    const inv: Invitation = { id: '', fromUserId: auth.currentUser.uid, fromName: auth.currentUser.displayName || 'Friend', toEmail, groupId, groupName: groupSnap.data()?.name, status: 'pending', createdAt: Date.now() };
+    const inv: Invitation = { 
+        id: '', 
+        fromUserId: auth.currentUser.uid, 
+        fromName: auth.currentUser.displayName || 'Friend', 
+        toEmail, 
+        groupId, 
+        groupName: groupSnap.data()?.name, 
+        status: 'pending', 
+        createdAt: Date.now(),
+        type: 'group' 
+    };
     await addDoc(collection(db, INVITATIONS_COLLECTION), sanitizeData(inv));
 }
 
@@ -506,7 +608,8 @@ export async function respondToInvitation(invitation: Invitation, accept: boolea
         await claimOnlineTransfer(invitation.groupId);
     }
     await updateDoc(doc(db, INVITATIONS_COLLECTION, invitation.id), { status: accept ? 'accepted' : 'rejected' });
-    if (accept && invitation.type === 'group' && invitation.groupId) {
+    
+    if (accept && (invitation.type === 'group' || (!invitation.type && invitation.groupId && !invitation.groupId.startsWith('local-')))) {
         await updateDoc(doc(db, GROUPS_COLLECTION, invitation.groupId), { memberIds: arrayUnion(auth.currentUser.uid) });
     }
 }
@@ -617,12 +720,6 @@ export function subscribeToChannelStats(id: string, callback: (stats: Partial<Ch
     });
 }
 
-export async function getGlobalStats(): Promise<GlobalStats> {
-    if (!db) return { totalLogins: 0, uniqueUsers: 0 };
-    const snap = await getDoc(doc(db, 'stats', 'global'));
-    return snap.exists() ? (snap.data() as GlobalStats) : { totalLogins: 0, uniqueUsers: 0 };
-}
-
 // --- Comments ---
 export async function addCommentToChannel(channelId: string, comment: Comment) {
     if (!db || !channelId) return;
@@ -705,6 +802,12 @@ export async function getDebugCollectionDocs(name: string, count: number) {
     const q = query(collection(db, name), limit(count));
     const snap = await getDocs(q);
     return snap.docs.map(d => ({ ...d.data(), id: d.id }));
+}
+
+export async function getGlobalStats(): Promise<GlobalStats> {
+    if (!db) return { totalLogins: 0, uniqueUsers: 0 };
+    const snap = await getDoc(doc(db, 'stats', 'global'));
+    return snap.exists() ? (snap.data() as GlobalStats) : { totalLogins: 0, uniqueUsers: 0 };
 }
 
 // --- Recordings ---
@@ -818,8 +921,16 @@ export async function updateCodeFile(id: string, file: CodeFile) {
     const snap = await getDoc(doc(db, CODE_PROJECTS_COLLECTION, id));
     if (!snap.exists()) return;
     const files = (snap.data()?.files || []) as CodeFile[];
-    const next = files.map(f => f.path === file.path ? sanitizeData(file) : f);
-    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { files: next, lastModified: Date.now() });
+    let exists = false;
+    const next = files.map(f => {
+        if (f.path === file.path) {
+            exists = true;
+            return sanitizeData(file);
+        }
+        return f;
+    });
+    const finalFiles = exists ? next : [...next, sanitizeData(file)];
+    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { files: finalFiles, lastModified: Date.now() });
 }
 
 export async function updateCursor(id: string, cursor: CursorPosition) {
@@ -872,7 +983,6 @@ export function subscribeToWhiteboard(id: string, callback: (elements: Whiteboar
     });
 }
 
-// Fix: Added saveWhiteboardSession exported function
 export async function saveWhiteboardSession(id: string, elements: WhiteboardElement[]) {
     if (!db || !id) return;
     await setDoc(doc(db, WHITEBOARDS_COLLECTION, id), { elements: sanitizeData(elements) }, { merge: true });
@@ -1063,7 +1173,7 @@ export async function getCreatorNotebooks(uid: string): Promise<Notebook[]> {
 export async function getCard(id: string): Promise<AgentMemory | null> {
     if (!db || !id) return null;
     const snap = await getDoc(doc(db, CARDS_COLLECTION, id));
-    return snap.exists() ? ({ ...snap.data(), id: snap.id } as AgentMemory) : null;
+    return snap.exists() ? (snap.data() as AgentMemory) : null;
 }
 
 export async function getUserCards(uid: string): Promise<AgentMemory[]> {

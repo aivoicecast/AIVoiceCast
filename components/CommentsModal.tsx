@@ -1,8 +1,7 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { Channel, Attachment, AttachmentType, Comment } from '../types';
+import { Channel, Attachment, AttachmentType, Comment, UserProfile } from '../types';
 import { X, Send, MessageSquare, User, Image as ImageIcon, Video, Mic, Loader2, StopCircle, Trash2, Edit2, Save, FileText } from 'lucide-react';
-import { uploadCommentAttachment } from '../services/firestoreService';
+import { uploadCommentAttachment, isUserAdmin, getUserProfile } from '../services/firestoreService';
 
 interface CommentsModalProps {
   isOpen: boolean;
@@ -21,6 +20,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
   const [existingAttachments, setExistingAttachments] = useState<Attachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   
   // Editing State
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -36,6 +36,9 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (currentUser) {
+        getUserProfile(currentUser.uid).then(setProfile);
+    }
     if (!isOpen) {
       // Reset state on close
       setText('');
@@ -43,7 +46,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
       setExistingAttachments([]);
       setEditingCommentId(null);
     }
-  }, [isOpen]);
+  }, [isOpen, currentUser]);
 
   if (!isOpen) return null;
 
@@ -177,6 +180,8 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
     }
   };
 
+  const isSuperAdmin = isUserAdmin(profile);
+
   // Helper to render attachment in stream
   const renderAttachment = (att: Attachment) => {
       switch(att.type) {
@@ -232,7 +237,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
               <div key={comment.id || idx} className={`bg-slate-800/50 border border-slate-700/50 p-4 rounded-xl relative group ${editingCommentId === comment.id ? 'ring-2 ring-indigo-500' : ''}`}>
                  
                  {/* Action Buttons (Edit/Delete) */}
-                 {currentUser && (comment.userId === currentUser.uid || comment.user === currentUser.displayName || currentUser.email === 'shengliang.song.ai@gmail.com') && !editingCommentId && (
+                 {currentUser && (comment.userId === currentUser.uid || comment.user === currentUser.displayName || isSuperAdmin) && !editingCommentId && (
                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1">
                         <button 
                            onClick={() => handleStartEdit(comment)}

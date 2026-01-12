@@ -1,8 +1,6 @@
-
 /**
  * YouTube Data API v3 Resumable Upload Service
  */
-import { firebaseKeys } from './private_keys';
 
 export interface YouTubeUploadMetadata {
     title: string;
@@ -15,7 +13,6 @@ export interface YouTubeUploadMetadata {
  */
 export async function uploadToYouTube(accessToken: string, videoBlob: Blob, metadata: YouTubeUploadMetadata): Promise<string> {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
-    const clientId = firebaseKeys.googleClientId;
     
     console.log("[YouTube] Resumable upload started.");
     
@@ -66,7 +63,7 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
     } catch (fetchErr: any) {
         console.error("[YouTube Handshake Error]", fetchErr);
         if (fetchErr.message === 'Failed to fetch') {
-            throw new Error(`YouTube Handshake Failed: Network Error or CORS Block. Check if '${origin}' is authorized for Client ID ${clientId} in Google Cloud Console.`);
+            throw new Error(`YouTube Handshake Failed: Network Error or CORS Block.`);
         }
         throw new Error(`Handshake Failed: ${fetchErr.message}`);
     }

@@ -1,14 +1,15 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { RecordingSession, Channel, TranscriptItem, UserProfile } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap, Download, Share2, Square, CheckSquare } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap, Download, Share2, Square, CheckSquare, Pause, Search, Plus, RefreshCw, ChevronRight, FileVideo, Database } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getYouTubeEmbedUrl, uploadToYouTube, getYouTubeVideoUrl, deleteYouTubeVideo } from '../services/youtubeService';
-import { getDriveToken, signInWithGoogle } from '../services/authService';
-import { ensureCodeStudioFolder, uploadToDrive, downloadDriveFileAsBlob, deleteDriveFile } from '../services/googleDriveService';
+import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
+import { ensureCodeStudioFolder, uploadToDrive, downloadDriveFileAsBlob, deleteDriveFile, getDriveFileStreamUrl } from '../services/googleDriveService';
 import { ShareModal } from './ShareModal';
+import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 
 interface RecordingListProps {
   onBack?: () => void;
@@ -29,18 +30,26 @@ interface SyncLog {
     type: 'info' | 'error' | 'warn' | 'success';
 }
 
+const formatSize = (bytes?: number) => {
+    if (bytes === undefined || bytes === null || bytes === 0) return '---';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+};
+
 export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiveSession }) => {
   const [recordings, setRecordings] = useState<RecordingSession[]>([]);
   const [loading, setLoading] = useState(true);
+  
   const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
   const [resolvedMediaUrl, setResolvedMediaUrl] = useState<string | null>(null);
+  const [activeRecording, setActiveRecording] = useState<RecordingSession | null>(null);
+  
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [copyingId, setCopyingId] = useState<string | null>(null);
   
-  // Selection State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
@@ -49,12 +58,10 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const [recordCamera, setRecordCamera] = useState(true);
   const [recordScreen, setRecordScreen] = useState(true);
 
-  // Sharing State
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
   const [sharingTitle, setSharingTitle] = useState('');
 
-  // Diagnostic State
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [showSyncLog, setShowSyncLog] = useState(false);
 
@@ -66,48 +73,49 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
       console.log(`[Sync Diagnostic] ${msg}`);
   };
 
-  useEffect(() => {
-    loadData();
-  }, [currentUser]);
+  const formatPST = (timestamp: number) => {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }).format(new Date(timestamp));
+  };
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       let all: RecordingSession[] = [];
       const local = await getLocalRecordings();
-      
-      const localWithFreshUrls = local.map(rec => {
-          if ((rec as any).blob instanceof Blob) {
-              return { 
-                  ...rec, 
-                  mediaUrl: URL.createObjectURL((rec as any).blob) 
-              };
-          }
-          return rec;
-      });
-      
-      all = [...localWithFreshUrls];
+      all = [...local];
       
       if (currentUser?.uid) {
           try {
               const cloud = await getUserRecordings(currentUser.uid);
               all = [...all, ...cloud];
-          } catch (e) {
+          } catch (e: any) {
               console.warn("Cloud recordings unavailable:", e);
           }
       }
       
       const unique = Array.from(new Map(all.map(item => [item.id, item])).values());
       setRecordings(unique.sort((a, b) => b.timestamp - a.timestamp));
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to load recording archive:", e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser]);
 
-  const isYouTubeUrl = (url: string) => url?.includes('youtube.com') || url?.includes('youtu.be');
-  const isDriveUrl = (url: string) => url?.startsWith('drive://') || url?.includes('drive.google.com');
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const isYouTubeUrl = (url?: string) => !!url && (url.includes('youtube.com') || url.includes('youtu.be'));
+  const isDriveUrl = (url?: string) => !!url && (url.startsWith('drive://') || url.includes('drive.google.com'));
 
   const extractYouTubeId = (url: string): string | null => {
       try {
@@ -117,19 +125,11 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           } else if (urlObj.hostname.includes('youtu.be')) {
               return urlObj.pathname.slice(1);
           }
-      } catch (e) {
-          // Regex fallback for non-standard or dirty strings
+      } catch (e: any) {
           const match = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
           return match ? match[1] : null;
       }
       return null;
-  };
-
-  const handleCopyLink = (url: string, id: string) => {
-    if (!url) return;
-    navigator.clipboard.writeText(url);
-    setCopyingId(id);
-    setTimeout(() => setCopyingId(null), 2000);
   };
 
   const handleShare = (rec: RecordingSession) => {
@@ -174,56 +174,70 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   };
 
   const handlePlayback = async (rec: RecordingSession) => {
-      if (activeMediaId === rec.id) {
-          setActiveMediaId(null);
-          if (resolvedMediaUrl?.startsWith('blob:')) URL.revokeObjectURL(resolvedMediaUrl);
-          setResolvedMediaUrl(null);
-          return;
+      if (resolvedMediaUrl?.startsWith('blob:')) {
+          URL.revokeObjectURL(resolvedMediaUrl);
       }
 
-      // Prioritize YouTube for immediate embed if it's the main mediaUrl
       if (isYouTubeUrl(rec.mediaUrl)) {
           setResolvedMediaUrl(rec.mediaUrl);
           setActiveMediaId(rec.id);
+          setActiveRecording(rec);
           return;
       }
 
-      // Handle Drive resolution
       if (isDriveUrl(rec.mediaUrl) || (rec.driveUrl && isDriveUrl(rec.driveUrl))) {
           setResolvingId(rec.id);
           try {
-              const token = getDriveToken();
-              if (!token) throw new Error("Google access required.");
+              const token = getDriveToken() || await connectGoogleDrive();
               const driveUri = isDriveUrl(rec.mediaUrl) ? rec.mediaUrl : rec.driveUrl!;
               const fileId = driveUri.replace('drive://', '').split('&')[0];
-              const blob = await downloadDriveFileAsBlob(token, fileId);
-              const url = URL.createObjectURL(blob);
-              setResolvedMediaUrl(url);
+              const streamUrl = getDriveFileStreamUrl(token, fileId);
+              setResolvedMediaUrl(streamUrl);
               setActiveMediaId(rec.id);
+              setActiveRecording(rec);
           } catch (e: any) {
               alert("Drive Access Denied: " + e.message);
           } finally {
               setResolvingId(null);
           }
       } else {
-          setResolvedMediaUrl(rec.mediaUrl);
-          setActiveMediaId(rec.id);
+          if (rec.blob instanceof Blob) {
+              const freshUrl = URL.createObjectURL(rec.blob);
+              setResolvedMediaUrl(freshUrl);
+              setActiveMediaId(rec.id);
+              setActiveRecording(rec);
+          } else {
+              setResolvedMediaUrl(rec.mediaUrl);
+              setActiveMediaId(rec.id);
+              setActiveRecording(rec);
+          }
       }
   };
 
-  const handleForceYouTubeSync = async (rec: any) => {
+  const closePlayer = () => {
+    if (resolvedMediaUrl?.startsWith('blob:')) URL.revokeObjectURL(resolvedMediaUrl);
+    setActiveMediaId(null);
+    setResolvedMediaUrl(null);
+    setActiveRecording(null);
+  };
+
+  const handleYouTubeSync = async (rec: any) => {
     if (!currentUser) return;
+    if (isYouTubeUrl(rec.mediaUrl)) {
+        window.open(rec.mediaUrl, '_blank');
+        return;
+    }
     
     setShowSyncLog(true);
     setSyncLogs([]);
-    addSyncLog(`FORCING YouTube Transfer: ${rec.channelTitle}`, 'info');
+    addSyncLog(`YouTube Sync Initialized: ${rec.channelTitle}`, 'info');
 
     let token = getDriveToken();
     if (!token) {
-        addSyncLog("OAuth missing. Requesting new session...", 'warn');
+        addSyncLog("Handshake required for YouTube access...", 'warn');
         const user = await signInWithGoogle();
         if (!user) {
-            addSyncLog("Login canceled.", 'error');
+            addSyncLog("Handshake aborted.", 'error');
             return;
         }
         token = getDriveToken();
@@ -236,63 +250,36 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         const originalDriveUrl = isFromDrive ? rec.mediaUrl : rec.driveUrl;
         
         if (rec.blob instanceof Blob) {
-            addSyncLog("Loading local buffer (Source: Local)...", 'info');
+            addSyncLog("Loading local buffer...", 'info');
             videoBlob = rec.blob;
         } else if (isFromDrive) {
-            addSyncLog("Downloading source from Google Drive...", 'info');
+            addSyncLog("Streaming source from Google Drive...", 'info');
             const fileId = rec.mediaUrl.replace('drive://', '').split('&')[0];
             videoBlob = await downloadDriveFileAsBlob(token!, fileId);
-            addSyncLog("Drive download successful.", 'success');
         } else {
-            throw new Error("Recording source not found locally or on Drive.");
+            throw new Error("No available source for this recording.");
         }
 
-        addSyncLog("Step 1: Initiating YouTube Handshake...", 'info');
-        let videoUrl = "";
-        try {
-            const ytId = await uploadToYouTube(token!, videoBlob, {
-                title: `${rec.channelTitle} (Neural Archive)`,
-                description: `Transferred via AIVoiceCast.\nOriginal Source: ${rec.mediaUrl}`,
-                privacyStatus: 'unlisted'
-            });
-            videoUrl = getYouTubeVideoUrl(ytId);
-            addSyncLog(`YouTube Upload Success: ${ytId}`, 'success');
-        } catch (ytErr: any) { 
-            const msg = ytErr.message || String(ytErr);
-            addSyncLog(`YouTube FAILED: ${msg}`, 'error');
-            
-            if (isFromDrive) {
-                addSyncLog("RETENTION POLICY: Source is already on Drive. If YouTube fails, we keep the original Drive link active.", 'warn');
-                setSyncingId(null);
-                return; 
-            }
+        addSyncLog("Publishing to YouTube (Unlisted)...", 'info');
+        const ytId = await uploadToYouTube(token!, videoBlob, {
+            title: `${rec.channelTitle} (Neural Archive)`,
+            description: `Session recorded on ${new Date(rec.timestamp).toLocaleString()}`,
+            privacyStatus: 'unlisted'
+        });
+        const videoUrl = getYouTubeVideoUrl(ytId);
+        addSyncLog(`YouTube Link Finalized: ${ytId}`, 'success');
 
-            addSyncLog("FALLBACK: Saving local buffer to Drive instead...", 'warn');
-            const folderId = await ensureCodeStudioFolder(token!);
-            const driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
-            videoUrl = `drive://${driveFileId}`;
-            addSyncLog(`Drive Fallback Success: ${driveFileId}`, 'success');
-        }
-
-        addSyncLog("Step 2: Updating neural ledger references...", 'info');
+        addSyncLog("Updating persistent ledger...", 'info');
         const sessionData: RecordingSession = {
             ...rec,
             userId: currentUser.uid,
             mediaUrl: videoUrl,
-            driveUrl: originalDriveUrl // Preserve the drive URL
+            driveUrl: originalDriveUrl || videoUrl,
+            size: videoBlob.size
         };
         
-        // Handle transcript sync if not already in cloud
-        if (!isDriveUrl(rec.transcriptUrl)) {
-            const transcriptText = `Neural Transcript: ${rec.channelTitle}\nID: ${rec.id}`;
-            const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
-            const folderId = await ensureCodeStudioFolder(token!);
-            const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
-            sessionData.transcriptUrl = `drive://${tFileId}`;
-        }
-        
         await saveRecordingReference(sessionData);
-        addSyncLog("Neural ledger updated to new URI.", 'success');
+        addSyncLog("Ledger synced successfully.", 'success');
         
         setTimeout(() => {
             loadData();
@@ -300,86 +287,45 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         }, 800);
         
     } catch (e: any) {
-        addSyncLog(`CRITICAL SYNC ERROR: ${e.message}`, 'error');
+        addSyncLog(`SYNC ERROR: ${e.message}`, 'error');
         setSyncingId(null);
     }
   };
 
-  const handleManualSync = async (rec: any) => {
-    if (!currentUser || !rec.blob) return;
+  const handleDriveSync = async (rec: any) => {
+    if (!currentUser || isDriveUrl(rec.mediaUrl)) return;
     
     setShowSyncLog(true);
     setSyncLogs([]);
-    addSyncLog(`Auto-Sync: ${rec.channelTitle}`, 'info');
+    addSyncLog(`Drive Backup Initialized: ${rec.channelTitle}`, 'info');
 
-    let token = getDriveToken();
-    if (!token) {
-        addSyncLog("OAuth missing. Re-authenticating...", 'warn');
-        const user = await signInWithGoogle();
-        if (!user) {
-            addSyncLog("Action canceled.", 'error');
-            return;
-        }
-        token = getDriveToken();
-    }
+    let token = getDriveToken() || await signInWithGoogle().then(() => getDriveToken());
+    if (!token) return addSyncLog("Sync aborted.", 'error');
 
     setSyncingId(rec.id);
     try {
-        const profile = await getUserProfile(currentUser.uid);
-        const pref = profile?.preferredRecordingTarget || 'drive';
-        addSyncLog(`Target: ${pref.toUpperCase()}`, 'info');
-
-        const folderId = await ensureCodeStudioFolder(token!);
         const videoBlob = rec.blob;
-        const transcriptText = `Neural Transcript: ${rec.channelTitle}\nID: ${rec.id}`;
-        const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
+        if (!videoBlob) throw new Error("No local buffer available.");
 
-        let mediaUrl = "";
-        let driveUrl = "";
-
-        // Upload to Drive first for safety
-        addSyncLog("Syncing to Google Drive...", 'info');
-        const driveFileId = await uploadToDrive(token!, folderId, `${rec.id}.webm`, videoBlob);
-        driveUrl = `drive://${driveFileId}`;
-        addSyncLog("Drive Sync Success.", 'success');
-
-        if (pref === 'youtube') {
-            addSyncLog("Syncing to YouTube...", 'info');
-            try {
-                const ytId = await uploadToYouTube(token!, videoBlob, {
-                    title: `${rec.channelTitle} (AI)`,
-                    description: `Recorded via AIVoiceCast.`,
-                    privacyStatus: 'unlisted'
-                });
-                mediaUrl = getYouTubeVideoUrl(ytId);
-                addSyncLog(`YouTube Success: ${ytId}`, 'success');
-            } catch (ytErr: any) { 
-                addSyncLog(`YouTube Sync Failed. Using Drive as primary URI.`, 'warn');
-            }
-        }
-
-        if (!mediaUrl) mediaUrl = driveUrl;
-
-        addSyncLog("Archiving transcript...");
-        const tFileId = await uploadToDrive(token!, folderId, `${rec.id}_transcript.txt`, transcriptBlob);
+        const folderId = await ensureCodeStudioFolder(token);
+        addSyncLog("Uploading to secure cloud vault...", 'info');
+        const driveFileId = await uploadToDrive(token, folderId, `${rec.id}.webm`, videoBlob);
+        const driveUrl = `drive://${driveFileId}`;
         
         const sessionData: RecordingSession = {
-            id: rec.id, userId: currentUser.uid, channelId: rec.channelId,
-            channelTitle: rec.channelTitle, channelImage: rec.channelImage,
-            timestamp: rec.timestamp, 
-            mediaUrl: mediaUrl,
+            ...rec,
+            userId: currentUser.uid,
+            mediaUrl: driveUrl,
             driveUrl: driveUrl,
-            mediaType: rec.mediaType, 
-            transcriptUrl: `drive://${tFileId}`
+            size: videoBlob.size
         };
         
         await saveRecordingReference(sessionData);
-        addSyncLog("Neural ledger updated.", 'success');
+        addSyncLog("Drive backup successful.", 'success');
         
         setTimeout(() => { loadData(); setSyncingId(null); }, 800);
-        
     } catch (e: any) {
-        addSyncLog(`SYNC FAILED: ${e.message}`, 'error');
+        addSyncLog(`FAIL: ${e.message}`, 'error');
         setSyncingId(null);
     }
   };
@@ -398,37 +344,21 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     if (ytUri && token) {
         const videoId = extractYouTubeId(ytUri);
         if (videoId) {
-            try { 
-                addSyncLog(`Removing YouTube Asset: ${videoId}...`, 'info');
-                await deleteYouTubeVideo(token, videoId); 
-                addSyncLog(`YouTube asset purged.`, 'success');
-            } catch (e: any) {
-                if (e.message?.includes('403')) {
-                    addSyncLog(`YouTube Purge FAILED: Missing Scope. Re-login required.`, 'error');
-                } else {
-                    addSyncLog(`YouTube Purge FAILED: ${e.message}`, 'error');
-                }
-            }
+            try { await deleteYouTubeVideo(token, videoId); } catch (e: any) {}
         }
     }
 
     if (driveUri && token) {
         const fileId = driveUri.replace('drive://', '').split('&')[0];
         if (fileId) {
-            try { 
-                addSyncLog(`Removing Drive Asset: ${fileId}...`, 'info');
-                await deleteDriveFile(token, fileId); 
-                addSyncLog(`Drive asset purged.`, 'success');
-            } catch (e: any) {
-                addSyncLog(`Drive Purge FAILED: ${e.message}`, 'error');
-            }
+            try { await deleteDriveFile(token, fileId); } catch (e: any) {}
         }
     }
 
     if (transcriptUri && token) {
         const tFileId = transcriptUri.replace('drive://', '').split('&')[0];
         if (tFileId) {
-            try { await deleteDriveFile(token, tFileId); } catch (e) {}
+            try { await deleteDriveFile(token, tFileId); } catch (e: any) {}
         }
     }
 
@@ -436,116 +366,53 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   };
 
   const handleDelete = async (rec: RecordingSession) => {
-    if (!confirm(`Are you sure you want to permanently delete "${rec.channelTitle}"? This will remove the video from YouTube AND Google Drive.`)) return;
+    if (!confirm(`Permanently delete "${rec.channelTitle}" archive?`)) return;
     
     setDeletingId(rec.id);
-    setShowSyncLog(true);
-    addSyncLog(`HARD DELETE INITIATED: ${rec.channelTitle}`, 'warn');
-    
     try {
-        let token = getDriveToken();
-        const isCloud = !rec.mediaUrl.startsWith('blob:') && !rec.mediaUrl.startsWith('data:');
-        if (isCloud && !token) {
-            addSyncLog("Permissions required for cloud asset removal...", 'warn');
-            const user = await signInWithGoogle();
-            if (!user) { 
-                addSyncLog("Delete canceled: User declined authentication.", 'error');
-                setDeletingId(null); 
-                return; 
-            }
-            token = getDriveToken();
-        }
+        const token = getDriveToken();
         await purgeRecordingAssets(rec, token);
         setRecordings(prev => prev.filter(r => r.id !== rec.id));
-        addSyncLog("Ledger record removed.", 'success');
     } catch (e: any) {
-        addSyncLog(`Delete FAILED: ${e.message}`, 'error');
         alert("Delete failed: " + e.message);
     } finally {
-        setDeletingId(null);
+        setDownloadingId(null);
     }
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const handleBulkDelete = async () => {
-    const count = selectedIds.size;
-    if (count === 0) return;
-    if (!confirm(`Permanently delete ${count} selected recordings? This will purge associated assets from YouTube and Google Drive.`)) return;
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} recordings?`)) return;
 
     setIsBulkDeleting(true);
-    setShowSyncLog(true);
-    setSyncLogs([]);
-    addSyncLog(`Starting BATCH PURGE for ${count} items...`, 'warn');
-
-    let token = getDriveToken();
-    if (!token && currentUser) {
-        addSyncLog("Authentication required for batch cleanup...", 'warn');
-        const user = await signInWithGoogle();
-        if (!user) {
-            addSyncLog("Action canceled.", 'error');
-            setIsBulkDeleting(false);
-            return;
-        }
-        token = getDriveToken();
-    }
-
+    const token = getDriveToken();
     try {
-        const idsToPurge = Array.from(selectedIds);
-        for (let i = 0; i < idsToPurge.length; i++) {
-            const id = idsToPurge[i];
-            const rec = recordings.find(r => r.id === id);
-            if (rec) {
-                addSyncLog(`[${i+1}/${count}] Purging: ${rec.channelTitle}...`, 'info');
-                await purgeRecordingAssets(rec, token);
-                addSyncLog(`Purged: ${id}`, 'success');
-            }
-        }
-        addSyncLog("Batch Purge Complete.", 'success');
-        setRecordings(prev => prev.filter(r => !selectedIds.has(r.id)));
-        setSelectedIds(new Set());
-        setTimeout(() => setShowSyncLog(false), 2000);
-    } catch (e: any) {
-        addSyncLog(`BATCH ERROR: ${e.message}`, 'error');
+      for (const id of Array.from(selectedIds)) {
+        const rec = recordings.find(r => r.id === id);
+        if (rec) await purgeRecordingAssets(rec, token);
+      }
+      setRecordings(prev => prev.filter(r => !selectedIds.has(r.id)));
+      setSelectedIds(new Set());
     } finally {
-        setIsBulkDeleting(false);
+      setIsBulkDeleting(false);
     }
   };
 
-  const toggleSelectAll = () => {
-    if (selectedIds.size === recordings.length) {
-        setSelectedIds(new Set());
-    } else {
-        setSelectedIds(new Set(recordings.map(r => r.id)));
+  const handleStartQuickRecording = () => {
+    const defaultChannel: Channel = HANDCRAFTED_CHANNELS[0]; 
+    if (onStartLiveSession) {
+        onStartLiveSession(defaultChannel, meetingTitle || "Manual Meeting Scribe", true, undefined, recordScreen, recordCamera);
     }
-  };
-
-  const toggleSelect = (id: string) => {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedIds(next);
-  };
-
-  const handleStartRecorder = async () => {
-      if (!meetingTitle.trim() || !onStartLiveSession) return;
-      
-      const now = new Date();
-      const timeStr = now.toLocaleString();
-      const newChannel: Channel = {
-          id: `meeting-force-start-${Date.now()}`,
-          title: meetingTitle,
-          description: `Meeting: ${meetingTitle}`,
-          author: currentUser?.displayName || 'Guest User',
-          ownerId: currentUser?.uid || 'guest',
-          visibility: 'private',
-          voiceName: 'Zephyr',
-          systemInstruction: `You are a helpful meeting assistant. Context: ${meetingTitle}. Recorded at ${timeStr}.`,
-          likes: 0, dislikes: 0, comments: [], tags: ['Meeting'],
-          imageUrl: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?w=600&q=80',
-          createdAt: Date.now()
-      };
-      
-      setIsRecorderModalOpen(false);
-      onStartLiveSession(newChannel, meetingTitle, true, undefined, recordScreen, recordCamera);
+    setIsRecorderModalOpen(false);
   };
 
   return (
@@ -554,337 +421,334 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <span className="w-2 h-6 bg-red-500 rounded-full"></span>
-            <span>Studio Recordings</span>
+            <span>Recordings Archive</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-1">Archive of interactive AI sessions and recorded meetings.</p>
+          <p className="text-xs text-slate-500 mt-1">Sovereign meeting logs and neural evaluations.</p>
         </div>
-        
         <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsRecorderModalOpen(true)}
+            className="flex items-center space-x-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors text-xs font-bold shadow-lg"
+          >
+            <Plus size={14} /><span>Start Scribe</span>
+          </button>
+          {selectedIds.size > 0 && (
             <button 
-                onClick={() => setShowSyncLog(!showSyncLog)}
-                className={`p-2 rounded-lg transition-colors ${showSyncLog ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                title="Sync Diagnostics"
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+              className="flex items-center space-x-2 px-4 py-2 bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white rounded-lg transition-all text-xs font-bold border border-red-500/20"
             >
-                <Terminal size={18}/>
+              {isBulkDeleting ? <Loader2 size={14} className="animate-spin"/> : <Trash2 size={14}/>}
+              <span>Delete {selectedIds.size}</span>
             </button>
-            <button 
-                onClick={() => { setIsRecorderModalOpen(true); setMeetingTitle(`Meeting ${new Date().toLocaleDateString()}`); }}
-                className="flex items-center space-x-2 px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-all text-xs font-bold shadow-lg shadow-red-900/20 active:scale-95"
-            >
-                <Zap size={14} fill="currentColor" />
-                <span>One-Click Record</span>
-            </button>
+          )}
+          <button onClick={loadData} className="p-2 text-slate-400 hover:text-white transition-colors bg-slate-900 rounded-lg border border-slate-800">
+            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
       </div>
 
-      {/* Bulk Action Bar */}
-      {!loading && recordings.length > 0 && (
-          <div className={`p-4 rounded-2xl border transition-all duration-300 flex items-center justify-between ${selectedIds.size > 0 ? 'bg-indigo-600 border-indigo-400 shadow-xl shadow-indigo-900/20' : 'bg-slate-900 border-slate-800'}`}>
-              <div className="flex items-center gap-4">
-                  <button onClick={toggleSelectAll} className="flex items-center gap-2 text-xs font-bold text-white uppercase tracking-widest hover:opacity-80 transition-opacity">
-                      {selectedIds.size === recordings.length ? <CheckSquare size={18}/> : <Square size={18}/>}
-                      <span>{selectedIds.size === recordings.length ? 'Deselect All' : 'Select All'}</span>
-                  </button>
-                  {selectedIds.size > 0 && (
-                      <div className="h-6 w-px bg-white/20 mx-2 hidden sm:block"></div>
-                  )}
-                  {selectedIds.size > 0 && (
-                      <span className="text-sm font-black text-white">{selectedIds.size} SELECTED</span>
-                  )}
-              </div>
-              
-              {selectedIds.size > 0 && (
-                  <button 
-                    onClick={handleBulkDelete}
-                    disabled={isBulkDeleting}
-                    className="flex items-center gap-2 px-6 py-2 bg-white text-indigo-600 hover:bg-red-50 hover:text-red-600 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:opacity-50"
-                  >
-                      {isBulkDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16}/>}
-                      <span>Purge Selected</span>
-                  </button>
-              )}
-          </div>
-      )}
-
       {loading ? (
-        <div className="py-24 flex flex-col items-center justify-center text-indigo-400 gap-4">
-          <Loader2 className="animate-spin" size={40} />
-          <span className="text-xs font-black uppercase tracking-[0.2em] animate-pulse">Scanning Neural Archives</span>
+        <div className="py-20 flex flex-col items-center justify-center text-red-400 gap-4">
+          <Loader2 className="animate-spin" size={32} />
+          <span className="text-xs font-bold uppercase tracking-widest animate-pulse">Scanning Neural Archives...</span>
         </div>
       ) : recordings.length === 0 ? (
-        <div className="py-32 text-center text-slate-500 bg-slate-900/30 rounded-[2.5rem] border-2 border-dashed border-slate-800">
-          <Play size={64} className="mx-auto mb-6 opacity-5" />
-          <p className="text-lg font-bold text-slate-400">The archive is empty.</p>
-          <p className="text-sm mt-2 opacity-60">Record meetings or save AI live sessions to see them here.</p>
+        <div className="py-20 flex flex-col items-center justify-center text-slate-500 bg-slate-900/30 rounded-3xl border-2 border-dashed border-slate-800">
+          <Video size={48} className="mb-4 opacity-10" />
+          <p className="font-bold">The archive is empty.</p>
+          <p className="text-xs mt-2">Meeting sessions you record will appear here.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {recordings.map((rec) => {
-            const date = new Date(rec.timestamp);
-            const isVideo = rec.mediaType?.includes('video') || rec.mediaUrl.endsWith('.webm') || isYouTubeUrl(rec.mediaUrl);
-            const isPlaying = activeMediaId === rec.id;
-            const isLocal = rec.mediaUrl.startsWith('blob:') || rec.mediaUrl.startsWith('data:');
-            const isSelected = selectedIds.has(rec.id);
-            
-            // Check for presence of both
-            const hasYoutube = isYouTubeUrl(rec.mediaUrl) || (rec.driveUrl && isYouTubeUrl(rec.mediaUrl));
-            const hasDrive = isDriveUrl(rec.mediaUrl) || (rec.driveUrl && isDriveUrl(rec.driveUrl));
-            
-            const ytUri = isYouTubeUrl(rec.mediaUrl) ? rec.mediaUrl : (isYouTubeUrl(rec.driveUrl || '') ? rec.driveUrl : '');
-            const driveUri = isDriveUrl(rec.mediaUrl) ? rec.mediaUrl : (isDriveUrl(rec.driveUrl || '') ? rec.driveUrl : '');
-
-            const isThisResolving = resolvingId === rec.id;
-            const isThisDownloading = downloadingId === rec.id;
-            const isCopying = copyingId === rec.id;
-            const isThisDeleting = deletingId === rec.id;
-
-            return (
-              <div key={rec.id} className={`bg-slate-900 border ${isPlaying ? 'border-indigo-500 shadow-indigo-500/10' : (isSelected ? 'border-indigo-500 bg-indigo-900/5' : 'border-slate-800')} rounded-2xl p-5 transition-all hover:border-indigo-500/30 group shadow-xl flex gap-4`}>
-                <div className="flex flex-col items-center pt-2">
-                    <button onClick={() => toggleSelect(rec.id)} className={`transition-colors ${isSelected ? 'text-indigo-400' : 'text-slate-700 hover:text-slate-500'}`}>
-                        {isSelected ? <CheckSquare size={20}/> : <Square size={20}/>}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-slate-950/50 border-b border-slate-800">
+                <tr>
+                  <th className="px-6 py-4 w-12">
+                    <button onClick={() => {
+                      if (selectedIds.size === recordings.length) setSelectedIds(new Set());
+                      else setSelectedIds(new Set(recordings.map(r => r.id)));
+                    }} className="p-1 hover:bg-slate-800 rounded">
+                      <CheckSquare size={16} className={selectedIds.size === recordings.length ? 'text-red-500' : 'text-slate-600'} />
                     </button>
-                </div>
-                
-                <div className="flex-1">
-                    <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-transform group-hover:scale-105 ${hasYoutube ? 'bg-red-900/20 border-red-500/50 text-red-500' : hasDrive ? 'bg-indigo-900/20 border-indigo-500/50 text-indigo-400' : 'bg-slate-800 text-slate-500'}`}>
-                        {hasYoutube ? <Youtube size={24} /> : hasDrive ? <HardDrive size={24} /> : <Mic size={24} />}
+                  </th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-widest">Session</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-widest hidden md:table-cell">Origin</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-widest">Size</th>
+                  <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-widest">Date (PST)</th>
+                  <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-slate-500 tracking-widest">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/50">
+                {recordings.map((rec) => {
+                  const isSelected = selectedIds.has(rec.id);
+                  const isYT = isYouTubeUrl(rec.mediaUrl);
+                  const isDrive = isDriveUrl(rec.mediaUrl);
+                  const pstString = formatPST(rec.timestamp);
+                  
+                  return (
+                    <tr key={rec.id} className={`group hover:bg-slate-800/30 transition-colors ${isSelected ? 'bg-red-900/5' : ''}`}>
+                      <td className="px-6 py-4">
+                        <button 
+                          onClick={() => toggleSelection(rec.id)} 
+                          className={`p-1.5 rounded-lg border transition-all ${isSelected ? 'bg-red-600 border-red-500 text-white' : 'border-slate-700 text-slate-600'}`}
+                        >
+                          <Check size={14} strokeWidth={isSelected ? 4 : 2}/>
+                        </button>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-4">
+                          <div className="w-16 h-10 rounded-lg bg-slate-800 overflow-hidden relative shrink-0 border border-slate-700">
+                             {rec.channelImage ? (
+                               <img src={rec.channelImage} alt="" className="w-full h-full object-cover opacity-60" />
+                             ) : (
+                               <div className="w-full h-full flex items-center justify-center text-slate-700"><FileVideo size={20}/></div>
+                             )}
+                             <button 
+                                onClick={() => handlePlayback(rec)}
+                                disabled={resolvingId === rec.id}
+                                className="absolute inset-0 flex items-center justify-center bg-black/20 hover:bg-black/0 transition-colors group/play"
+                             >
+                                {resolvingId === rec.id ? <Loader2 size={16} className="animate-spin text-white"/> : <Play size={16} fill="white" className="text-white opacity-0 group-hover/play:opacity-100 transition-opacity" />}
+                             </button>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-white truncate" title={rec.channelTitle}>{rec.channelTitle}</p>
+                            <p className="text-[10px] text-slate-500 font-mono">ID: {rec.id.substring(0,8)}</p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
+                      </td>
+                      <td className="px-6 py-4 hidden md:table-cell">
                         <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-white text-lg truncate">{rec.channelTitle}</h3>
-                            {hasYoutube && <span className="bg-red-600 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded">YouTube</span>}
-                            {hasDrive && <span className="bg-indigo-600 text-white text-[8px] font-black uppercase px-2 py-0.5 rounded">Drive</span>}
-                            {isLocal && <span className="bg-slate-800 text-slate-500 text-[8px] font-black uppercase px-1.5 py-0.5 rounded border border-slate-700">Local Only</span>}
+                           {isYT ? (
+                             <div className="bg-red-600/20 text-red-500 px-3 py-1 rounded-full border border-red-500/30 text-[9px] font-black uppercase flex items-center gap-1.5 shadow-lg shadow-red-900/10">
+                               <Youtube size={12} fill="currentColor"/> 
+                               <span>YouTube Archive</span>
+                             </div>
+                           ) : isDrive ? (
+                             <div className="bg-indigo-900/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30 text-[9px] font-black uppercase flex items-center gap-1.5">
+                               <HardDrive size={12}/> 
+                               <span>Google Drive</span>
+                             </div>
+                           ) : (
+                             <div className="bg-amber-900/20 text-amber-500 px-3 py-1 rounded-full border border-amber-500/30 text-[9px] font-black uppercase flex items-center gap-1.5">
+                               <Database size={12}/> 
+                               <span>Local Cache</span>
+                             </div>
+                           )}
                         </div>
-                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
-                            <span className="flex items-center gap-1"><Calendar size={12} /> {date.toLocaleDateString()}</span>
-                            <span className="flex items-center gap-1"><Clock size={12} /> {date.toLocaleTimeString()}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                         <span className="text-xs font-mono font-black text-indigo-400">{formatSize(rec.size || rec.blob?.size)}</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col">
+                           <span className="text-xs text-slate-300">{pstString.split(',')[0]}</span>
+                           <span className="text-[10px] text-slate-500 uppercase">{pstString.split(',')[1]}</span>
                         </div>
-                        
-                        <div className="mt-2 flex flex-wrap items-center gap-3 max-w-full">
-                            {ytUri && (
-                                <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
-                                    <div className="flex items-center gap-1 text-[8px] font-bold text-red-400 uppercase tracking-widest bg-red-900/20 px-1.5 py-0.5 rounded border border-red-500/10">
-                                        <Youtube size={8}/>
-                                        <span>YT URI</span>
-                                    </div>
-                                    <code className="text-[9px] font-mono text-slate-500 truncate max-w-[120px]">{ytUri}</code>
-                                    <button onClick={() => handleCopyLink(ytUri, rec.id + '-yt')} className={`p-1 rounded hover:bg-slate-800 transition-colors ${copyingId === rec.id + '-yt' ? 'text-emerald-400' : 'text-slate-500'}`} title="Copy YouTube URI">
-                                        {copyingId === rec.id + '-yt' ? <Check size={10}/> : <Copy size={10}/>}
-                                    </button>
-                                </div>
-                            )}
-                            {driveUri && (
-                                <div className="flex items-center gap-2 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
-                                    <div className="flex items-center gap-1 text-[8px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-900/20 px-1.5 py-0.5 rounded border border-indigo-500/10">
-                                        <HardDrive size={8}/>
-                                        <span>DRIVE URI</span>
-                                    </div>
-                                    <code className="text-[9px] font-mono text-slate-500 truncate max-w-[120px]">{driveUri}</code>
-                                    <button onClick={() => handleCopyLink(driveUri, rec.id + '-dr')} className={`p-1 rounded hover:bg-slate-800 transition-colors ${copyingId === rec.id + '-dr' ? 'text-emerald-400' : 'text-slate-500'}`} title="Copy Drive URI">
-                                        {copyingId === rec.id + '-dr' ? <Check size={10}/> : <Copy size={10}/>}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-                        {currentUser && (
-                            <div className="flex items-center gap-2">
-                                <button 
-                                    onClick={() => handleForceYouTubeSync(rec)}
-                                    disabled={syncingId === rec.id || isThisDeleting || hasYoutube}
-                                    className={`p-2.5 rounded-xl border transition-all shadow-lg active:scale-95 flex items-center gap-2 px-4 group ${hasYoutube ? 'bg-slate-800 text-slate-600 cursor-not-allowed border-slate-700' : 'bg-red-600 hover:bg-red-500 text-white'}`}
-                                    title={hasYoutube ? "Already on YouTube" : "Sync to YouTube"}
-                                >
-                                    {syncingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <Youtube size={16} />}
-                                    <span className="text-[10px] font-black uppercase tracking-widest hidden group-hover:inline">{hasYoutube ? 'Synced' : 'Transfer to YT'}</span>
-                                </button>
-                                {isLocal && (
-                                    <button 
-                                        onClick={() => handleManualSync(rec)}
-                                        disabled={syncingId === rec.id || isThisDeleting}
-                                        className="p-2.5 rounded-xl border bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95"
-                                        title="Auto Sync to Drive"
-                                    >
-                                        {syncingId === rec.id ? <Loader2 size={18} className="animate-spin"/> : <CloudUpload size={18} />}
-                                    </button>
-                                )}
-                            </div>
-                        )}
-
-                        <button 
-                            onClick={() => handleShare(rec)}
-                            disabled={isThisDeleting}
-                            className="p-2.5 bg-slate-800 text-slate-400 hover:text-indigo-400 rounded-xl border border-slate-700 transition-colors disabled:opacity-30" 
-                            title="Share Session"
-                        >
-                            <Share2 size={20} />
-                        </button>
-
-                        {!hasYoutube && (
-                            <button 
-                                onClick={() => handleDownloadToDevice(rec)}
-                                disabled={isThisDownloading || isThisDeleting}
-                                className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors disabled:opacity-30" 
-                                title="Download Local"
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {isYT ? (
+                            <a 
+                                href={rec.mediaUrl} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="p-2 bg-slate-800 hover:bg-red-600 text-red-400 hover:text-white rounded-lg transition-all border border-slate-700 shadow-md"
+                                title="Watch on YouTube"
                             >
-                                {isThisDownloading ? <Loader2 size={20} className="animate-spin text-indigo-400" /> : <Download size={20} />}
+                                <ExternalLink size={16}/>
+                            </a>
+                          ) : (
+                            <button 
+                              onClick={() => handleYouTubeSync(rec)} 
+                              disabled={syncingId === rec.id}
+                              className="p-2 bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white rounded-lg transition-all shadow-md"
+                              title="Sync to YouTube"
+                            >
+                              {syncingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <Youtube size={16} />}
                             </button>
-                        )}
-                        
-                        <button 
-                        onClick={() => handlePlayback(rec)}
-                        disabled={(resolvingId !== null && !isThisResolving) || isThisDeleting}
-                        className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase flex items-center gap-2 transition-all shadow-lg active:scale-95 ${isPlaying ? 'bg-red-600 text-white' : 'bg-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white border border-slate-700'} disabled:opacity-30`}
-                        >
-                        {isThisResolving ? <Loader2 size={16} className="animate-spin" /> : isPlaying ? <X size={16}/> : <Play size={16} fill="currentColor" />}
-                        <span>{isPlaying ? 'Close' : 'Playback'}</span>
-                        </button>
-                        
-                        <a href={rec.transcriptUrl} target="_blank" rel="noreferrer" className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors" title="View Transcript">
-                        <FileText size={20} />
-                        </a>
-
-                        <button onClick={() => handleDelete(rec)} disabled={isThisDeleting} className="p-2.5 bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors disabled:opacity-30" title="Delete Permanent">
-                        {isThisDeleting ? <Loader2 size={20} className="animate-spin text-red-400" /> : <Trash2 size={20} />}
-                        </button>
-                    </div>
-                    </div>
-
-                    {isPlaying && resolvedMediaUrl && (
-                    <div className="mt-6 pt-6 border-t border-slate-800 animate-fade-in flex justify-center">
-                        {hasYoutube && isYouTubeUrl(rec.mediaUrl) ? (
-                            <div className="relative pt-[56.25%] w-full overflow-hidden rounded-2xl bg-black border border-slate-800 shadow-2xl">
-                                <iframe 
-                                    className="absolute top-0 left-0 w-full h-full"
-                                    src={getYouTubeEmbedUrl(extractYouTubeId(rec.mediaUrl) || '')}
-                                    frameBorder="0" allowFullScreen
-                                />
-                            </div>
-                        ) : isVideo ? (
-                        <div className="w-full bg-black rounded-2xl overflow-hidden flex justify-center shadow-2xl border border-slate-800" style={{ maxHeight: '70vh' }}>
-                            <video 
-                                src={resolvedMediaUrl} 
-                                controls 
-                                autoPlay 
-                                className="max-w-full max-h-full h-auto w-auto object-contain"
-                            />
+                          )}
+                          {!isDrive && !isYT && (
+                            <button 
+                              onClick={() => handleDriveSync(rec)} 
+                              disabled={syncingId === rec.id}
+                              className="p-2 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-lg transition-all"
+                              title="Sync to Drive"
+                            >
+                              {syncingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <CloudUpload size={16} />}
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => handleShare(rec)} 
+                            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all"
+                            title="Share"
+                          >
+                            <Share2 size={16} />
+                          </button>
+                          <button 
+                            onClick={() => handleDownloadToDevice(rec)} 
+                            disabled={downloadingId === rec.id}
+                            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all"
+                            title="Download"
+                          >
+                            {downloadingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <Download size={16} />}
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(rec)} 
+                            disabled={deletingId === rec.id}
+                            className="p-2 bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white rounded-lg transition-all"
+                            title="Delete"
+                          >
+                            {deletingId === rec.id ? <Loader2 size={16} className="animate-spin"/> : <Trash2 size={16} />}
+                          </button>
                         </div>
-                        ) : (
-                        <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 flex items-center gap-6 shadow-inner w-full">
-                            <audio src={resolvedMediaUrl} controls autoPlay className="flex-1" />
-                        </div>
-                        )}
-                    </div>
-                    )}
-                </div>
-              </div>
-            );
-          })}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {showSyncLog && (
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-fade-in-up">
-              <div className="p-4 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center shrink-0">
-                  <div className="flex items-center gap-3">
-                      <Activity size={18} className="text-indigo-400"/>
-                      <div>
-                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Neural Sync Diagnostic Console</h3>
-                          <p className="text-[10px] text-slate-500 uppercase font-black">Monitoring Cloud Flow & Fallback Logic</p>
+      {/* Playback Modal */}
+      {activeMediaId && activeRecording && (
+          <div className="fixed inset-0 z-[250] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 sm:p-10 animate-fade-in">
+              <div className="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden shadow-2xl flex flex-col h-full max-h-[85vh]">
+                  <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center shrink-0">
+                      <div className="flex items-center gap-4">
+                          <div className="p-3 bg-red-600 rounded-xl text-white shadow-lg shadow-red-900/20"><Video size={24}/></div>
+                          <div>
+                              <h2 className="text-xl font-black text-white italic tracking-tighter uppercase">{activeRecording.channelTitle}</h2>
+                              <div className="flex items-center gap-4 mt-1 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                  <span className="flex items-center gap-1"><Calendar size={12}/> {formatPST(activeRecording.timestamp).split(',')[0]}</span>
+                                  <span className="flex items-center gap-1"><HardDrive size={12}/> {formatSize(activeRecording.size || activeRecording.blob?.size)}</span>
+                              </div>
+                          </div>
                       </div>
+                      <button onClick={closePlayer} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl transition-all active:scale-95"><X size={24}/></button>
                   </div>
-                  <button onClick={() => setShowSyncLog(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={18}/></button>
-              </div>
-              <div className="flex-1 max-h-[300px] overflow-y-auto p-4 space-y-2 font-mono text-[11px] bg-slate-950/50">
-                  {syncLogs.length === 0 ? (
-                      <p className="text-slate-600 italic">Listening for neural events...</p>
-                  ) : syncLogs.map((log, i) => (
-                      <div key={i} className={`flex gap-3 leading-relaxed ${
-                          log.type === 'error' ? 'text-red-400' : 
-                          log.type === 'warn' ? 'text-amber-400' : 
-                          log.type === 'success' ? 'text-emerald-400' : 
-                          'text-slate-400'
-                      }`}>
-                          <span className="opacity-40 shrink-0 font-bold">[{log.time}]</span>
-                          <span className="break-words">
-                              {log.type === 'error' && <ShieldAlert size={12} className="inline mr-2 -mt-0.5"/>}
-                              {log.type === 'success' && <Check size={12} className="inline mr-2 -mt-0.5"/>}
-                              {log.msg}
-                          </span>
+                  <div className="flex-1 bg-black relative flex items-center justify-center">
+                    {resolvedMediaUrl ? (
+                      isYouTubeUrl(resolvedMediaUrl) ? (
+                        <iframe 
+                          src={getYouTubeEmbedUrl(extractYouTubeId(resolvedMediaUrl)!)} 
+                          className="w-full h-full border-none"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <video 
+                          src={resolvedMediaUrl} 
+                          controls 
+                          autoPlay 
+                          playsInline
+                          className="w-full h-full object-contain"
+                        />
+                      )
+                    ) : (
+                      <div className="flex flex-col items-center gap-4">
+                        <Loader2 size={48} className="animate-spin text-red-500" />
+                        <span className="text-xs font-black uppercase tracking-widest text-slate-500">Buffering Neural Stream...</span>
                       </div>
-                  ))}
-              </div>
-              <div className="p-3 border-t border-slate-800 bg-slate-950 flex justify-between items-center">
-                  <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest">Protocol Version v4.3.0-SYN</p>
-                  <button onClick={() => setSyncLogs([])} className="text-[10px] text-slate-500 hover:text-white underline font-bold uppercase">Clear Logs</button>
+                    )}
+                  </div>
+                  <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-center gap-4 shrink-0">
+                      <button onClick={() => handleDownloadToDevice(activeRecording)} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl border border-slate-700 transition-all flex items-center gap-2"><Download size={14}/> Download Asset</button>
+                      <button onClick={() => handleShare(activeRecording)} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2"><Share2 size={14}/> Share Link</button>
+                  </div>
               </div>
           </div>
       )}
 
-      {/* Manual Recorder Form */}
-      {isRecorderModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
-            <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up">
-                <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2"><Zap className="text-indigo-400" size={18}/> One-Click Meeting Recorder</h3>
-                    <button onClick={() => setIsRecorderModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
-                </div>
-                <div className="p-8 space-y-6">
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2 px-1">Meeting Purpose</label>
-                            <input 
-                                type="text" 
-                                value={meetingTitle} 
-                                onChange={e => setMeetingTitle(e.target.value)}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-                                placeholder="Sync with Team, Lecture Notes..."
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            <label className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${recordScreen ? 'bg-indigo-900/20 border-indigo-500' : 'bg-slate-950 border-slate-800'}`}>
-                                <div className="flex flex-col gap-1">
-                                    <Monitor size={16} className={recordScreen ? 'text-indigo-400' : 'text-slate-600'}/>
-                                    <span className="text-[10px] font-bold uppercase">Screen</span>
-                                </div>
-                                <input type="checkbox" checked={recordScreen} onChange={e => setRecordScreen(e.target.checked)} className="hidden"/>
-                                {recordScreen && <CheckCircle size={14} className="text-indigo-400"/>}
-                            </label>
-                            <label className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${recordCamera ? 'bg-indigo-900/20 border-indigo-500' : 'bg-slate-950 border-slate-800'}`}>
-                                <div className="flex flex-col gap-1">
-                                    <Camera size={16} className={recordCamera ? 'text-indigo-400' : 'text-slate-600'}/>
-                                    <span className="text-[10px] font-bold uppercase">Camera</span>
-                                </div>
-                                <input type="checkbox" checked={recordCamera} onChange={e => setRecordCamera(e.target.checked)} className="hidden"/>
-                                {recordCamera && <CheckCircle size={14} className="text-indigo-400"/>}
-                            </label>
-                        </div>
-                    </div>
-                    <button 
-                        onClick={handleStartRecorder}
-                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3"
-                    >
-                        <Zap size={18} fill="currentColor"/>
-                        Start Recording
-                    </button>
-                    <p className="text-[10px] text-slate-500 text-center uppercase font-bold tracking-tighter">AI Host will listen and summarize silently</p>
-                </div>
-            </div>
-        </div>
+      {/* Sync Diagnostic Overlay */}
+      {showSyncLog && (
+          <div className="fixed inset-0 z-[200] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
+              <div className="max-w-md w-full bg-slate-900 border border-slate-700 rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col animate-fade-in-up">
+                  <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                          <Activity size={20} className="text-red-500"/>
+                          <h3 className="font-bold text-white uppercase tracking-[0.2em] text-sm">Neural Sync Diagnostics</h3>
+                      </div>
+                      <button onClick={() => setShowSyncLog(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6 space-y-3 font-mono text-[10px] bg-black/40 min-h-[300px] scrollbar-hide">
+                      {syncLogs.length === 0 ? (
+                          <div className="h-full flex items-center justify-center text-slate-700 italic">Listening for handshake events...</div>
+                      ) : syncLogs.map((log, i) => (
+                          <div key={i} className={`flex gap-3 leading-relaxed ${log.type === 'error' ? 'text-red-400' : log.type === 'warn' ? 'text-amber-400' : log.type === 'success' ? 'text-emerald-400' : 'text-slate-500'}`}>
+                              <span className="opacity-30 shrink-0">[{log.time}]</span>
+                              <span className="break-words">{log.msg}</span>
+                          </div>
+                      ))}
+                  </div>
+                  <div className="p-4 bg-slate-950 border-t border-slate-800 text-center">
+                      <p className="text-[8px] text-slate-600 font-black uppercase tracking-[0.4em]">Transfer Protocol v5.1.0</p>
+                  </div>
+              </div>
+          </div>
       )}
 
-      {showShareModal && shareUrl && (
+      {/* Recorder Modal */}
+      {isRecorderModalOpen && (
+          <div className="fixed inset-0 z-[200] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
+              <div className="max-w-lg w-full bg-slate-900 border border-slate-700 rounded-[3rem] p-10 shadow-2xl space-y-8 animate-fade-in-up">
+                  <div className="text-center">
+                      <div className="inline-flex p-4 bg-red-600/10 rounded-full text-red-500 mb-4 border border-red-500/20">
+                          <Mic size={32}/>
+                      </div>
+                      <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">Initialize Scribe</h2>
+                      <p className="text-slate-400 text-sm mt-2 font-medium">AI will observe and log the session without interrupting.</p>
+                  </div>
+
+                  <div className="space-y-6">
+                      <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Meeting Identity</label>
+                          <input 
+                              type="text" 
+                              value={meetingTitle}
+                              onChange={e => setMeetingTitle(e.target.value)}
+                              placeholder="e.g. Brainstorming System Design"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-white placeholder-slate-600 outline-none focus:ring-2 focus:ring-red-500/30 transition-all shadow-inner"
+                          />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                          <button 
+                            onClick={() => setRecordCamera(!recordCamera)}
+                            className={`p-5 rounded-[2rem] border-2 flex flex-col items-center gap-3 transition-all ${recordCamera ? 'bg-red-600 border-red-500 text-white shadow-xl shadow-red-900/20' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                          >
+                            <Camera size={24}/>
+                            <span className="text-[10px] font-black uppercase tracking-widest">Camera</span>
+                          </button>
+                          <button 
+                            onClick={() => setRecordScreen(!recordScreen)}
+                            className={`p-5 rounded-[2rem] border-2 flex flex-col items-center gap-3 transition-all ${recordScreen ? 'bg-red-600 border-red-500 text-white shadow-xl shadow-red-900/20' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                          >
+                            <Monitor size={24}/>
+                            <span className="text-[10px] font-black uppercase tracking-widest">Screen</span>
+                          </button>
+                      </div>
+                  </div>
+
+                  <div className="flex gap-4">
+                      <button onClick={() => setIsRecorderModalOpen(false)} className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-2xl font-black uppercase tracking-widest text-xs transition-all">Cancel</button>
+                      <button onClick={handleStartQuickRecording} className="flex-[2] py-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-red-900/40 transition-all active:scale-95">Link Neural Scribe</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {showShareModal && (
           <ShareModal 
-            isOpen={true} onClose={() => setShowShareModal(false)}
-            link={shareUrl} title={`Session: ${sharingTitle}`}
-            onShare={async () => {}} currentUserUid={currentUser?.uid}
+            isOpen={true} 
+            onClose={() => setShowShareModal(false)} 
+            link={shareUrl} 
+            title={sharingTitle}
+            onShare={async () => {}}
+            currentUserUid={currentUser?.uid}
           />
       )}
     </div>

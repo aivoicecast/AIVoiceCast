@@ -1,6 +1,7 @@
+
 {
   "name": "Neural Prism Platform",
-  "description": "Making AI super-intelligence truly accessible. A spectrum of 20+ specialized tools designed for your daily human activities.",
+  "description": "Neural Prism: Refracting Super-Intelligence into Human Utility. A spectrum of 20+ specialized tools designed for your daily human activities.",
   "requestFramePermissions": [
     "microphone",
     "camera",

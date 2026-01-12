@@ -12,6 +12,7 @@ import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { ShareModal } from './ShareModal';
+import { isUserAdmin } from '../services/firestoreService';
 
 interface PodcastDetailProps {
   channel: Channel;
@@ -89,8 +90,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const MY_TOKEN = useMemo(() => `PodcastDetail:${channel.id}:${activeSubTopicId}`, [channel.id, activeSubTopicId]);
 
-  const ADMIN_EMAILS = ['shengliang.song.ai@gmail.com', 'shengliang.song@gmail.com'];
-  const isAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
+  const isAdmin = isUserAdmin(userProfile);
   const isOwner = currentUser && (channel.ownerId === currentUser.uid || isAdmin);
 
   // DEBUG: Detail Permission Logging
@@ -466,11 +466,13 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                         />
                     </div>
                 ) : !isRegenerating && (
-                    <MarkdownView 
-                        content={`# ${activeLecture.topic}\n\n${activeLecture.sections.map((s, idx) => `**${s.speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}**: ${s.text} ${idx === currentSectionIndex ? '  🔊' : ''}`).join('\n\n')}`}
-                        initialTheme={userProfile?.preferredReaderTheme || 'slate'}
-                        showThemeSwitcher={true}
-                    />
+                    <div className="rounded-xl overflow-hidden shadow-2xl">
+                        <MarkdownView 
+                            content={`# ${activeLecture.topic}\n\n${activeLecture.sections.map((s, idx) => `**${s.speaker === 'Teacher' ? activeLecture.professorName : activeLecture.studentName}**: ${s.text} ${idx === currentSectionIndex ? '  🔊' : ''}`).join('\n\n')}`}
+                            initialTheme={userProfile?.preferredReaderTheme || 'slate'}
+                            showThemeSwitcher={true}
+                        />
+                    </div>
                 )}
             </div>
           ) : (<div className="h-64 flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-800 rounded-2xl bg-slate-900/30"><Info size={32} className="mb-2 opacity-20" /><h3 className="text-lg font-bold text-slate-400">{t.selectTopic}</h3></div>)}

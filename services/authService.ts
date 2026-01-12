@@ -20,7 +20,6 @@ export async function signInWithGoogle(): Promise<User | null> {
     provider.addScope('https://www.googleapis.com/auth/youtube.force-ssl'); 
     provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
     provider.addScope('https://www.googleapis.com/auth/userinfo.email');
-    // ADDED: Gmail send scope for booking confirmations
     provider.addScope('https://www.googleapis.com/auth/gmail.send');
     
     provider.setCustomParameters({
@@ -33,7 +32,7 @@ export async function signInWithGoogle(): Promise<User | null> {
         const token = credential?.accessToken;
 
         if (token) {
-            localStorage.setItem('google_drive_token', token); // We use this token for all Google APIs
+            localStorage.setItem('google_drive_token', token); 
             localStorage.setItem('token_expiry', (Date.now() + 3500 * 1000).toString());
         }
 
@@ -82,6 +81,10 @@ export async function signInWithGitHub(): Promise<string | null> {
         handleAuthError(error);
         throw error;
     }
+}
+
+export function clearGitHubToken() {
+    localStorage.removeItem('github_token');
 }
 
 function handleAuthError(error: any) {

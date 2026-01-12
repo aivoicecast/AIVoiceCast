@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Channel } from '../types';
-import { ArrowUp, ArrowDown, Play, MessageSquare, Heart, Calendar, Hash, RefreshCcw, Loader2, ShieldCheck, Edit3 } from 'lucide-react';
+import { Channel, UserProfile } from '../types';
+import { ArrowUp, ArrowDown, Play, MessageSquare, Heart, Calendar, Hash, RefreshCcw, Loader2, ShieldCheck, Edit3, Clock } from 'lucide-react';
+import { isUserAdmin } from '../services/firestoreService';
 
+// Fixed typo 'btype' to 'type' and correctly export SortKey
 export type SortKey = 'title' | 'voiceName' | 'likes' | 'createdAt' | 'author';
 
 interface SortConfig {
@@ -18,29 +20,33 @@ interface PodcastListTableProps {
   onRegenerate?: (channel: Channel) => Promise<void>;
   onEdit?: (channel: Channel) => void;
   currentUser?: any;
+  userProfile?: UserProfile | null;
 }
 
 export const PodcastListTable: React.FC<PodcastListTableProps> = ({ 
-  channels, onChannelClick, sortConfig, onSort, globalVoice, onRegenerate, onEdit, currentUser
+  channels, onChannelClick, sortConfig, onSort, globalVoice, onRegenerate, onEdit, currentUser, userProfile
 }) => {
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
 
-  const ADMIN_EMAILS = ['shengliang.song.ai@gmail.com', 'shengliang.song@gmail.com'];
-  const isSuperAdmin = currentUser && ADMIN_EMAILS.includes(currentUser.email);
-
-  // DEBUG: Permission Check Logging
-  useEffect(() => {
-    if (currentUser) {
-      console.log(`[Neural Debug] Table check for: ${currentUser.email}`);
-      console.log(`[Neural Debug] Is Super Admin? ${isSuperAdmin}`);
-    }
-  }, [currentUser, isSuperAdmin]);
+  const isSuperAdmin = isUserAdmin(userProfile || null);
 
   const renderSortIcon = (key: SortKey) => {
     if (sortConfig.key !== key) return <div className="w-4 h-4 opacity-0 group-hover:opacity-30"><ArrowDown size={14} /></div>;
     return sortConfig.direction === 'asc' 
       ? <ArrowUp size={14} className="text-indigo-400" /> 
       : <ArrowDown size={14} className="text-indigo-400" />;
+  };
+
+  const formatPST = (timestamp: number) => {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }).format(new Date(timestamp));
   };
 
   const HeaderCell = ({ label, sortKey, className = "" }: { label: string, sortKey: SortKey, className?: string }) => (
@@ -91,7 +97,7 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
                  <div className="flex items-center gap-2"><Hash size={14} /> Tags</div>
               </th>
               <HeaderCell label="Engagement" sortKey="likes" />
-              <HeaderCell label="Date" sortKey="createdAt" className="hidden sm:table-cell" />
+              <HeaderCell label="Date (PST)" sortKey="createdAt" className="hidden sm:table-cell" />
               <th className="px-6 py-4"></th>
             </tr>
           </thead>
@@ -151,9 +157,15 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
                   </td>
 
                   <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                       <Calendar size={12} />
-                       <span>{channel.createdAt ? new Date(channel.createdAt).toLocaleDateString() : '-'}</span>
+                    <div className="flex flex-col text-xs text-slate-500">
+                       <div className="flex items-center gap-1.5">
+                          <Calendar size={12} />
+                          <span>{channel.createdAt ? formatPST(channel.createdAt).split(',')[0] : '-'}</span>
+                       </div>
+                       <div className="flex items-center gap-1.5 mt-0.5 opacity-60">
+                          <Clock size={10} />
+                          <span>{channel.createdAt ? formatPST(channel.createdAt).split(',')[1] : ''}</span>
+                       </div>
                     </div>
                   </td>
 

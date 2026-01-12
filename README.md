@@ -1,6 +1,7 @@
+
 # 🌈 Neural Prism Platform
 
-**Making AI super-intelligence beautifully accessible for every human.**
+**Refracting Super-Intelligence into Human Utility.**
 
 Neural Prism is not just a platform; it is an **Intelligence Hub**. We act as a refractive lens for the world's most powerful AI models, transforming complex computational logic into a spectrum of **20+ specialized "rainbow" tools** designed for your daily life.
 
@@ -41,7 +42,7 @@ When you click "Run", your code is not compiled into machine code on a heavy ser
 *   **Live Studio**: Share your **Screen** or **Camera**. The AI can see your work and provide real-time feedback.
 
 ### 3. The Magic Button
-*   **Neural Magic**: Not sure which tool to use? Click the **Magic** button and speak your intent. We will find the right part of the spectrum for you.
+*   **Neural Magic**: Not sure where to start? Click the **Magic** button and speak your intent. We will find the right part of the spectrum for you.
 
 ---
 

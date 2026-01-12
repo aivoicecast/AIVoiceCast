@@ -1,10 +1,11 @@
-# Welcome to Neural Prism v4.4.0: The Spectrum Release
+
+# Welcome to Neural Prism v5.1.0: The Spectrum Pulse
 
 **By Lead Architect** | *Posted in Hub Updates*
 
-The era of static AI interaction is over. Neural Prism v4.4.0 transforms raw intelligence into a spectrum of human utility.
+The era of static AI interaction is over. Neural Prism v5.1.0 transforms raw intelligence into a spectrum of human utility.
 
-## What's New in v4.4.0?
+## What's New in v5.1.0?
 
 ### 1. 🌈 The Rainbow Tool Suite
 We've expanded to over 20 specialized tools. Whether you are designing a verified banking check, generating high-fidelity app icons, or practicing for a software interview, there is a specialized "prism refraction" for your task.

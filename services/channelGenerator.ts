@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from '@google/genai';
 import { Channel, Chapter } from '../types';
 import { incrementApiUsage, getUserProfile } from './firestoreService';
@@ -115,7 +116,7 @@ export async function generateChannelFromPrompt(
       dislikes: 0,
       comments: [],
       tags: parsed.tags || ['AI', 'Generated'],
-      imageUrl: '', // Removed third-party image API
+      imageUrl: '', 
       welcomeMessage: parsed.welcomeMessage,
       starterPrompts: parsed.starterPrompts,
       createdAt: Date.now(),
@@ -170,33 +171,44 @@ export async function modifyCurriculumWithAI(
 }
 
 export async function generateChannelFromDocument(
-  documentText: string,
+  source: { text?: string, url?: string },
   currentUser: any,
   language: 'en' | 'zh' = 'en'
 ): Promise<Channel | null> {
   try {
-    const provider = await getAIProvider();
-    const openaiKey = localStorage.getItem('openai_api_key') || OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
-    let activeProvider = provider;
-    if (provider === 'openai' && !openaiKey) activeProvider = 'gemini';
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
-    const systemPrompt = `You are a Podcast Producer. ${langInstruction}`;
-    const userRequest = `Convert document to Channel: "${documentText.substring(0, 5000)}"`;
-    let text: string | null = null;
-    if (activeProvider === 'openai') {
-        text = await callOpenAI(systemPrompt, userRequest, openaiKey);
-    } else {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
-            contents: `${systemPrompt}\n\n${userRequest}`,
-            config: { responseMimeType: 'application/json' }
+    
+    const systemPrompt = `You are an expert Podcast Producer. Your task is to analyze the provided source and transform it into a structured, engaging podcast channel.`;
+    
+    const userRequest = `Create a Podcast Channel based on this source. Return ONLY a JSON object with: title, description, voiceName, systemInstruction, tags, and chapters (with subTopics).`;
+
+    let parts: any[] = [{ text: `${systemPrompt}\n${langInstruction}\n\n${userRequest}` }];
+
+    if (source.url) {
+        // NEW GEMINI API: Direct HTTPS URL ingestion
+        parts.push({
+            fileData: {
+                mimeType: source.url.endsWith('.pdf') ? 'application/pdf' : 'text/plain',
+                fileUri: source.url
+            }
         });
-        text = response.text || null;
+    } else if (source.text) {
+        parts.push({ text: `SOURCE TEXT:\n${source.text.substring(0, 100000)}` });
     }
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: { parts },
+        config: { responseMimeType: 'application/json' }
+    });
+
+    const text = response.text;
     if (!text) return null;
+    
     const parsed = JSON.parse(text);
     const channelId = crypto.randomUUID();
+    
     return {
       id: channelId,
       title: parsed.title,
@@ -207,9 +219,19 @@ export async function generateChannelFromDocument(
       voiceName: parsed.voiceName || 'Zephyr',
       systemInstruction: parsed.systemInstruction,
       likes: 0, dislikes: 0, comments: [], tags: parsed.tags || [],
-      imageUrl: '', // Removed third-party image API
+      imageUrl: '', 
       createdAt: Date.now(),
-      chapters: parsed.chapters?.map((ch: any, i: number) => ({ id: `ch-${i}`, title: ch.title, subTopics: ch.subTopics.map((s: any, j: number) => ({ id: `s-${i}-${j}`, title: s.title || s })) })) || []
+      chapters: parsed.chapters?.map((ch: any, i: number) => ({ 
+          id: `ch-${i}`, 
+          title: ch.title, 
+          subTopics: ch.subTopics.map((s: any, j: number) => ({ 
+              id: `s-${i}-${j}`, 
+              title: s.title || s 
+          })) 
+      })) || []
     };
-  } catch (error) { return null; }
+  } catch (error) { 
+      console.error("Neural Document Parse Failure:", error);
+      return null; 
+  }
 }

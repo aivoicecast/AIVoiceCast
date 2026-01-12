@@ -6,9 +6,27 @@ export interface DriveFile {
   name: string;
   mimeType: string;
   webViewLink?: string;
+  size?: string;
 }
 
 const APP_STATE_FILE = 'aivoicecast_state_v2.json';
+
+/**
+ * Generates a streamable URL for media tags (video/audio/pdf).
+ * NOTE: Using access_token in URL is the most reliable way to enable 
+ * native browser Range Requests (streaming) for private Drive files.
+ */
+export function getDriveFileStreamUrl(accessToken: string, fileId: string): string {
+  // Ensure the URL is properly formatted for the media endpoint
+  return `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&access_token=${accessToken}`;
+}
+
+/**
+ * Returns the Google Drive Preview link which is the most reliable for PDFs.
+ */
+export function getDrivePreviewUrl(fileId: string): string {
+  return `https://drive.google.com/file/d/${fileId}/preview`;
+}
 
 /**
  * Searches for a folder by name, optionally within a parent folder.
@@ -32,34 +50,47 @@ export async function findFolder(accessToken: string, name: string, parentId?: s
 }
 
 /**
- * Ensures a folder exists by searching first and creating if not found.
+ * Ensures a folder path exists (e.g., "src/components") by creating segments as needed.
  */
-export async function ensureFolder(accessToken: string, name: string, parentId?: string): Promise<string> {
-  const existingId = await findFolder(accessToken, name, parentId);
-  if (existingId) return existingId;
+export async function ensureFolder(accessToken: string, path: string, parentId?: string): Promise<string> {
+  if (!path || path === '/' || path === '.') return parentId || 'root';
+  
+  const segments = path.split('/').filter(Boolean);
+  let currentParentId = parentId;
 
-  const metadata: any = {
-    name,
-    mimeType: 'application/vnd.google-apps.folder'
-  };
-  if (parentId) metadata.parents = [parentId];
-  
-  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(metadata)
-  });
-  
-  if (!createRes.ok) {
-    const errData = await createRes.json().catch(() => ({}));
-    throw new Error(`Drive folder creation failed (${createRes.status}): ${errData.error?.message || createRes.statusText}`);
+  for (const segment of segments) {
+    const existingId = await findFolder(accessToken, segment, currentParentId);
+    if (existingId) {
+      currentParentId = existingId;
+    } else {
+      // Create segment
+      const metadata: any = {
+        name: segment,
+        mimeType: 'application/vnd.google-apps.folder'
+      };
+      if (currentParentId) metadata.parents = [currentParentId];
+      
+      const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(metadata)
+      });
+      
+      if (!createRes.ok) {
+        const errData = await createRes.json().catch(() => ({}));
+        throw new Error(`Drive folder creation failed (${createRes.status}): ${errData.error?.message || createRes.statusText}`);
+      }
+
+      const folder = await createRes.json();
+      currentParentId = folder.id;
+    }
   }
 
-  const folder = await createRes.json();
-  return folder.id;
+  if (!currentParentId) throw new Error("Could not resolve folder ID for path: " + path);
+  return currentParentId;
 }
 
 /**
@@ -155,7 +186,7 @@ export async function loadAppStateFromDrive(accessToken: string, folderId: strin
 
 export async function listDriveFiles(accessToken: string, folderId: string): Promise<DriveFile[]> {
   const query = `'${folderId}' in parents and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,mimeType,webViewLink)`, {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,mimeType,webViewLink,size)`, {
     headers: { Authorization: `Bearer ${accessToken}` }
   });
   const data = await res.json();
@@ -309,10 +340,28 @@ export async function createDriveFolder(accessToken: string, name: string, paren
     return folder.id;
 }
 
-export async function moveDriveFile(accessToken: string, fileId: string, currentParentId: string, newParentId: string): Promise<void> {
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${newParentId}&removeParents=${currentParentId}`, {
+/**
+ * Moves a Drive file by changing its parent and optionally renaming it.
+ */
+export async function moveDriveFile(accessToken: string, fileId: string, currentParentId: string, newParentId: string, newName?: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('addParents', newParentId);
+    params.append('removeParents', currentParentId);
+    
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?${params.toString()}`;
+    const body = newName ? JSON.stringify({ name: newName }) : undefined;
+
+    const res = await fetch(url, {
         method: 'PATCH',
-        headers: { Authorization: `Bearer ${accessToken}` }
+        headers: { 
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+        },
+        body
     });
-    if (!res.ok) throw new Error("Failed to move Drive file");
+    
+    if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(`Drive move failed (${res.status}): ${errData.error?.message || res.statusText}`);
+    }
 }

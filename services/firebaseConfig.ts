@@ -3,7 +3,7 @@ import { initializeApp, getApps, getApp } from "@firebase/app";
 import type { FirebaseApp } from "@firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
 import type { Auth } from "@firebase/auth";
-import { initializeFirestore, enableMultiTabIndexedDbPersistence } from "@firebase/firestore";
+import { initializeFirestore, enableIndexedDbPersistence } from "@firebase/firestore";
 import type { Firestore } from "@firebase/firestore";
 import { getStorage } from "@firebase/storage";
 import type { FirebaseStorage } from "@firebase/storage";
@@ -43,10 +43,12 @@ const initDb = (): Firestore | null => {
     if (!appInstance) return null;
     
     const firestore = initializeFirestore(appInstance, {
-        experimentalForceLongPolling: true,
+        // Updated to autodetect for better reliability in sandboxed previews
+        experimentalAutoDetectLongPolling: true,
     });
 
-    enableMultiTabIndexedDbPersistence(firestore).catch((err) => {
+    // Simplify persistence for iframe environments which often block multi-tab logic
+    enableIndexedDbPersistence(firestore).catch((err) => {
         if (err.code === 'failed-precondition') {
             console.warn("[Firestore] Persistence failed: Multiple tabs open.");
         } else if (err.code === 'unimplemented') {

@@ -1,4 +1,3 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -12,11 +11,12 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Master Owner account check
+    // Robust Admin Check: Handles missing 'groups' field and email bypass
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == 'shengliang.song.ai@gmail.com' || 
-        request.auth.token.email == 'shengliang.song@gmail.com'
+        request.auth.token.email == 'shengliang.song.ai@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         'admin_neural_prism' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('groups', []))
       );
     }
 
@@ -24,7 +24,7 @@ service cloud.firestore {
     // Global Default: Deny everything unless explicitly allowed
     // ----------------------------------------------------------------------
     match /{document=**} {
-      allow read, write: if isAdmin(); // Admin always has full access
+      allow read, write: if isAdmin(); // Super-admins bypass all restrictions
     }
 
     // ----------------------------------------------------------------------
@@ -78,7 +78,7 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
-    // MOCK INTERVIEWS (FIX: ADDED FOR v4.3.0)
+    // MOCK INTERVIEWS
     match /mock_interviews/{interviewId} {
       allow read: if resource.data.visibility == 'public' || isOwner(resource.data.userId) || isAdmin();
       allow write: if isAuthenticated();
@@ -92,7 +92,6 @@ service cloud.firestore {
     match /saved_words/{wordId} { allow read, write: if isAuthenticated(); }
     
     // Utility App Collections
-    // ALLOW PUBLIC READ for checks to enable shared link viewing
     match /checks/{checkId} { 
       allow read: if true;
       allow write: if isAuthenticated(); 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Channel, ChannelStats } from '../types';
+import { Channel, ChannelStats, UserProfile } from '../types';
 import { Play, Heart, MessageSquare, Lock, Globe, Users, Edit, Share2, Bookmark, User, Zap } from 'lucide-react';
 import { OFFLINE_CHANNEL_ID } from '../utils/offlineContent';
-import { shareChannel, subscribeToChannelStats } from '../services/firestoreService';
+import { shareChannel, subscribeToChannelStats, isUserAdmin } from '../services/firestoreService';
 import { SPECIALIZED_VOICES } from '../utils/initialData';
 
 interface ChannelCardProps {
@@ -10,6 +10,7 @@ interface ChannelCardProps {
   handleChannelClick: (id: string) => void;
   handleVote: (id: string, type: 'like' | 'dislike', e: React.MouseEvent) => void;
   currentUser: any;
+  userProfile?: UserProfile | null;
   setChannelToEdit: (channel: Channel) => void;
   setIsSettingsModalOpen: (open: boolean) => void;
   globalVoice: string;
@@ -20,11 +21,11 @@ interface ChannelCardProps {
 }
 
 export const ChannelCard: React.FC<ChannelCardProps> = ({ 
-  channel, handleChannelClick, handleVote, currentUser, 
+  channel, handleChannelClick, handleVote, currentUser, userProfile,
   setChannelToEdit, setIsSettingsModalOpen, globalVoice, t,
   onCommentClick, isLiked = false, onCreatorClick
 }) => {
-  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song@gmail.com');
+  const isOwner = currentUser && (channel.ownerId === currentUser.uid || isUserAdmin(userProfile || null));
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [hasLiked, setHasLiked] = useState(isLiked);
   
@@ -96,9 +97,9 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
       className={`group relative bg-slate-900 border ${channel.id === OFFLINE_CHANNEL_ID ? 'border-indigo-500/50 shadow-indigo-500/20 shadow-lg' : 'border-slate-800'} rounded-xl overflow-hidden hover:border-indigo-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-500/10 cursor-pointer flex flex-col`}
     >
       <div className="absolute top-2 right-2 z-10 flex gap-1">
-          {channel.visibility === 'private' && <div className="bg-slate-900/80 p-1 rounded-full text-slate-400"><Lock size={12}/></div>}
-          {channel.visibility === 'public' && <div className="bg-emerald-900/80 p-1 rounded-full text-emerald-400"><Globe size={12}/></div>}
-          {channel.visibility === 'group' && <div className="bg-purple-900/80 p-1 rounded-full text-purple-400"><Users size={12}/></div>}
+          {channel.visibility === 'private' && <div className="bg-slate-900/80 p-1 rounded-full text-slate-400" title="Private"><Lock size={12}/></div>}
+          {channel.visibility === 'public' && <div className="bg-emerald-900/80 p-1 rounded-full text-emerald-400" title="Public"><Globe size={12}/></div>}
+          {channel.visibility === 'group' && <div className="bg-purple-900/80 p-1 rounded-full text-purple-400" title="Group Only"><Users size={12}/></div>}
       </div>
       
       {isTuned && (
@@ -110,7 +111,7 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
         </div>
       )}
       
-      {/* Quick Edit Button for Owners */}
+      {/* Quick Edit Button for Owners and Admins */}
       {isOwner && (
          <div className="absolute top-2 left-20 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
             <button 
@@ -129,7 +130,7 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
 
       <div className="aspect-video relative overflow-hidden bg-slate-800">
         <img 
-          src={channel.imageUrl} 
+          src={channel.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(channel.title)}&background=6366f1&color=fff`} 
           alt={channel.title}
           loading="lazy"
           referrerPolicy="no-referrer"

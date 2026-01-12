@@ -158,6 +158,8 @@ export interface RecordingSession {
   driveUrl?: string; 
   mediaType?: string;
   transcriptUrl: string;
+  blob?: Blob; // Persisted binary for local revival
+  size?: number; // File size in bytes
 }
 
 export interface Group {
@@ -194,14 +196,17 @@ export interface RealTimeMessage {
 export interface CodeFile {
   name: string;
   path: string;
-  language: 'javascript' | 'typescript' | 'javascript (react)' | 'typescript (react)' | 'python' | 'c++' | 'c' | 'java' | 'rust' | 'go' | 'c#' | 'html' | 'css' | 'json' | 'markdown' | 'plantuml' | 'whiteboard' | 'pdf' | 'text';
+  language: 'javascript' | 'typescript' | 'javascript (react)' | 'typescript (react)' | 'python' | 'c++' | 'c' | 'java' | 'rs' | 'go' | 'c#' | 'html' | 'css' | 'json' | 'markdown' | 'plantuml' | 'whiteboard' | 'pdf' | 'text' | 'youtube' | 'video' | 'shell' | 'audio';
   content: string;
+  size?: number;
   loaded?: boolean;
   isDirectory?: boolean;
   isModified?: boolean;
   sha?: string;
   treeSha?: string;
   childrenFetched?: boolean;
+  driveId?: string; 
+  parentId?: string; // Tracks folder hierarchy
 }
 
 export interface CodeProject {
@@ -240,9 +245,10 @@ export interface CloudItem {
   url?: string;
 }
 
-export type ToolType = 'pen' | 'eraser' | 'rect' | 'circle' | 'line' | 'arrow' | 'triangle' | 'star' | 'type' | 'move';
+export type ToolType = 'pen' | 'eraser' | 'rect' | 'circle' | 'line' | 'arrow' | 'triangle' | 'star' | 'type' | 'move' | 'hand' | 'curve';
 export type LineStyle = 'solid' | 'dashed' | 'dotted' | 'dash-dot' | 'long-dash';
 export type BrushType = 'standard' | 'pencil' | 'marker' | 'airbrush' | 'calligraphy-pen' | 'writing-brush';
+export type CapStyle = 'none' | 'arrow' | 'circle';
 
 export interface WhiteboardElement {
   id: string;
@@ -260,8 +266,10 @@ export interface WhiteboardElement {
   endY?: number;
   borderRadius?: number;
   rotation?: number;
-  startArrow?: boolean;
-  endArrow?: boolean;
+  startArrow?: boolean; 
+  endArrow?: boolean;   
+  startCap?: CapStyle;
+  endCap?: CapStyle;
   text?: string;
   fontSize?: number;
 }
@@ -505,7 +513,7 @@ export interface Booking {
   transcriptUrl?: string | null;
 }
 
-export type ViewState = 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'groups' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'shipping_viewer' | 'icon_generator' | 'icon_viewer' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio';
+export type ViewState = 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'groups' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'shipping_viewer' | 'icon_generator' | 'icon_viewer' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide';
 
 export interface MockInterviewRecording {
   id: string;
@@ -515,10 +523,12 @@ export interface MockInterviewRecording {
   mode: 'coding' | 'system_design' | 'behavioral' | 'quick_screen' | 'assessment_30' | 'assessment_60';
   language?: string;
   jobDescription: string;
+  interviewerInfo?: string; 
+  intervieweeInfo?: string; 
   timestamp: number;
-  videoUrl: string; // Drive Link
+  videoUrl: string; 
   transcript?: TranscriptItem[];
-  coachingTranscript?: TranscriptItem[]; // Persistent coaching history
+  coachingTranscript?: TranscriptItem[]; 
   feedback?: string;
   visibility?: 'public' | 'private';
 }

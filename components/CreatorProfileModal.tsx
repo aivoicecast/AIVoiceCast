@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
-import { X, User, MessageSquare, Heart, Users, Check, Bell, Play } from 'lucide-react';
+import { X, User, MessageSquare, Heart, Users, Check, Bell, Play, ShieldCheck } from 'lucide-react';
 import { Channel, UserProfile } from '../types';
-import { getUserProfile, followUser, unfollowUser, getUserProfileByEmail, getChannelsByIds, getCreatorChannels } from '../services/firestoreService';
+import { getUserProfile, followUser, unfollowUser, getUserProfileByEmail, getChannelsByIds, getCreatorChannels, isUserAdmin } from '../services/firestoreService';
 
 interface CreatorProfileModalProps {
   isOpen: boolean;
@@ -11,9 +10,10 @@ interface CreatorProfileModalProps {
   onMessage: () => void;
   onChannelClick: (id: string) => void;
   currentUser?: any;
+  userProfile?: UserProfile | null;
 }
 
-export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen, onClose, channel, onMessage, onChannelClick, currentUser }) => {
+export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen, onClose, channel, onMessage, onChannelClick, currentUser, userProfile: currentUserProfile }) => {
   const [creatorProfile, setCreatorProfile] = useState<UserProfile | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(0);
@@ -29,6 +29,8 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
   const [likedChannels, setLikedChannels] = useState<Channel[]>([]);
   const [loadingLikes, setLoadingLikes] = useState(false);
 
+  const isAdmin = isUserAdmin(currentUserProfile || null);
+
   // Load creator profile data
   useEffect(() => {
     if (!isOpen) return;
@@ -39,15 +41,8 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
         setIsLoading(true);
         let oid = channel.ownerId;
 
-        // If system channel (no ownerId), default to Admin (shengliang.song.ai@gmail.com)
-        if (!oid) {
-            try {
-                const adminProfile = await getUserProfileByEmail('shengliang.song.ai@gmail.com');
-                if (adminProfile) oid = adminProfile.uid;
-            } catch (e) {
-                console.warn("Failed to resolve admin profile for system channel", e);
-            }
-        }
+        // If system channel (no ownerId), we don't force-assign an email here anymore.
+        // It stays as 'Prism Official' unless specifically owned by a UID.
 
         if (oid) {
             if (isActive) setTargetOwnerId(oid);
@@ -87,8 +82,8 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
                 console.error("Failed to load creator profile", err);
             }
         } else {
-            // Fallback purely for display if no owner found at all
-            if (isActive) setFollowerCount(1205); 
+            // Fallback purely for display if no owner found at all (Prism Official)
+            if (isActive) setFollowerCount(9999); 
         }
         if (isActive) setIsLoading(false);
     };
@@ -157,7 +152,7 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
             {/* Avatar */}
             <div className="relative">
                 <img 
-                    src={channel.imageUrl} 
+                    src={channel.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(creatorProfile?.displayName || channel.author)}&background=6366f1&color=fff`}
                     alt={channel.title} 
                     className="w-24 h-24 rounded-full border-4 border-slate-900 object-cover bg-slate-800"
                 />
@@ -171,13 +166,14 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
             <h2 className="text-xl font-bold text-white mt-3">
                 {creatorProfile?.displayName || channel.author}
                 {!channel.ownerId && <span className="ml-1 text-[10px] text-indigo-400 bg-indigo-900/30 px-1 rounded border border-indigo-500/30 align-top">OFFICIAL</span>}
+                {isUserAdmin(creatorProfile) && <ShieldCheck size={16} className="inline ml-1 text-indigo-400" title="Neural Architect" />}
             </h2>
-            <p className="text-sm text-slate-400">@{channel.voiceName.toLowerCase()}_official</p>
+            <p className="text-sm text-slate-400">@{channel.author.toLowerCase().replace(/\s+/g, '_')}</p>
 
             {/* Stats Row */}
             <div className="flex items-center gap-6 mt-4 text-sm">
                 <div className="flex flex-col items-center">
-                    <span className="font-bold text-white">{creatorProfile?.following?.length || 142}</span>
+                    <span className="font-bold text-white">{creatorProfile?.following?.length || 0}</span>
                     <span className="text-slate-500 text-xs">Following</span>
                 </div>
                 <div className="flex flex-col items-center">
@@ -201,11 +197,7 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
                         : 'bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/20'
                     } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                    {isFollowing ? (
-                        <>Following</>
-                    ) : (
-                        <>Follow</>
-                    )}
+                    {isFollowing ? 'Following' : 'Follow'}
                 </button>
                 <button 
                     onClick={onMessage}
@@ -262,7 +254,7 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
                                     className="aspect-[3/4] bg-slate-800 relative group cursor-pointer border border-slate-900"
                                 >
                                     <img 
-                                        src={ch.imageUrl} 
+                                        src={ch.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(ch.title)}&background=6366f1&color=fff`} 
                                         alt={ch.title}
                                         className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                                         loading="lazy"
@@ -270,7 +262,6 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
                                     <div className="absolute bottom-1 right-1 flex items-center gap-1 text-[10px] text-white font-bold drop-shadow-md bg-black/40 px-1 rounded backdrop-blur-sm">
                                         <Play size={8} fill="white" /> {ch.likes || 0}
                                     </div>
-                                    {/* New Indicator (created within last 7 days) */}
                                     {ch.createdAt && (Date.now() - ch.createdAt < 86400000 * 7) && (
                                         <div className="absolute top-1 left-1 w-2 h-2 bg-red-500 rounded-full border border-white shadow-sm"></div>
                                     )}
@@ -302,7 +293,7 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
                                     onClick={() => onChannelClick(ch.id)}
                                     className="flex items-center gap-3 p-3 border-b border-slate-800 hover:bg-slate-800/50 transition-colors cursor-pointer"
                                 >
-                                    <img src={ch.imageUrl} className="w-12 h-12 rounded-lg object-cover bg-slate-800" />
+                                    <img src={ch.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(ch.title)}&background=6366f1&color=fff`} className="w-12 h-12 rounded-lg object-cover bg-slate-800" />
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold text-white truncate">{ch.title}</p>
                                         <p className="text-xs text-slate-400">{ch.author}</p>

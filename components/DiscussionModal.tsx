@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { X, MessageCircle, FileText, Loader2, Edit2, Save, Sparkles, Cloud, Trash2, RefreshCw, Info, Lock, Globe, Users, ChevronDown, Check, Download, Image as ImageIcon, FileCode, Type } from 'lucide-react';
 import { CommunityDiscussion, Group, ChannelVisibility, UserProfile } from '../types';
-import { getDiscussionById, subscribeToDiscussion, saveDiscussionDesignDoc, saveDiscussion, deleteDiscussion, updateDiscussionVisibility, getUserGroups, getUserProfile } from '../services/firestoreService';
+import { getDiscussionById, subscribeToDiscussion, saveDiscussionDesignDoc, saveDiscussion, deleteDiscussion, updateDiscussionVisibility, getUserGroups, getUserProfile, isUserAdmin } from '../services/firestoreService';
 import { generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { MarkdownView } from './MarkdownView';
 import { connectGoogleDrive } from '../services/authService';
@@ -219,7 +218,8 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
       } catch (e) { alert("Failed."); }
   };
 
-  const isOwner = !activeDiscussion || activeDiscussion.userId === 'guest' || (currentUser && activeDiscussion.userId === currentUser.uid) || currentUser?.email === 'shengliang.song.ai@gmail.com';
+  const isSuperAdmin = isUserAdmin(profile);
+  const isOwner = !activeDiscussion || activeDiscussion.userId === 'guest' || (currentUser && activeDiscussion.userId === currentUser.uid) || isSuperAdmin;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">

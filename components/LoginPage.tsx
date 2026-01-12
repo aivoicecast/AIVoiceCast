@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2, Sparkles } from 'lucide-react';
+import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2, Sparkles, BookOpen } from 'lucide-react';
 import { signInWithGoogle } from '../services/authService';
 import { BrandLogo } from './BrandLogo';
 
 interface LoginPageProps {
   onPrivacyClick?: () => void;
   onMissionClick?: () => void;
+  onStoryClick?: () => void;
 }
 
 const GoogleLogo = ({ size = 20 }: { size?: number }) => (
@@ -18,7 +19,7 @@ const GoogleLogo = ({ size = 20 }: { size?: number }) => (
   </svg>
 );
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionClick }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionClick, onStoryClick }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async () => {
@@ -44,8 +45,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
 
           <h1 className="text-4xl font-black text-white mb-2 tracking-tighter uppercase italic">Neural Prism</h1>
           <p className="text-slate-400 text-sm mb-10 font-medium">
-            <span className="text-indigo-400 font-bold uppercase tracking-widest">Intelligence Hub</span><br/> 
-            Refracting AI for your daily activities.
+            <span className="text-indigo-400 font-bold uppercase tracking-widest">Refracting AI into Human Utility</span><br/> 
+            Making super-intelligence beautifully accessible for daily life.
           </p>
 
           <div className="space-y-4 mb-10">
@@ -87,8 +88,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
             )}
           </button>
           
-          <div className="mt-10 flex justify-center gap-8">
+          <div className="mt-10 flex flex-wrap justify-center gap-6">
               <button onClick={onMissionClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold tracking-[0.2em] transition-colors">Vision</button>
+              <button onClick={onStoryClick} className="text-[10px] text-indigo-400 hover:text-indigo-300 uppercase font-black tracking-[0.2em] transition-colors flex items-center gap-1">
+                Story <BookOpen size={10} />
+              </button>
               <button onClick={onPrivacyClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold tracking-[0.2em] transition-colors">Privacy</button>
           </div>
       </div>

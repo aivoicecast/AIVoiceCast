@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { CommunityDiscussion } from '../types';
 import { getUserDesignDocs, deleteDiscussion, getPublicDesignDocs, getGroupDesignDocs, getUserProfile } from '../services/firestoreService';
 import { FileText, ArrowRight, Loader2, MessageSquare, Plus, ShieldCheck, Trash2, Info, FileCode, Globe, Users, Lock, User, AlertCircle, Sparkles } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { DiscussionModal } from './DiscussionModal';
-import { APP_COMPARISON_DOC } from '../utils/docContent';
+import { APP_COMPARISON_DOC, STACK_STORY_DOC, BUILT_WITH_DOC } from '../utils/docContent';
 
 interface DocumentListProps {
   onBack?: () => void;
@@ -52,17 +51,15 @@ export const DocumentList: React.FC<DocumentListProps> = ({ onBack }) => {
       
       // 4. Handle System Comparison Document Visibility
       const isSystemDocHidden = localStorage.getItem('hide_system_doc_v1') === 'true';
-      const finalDocs = isSystemDocHidden 
-        ? unique.filter(d => d.id !== APP_COMPARISON_DOC.id) 
-        : [APP_COMPARISON_DOC, ...unique.filter(d => d.id !== APP_COMPARISON_DOC.id)];
+      const systemDocs = isSystemDocHidden ? [] : [APP_COMPARISON_DOC, STACK_STORY_DOC, BUILT_WITH_DOC];
+      
+      const finalDocs = [...systemDocs, ...unique.filter(d => ![APP_COMPARISON_DOC.id, STACK_STORY_DOC.id, BUILT_WITH_DOC.id].includes(d.id))];
       
       setDocs(finalDocs.sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)));
     } catch (e) {
       console.error("Critical error loading document archive", e);
-      // Fallback to showing at least the system doc if everything fails
-      setDocs([APP_COMPARISON_DOC]);
+      setDocs([APP_COMPARISON_DOC, STACK_STORY_DOC, BUILT_WITH_DOC]);
     } finally {
-      // CRITICAL: Always release the loading state
       setLoading(false);
     }
   };
@@ -74,7 +71,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({ onBack }) => {
   const handleDelete = async (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
       if (!id || id === 'new') return;
-      if (id === APP_COMPARISON_DOC.id) {
+      if ([APP_COMPARISON_DOC.id, STACK_STORY_DOC.id, BUILT_WITH_DOC.id].includes(id)) {
           if (confirm("Hide system example document from your library?")) { 
               localStorage.setItem('hide_system_doc_v1', 'true'); 
               loadData(); 
@@ -130,7 +127,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({ onBack }) => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {docs.map((doc) => {
-            const isSystem = doc.id === APP_COMPARISON_DOC.id;
+            const isSystem = [APP_COMPARISON_DOC.id, STACK_STORY_DOC.id, BUILT_WITH_DOC.id].includes(doc.id);
             const isMyDoc = currentUser && doc.userId === currentUser.uid;
             return (
               <div 

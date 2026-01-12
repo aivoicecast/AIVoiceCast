@@ -2,13 +2,12 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power, Database } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, signInWithGoogle } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
-// Fix: removed linkDiscussionToLectureSegment which is not exported by firestoreService
 import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, syncUserProfile, getUserProfile } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
@@ -69,10 +68,12 @@ const UI_TEXT = {
     linkLost: "Neural Link Interrupted",
     rateLimit: "Neural Cooling Engaged",
     rateLimitDesc: "API quota exceeded. Please wait a few seconds before retrying.",
-    rotating: "Refreshing Neural Fabric...",
+    rotating: "Neural Rotation (15min Checkpoint)...",
     forceRestart: "Neural Refresh (Fix Hang)",
     stopLink: "Pause AI Link",
-    stopped: "AI Paused"
+    stopped: "AI Paused",
+    checkpoint: "Neural Checkpoint",
+    scribeActive: "Silent Scribe Mode Active"
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -112,52 +113,39 @@ const UI_TEXT = {
     linkLost: "神经连接中断",
     rateLimit: "神经冷却中",
     rateLimitDesc: "API 配额已超出。请等待几秒钟后重试。",
-    rotating: "正在刷新神经织网...",
+    rotating: "神经轮换 (15分钟检查点)...",
     forceRestart: "神经刷新 (修复卡顿)",
     stopLink: "暂停 AI 连接",
-    stopped: "AI 已暂停"
+    stopped: "AI 已暂停",
+    checkpoint: "神经检查点",
+    scribeActive: "静默速记模式已激活"
   }
 };
 
-const saveContentTool: FunctionDeclaration = {
-  name: "save_content",
-  description: "Save generated code, text, or specifications to the project. Useful when the user asks to 'document' or 'save' a part of the chat.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      filename: { type: Type.STRING, description: "Name of the file." },
-      content: { type: Type.STRING, description: "Raw text or markdown content." },
-      mimeType: { type: Type.STRING, description: "File type." }
-    },
-    required: ["filename", "content"]
-  }
-};
-
-const SuggestionsBar = React.memo(({ suggestions, welcomeMessage, showWelcome, uiText }: { 
-  suggestions: string[], 
-  welcomeMessage?: string,
-  showWelcome: boolean,
-  uiText: any
-}) => (
-  <div className="w-full px-4 animate-fade-in-up py-2">
-      {showWelcome && welcomeMessage && (
-        <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 mb-4 text-center shadow-lg">
-          <p className="text-slate-300 italic text-sm">"{welcomeMessage}"</p>
-        </div>
-      )}
-      <div className="text-center mb-2">
-         <span className="text-[10px] text-slate-500 uppercase tracking-widest font-black">{uiText.welcomePrefix}</span>
+const SuggestionsBar: React.FC<{ suggestions: string[], welcomeMessage?: string, showWelcome: boolean, uiText: any }> = ({ suggestions, welcomeMessage, showWelcome, uiText }) => {
+  if (showWelcome && welcomeMessage) {
+    return (
+      <div className="p-4 border-b border-slate-800 bg-indigo-900/10 animate-fade-in">
+        <p className="text-xs text-indigo-300 font-medium leading-relaxed italic">
+          "{welcomeMessage}"
+        </p>
       </div>
-      <div className="flex flex-wrap justify-center gap-2">
-        {suggestions.map((prompt, idx) => (
-          <div key={idx} className="px-4 py-1.5 rounded-full text-[10px] bg-slate-800/50 border border-slate-700 text-slate-400 font-bold hover:bg-slate-800 transition-colors cursor-default select-none flex items-center gap-2">
-            <MessageSquare size={10} className="text-slate-600" />
-            {prompt}
-          </div>
+    );
+  }
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="p-2 border-b border-slate-800 overflow-x-auto scrollbar-hide">
+      <div className="flex gap-2">
+        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest self-center px-2">{uiText.welcomePrefix}</span>
+        {suggestions.map((s, i) => (
+          <button key={i} className="whitespace-nowrap px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-full text-[10px] font-bold text-slate-400 hover:text-indigo-400 hover:border-indigo-500/50 transition-all active:scale-95">
+            {s}
+          </button>
         ))}
       </div>
-  </div>
-));
+    </div>
+  );
+};
 
 export const LiveSession: React.FC<LiveSessionProps> = ({ 
   channel, initialContext, lectureId, onEndSession, language, 
@@ -174,20 +162,19 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [showReconnectButton, setShowReconnectButton] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
-  const [synthesisProgress, setSynthesisProgress] = useState(0);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [logs, setLogs] = useState<{time: string, msg: string, type: 'info' | 'error' | 'warn'}[]>([]);
   
-  // PERSISTENT RECORDING REFS (Survive re-connections)
+  // PERSISTENT RECORDING REFS
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  const compositorIntervalRef = useRef<any>(null);
   const mountedRef = useRef(true);
   const reconnectTimeoutRef = useRef<any>(null);
   const rotationTimerRef = useRef<any>(null);
+  const checkpointTimerRef = useRef<any>(null);
   const autoReconnectAttempts = useRef(0);
   const maxAutoRetries = 8; 
 
@@ -210,15 +197,15 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       return () => { 
           mountedRef.current = false; 
           if (rotationTimerRef.current) clearTimeout(rotationTimerRef.current);
+          if (checkpointTimerRef.current) clearInterval(checkpointTimerRef.current);
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-          if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+          if (compositorIntervalRef.current) clearInterval(compositorIntervalRef.current);
       };
   }, [transcript, currentLine]);
 
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
 
-  // Decoupled startRecording logic
   const initializePersistentRecorder = useCallback(async () => {
     if (!recordingEnabled || !currentUser) return;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') return;
@@ -228,65 +215,124 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         const ctx = getGlobalAudioContext();
         const recordingDest = getGlobalMediaStreamDest();
         
-        // Microphone acquisition
+        if (ctx.state !== 'running') await ctx.resume();
+
+        // 1. Audio Sources: Mic + System
         const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const userSource = ctx.createMediaStreamSource(userStream); 
         userSource.connect(recordingDest);
 
-        // UI Compositor Canvas
+        if (screenStreamRef.current && screenStreamRef.current.getAudioTracks().length > 0) {
+            addLog("Bridging system audio to recording bus...");
+            const screenAudioSource = ctx.createMediaStreamSource(screenStreamRef.current);
+            screenAudioSource.connect(recordingDest);
+        }
+
         const canvas = document.createElement('canvas');
         const isPortrait = window.innerHeight > window.innerWidth;
         canvas.width = isPortrait ? 720 : 1280;
         canvas.height = isPortrait ? 1280 : 720;
         const drawCtx = canvas.getContext('2d', { alpha: false })!;
         
-        const screenVideo = document.createElement('video');
-        if (screenStreamRef.current) { screenVideo.srcObject = screenStreamRef.current; screenVideo.muted = true; screenVideo.play(); }
-        const cameraVideo = document.createElement('video');
-        if (cameraStreamRef.current) { cameraVideo.srcObject = cameraStreamRef.current; cameraVideo.muted = true; cameraVideo.play(); }
+        const createCaptureVideo = (stream: MediaStream | null) => {
+            const v = document.createElement('video');
+            v.muted = true; 
+            v.playsInline = true; 
+            v.autoplay = true;
+            // FIXED: Do not hide elements with display:none or opacity:0 as browsers stop rendering them.
+            // Using absolute positioning off-screen instead.
+            v.style.position = 'fixed'; 
+            v.style.left = '-1000px'; 
+            v.style.top = '-1000px';
+            v.style.width = '1px'; 
+            v.style.height = '1px';
+            if (stream) { 
+                v.srcObject = stream; 
+                document.body.appendChild(v); 
+                v.play().catch(e => addLog("Video playback failed: " + e.message, "error")); 
+            }
+            return v;
+        };
 
-        const drawCompositor = () => {
-            if (!mountedRef.current) return;
-            drawCtx.fillStyle = '#020617'; drawCtx.fillRect(0, 0, canvas.width, canvas.height);
+        const screenVideo = createCaptureVideo(screenStreamRef.current);
+        const cameraVideo = createCaptureVideo(cameraStreamRef.current);
+
+        // Compositor Interval with Heartbeat 'Pixel Pulse' to prevent freeze
+        const FPS = 30;
+        compositorIntervalRef.current = setInterval(() => {
+            if (!mountedRef.current) { 
+                clearInterval(compositorIntervalRef.current); 
+                screenVideo.remove();
+                cameraVideo.remove();
+                return; 
+            }
+            
+            // Background
+            drawCtx.fillStyle = '#020617'; 
+            drawCtx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Main Content
             if (screenStreamRef.current && screenVideo.readyState >= 2) {
                 const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
-                const w = screenVideo.videoWidth * scale; const h = screenVideo.videoHeight * scale;
+                const w = screenVideo.videoWidth * scale; 
+                const h = screenVideo.videoHeight * scale;
                 drawCtx.drawImage(screenVideo, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+            } else if (screenStreamRef.current) {
+                // Fallback indicator while loading
+                drawCtx.fillStyle = '#1e293b';
+                drawCtx.fillRect(20, 20, canvas.width - 40, canvas.height - 40);
+                drawCtx.fillStyle = '#ffffff';
+                drawCtx.font = 'bold 24px Inter, sans-serif';
+                drawCtx.fillText("NEURAL STREAM HANDSHAKE...", 50, 100);
             }
+
+            // PiP Overlay
             if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
                 const pipW = isPortrait ? canvas.width * 0.5 : 320;
                 const pipH = (pipW * cameraVideo.videoHeight) / cameraVideo.videoWidth;
-                const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - 24;
-                const pipY = isPortrait ? canvas.height - pipH - 150 : canvas.height - pipH - 24;
-                drawCtx.strokeStyle = '#6366f1'; drawCtx.lineWidth = 4;
-                drawCtx.strokeRect(pipX, pipY, pipW, pipH); drawCtx.drawImage(cameraVideo, pipX, pipY, pipW, pipH);
+                const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - 32;
+                const pipY = isPortrait ? canvas.height - pipH - 160 : canvas.height - pipH - 32;
+                drawCtx.strokeStyle = '#6366f1'; 
+                drawCtx.lineWidth = 4;
+                drawCtx.strokeRect(pipX, pipY, pipW, pipH); 
+                drawCtx.drawImage(cameraVideo, pipX, pipY, pipW, pipH);
             }
-            animationFrameRef.current = requestAnimationFrame(drawCompositor);
-        };
-        drawCompositor();
 
-        const captureStream = canvas.captureStream(30);
+            // CRITICAL: Pixel Pulse Heartbeat forces browser/encoder to see a 'dirty' canvas every frame.
+            // We draw a tiny, nearly transparent randomly colored pixel in a corner.
+            drawCtx.fillStyle = `rgba(${Math.random()*255}, ${Math.random()*255}, ${Math.random()*255}, 0.01)`;
+            drawCtx.fillRect(0, 0, 2, 2);
+        }, 1000 / FPS);
+
+        // Warm up period to ensure stream is active
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const captureStream = canvas.captureStream(FPS);
         recordingDest.stream.getAudioTracks().forEach(track => captureStream.addTrack(track));
         
         const recorder = new MediaRecorder(captureStream, { 
             mimeType: 'video/webm;codecs=vp8,opus', 
-            videoBitsPerSecond: 2500000 
+            videoBitsPerSecond: 5000000 
         });
         
-        audioChunksRef.current = []; // ONLY reset here once per meeting
+        audioChunksRef.current = []; 
         recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-        
         recorder.onstop = async () => {
-            addLog("Processing final meeting package...");
+            clearInterval(compositorIntervalRef.current);
             const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
-            const transcriptText = transcriptRef.current.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
+            const transcriptText = transcriptRef.current.map(t => `[${new Date(t.timestamp).toLocaleTimeString()}] ${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
             const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
+            
             setIsUploadingRecording(true);
             try {
                 const timestamp = Date.now();
                 const recId = `session-${timestamp}`;
                 await saveLocalRecording({
-                    id: recId, userId: currentUser.uid, channelId: channel.id, channelTitle: channel.title, channelImage: channel.imageUrl, timestamp, mediaUrl: URL.createObjectURL(videoBlob), mediaType: 'video/webm', transcriptUrl: URL.createObjectURL(transcriptBlob), blob: videoBlob
+                    id: recId, userId: currentUser.uid, channelId: channel.id, 
+                    channelTitle: channel.title, channelImage: channel.imageUrl, 
+                    timestamp, mediaUrl: URL.createObjectURL(videoBlob), 
+                    mediaType: 'video/webm', transcriptUrl: URL.createObjectURL(transcriptBlob), 
+                    blob: videoBlob, size: videoBlob.size
                 });
                 const token = getDriveToken();
                 if (token) {
@@ -294,66 +340,58 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     const driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
                     const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
                     await saveRecordingReference({
-                        id: recId, userId: currentUser.uid, channelId: channel.id, channelTitle: channel.title, channelImage: channel.imageUrl, timestamp, mediaUrl: driveVideoUrl, driveUrl: driveVideoUrl, mediaType: 'video/webm', transcriptUrl: `drive://${tFileId}`
+                        id: recId, userId: currentUser.uid, channelId: channel.id, 
+                        channelTitle: channel.title, channelImage: channel.imageUrl, 
+                        timestamp, mediaUrl: driveVideoUrl, driveUrl: driveVideoUrl, 
+                        mediaType: 'video/webm', transcriptUrl: `drive://${tFileId}`, 
+                        size: videoBlob.size
                     });
                 }
-            } catch(e) { console.error("Neural archive failed", e); } 
+            } catch(e: any) { addLog("Backup failed: " + e.message, "error"); } 
             finally { setIsUploadingRecording(false); onEndSession(); }
+            
             userStream.getTracks().forEach(t => t.stop());
+            if (screenStreamRef.current) screenStreamRef.current.getTracks().forEach(t => t.stop());
+            if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
+            screenVideo.remove(); 
+            cameraVideo.remove();
         };
         
         mediaRecorderRef.current = recorder;
         recorder.start(1000);
-        addLog("Recording Active.");
-    } catch(e) { addLog("Recorder Init Error: Permissions declined.", "error"); }
+        addLog("Neural Recording initialized and active.");
+    } catch(e: any) { addLog("Init Error: " + e.message, "error"); }
   }, [recordingEnabled, currentUser, channel, onEndSession, addLog]);
 
   const handleStartSession = async () => {
       setError(null);
       setIsRateLimited(false);
       autoReconnectAttempts.current = 0;
-      
-      // 1. Hardware Sync
       if (recordingEnabled) {
-          const isMeeting = channel.id.includes('meeting');
-          if (videoEnabled || isMeeting) {
-              try {
-                  screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" } as any, audio: true });
-                  addLog("Screen sync active.");
-              } catch(e) { addLog("Screen sync declined.", "warn"); }
-          }
-          if (cameraEnabled) {
-              try {
-                  cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-                  addLog("Camera sync active.");
-              } catch(e) { addLog("Camera sync declined.", "warn"); }
-          }
-          await initializePersistentRecorder();
+          try {
+              addLog("Requesting display access with system audio...");
+              screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
+                  video: { cursor: "always" } as any, 
+                  audio: true 
+              });
+              if (cameraEnabled) cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+              await initializePersistentRecorder();
+          } catch(e: any) { addLog("Capture denied: " + e.message, "warn"); }
       }
-
-      // 2. Audio Fabric
       const ctx = getGlobalAudioContext();
-      addLog("Warming up neural fabric...");
       await warmUpAudioContext(ctx);
       setHasStarted(true);
-      
-      // 3. Connect Link
       await connect();
   };
 
   const connect = useCallback(async (isAutoRetry = false, isRotationSwap = false) => {
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     if (rotationTimerRef.current) clearTimeout(rotationTimerRef.current);
+    if (checkpointTimerRef.current) clearInterval(checkpointTimerRef.current);
     
     if (isRotationSwap || isAutoRetry) {
-        addLog(isRotationSwap ? "NEURAL ROTATION: Refreshing fabric for stability..." : "LINK INTERRUPTED: Attempting neural restoration...", "info");
-        setIsRotating(isRotationSwap);
-        setIsReconnecting(!isRotationSwap);
-        
-        if (serviceRef.current) {
-            await serviceRef.current.disconnect();
-            serviceRef.current = null;
-        }
+        setIsRotating(isRotationSwap); setIsReconnecting(!isRotationSwap);
+        if (serviceRef.current) await serviceRef.current.disconnect();
         stopAllPlatformAudio("NeuralHandover");
     } else {
         setIsConnected(false); setIsReconnecting(false); setIsRotating(false); setShowReconnectButton(false);
@@ -367,38 +405,48 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       const now = new Date();
       let effectiveInstruction = `[TIME]: ${now.toLocaleString()}.\n\n${channel.systemInstruction}`;
       
-      const fullHistory = transcriptRef.current;
-      const recentHistory = fullHistory.slice(-25); 
-      if (recentHistory.length > 0) {
-          effectiveInstruction += `\n\n[CONTEXT_STITCH]:\n${recentHistory.map(t => `${t.role}: ${t.text}`).join('\n')}\n\nContinue the current meeting exactly where it left off.`;
+      if (recordingEnabled) {
+          effectiveInstruction = `[CRITICAL MODE: SILENT SCRIBE]
+          You are an advanced meeting transcriber. YOUR PRIMARY GOAL IS TO REMAIN SILENT AND LOG EVERYTHING.
+          You are listening to a conversation involving multiple people (e.g. Teacher and Student from a podcast).
+          1. TRANSCRIBE ACCURATELY: Use timestamps [HH:mm:ss] for every segment.
+          2. SEPARATE SPEAKERS: Identify distinct voices. Use labels like 'Teacher:' and 'Student:' if identifiable, or 'Speaker 1:', 'Speaker 2:'.
+          3. PARAGRAPHING: CRITICAL - When you detect a speaker change or a logical pause, start a NEW PARAGRAPH by outputting a double newline ('\\n\\n').
+          4. SILENCE: DO NOT generate audio. STAY SILENT unless someone says "Hey Prism, I have a question for you".
+          5. SUMMARIES: Every 5 minutes, generate a [CHECKPOINT SUMMARY] section.
+          
+          ORIGINAL PERSONA: ${channel.systemInstruction}`;
+          addLog("Neural mode: SILENT SCRIBE locked.");
+      }
+
+      // Merge Audio for AI to hear both sources (Microphone + System Audio)
+      const ctx = getGlobalAudioContext();
+      const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mergedDest = ctx.createMediaStreamDestination();
+      ctx.createMediaStreamSource(userStream).connect(mergedDest);
+      if (screenStreamRef.current && screenStreamRef.current.getAudioTracks().length > 0) {
+          ctx.createMediaStreamSource(screenStreamRef.current).connect(mergedDest);
       }
 
       await service.connect(channel.voiceName, effectiveInstruction, {
           onOpen: () => { 
               if (!mountedRef.current) return;
-              setIsConnected(true); setIsReconnecting(false); setIsRotating(false); setShowReconnectButton(false);
-              autoReconnectAttempts.current = 0;
-              addLog(isRotationSwap ? "Neural Link Refreshed." : "Neural Link Active.");
-
-              // SCHEDULE 5-MINUTE ROTATION
-              const jitter = (Math.random() * 20 - 10) * 1000;
-              rotationTimerRef.current = setTimeout(() => {
-                  if (mountedRef.current && isConnected) handlePreemptiveRotation();
-              }, (5 * 60 * 1000) + jitter);
+              setIsConnected(true); setIsReconnecting(false); setIsRotating(false);
+              if (recordingEnabled) {
+                  checkpointTimerRef.current = setInterval(() => {
+                      if (serviceRef.current && isConnected) serviceRef.current.sendText("Generate a concise [CHECKPOINT SUMMARY] of the conversation from the last 5 minutes.");
+                  }, 5 * 60 * 1000);
+              }
           },
           onClose: (reason, code) => { 
               if (!mountedRef.current) return;
               setIsConnected(false);
               if (!isRotating && autoReconnectAttempts.current < maxAutoRetries) {
                   autoReconnectAttempts.current++;
-                  const backoff = 1000 + (autoReconnectAttempts.current * 1500);
-                  reconnectTimeoutRef.current = setTimeout(() => connect(true), backoff);
-              } else if (!isRotating) {
-                  setIsReconnecting(false); setShowReconnectButton(true);
-              }
+                  reconnectTimeoutRef.current = setTimeout(() => connect(true), 1000 + (autoReconnectAttempts.current * 1500));
+              } else if (!isRotating) { setIsReconnecting(false); setShowReconnectButton(true); }
           },
           onError: (err, code) => { 
-              if (!mountedRef.current) return;
               setIsConnected(false); setIsReconnecting(false); setIsRotating(false);
               if (code === 'RATE_LIMIT') setIsRateLimited(true);
               else { setError(err); setShowReconnectButton(true); }
@@ -406,65 +454,42 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onVolumeUpdate: () => {},
           onTranscript: (text, isUser) => {
               const role = isUser ? 'user' : 'ai';
-              setCurrentLine(prev => {
-                  if (prev && prev.role !== role) { setTranscript(history => [...history, prev]); return { role, text, timestamp: Date.now() }; }
-                  return { role, text: (prev ? prev.text : '') + text, timestamp: prev ? prev.timestamp : Date.now() };
+              const timestamp = Date.now();
+              
+              // Handle paragraph splitting within the same turn
+              const parts = text.split(/\n\n+/);
+              
+              parts.forEach((part, idx) => {
+                  if (!part.trim()) return;
+                  
+                  setCurrentLine(prev => {
+                      // If we have a previous buffer and this is a new paragraph (idx > 0)
+                      // or if the role has changed, commit the previous line.
+                      if (prev && (idx > 0 || prev.role !== role)) {
+                          setTranscript(history => [...history, prev]);
+                          return { role, text: part, timestamp };
+                      }
+                      
+                      // Otherwise append to current buffer
+                      return { 
+                          role, 
+                          text: (prev ? prev.text : '') + (idx > 0 ? '\n\n' : '') + part, 
+                          timestamp: prev ? prev.timestamp : timestamp 
+                      };
+                  });
               });
-          },
-          onToolCall: async (toolCall: any) => {
-              for (const fc of toolCall.functionCalls) {
-                  if (fc.name === 'save_content') {
-                      const { filename, content } = fc.args;
-                      setTranscript(h => [...h, { role: 'ai', text: `*[System]: Generated '${filename}' archived.*`, timestamp: Date.now() }]);
-                      serviceRef.current?.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: "Success" } }]);
-                  } else if (onCustomToolCall) {
-                      const result = await onCustomToolCall(fc.name, fc.args);
-                      serviceRef.current?.sendToolResponse([{ id: fc.id, name: fc.name, response: { result } }]);
-                  }
-              }
           }
-      }, [{ functionDeclarations: [saveContentTool] }]);
-
+      }, [], mergedDest.stream);
     } catch (e: any) { 
-        if (!mountedRef.current) return;
         setIsReconnecting(false); setIsRotating(false); setIsConnected(false); 
-        const isRate = e.message?.includes('429');
-        setIsRateLimited(isRate);
-        setError(isRate ? null : (e.message || "Link Timeout"));
-        setShowReconnectButton(true);
+        setError(e.message?.includes('429') ? null : e.message); setShowReconnectButton(true);
     }
-  }, [channel.id, channel.voiceName, channel.systemInstruction, recordingEnabled, initializePersistentRecorder, onCustomToolCall, isRotating, isConnected, addLog]);
-
-  const handlePreemptiveRotation = async (force: boolean = false) => {
-    if (!mountedRef.current) return;
-    if (!force && serviceRef.current && (serviceRef.current as any).isPlayingResponse) {
-        addLog("Neural Rotation: Waiting for AI silence...", "info");
-        rotationTimerRef.current = setTimeout(() => handlePreemptiveRotation(false), 2500);
-        return;
-    }
-    connect(false, true); 
-  };
-
-  const handleStopLink = async () => {
-    addLog("HUMAN PAUSE: Severing AI connection temporarily...", "warn");
-    setIsConnected(false); setIsReconnecting(false); setIsRotating(false);
-    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-    if (rotationTimerRef.current) clearTimeout(rotationTimerRef.current);
-    if (serviceRef.current) await serviceRef.current.disconnect();
-  };
+  }, [channel.id, channel.voiceName, channel.systemInstruction, recordingEnabled, isRotating, isConnected, addLog]);
 
   const handleDisconnect = async () => {
-      addLog("Terminating Session...");
       autoReconnectAttempts.current = maxAutoRetries; 
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      if (rotationTimerRef.current) clearTimeout(rotationTimerRef.current);
-      
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          mediaRecorderRef.current.stop();
-      } else {
-          onEndSession();
-      }
-      
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop();
+      else onEndSession();
       if (serviceRef.current) await serviceRef.current.disconnect();
   };
 
@@ -474,11 +499,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       if (index % 2 === 1) {
         return (
           <div key={index} className="my-3 rounded-xl overflow-hidden border border-slate-700 bg-slate-950 shadow-lg animate-fade-in">
-             <div className="flex items-center justify-between px-4 py-2 bg-slate-800/80 border-b border-slate-700">
-               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Neural Artifact</span>
-               <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(part); }} className="text-[10px] font-bold text-slate-500 hover:text-indigo-400 flex items-center gap-1"><Copy size={10} /><span>Copy</span></button>
-             </div>
-             <pre className="p-4 text-sm font-mono text-indigo-200 overflow-x-auto whitespace-pre-wrap">{part}</pre>
+             <pre className="p-4 text-sm font-mono text-indigo-100 overflow-x-auto whitespace-pre-wrap">{part}</pre>
           </div>
         );
       }
@@ -490,45 +511,20 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     <div className="w-full h-full flex flex-col bg-slate-950 relative">
       <div className="p-4 flex items-center justify-between bg-slate-900 border-b border-slate-800 shrink-0 z-20">
          <div className="flex items-center space-x-3">
-            <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" alt={channel.title} />
+            {!recordingEnabled && <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" alt={channel.title} />}
             <div>
                <h2 className="text-sm font-bold text-white leading-tight">{channel.title}</h2>
                <div className="flex items-center gap-2">
-                   <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : (isReconnecting || isRotating || isRateLimited) ? 'bg-amber-500 animate-pulse' : 'bg-red-500'}`} />
-                   <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
-                       {isConnected ? 'Link Active' : isRotating ? 'Neural Swap...' : isReconnecting ? 'Recovery...' : isRateLimited ? 'Neural Cooling' : t.stopped}
-                   </span>
+                   <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-red-500'}`} />
+                   <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{isConnected ? (recordingEnabled ? t.scribeActive : 'Link Active') : t.stopped}</span>
                </div>
             </div>
          </div>
          <div className="flex items-center gap-2">
-            <button onClick={() => handlePreemptiveRotation(true)} className="p-2 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-lg border border-indigo-500/20 transition-all active:scale-95" title={t.forceRestart}><RefreshCw size={18}/></button>
-            <button onClick={handleStopLink} className="p-2 bg-red-600/10 hover:bg-red-600 text-red-400 hover:text-white rounded-lg border border-red-500/20 transition-all active:scale-95" title={t.stopLink}><Square size={18}/></button>
-            <div className="w-px h-6 bg-slate-800 mx-1"></div>
-            <button onClick={() => setShowDiagnostics(!showDiagnostics)} className={`p-2 rounded-lg transition-colors ${showDiagnostics ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title={t.diagnostics}><Activity size={18}/></button>
+            <button onClick={() => setShowDiagnostics(!showDiagnostics)} className={`p-2 rounded-lg transition-colors ${showDiagnostics ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}><Activity size={18}/></button>
             <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">Terminate</button>
          </div>
       </div>
-
-      {(isRotating || isReconnecting) && (
-          <div className="bg-indigo-600/20 border-b border-indigo-500/30 p-2 px-4 flex items-center justify-center animate-fade-in z-20 gap-3">
-              <RefreshCcw size={12} className="animate-spin text-indigo-400"/>
-              <span className="text-[10px] font-black text-indigo-300 uppercase tracking-[0.2em]">{isRotating ? t.rotating : t.reconnecting}</span>
-          </div>
-      )}
-
-      {hasStarted && cameraEnabled && (
-          <div className="absolute bottom-20 right-6 w-48 aspect-video md:w-64 bg-black border-2 border-indigo-500 rounded-2xl shadow-2xl z-40 overflow-hidden group">
-              <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover mirror" />
-          </div>
-      )}
-
-      {showDiagnostics && (
-          <div className="absolute top-16 right-4 w-80 max-h-[70%] z-[100] bg-slate-900/95 border border-slate-700 rounded-2xl shadow-2xl flex flex-col animate-fade-in-down backdrop-blur-md">
-              <div className="p-3 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center"><span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><Terminal size={14}/> {t.diagnostics}</span><button onClick={() => setShowDiagnostics(false)} className="text-slate-500 hover:text-white"><X size={16}/></button></div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-[10px]">{logs.map((log, i) => (<div key={i} className={`flex gap-2 ${log.type === 'error' ? 'text-red-400' : log.type === 'warn' ? 'text-amber-400' : 'text-slate-400'}`}><span className="opacity-40 shrink-0">[{log.time}]</span><span className="break-words font-black">{log.msg}</span></div>))}</div>
-          </div>
-      )}
 
       {!hasStarted ? (
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6">
@@ -539,40 +535,30 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       ) : (
          <div className="flex-1 flex flex-col min-h-0 relative">
             {isUploadingRecording && (
-               <div className="absolute inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
-                  <div className="relative">
-                    <div className="w-32 h-32 border-4 border-indigo-500/10 rounded-full" />
-                    <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl font-black text-white">SYNC</div>
-                  </div>
+               <div className="absolute inset-0 z-[120] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                  <div className="relative"><div className="w-32 h-32 border-4 border-indigo-500/10 rounded-full" /><div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" /><div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl font-black text-white">SYNC</div></div>
                   <div className="text-center"><span className="text-sm font-black text-white uppercase tracking-widest">{t.uploading}</span></div>
                </div>
             )}
-
-            {!isConnected && !isReconnecting && !isRotating && !error && !isRateLimited && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-fade-in gap-6">
-                    <div className="flex flex-col items-center gap-4">
-                        <Loader2 size={32} className="text-indigo-500 animate-spin" />
-                        <p className="text-xs font-black text-indigo-300 uppercase tracking-widest">Neural Link Inactive</p>
-                    </div>
-                    <button onClick={() => connect()} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase rounded-xl shadow-xl transition-all flex items-center gap-2"><RefreshCw size={14}/><span>Resume AI Conversation</span></button>
-                </div>
-            )}
             
-            <div className="shrink-0 bg-slate-950"><SuggestionsBar suggestions={suggestions} welcomeMessage={channel.welcomeMessage} showWelcome={transcript.length === 0 && !currentLine && !initialContext} uiText={t} /></div>
+            {!recordingEnabled && <div className="shrink-0 bg-slate-950"><SuggestionsBar suggestions={suggestions} welcomeMessage={channel.welcomeMessage} showWelcome={transcript.length === 0 && !currentLine && !initialContext} uiText={t} /></div>}
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
-               {transcript.map((item, index) => (
+               {transcript.map((item, index) => {
+                   const isCheckpoint = item.text.includes('[CHECKPOINT SUMMARY]');
+                   return (
                    <div key={index} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : channel.author}</span>
-                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed relative group ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-xl' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}>
+                       {recordingEnabled && <span className="text-[9px] text-slate-600 font-mono mb-1">[{new Date(item.timestamp).toLocaleTimeString()}]</span>}
+                       {!recordingEnabled && <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : channel.author}</span>}
+                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed relative group ${isCheckpoint ? 'bg-indigo-900/30 border-2 border-indigo-500/50 text-indigo-100 italic' : item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-xl' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}>
+                           {isCheckpoint && <div className="flex items-center gap-2 mb-2 text-[10px] font-black uppercase text-indigo-400 tracking-widest"><Zap size={10} fill="currentColor"/> Summary Checkpoint</div>}
                            {renderMessageContent(item.text)}
                        </div>
                    </div>
-               ))}
+               )})}
                {currentLine && (
                    <div className={`flex flex-col ${currentLine.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in`}>
-                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{currentLine.role === 'user' ? 'You' : channel.author}</span>
+                       {!recordingEnabled && <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{currentLine.role === 'user' ? 'You' : channel.author}</span>}
                        <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${currentLine.role === 'user' ? 'bg-indigo-600/80 text-white rounded-tr-sm shadow-xl' : 'bg-slate-800/80 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}>
                            {renderMessageContent(currentLine.text)}<span className="inline-block w-1.5 h-4 ml-1 align-middle bg-current opacity-50 animate-blink"></span>
                        </div>
@@ -580,19 +566,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                )}
             </div>
 
-            {showReconnectButton && !isReconnecting && !isRotating && (
-                <div className="p-4 bg-slate-900 border-t border-slate-800 flex flex-col items-center gap-3 shrink-0 animate-fade-in">
-                    <div className="p-2 bg-red-900/20 rounded-full text-red-400"><AlertCircle size={24}/></div>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Neural link encountered a terminal interruption</p>
-                    <button onClick={() => connect()} className="flex items-center gap-2 px-10 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase rounded-xl shadow-xl shadow-indigo-500/20 transition-all active:scale-95"><RefreshCw size={14}/><span>{t.reconnect}</span></button>
-                </div>
-            )}
-
             <div className="p-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between shrink-0 z-20 shadow-[0_-10px_20px_rgba(0,0,0,0.4)]">
                 <div className="flex items-center space-x-2 text-slate-500 text-[10px] font-black uppercase tracking-widest"><ScrollText size={14} className="text-indigo-400"/><span>{t.transcript}</span></div>
-                <div className="flex items-center gap-2">
-                    <button onClick={handleDisconnect} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Save size={16}/></button>
-                </div>
+                <div className="flex gap-2"><button onClick={handleDisconnect} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Save size={16}/></button></div>
             </div>
          </div>
       )}

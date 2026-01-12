@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Share2, Trash2, Undo, PenTool, Pen, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, RotateCcw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save, Activity, RefreshCcw, Type as TypeIcon } from 'lucide-react';
+import { ArrowLeft, Share2, Trash2, Undo, PenTool, Pen, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, RotateCcw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save, Activity, RefreshCcw, Type as TypeIcon, Hand } from 'lucide-react';
 import { auth, db } from '../services/firebaseConfig';
 import { subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements, saveWhiteboardSession } from '../services/firestoreService';
-import { WhiteboardElement, ToolType, LineStyle, BrushType } from '../types';
+import { WhiteboardElement, ToolType, LineStyle, BrushType, CapStyle } from '../types';
 import { generateSecureId } from '../utils/idUtils';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
 import { ensureFolder, uploadToDrive, readDriveFile } from '../services/googleDriveService';
@@ -17,6 +17,8 @@ interface WhiteboardProps {
   isReadOnly?: boolean;
   initialColor?: string;
   backgroundColor?: string;
+  initialContent?: string;
+  onChange?: (content: string) => void;
 }
 
 const LINE_STYLES: { label: string; value: LineStyle; dash: number[] }[] = [
@@ -36,6 +38,12 @@ const BRUSH_TYPES: { label: string; value: BrushType; icon: any }[] = [
     { label: 'Chinese Ink', value: 'writing-brush', icon: Languages }
 ];
 
+const CAP_STYLES: { label: string; value: CapStyle; icon: any }[] = [
+    { label: 'Normal', value: 'none', icon: Minus },
+    { label: 'Arrow', value: 'arrow', icon: ArrowRight },
+    { label: 'Circle', value: 'circle', icon: Circle }
+];
+
 type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'end' | null;
 
 export const Whiteboard: React.FC<WhiteboardProps> = ({ 
@@ -44,9 +52,12 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   driveId: propDriveId,
   isReadOnly: propReadOnly = false,
   initialColor = '#ffffff',
-  backgroundColor = '#0f172a'
+  backgroundColor = '#0f172a',
+  initialContent,
+  onChange
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [elements, setElements] = useState<WhiteboardElement[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentElement, setCurrentElement] = useState<WhiteboardElement | null>(null);
@@ -55,15 +66,14 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   
   const [tool, setTool] = useState<ToolType>('pen');
   const [color, setColor] = useState(initialColor);
-  const [lineWidth, setLineWidth] = useState(6);
+  const [lineWidth, setLineWidth] = useState(2); 
   const [lineStyle, setLineStyle] = useState<LineStyle>('solid');
   const [brushType, setBrushType] = useState<BrushType>('standard');
+  const [startCap, setStartCap] = useState<CapStyle>('none');
+  const [endCap, setEndCap] = useState<CapStyle>('none');
   const [borderRadius, setBorderRadius] = useState(0); 
   const [showStyleMenu, setShowStyleMenu] = useState(false);
-  const [startArrow, setStartArrow] = useState(false);
-  const [endArrow, setEndArrow] = useState(false);
   
-  // Transformation & Selection State
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [boardRotation, setBoardRotation] = useState(0); 
@@ -71,7 +81,13 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const [activeResizeHandle, setActiveResizeHandle] = useState<ResizeHandle>(null);
 
-  // Text Tool State
+  // Stabilizing state for VFS sync to prevent "blinking" loop
+  const lastKnownContentRef = useRef<string>('');
+
+  // Curve Drawing State
+  const [partialPoints, setPartialPoints] = useState<{x: number, y: number}[]>([]);
+  const [mousePos, setMousePos] = useState<{x: number, y: number}>({x:0, y:0});
+
   const [textInput, setTextInput] = useState({ x: 0, y: 0, value: '', visible: false, editingId: null as string | null });
   const textInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -83,7 +99,58 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
   const isDarkBackground = backgroundColor !== 'transparent' && backgroundColor !== '#ffffff';
 
+  const finalizeCurve = useCallback(async () => {
+    if (partialPoints.length < 2) {
+        setPartialPoints([]);
+        return;
+    }
+    const id = crypto.randomUUID();
+    const newEl: WhiteboardElement = {
+        id, type: 'curve', x: partialPoints[0].x, y: partialPoints[0].y,
+        color, strokeWidth: lineWidth, lineStyle, brushType,
+        points: [...partialPoints],
+        startCap, endCap
+    };
+    const nextElements = [...elements, newEl];
+    setElements(nextElements);
+    setPartialPoints([]);
+    if (sessionId && !sessionId.startsWith('local-')) {
+        await updateWhiteboardElement(sessionId, newEl);
+    }
+  }, [partialPoints, color, lineWidth, lineStyle, brushType, startCap, endCap, elements, sessionId]);
+
+  // Keyboard Listeners
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isReadOnly || textInput.visible) return;
+      if (selectedElementId && (e.key === 'Delete' || e.key === 'Backspace')) {
+        handleDeleteSelected();
+      }
+      if (e.key === 'Escape') {
+          if (tool === 'curve' && partialPoints.length > 0) {
+              finalizeCurve();
+          }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedElementId, isReadOnly, textInput.visible, tool, partialPoints, finalizeCurve]);
+
+  // Load from props or cloud
+  useEffect(() => {
+    if (initialContent && initialContent !== lastKnownContentRef.current) {
+        try {
+            const parsed = JSON.parse(initialContent);
+            if (Array.isArray(parsed)) {
+                setElements(parsed);
+                lastKnownContentRef.current = initialContent;
+            }
+        } catch (e) {
+            console.warn("Could not parse initial whiteboard content");
+        }
+        return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const id = params.get('id');
     const driveId = params.get('driveId') || propDriveId;
@@ -95,7 +162,19 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     } else if (driveId) {
         loadFromDrive(driveId);
     }
-  }, [propDriveId]);
+  }, [propDriveId, initialContent]);
+
+  // Sync back to editor
+  useEffect(() => {
+      if (onChange && elements.length > 0) {
+          const content = JSON.stringify(elements);
+          // Only push updates if something actually changed to prevent feedback loop/blinking
+          if (content !== lastKnownContentRef.current) {
+              lastKnownContentRef.current = content;
+              onChange(content);
+          }
+      }
+  }, [elements, onChange]);
 
   useEffect(() => {
       if (!sessionId || sessionId.startsWith('local-')) {
@@ -104,7 +183,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       }
       setIsLoading(true);
       const unsubscribe = subscribeToWhiteboard(sessionId, (remoteElements) => {
-          setElements(remoteElements);
+          const content = JSON.stringify(remoteElements);
+          if (content !== lastKnownContentRef.current) {
+              setElements(remoteElements);
+              lastKnownContentRef.current = content;
+          }
           setIsLoading(false);
           setIsLive(true);
       });
@@ -120,7 +203,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           const token = getDriveToken() || await connectGoogleDrive();
           const content = await readDriveFile(token, fileId);
           const parsed = JSON.parse(content);
-          if (Array.isArray(parsed)) setElements(parsed);
+          if (Array.isArray(parsed)) {
+              setElements(parsed);
+              lastKnownContentRef.current = content;
+          }
       } catch (e: any) {
           console.error("Drive load failed", e);
       } finally {
@@ -128,11 +214,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       }
   };
 
-  const getWorldCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
+  const getWorldCoordinates = (e: any) => {
       if (!canvasRef.current) return { x: 0, y: 0 }; 
       const rect = canvasRef.current.getBoundingClientRect();
-      const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
-      const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
       
       const cx = rect.width / 2;
       const cy = rect.height / 2;
@@ -150,7 +236,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   };
 
   const getElementBounds = (el: WhiteboardElement) => {
-      if (el.type === 'pen' || el.type === 'eraser') {
+      if (el.type === 'pen' || el.type === 'eraser' || el.type === 'curve') {
           const xs = el.points?.map(p => p.x) || [el.x];
           const ys = el.points?.map(p => p.y) || [el.y];
           return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
@@ -161,7 +247,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const w = el.width || 0;
       const h = el.height || 0;
       if (el.type === 'type') {
-          // Estimated bounds for text
           const lines = el.text?.split('\n') || [];
           const width = 200 * (el.fontSize || 16) / 16; 
           const height = lines.length * (el.fontSize || 16) * 1.2;
@@ -172,7 +257,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
   const isPointInElement = (x: number, y: number, el: WhiteboardElement) => {
       const margin = 12 / scale;
-      if (el.type === 'pen' || el.type === 'eraser') {
+      if (el.type === 'pen' || el.type === 'eraser' || el.type === 'curve') {
           return el.points?.some(p => Math.sqrt((p.x - x)**2 + (p.y - y)**2) < (el.strokeWidth / scale) + margin);
       }
       const bounds = getElementBounds(el);
@@ -199,9 +284,22 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       return found ? found.id : null;
   };
 
-  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+  const startDrawing = (e: any) => {
       if (isReadOnly || textInput.visible) return;
       const { x, y } = getWorldCoordinates(e);
+
+      if (tool === 'hand') {
+        setIsDrawing(true);
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        setDragStartPos({ x: clientX, y: clientY });
+        return;
+      }
+
+      if (tool === 'curve') {
+          setPartialPoints(prev => [...prev, { x, y }]);
+          return;
+      }
 
       if (tool === 'type') {
           setTextInput({ x, y, value: '', visible: true, editingId: null });
@@ -244,19 +342,30 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           brushType: tool === 'eraser' ? 'standard' : brushType, 
           points: tool === 'pen' || tool === 'eraser' ? [{ x, y }] : undefined, 
           width: 0, height: 0, endX: x, endY: y, borderRadius: tool === 'rect' ? borderRadius : undefined, rotation: 0,
-          startArrow: ['line', 'arrow'].includes(tool) ? (tool === 'arrow' ? true : startArrow) : undefined,
-          endArrow: ['line', 'arrow'].includes(tool) ? (tool === 'arrow' ? true : endArrow) : undefined
+          startCap: ['line', 'arrow'].includes(tool) ? (tool === 'arrow' ? 'arrow' : startCap) : 'none',
+          endCap: ['line', 'arrow'].includes(tool) ? (tool === 'arrow' ? 'arrow' : endCap) : 'none'
       };
       setCurrentElement(newEl);
   };
 
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
-      if (!isDrawing) return;
-      const { x, y } = getWorldCoordinates(e);
+  const draw = (e: any) => {
+      const coords = getWorldCoordinates(e);
+      setMousePos(coords);
+      if (!isDrawing && tool !== 'curve') return;
+
+      if (tool === 'hand' && isDrawing) {
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const dx = clientX - dragStartPos.x;
+        const dy = clientY - dragStartPos.y;
+        setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+        setDragStartPos({ x: clientX, y: clientY });
+        return;
+      }
 
       if (tool === 'move' && selectedElementId) {
-          const dx = x - dragStartPos.x;
-          const dy = y - dragStartPos.y;
+          const dx = coords.x - dragStartPos.x;
+          const dy = coords.y - dragStartPos.y;
           setElements(prev => prev.map(el => {
               if (el.id === selectedElementId) {
                   if (activeResizeHandle) {
@@ -264,7 +373,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                       if (activeResizeHandle === 'end') {
                           updated.endX = (updated.endX || updated.x) + dx;
                           updated.endY = (updated.endY || updated.y) + dy;
-                      } else if (el.type === 'pen' || el.type === 'eraser') {
+                      } else if (el.type === 'pen' || el.type === 'eraser' || el.type === 'curve') {
                           const bounds = getElementBounds(el);
                           const center = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
                           const scaleX = 1 + (dx / (bounds.maxX - bounds.minX || 1));
@@ -279,7 +388,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                           if (activeResizeHandle.includes('w')) { updated.x += dx; updated.width = (updated.width || 0) - dx; }
                           if (activeResizeHandle.includes('n')) { updated.y += dy; updated.height = (updated.height || 0) - dy; }
                           if (el.type === 'type') {
-                              // Proportional font resizing for text
                               const scaleFactor = 1 + (dy / 50);
                               updated.fontSize = Math.max(8, (updated.fontSize || 16) * scaleFactor);
                           }
@@ -295,25 +403,29 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
               }
               return el;
           }));
-          setDragStartPos({ x, y });
+          setDragStartPos({ x: coords.x, y: coords.y });
           return;
       }
 
       if (!currentElement) return;
 
       if (tool === 'pen' || tool === 'eraser') { 
-          setCurrentElement(prev => prev ? ({ ...prev, points: [...(prev.points || []), { x, y }] }) : null); 
+          setCurrentElement(prev => prev ? ({ ...prev, points: [...(prev.points || []), { x: coords.x, y: coords.y }] }) : null); 
       }
       else if (['rect','circle','triangle','star'].includes(tool)) { 
-          setCurrentElement(prev => prev ? ({ ...prev, width: x - prev.x, height: y - prev.y }) : null); 
+          setCurrentElement(prev => prev ? ({ ...prev, width: coords.x - prev.x, height: coords.y - prev.y }) : null); 
       }
       else if (tool === 'line' || tool === 'arrow') { 
-          setCurrentElement(prev => prev ? ({ ...prev, endX: x, endY: y }) : null); 
+          setCurrentElement(prev => prev ? ({ ...prev, endX: coords.x, endY: coords.y }) : null); 
       }
   };
 
   const stopDrawing = async () => {
       if (!isDrawing) return;
+      if (tool === 'hand') {
+        setIsDrawing(false);
+        return;
+      }
       if (tool === 'move' && selectedElementId) {
           if (sessionId && !sessionId.startsWith('local-')) {
               await saveWhiteboardSession(sessionId, elements);
@@ -330,6 +442,16 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           }
           setCurrentElement(null);
           setIsDrawing(false);
+      }
+  };
+
+  const handleDeleteSelected = async () => {
+      if (!selectedElementId) return;
+      const nextElements = elements.filter(el => el.id !== selectedElementId);
+      setElements(nextElements);
+      setSelectedElementId(null);
+      if (sessionId && !sessionId.startsWith('local-')) {
+          await saveWhiteboardSession(sessionId, nextElements);
       }
   };
 
@@ -427,8 +549,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const canvas = canvasRef.current; if (!canvas) return; 
       const ctx = canvas.getContext('2d'); if (!ctx) return;
       
-      canvas.width = canvas.parentElement?.clientWidth || 800; 
-      canvas.height = canvas.parentElement?.clientHeight || 600;
+      canvas.width = containerRef.current?.clientWidth || 800; 
+      canvas.height = containerRef.current?.clientHeight || 600;
       
       ctx.clearRect(0, 0, canvas.width, canvas.height); 
       
@@ -447,11 +569,63 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       ctx.translate(offset.x, offset.y); 
       ctx.scale(scale, scale);
       
-      const drawArrowHead = (x1: number, y1: number, x2: number, y2: number, size: number, color: string) => {
+      const drawCap = (x1: number, y1: number, x2: number, y2: number, size: number, color: string, style?: CapStyle) => {
+          if (!style || style === 'none') return;
           const angle = Math.atan2(y2 - y1, x2 - x1);
-          ctx.save(); ctx.translate(x2, y2); ctx.rotate(angle); ctx.beginPath(); 
-          ctx.moveTo(0, 0); ctx.lineTo(-size, -size / 2); ctx.lineTo(-size, size / 2); 
-          ctx.closePath(); ctx.fillStyle = color; ctx.fill(); ctx.restore();
+          ctx.save(); 
+          ctx.translate(x2, y2); 
+          ctx.rotate(angle); 
+          ctx.beginPath(); 
+          if (style === 'arrow') {
+              ctx.moveTo(0, 0); 
+              ctx.lineTo(-size, -size / 2); 
+              ctx.lineTo(-size, size / 2); 
+              ctx.closePath(); 
+              ctx.fillStyle = color; 
+              ctx.fill(); 
+          } else if (style === 'circle') {
+              ctx.arc(-size/2, 0, size/2, 0, 2 * Math.PI);
+              ctx.fillStyle = color;
+              ctx.fill();
+          }
+          ctx.restore();
+      };
+
+      const renderCurve = (points: {x: number, y: number}[], el: WhiteboardElement | { strokeWidth: number, color: string, lineStyle: any }) => {
+          if (points.length < 2) return;
+          ctx.save();
+          ctx.beginPath();
+          ctx.lineWidth = el.strokeWidth / scale;
+          ctx.strokeStyle = el.color;
+          const styleConfig = LINE_STYLES.find(s => s.value === (('lineStyle' in el) ? el.lineStyle : 'solid'));
+          ctx.setLineDash(styleConfig?.dash || []);
+          
+          ctx.moveTo(points[0].x, points[0].y);
+          if (points.length === 2) {
+              ctx.lineTo(points[1].x, points[1].y);
+          } else {
+              for (let i = 1; i < points.length - 2; i++) {
+                  const xc = (points[i].x + points[i + 1].x) / 2;
+                  const yc = (points[i].y + points[i + 1].y) / 2;
+                  ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+              }
+              ctx.quadraticCurveTo(
+                  points[points.length - 2].x,
+                  points[points.length - 2].y,
+                  points[points.length - 1].x,
+                  points[points.length - 1].y
+              );
+          }
+          ctx.stroke();
+          
+          // Draw caps for curve ends
+          if ('startCap' in el && el.startCap) {
+              drawCap(points[1].x, points[1].y, points[0].x, points[0].y, el.strokeWidth * 3 / scale, el.color, el.startCap);
+          }
+          if ('endCap' in el && el.endCap) {
+              drawCap(points[points.length - 2].x, points[points.length - 2].y, points[points.length - 1].x, points[points.length - 1].y, el.strokeWidth * 3 / scale, el.color, el.endCap);
+          }
+          ctx.restore();
       };
 
       const renderElement = (el: WhiteboardElement) => {
@@ -474,7 +648,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
               
               ctx.fillStyle = '#6366f1';
               const hSize = 8 / scale;
-              const handles = el.type === 'line' || el.type === 'arrow' ? 
+              const handles = (el.type === 'line' || el.type === 'arrow') ? 
                  [{x: el.endX || el.x, y: el.endY || el.y}] :
                  [{x: bounds.minX, y: bounds.minY}, {x: bounds.maxX, y: bounds.minY}, {x: bounds.minX, y: bounds.maxY}, {x: bounds.maxX, y: bounds.maxY}];
               
@@ -490,6 +664,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
               lines.forEach((line, i) => {
                   ctx.fillText(line, el.x, el.y + (i * (el.fontSize || 16) * 1.2));
               });
+          } else if (el.type === 'curve') {
+              renderCurve(el.points || [], el);
           } else if (el.type === 'pen' || el.type === 'eraser') {
               if (el.points?.length) {
                   ctx.lineWidth = el.strokeWidth / scale;
@@ -514,37 +690,39 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
               ctx.lineWidth = el.strokeWidth / scale; 
               const x1 = el.x; const y1 = el.y; const x2 = el.endX || el.x; const y2 = el.endY || el.y;
               ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); 
-              const headSize = Math.max(12, el.strokeWidth * 2) / scale;
-              if (el.startArrow) drawArrowHead(x2, y2, x1, y1, headSize, el.color);
-              if (el.endArrow) drawArrowHead(x1, y1, x2, y2, headSize, el.color);
+              const capSize = Math.max(12, el.strokeWidth * 3) / scale;
+              
+              if (el.startCap) drawCap(x2, y2, x1, y1, capSize, el.color, el.startCap);
+              if (el.endCap) drawCap(x1, y1, x2, y2, capSize, el.color, el.endCap);
           }
           ctx.restore();
       };
 
       elements.forEach(renderElement);
       if (currentElement) renderElement(currentElement);
+      
+      // Partial curve preview
+      if (tool === 'curve' && partialPoints.length > 0) {
+          renderCurve([...partialPoints, mousePos], { strokeWidth: lineWidth, color, lineStyle });
+      }
+
       ctx.restore();
-  }, [elements, currentElement, scale, offset, boardRotation, backgroundColor, selectedElementId, tool]);
+  }, [elements, currentElement, scale, offset, boardRotation, backgroundColor, selectedElementId, tool, partialPoints, mousePos, color, lineWidth, lineStyle]);
 
   const selectedElement = elements.find(el => el.id === selectedElementId);
 
   return (
-    <div className={`flex flex-col h-full ${isDarkBackground ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden relative`}>
+    <div ref={containerRef} className={`flex flex-col h-full w-full ${isDarkBackground ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden relative`}>
         <div className={`${isDarkBackground ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'} border-b p-2 flex flex-wrap justify-between gap-2 shrink-0 z-10 items-center px-4`}>
             <div className="flex items-center gap-2">
                 {onBack && <button onClick={onBack} className={`p-2 rounded-lg ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-2`}><ArrowLeft size={20}/></button>}
                 
-                {isLive && (
-                    <div className="flex items-center gap-2 px-2 py-1 bg-indigo-900/20 text-indigo-400 border border-indigo-500/20 rounded-full text-[10px] font-black uppercase tracking-widest mr-2">
-                        <Activity size={12} className="animate-pulse" />
-                        Live Sync
-                    </div>
-                )}
-
                 <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1 mr-2`}>
                     <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Pen"><PenTool size={16}/></button>
-                    <button onClick={() => setTool('type')} className={`p-1.5 rounded ${tool === 'type' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Markdown Text"><Type size={16}/></button>
-                    <button onClick={() => setTool('move')} className={`p-1.5 rounded ${tool === 'move' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Move/Resize Object"><MousePointer2 size={16}/></button>
+                    <button onClick={() => setTool('hand')} className={`p-1.5 rounded ${tool === 'hand' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Hand Pan"><Hand size={16}/></button>
+                    <button onClick={() => setTool('curve')} className={`p-1.5 rounded ${tool === 'curve' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Spline Curve (ESC to stop)"><Spline size={16}/></button>
+                    <button onClick={() => setTool('type')} className={`p-1.5 rounded ${tool === 'type' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Markdown Text"><TypeIcon size={16}/></button>
+                    <button onClick={() => setTool('move')} className={`p-1.5 rounded ${tool === 'move' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Select/Move/Resize"><MousePointer2 size={16}/></button>
                     <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Eraser"><Eraser size={16}/></button>
                 </div>
 
@@ -552,21 +730,14 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                     <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Rectangle"><Square size={16}/></button>
                     <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Circle"><Circle size={16}/></button>
                     <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Line"><Minus size={16}/></button>
-                    <button onClick={() => setTool('arrow')} className={`p-1.5 rounded ${tool === 'arrow' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Arrow"><ArrowRight size={16}/></button>
                 </div>
 
-                <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1`}>
-                    <button onClick={() => setBoardRotation(prev => prev - 15)} className={`p-1.5 rounded ${isDarkBackground ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black'}`} title="Rotate CCW"><RotateCcw size={16}/></button>
-                    <button onClick={() => setBoardRotation(prev => prev + 15)} className={`p-1.5 rounded ${isDarkBackground ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black'}`} title="Rotate CW"><RotateCw size={16}/></button>
-                    <button onClick={handleResetView} className={`p-1.5 rounded ${isDarkBackground ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black'}`} title="Reset View"><RefreshCcw size={16}/></button>
-                </div>
-
-                {tool === 'move' && selectedElement?.type === 'type' && (
+                {selectedElementId && (
                     <button 
-                        onClick={() => handleStartEditingText(selectedElement)}
-                        className={`ml-2 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold flex items-center gap-2 shadow-lg animate-fade-in`}
+                        onClick={handleDeleteSelected}
+                        className={`p-2 rounded-lg bg-red-600 hover:bg-red-500 text-white shadow-lg transition-all active:scale-95 flex items-center gap-2`}
                     >
-                        <Edit3 size={14}/> Edit Text
+                        <Trash2 size={16}/> <span className="text-xs font-bold uppercase hidden sm:inline">Delete</span>
                     </button>
                 )}
 
@@ -580,7 +751,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                     {showStyleMenu && (
                         <>
                             <div className="fixed inset-0 z-40" onClick={() => setShowStyleMenu(false)}></div>
-                            <div className={`absolute top-full left-0 mt-2 w-64 ${isDarkBackground ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-2xl'} border rounded-xl z-50 p-4 space-y-4 animate-fade-in-up`}>
+                            <div className={`absolute top-full left-0 mt-2 w-80 ${isDarkBackground ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-2xl'} border rounded-xl z-50 p-4 space-y-4 animate-fade-in-up`}>
                                 <div>
                                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Brush Type</label>
                                     <div className="grid grid-cols-3 gap-1">
@@ -588,6 +759,29 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                                             <button key={b.value} onClick={() => setBrushType(b.value)} className={`p-2 rounded-lg flex flex-col items-center gap-1 transition-all ${brushType === b.value ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600')}`}>
                                                 <b.icon size={16}/>
                                                 <span className="text-[8px] uppercase font-bold truncate w-full text-center">{b.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Left End (Start)</label>
+                                    <div className="grid grid-cols-3 gap-1">
+                                        {CAP_STYLES.map(s => (
+                                            <button key={s.value} onClick={() => setStartCap(s.value)} className={`px-2 py-1.5 rounded-lg flex flex-col items-center gap-1 transition-all border ${startCap === s.value ? 'bg-indigo-600 border-indigo-500 text-white' : (isDarkBackground ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100')}`}>
+                                                <s.icon size={14} className="rotate-180"/>
+                                                <span className="text-[8px] uppercase font-bold">{s.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Right End (End)</label>
+                                    <div className="grid grid-cols-3 gap-1">
+                                        {CAP_STYLES.map(s => (
+                                            <button key={s.value} onClick={() => setEndCap(s.value)} className={`px-2 py-1.5 rounded-lg flex flex-col items-center gap-1 transition-all border ${endCap === s.value ? 'bg-indigo-600 border-indigo-500 text-white' : (isDarkBackground ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100')}`}>
+                                                <s.icon size={14}/>
+                                                <span className="text-[8px] uppercase font-bold">{s.label}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -622,21 +816,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-                <button onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Zoom In"><ZoomIn size={16}/></button>
-                <button onClick={() => setScale(prev => Math.max(prev / 1.2, 0.2))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Zoom Out"><ZoomOut size={16}/></button>
-                <div className={`w-px h-6 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} mx-1`}></div>
-                <button onClick={handleExportPNG} className={`flex items-center gap-2 px-3 py-1.5 ${isDarkBackground ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'} text-xs font-bold rounded-lg border shadow-sm`}>
-                    <Download size={14}/>
-                    <span className="hidden lg:inline">Export PNG</span>
-                </button>
-                <button onClick={handleArchiveToDrive} disabled={isSyncing} className={`flex items-center gap-2 px-3 py-1.5 ${isDarkBackground ? 'bg-slate-800 hover:bg-slate-700 text-indigo-400 border-slate-700' : 'bg-white hover:bg-slate-100 text-indigo-600 border-slate-200'} text-xs font-bold rounded-lg border shadow-sm`}>
-                    <CloudDownload size={14}/>
-                    <span className="hidden lg:inline">Sync to Drive</span>
-                </button>
-                <button onClick={handleShare} disabled={isSyncing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow-lg shadow-indigo-500/20 disabled:opacity-50 transition-all active:scale-95">
-                    {isSyncing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
-                    <span className="hidden sm:inline">Share URI</span>
-                </button>
+                <button onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-1`} title="Zoom In"><ZoomIn size={16}/></button>
+                <button onClick={() => setScale(prev => Math.max(prev / 1.2, 0.2))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-1`} title="Zoom Out"><ZoomOut size={16}/></button>
+                <button onClick={handleResetView} className={`p-1.5 rounded ${isDarkBackground ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-black'}`} title="Reset View"><RefreshCcw size={16}/></button>
                 <div className={`w-px h-6 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} mx-1`}></div>
                 <button onClick={() => setElements(prev => prev.slice(0, -1))} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Undo"><Undo size={16} /></button>
                 <button onClick={() => { if(confirm("Clear everything?")) { setElements([]); if(sessionId) deleteWhiteboardElements(sessionId); } }} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`} title="Clear Canvas"><Trash2 size={16} /></button>
@@ -650,11 +832,16 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                     <span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Hydrating Session...</span>
                 </div>
             )}
+            {tool === 'curve' && partialPoints.length > 0 && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-indigo-600 text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl animate-bounce">
+                    Press ESC to finish curve
+                </div>
+            )}
             <canvas 
                 ref={canvasRef} 
                 onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
                 onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
-                className={`block w-full h-full ${tool === 'move' ? 'cursor-move' : 'cursor-crosshair'}`} 
+                className={`block w-full h-full ${tool === 'move' ? 'cursor-move' : tool === 'hand' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`} 
             />
 
             {textInput.visible && (

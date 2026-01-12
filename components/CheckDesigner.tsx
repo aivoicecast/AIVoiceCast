@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
@@ -23,6 +22,14 @@ interface CheckDesignerProps {
   userProfile?: UserProfile | null;
 }
 
+const DUMMY_ADDRESSES = [
+    "888 Infinite Loop, Digital City, CP 10101",
+    "42 Galaxy Way, Sector 7G, Mars",
+    "101 Binary Boulevard, Silicon Valley, CA 94025",
+    "777 Quantum Lane, Neo Tokyo, JP",
+    "555 Ether Street, Decentralized Park, NY 10001"
+];
+
 const DEFAULT_CHECK: BankingCheck = {
   id: '',
   payee: '',
@@ -35,7 +42,7 @@ const DEFAULT_CHECK: BankingCheck = {
   accountNumber: '987654321',
   bankName: 'Neural Prism Bank',
   senderName: 'Account Holder',
-  senderAddress: '123 Neural Way, Silicon Valley, CA',
+  senderAddress: '', // Strictly empty by default
   recipientAddress: '',
   signature: '',
   isCoinCheck: false,
@@ -43,7 +50,7 @@ const DEFAULT_CHECK: BankingCheck = {
 };
 
 export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUser, userProfile }) => {
-  const params = new URLSearchParams(window.location.search);
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const isReadOnly = params.get('mode') === 'view' || params.get('view') === 'check_viewer';
   const checkIdFromUrl = params.get('id');
 
@@ -123,7 +130,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               checkNumber: (userProfile?.nextCheckNumber || 1001).toString()
           };
           if (userProfile) {
-              if (userProfile.senderAddress) initial.senderAddress = userProfile.senderAddress;
+              // We intentionally skip userProfile.senderAddress here to ensure the check starts blank
               if (userProfile.savedSignatureUrl) {
                   initial.signatureUrl = userProfile.savedSignatureUrl;
                   initial.signature = userProfile.savedSignatureUrl;
@@ -132,7 +139,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   }
               }
               if (userProfile.checkTemplate) {
-                  initial = { ...initial, ...userProfile.checkTemplate, checkNumber: (userProfile.nextCheckNumber || 1001).toString() };
+                  // Merge template, but strictly force senderAddress to empty if it's a new check
+                  initial = { 
+                    ...initial, 
+                    ...userProfile.checkTemplate, 
+                    senderAddress: '', // Override template address for clean start
+                    checkNumber: (userProfile.nextCheckNumber || 1001).toString() 
+                  };
               }
               hasHydratedFromTemplate.current = true;
           }
@@ -192,6 +205,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       } catch (e) { alert("Art failed."); } finally { setIsGeneratingArt(false); }
   };
 
+  const handleRandomizeAddress = () => {
+      const random = DUMMY_ADDRESSES[Math.floor(Math.random() * DUMMY_ADDRESSES.length)];
+      setCheck(prev => ({ ...prev, senderAddress: random }));
+  };
+
   const handleGenerateAmountWords = async (val: number, isCoins = false) => {
       setIsUpdatingWords(true);
       try {
@@ -218,7 +236,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       try {
           const id = check.id || generateSecureId();
           
-          // CRITICAL: Ensure all remote images are converted to local data URLs before canvas capture
           const sigUrl = check.signatureUrl || check.signature;
           const wmUrl = check.watermarkUrl;
           let newAssets: Record<string, string> = { ...convertedAssets };
@@ -238,7 +255,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
               await new Promise(r => setTimeout(r, 800));
           }
 
-          // 1. Generate PDF locally (where images are visible)
           const canvas = await html2canvas(checkRef.current!, { 
               scale: 3, 
               useCORS: true, 
@@ -251,7 +267,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 600, 270);
           const pdfBlob = pdf.output('blob');
 
-          // 2. Upload to Google Drive
           const token = getDriveToken() || await connectGoogleDrive();
           const studioFolderId = await ensureFolder(token, 'CodeStudio');
           const checksFolderId = await ensureFolder(token, 'Checks', studioFolderId);
@@ -259,11 +274,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const filename = `Check_${check.checkNumber}_${check.payee.replace(/\s/g, '_') || 'General'}.pdf`;
           const driveFileId = await uploadToDrive(token, checksFolderId, filename, pdfBlob);
           
-          // 3. Set Public Permissions
           await makeFilePubliclyViewable(token, driveFileId);
           const driveWebViewLink = await getDriveFileSharingLink(token, driveFileId);
 
-          // 4. Finalize Cloud Records
           let finalWatermarkUrl = check.watermarkUrl || '';
           if (check.watermarkUrl?.startsWith('data:')) {
              const res = await fetch(check.watermarkUrl);
@@ -289,7 +302,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           
           await saveBankingCheck(checkToSave as any);
           
-          // 5. AUTO-SAVE AS TEMPLATE & INCREMENT CHECK NUMBER
           const currentNum = parseInt(check.checkNumber) || 1000;
           const nextNum = currentNum + 1;
           
@@ -428,7 +440,13 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           {!isReadOnly && (
             <div className="w-full lg:w-[400px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-6 scrollbar-thin">
                 <div className="space-y-4">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><MapPin size={14} className="text-indigo-400"/> Sender Information</h3>
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2"><MapPin size={14} className="text-indigo-400"/> Sender Information</h3>
+                        <div className="flex gap-2">
+                          <button onClick={() => setCheck(prev => ({...prev, senderAddress: ''}))} className="text-[10px] font-black text-slate-500 hover:text-white transition-all">Clear</button>
+                          <button onClick={handleRandomizeAddress} className="text-[10px] font-black text-indigo-400 hover:text-white flex items-center gap-1 transition-all"><RefreshCw size={12}/> Randomize</button>
+                        </div>
+                    </div>
                     <input type="text" placeholder="Sender Name" value={check.senderName} onChange={e => setCheck({...check, senderName: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none"/>
                     <textarea placeholder="Sender Address" value={check.senderAddress} onChange={e => setCheck({...check, senderAddress: e.target.value})} rows={2} className="w-full bg-slate-800 border border-slate-700 rounded-lg p-2.5 text-sm text-white outline-none resize-none"/>
                 </div>
@@ -487,7 +505,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <div className="flex justify-between items-start relative z-10">
                           <div className="space-y-1">
                               <h2 className="text-sm font-bold uppercase tracking-wider leading-relaxed">{check.senderName}</h2>
-                              <p className="text-[9px] text-slate-500 leading-normal max-w-[240px] whitespace-pre-wrap pb-4">{check.senderAddress}</p>
+                              <p className="text-[9px] text-slate-500 leading-normal max-w-[240px] whitespace-pre-wrap pb-4">{check.senderAddress || '____________________'}</p>
                           </div>
                           <div className="text-right flex flex-col items-end">
                               <h2 className="text-xs font-black uppercase text-slate-800 leading-normal mb-2">{check.isCoinCheck ? 'VOICECOIN LEDGER' : check.bankName}</h2>
@@ -577,7 +595,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl p-6 shadow-2xl animate-fade-in-up">
                   <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center gap-2"><PenTool size={20} className="text-indigo-400"/> Draw Official Signature</h3><button onClick={() => setShowSignPad(false)} className="p-2 text-slate-500 hover:text-white"><X/></button></div>
-                  {/* Fix: removed disableAI and onDataChange from Whiteboard component */}
                   <div className="h-[300px] border-2 border-dashed border-slate-800 rounded-2xl overflow-hidden mb-6 bg-white"><Whiteboard backgroundColor="transparent" initialColor="#000000" onSessionStart={() => {}} /></div>
                   <div className="flex justify-end gap-2">
                       <button onClick={() => setShowSignPad(false)} className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold">Cancel</button>

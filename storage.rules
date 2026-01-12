@@ -1,17 +1,30 @@
-
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Cross-service Admin Check with safe field access
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == 'shengliang.song.ai@gmail.com' ||
+        (firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+         'admin_neural_prism' in firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('groups', []))
+      );
+    }
+
     // Allow public read for check assets so the shared URI viewer works for guests
     match /checks/{checkId}/{fileName} {
       allow read: if true;
-      // Only authenticated users (the owner) can upload assets
-      allow write: if request.auth != null;
+      // Only authenticated users (the owner) or admins can upload assets
+      allow write: if isAuthenticated() || isAdmin();
     }
 
     // Default rules for other paths
     match /{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAuthenticated() || isAdmin();
     }
   }
 }
