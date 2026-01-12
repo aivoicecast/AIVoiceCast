@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { Chapter } from '../types';
 import { incrementApiUsage } from './firestoreService';
 import { auth } from './firebaseConfig';
@@ -19,7 +19,8 @@ export async function generateCurriculum(
       : 'Output Language: English.';
 
     const prompt = `
-      You are an expert curriculum designer. Design a 10-chapter learning path for an educational podcast about: "${topic}".
+      You are an expert curriculum designer for the Neural Prism Platform. 
+      Design a 10-chapter learning path for an educational podcast about: "${topic}".
       Context: ${context}
       ${langInstruction}
       
@@ -42,7 +43,29 @@ export async function generateCurriculum(
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
-      config: { responseMimeType: 'application/json' }
+      config: { 
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              subTopics: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING }
+                  },
+                  required: ["title"]
+                }
+              }
+            },
+            required: ["title", "subTopics"]
+          }
+        }
+      }
     });
 
     const text = response.text;
