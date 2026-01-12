@@ -16,7 +16,7 @@ import { ShareModal } from './ShareModal';
 interface PodcastDetailProps {
   channel: Channel;
   onBack: () => void;
-  onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
+  onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, videoEnabled?: boolean, cameraEnabled?: boolean, bookingId?: string, activeSegment?: { index: number, lectureId: string }) => void;
   language: 'en' | 'zh';
   onEditChannel?: () => void; 
   onViewComments?: () => void;
@@ -251,6 +251,8 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       setShowShareModal(true);
   };
 
+  const isOwner = currentUser && (channel.ownerId === currentUser.uid || currentUser.email === 'shengliang.song.ai@gmail.com');
+
   return (
     <div className="h-full bg-slate-950 text-slate-100 flex flex-col relative overflow-y-auto pb-24">
       <div className="relative h-48 md:h-64 w-full shrink-0">
@@ -271,7 +273,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                       {t.curriculum}
                     </h3>
                     <div className="flex items-center gap-2">
-                        {activeSubTopicId && (
+                        {isOwner && activeSubTopicId && (
                             <button 
                               onClick={handleRegenerateLecture}
                               disabled={isRegenerating}
@@ -281,14 +283,16 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                               {isRegenerating ? <Loader2 size={14} className="animate-spin"/> : <Wand2 size={14}/>}
                             </button>
                         )}
-                        <button 
-                          onClick={handleRegenerateCurriculum}
-                          disabled={isRegeneratingCurriculum}
-                          className={`p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 rounded-lg border border-slate-700 transition-all ${isRegeneratingCurriculum ? 'animate-pulse opacity-50' : ''}`}
-                          title={t.regenCurriculum}
-                        >
-                          {isRegeneratingCurriculum ? <Loader2 size={14} className="animate-spin"/> : <RefreshCcw size={14}/>}
-                        </button>
+                        {isOwner && (
+                            <button 
+                              onClick={handleRegenerateCurriculum}
+                              disabled={isRegeneratingCurriculum}
+                              className={`p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 rounded-lg border border-slate-700 transition-all ${isRegeneratingCurriculum ? 'animate-pulse opacity-50' : ''}`}
+                              title={t.regenCurriculum}
+                            >
+                              {isRegeneratingCurriculum ? <Loader2 size={14} className="animate-spin"/> : <RefreshCcw size={14}/>}
+                            </button>
+                        )}
                     </div>
                 </div>
                 <div className="divide-y divide-slate-800">

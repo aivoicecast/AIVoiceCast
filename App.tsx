@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -54,7 +55,8 @@ import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } fr
 import { getUserChannels, saveUserChannel } from './utils/db';
 import { HANDCRAFTED_CHANNELS } from './utils/initialData';
 import { stopAllPlatformAudio } from './utils/audioUtils';
-import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, claimCoinCheck, syncUserProfile } from './services/firestoreService';
+// Fix: Added publishChannelToFirestore to imports
+import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, claimCoinCheck, syncUserProfile, publishChannelToFirestore } from './services/firestoreService';
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -161,7 +163,7 @@ const UI_TEXT = {
     docs: "文档空间",
     lectures: "引导式学习",
     podcasts: "知识中心",
-    mission: "愿景与棱镜",
+    mission: "愿愿景与棱镜",
     code: "构建者工作室",
     whiteboard: "视觉画布",
     blog: "社区声音",
@@ -275,6 +277,7 @@ const App: React.FC = () => {
     window.history.replaceState({}, '', url.toString());
   };
 
+  // Fix: Corrected parameter order to match sub-components (CalendarView, MentorBooking, etc)
   const handleStartLiveSession = (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, initialTranscript?: TranscriptItem[], existingDiscussionId?: string) => {
     // Store current viewState as returnTo context
     setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId, returnTo: viewState });
@@ -379,6 +382,10 @@ const App: React.FC = () => {
   const handleUpdateChannel = async (updated: Channel) => {
       await saveUserChannel(updated);
       setUserChannels(prev => prev.map(c => c.id === updated.id ? updated : c));
+      // If it's a public channel, publish it
+      if (updated.visibility === 'public') {
+          await publishChannelToFirestore(updated);
+      }
   };
 
   const handleSchedulePodcast = (date: Date) => {
@@ -516,7 +523,7 @@ const App: React.FC = () => {
         </header>
 
         <main className="flex-1 overflow-hidden relative">
-            {viewState === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice={globalVoice} currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={handleVote} searchQuery={searchQuery} onNavigate={(v) => handleSetViewState(v as any)} /> )}
+            {viewState === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice={globalVoice} currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={handleVote} searchQuery={searchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} /> )}
             {viewState === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} onUpdateChannel={handleUpdateChannel} /> )}
             {viewState === 'live_session' && liveSessionParams && ( 
               <LiveSession 

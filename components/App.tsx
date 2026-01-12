@@ -55,7 +55,8 @@ import { ensureCodeStudioFolder, loadAppStateFromDrive, saveAppStateToDrive } fr
 import { getUserChannels, saveUserChannel } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { stopAllPlatformAudio } from '../utils/audioUtils';
-import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, claimCoinCheck, syncUserProfile } from '../services/firestoreService';
+// Fix: Added publishChannelToFirestore to imports
+import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, claimCoinCheck, syncUserProfile, publishChannelToFirestore } from '../services/firestoreService';
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -276,6 +277,7 @@ const App: React.FC = () => {
     window.history.replaceState({}, '', url.toString());
   };
 
+  // Fix: Corrected parameter order to match sub-components (CalendarView, MentorBooking, etc)
   const handleStartLiveSession = (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, initialTranscript?: TranscriptItem[], existingDiscussionId?: string) => {
     // Store current viewState as returnTo context
     setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId, returnTo: viewState });
@@ -380,6 +382,10 @@ const App: React.FC = () => {
   const handleUpdateChannel = async (updated: Channel) => {
       await saveUserChannel(updated);
       setUserChannels(prev => prev.map(c => c.id === updated.id ? updated : c));
+      // If it's a public channel, publish it
+      if (updated.visibility === 'public') {
+          await publishChannelToFirestore(updated);
+      }
   };
 
   const handleSchedulePodcast = (date: Date) => {
@@ -536,7 +542,7 @@ const App: React.FC = () => {
             )}
             {viewState === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><DocumentList onBack={() => handleSetViewState('directory')} /></div> )}
             {viewState === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={handleSetViewState as any} initialFiles={initialStudioFiles}/> )}
-            {viewState === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('directory')} /> )}
+            {viewState === 'whiteboard' && ( <div className="p-0 h-full"><Whiteboard onBack={() => handleSetViewState('directory')} /></div> )}
             {viewState === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
             {viewState === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}

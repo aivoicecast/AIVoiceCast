@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Channel } from '../types';
 import { ArrowUp, ArrowDown, Play, MessageSquare, Heart, Calendar, Hash, RefreshCcw, Loader2 } from 'lucide-react';
@@ -136,7 +135,7 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
                   </td>
 
                   <td className="px-6 py-4 text-right">
-                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-end gap-2">
+                     <div className="flex items-center justify-end gap-2">
                         {isOwner && (
                             <button 
                               onClick={(e) => handleRegenClick(e, channel)}
