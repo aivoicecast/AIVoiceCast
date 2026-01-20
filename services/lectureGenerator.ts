@@ -69,26 +69,6 @@ async function getAIProvider(): Promise<'gemini' | 'openai'> {
     return provider;
 }
 
-/**
- * Extracts the specific tuned model ID if present in the voice name.
- */
-function getModelForVoice(voiceName: string = '', defaultModel: string): string {
-    if (voiceName.includes('gen-lang-client')) {
-        const parts = voiceName.split(/\s+/);
-        const id = parts.find(p => p.startsWith('gen-lang-client'));
-        if (id) {
-            const tunedId = id.startsWith('tunedModels/') ? id : `tunedModels/${id}`;
-            console.log(`[Neural Router] Routing to Tuned Model: ${tunedId}`);
-            return tunedId;
-        }
-    }
-    // Default Gem maps to high-quality Pro model
-    if (voiceName === 'Default Gem') {
-        return 'gemini-3-pro-preview';
-    }
-    return defaultModel;
-}
-
 export async function generateLectureScript(
   topic: string, 
   channelContext: string,
@@ -137,14 +117,14 @@ export async function generateLectureScript(
     if (activeProvider === 'openai') {
         text = await callOpenAI(systemInstruction, userPrompt, openaiKey);
     } else {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY as string) || '' });
         
-        // Base model selection
-        let modelName = 'gemini-3-flash-preview';
-        if (channelId === '1' || channelId === '2') modelName = 'gemini-3-pro-preview';
-        
-        // Resolve to Tuned Model if applicable
-        modelName = getModelForVoice(voiceName, modelName);
+        // Use tuned model if present in voiceName
+        let modelName = 'gemini-3-pro-preview';
+        if (voiceName && voiceName.includes('gen-lang-client-')) {
+            const match = voiceName.match(/gen-lang-client-[a-zA-Z0-9]+/);
+            if (match) modelName = match[0];
+        }
 
         const response = await ai.models.generateContent({
             model: modelName, 
@@ -200,9 +180,9 @@ export async function generateBatchLectures(
     if (activeProvider === 'openai') {
         text = await callOpenAI(systemInstruction, userPrompt, openaiKey);
     } else {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY as string) || '' });
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview', 
+            model: 'gemini-3-pro-preview', 
             contents: userPrompt,
             config: { 
                 systemInstruction: systemInstruction,
@@ -244,7 +224,7 @@ export async function summarizeDiscussionAsSection(
     if (activeProvider === 'openai') {
         text = await callOpenAI(systemInstruction, userPrompt, openaiKey);
     } else {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY as string) || '' });
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview', 
             contents: userPrompt,
@@ -281,7 +261,7 @@ export async function generateDesignDocFromTranscript(
         });
         if(response.ok) { const data = await response.json(); text = data.choices[0]?.message?.content || null; }
     } else {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY as string) || '' });
         const response = await ai.models.generateContent({
             model: 'gemini-3-pro-preview', 
             contents: userPrompt,

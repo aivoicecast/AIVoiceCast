@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
-import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, coolDownAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
+import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
 
 export interface LiveConnectionCallbacks {
   onOpen: () => void;
@@ -14,9 +14,10 @@ export interface LiveConnectionCallbacks {
 
 function getValidLiveVoice(voiceName: string): string {
   const name = voiceName || '';
-  if (name.includes('0648937375') || name === 'Software Interview Voice') return 'Fenrir';
-  if (name.includes('0375218270') || name === 'Linux Kernel Voice') return 'Puck';
-  if (name.toLowerCase().includes('gem') || name === 'Default Gem') return 'Zephyr';
+  if (name.includes('Software Interview') || name.includes('0648937375')) return 'Fenrir';
+  if (name.includes('Linux Kernel') || name.includes('0375218270')) return 'Puck';
+  if (name.includes('Default Gem')) return 'Zephyr';
+  
   const validGemini = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
   return validGemini.includes(voiceName) ? voiceName : 'Puck';
 }
@@ -56,17 +57,12 @@ export class GeminiLiveService {
       this.isActive = true;
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       
-      if (!navigator.onLine) {
-          throw new Error("OFFLINE: Handshake aborted.");
-      }
-
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       if (!this.inputAudioContext || this.inputAudioContext.state !== 'running') {
         await this.initializeAudio();
       }
 
-      // Priority: use the provided merged stream (mic + system audio)
       if (externalStream) {
           this.stream = externalStream;
       } else if (!this.stream) {
@@ -91,7 +87,7 @@ export class GeminiLiveService {
           config.tools = tools;
       }
 
-      const connectionPromise = ai.live.connect({
+      this.sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config,
         callbacks: {
@@ -162,8 +158,11 @@ export class GeminiLiveService {
           },
           onclose: (e: any) => {
             if (!this.isActive) return;
+            const wasIntentional = !this.session;
             this.cleanup();
-            callbacks.onClose(e?.reason || "Connection closed by server", e?.code);
+            if (!wasIntentional) {
+               callbacks.onClose(e?.reason || "Connection closed by server", e?.code);
+            }
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
@@ -174,16 +173,10 @@ export class GeminiLiveService {
         }
       });
 
-      const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Handshake timeout (8s)")), 8000)
-      );
-
-      this.sessionPromise = connectionPromise;
-      this.session = await Promise.race([this.sessionPromise, timeoutPromise]);
+      this.session = await this.sessionPromise;
     } catch (error: any) {
       this.isActive = false;
-      const isRateLimit = error?.message?.includes('429');
-      callbacks.onError(error?.message || "Init Error", isRateLimit ? 'RATE_LIMIT' : 'ERROR');
+      callbacks.onError(error?.message || "Init Error", "ERROR");
       this.cleanup();
       throw error;
     }
@@ -195,7 +188,7 @@ export class GeminiLiveService {
         if (this.session && this.isActive) {
             this.sendText(" "); 
         }
-    }, 15000);
+    }, 8000); // 8s heartbeat for high stability
   }
 
   public sendToolResponse(functionResponses: any) {
@@ -252,6 +245,7 @@ export class GeminiLiveService {
   async disconnect() {
     this.isActive = false;
     if (this.session) { try { (this.session as any).close?.(); } catch(e) {} }
+    this.session = null;
     this.cleanup();
   }
 
@@ -263,7 +257,6 @@ export class GeminiLiveService {
     if (this.processor) { try { this.processor.disconnect(); this.processor.onaudioprocess = null; } catch(e) {} }
     if (this.source) try { this.source.disconnect(); } catch(e) {}
     this.stream?.getTracks().forEach(track => track.stop());
-    this.session = null;
     this.sessionPromise = null;
     this.stream = null;
     this.processor = null;

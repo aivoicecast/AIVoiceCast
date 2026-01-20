@@ -1,39 +1,41 @@
 
 import React, { useState, useMemo } from 'react';
-import { getDebugCollectionDocs, seedDatabase, recalculateGlobalStats, claimSystemChannels, setUserSubscriptionTier, deleteUser, cleanupDuplicateUsers, isUserAdmin, deleteFirestoreDoc, purgeFirestoreCollection } from '../services/firestoreService';
-import { ArrowLeft, RefreshCw, Database, Table, Code, Search, UploadCloud, Users, ShieldCheck, Crown, XCircle, Trash2, ShieldAlert, Loader2, AlertTriangle } from 'lucide-react';
+import { getDebugCollectionDocs, seedDatabase, recalculateGlobalStats, cleanupDuplicateUsers, isUserAdmin, deleteFirestoreDoc, purgeFirestoreCollection, setUserSubscriptionTier } from '../services/firestoreService';
+import { ArrowLeft, RefreshCw, Database, Table, Code, Search, UploadCloud, Users, ShieldCheck, Crown, Trash2, ShieldAlert, Loader2, Zap, Activity, CheckCircle, Copy, Check, X, Film, GraduationCap, AlertCircle, Info, Cloud, Speech, Settings } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { UserProfile } from '../types';
+import { GoogleGenAI } from "@google/genai";
+import { GCP_API_KEY } from '../services/private_keys';
 
 interface FirestoreInspectorProps {
   onBack: () => void;
-  userProfile?: UserProfile | null;
+  userProfile: UserProfile | null;
 }
 
 const COLLECTIONS = [
-  'users',
-  'channels',
-  'groups',
-  'invitations',
-  'bookings',
-  'discussions',
-  'recordings',
-  'activity_logs',
-  'stats',
-  'mock_interviews',
-  'coin_transactions',
-  'checks',
-  'shipping',
-  'cards',
-  'icons',
-  'tasks',
-  'notebooks'
+  'users', 'channels', 'channel_stats', 'groups', 'messages', 'bookings', 
+  'recordings', 'discussions', 'blogs', 'blog_posts', 'job_postings', 
+  'career_applications', 'code_projects', 'whiteboards', 'saved_words', 
+  'cards', 'icons', 'checks', 'shipping', 'coin_transactions', 'tasks', 
+  'notebooks', 'invitations', 'mock_interviews'
 ];
+
+interface DiagnosticStep {
+    id: string;
+    label: string;
+    status: 'idle' | 'running' | 'success' | 'failed' | 'skipped';
+    error?: string;
+    details?: string;
+    advice?: string[];
+}
 
 export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, userProfile }) => {
   const [activeCollection, setActiveCollection] = useState<string | null>(null);
   const [docs, setDocs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isTestingGemini, setIsTestingGemini] = useState(false);
+  const [diagnosticSteps, setDiagnosticSteps] = useState<DiagnosticStep[]>([]);
+  const [copyFeedback, setCopyFeedback] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'json'>('table');
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +60,143 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleRunFullDiagnostics = async () => {
+    setIsTestingGemini(true);
+    
+    const steps: DiagnosticStep[] = [
+        { id: 'auth', label: 'Neural Key Integrity', status: 'idle' },
+        { id: 'standard', label: 'Gemini 3 Flash Handshake', status: 'idle' },
+        { id: 'cloud_tts', label: 'Cloud TTS API Handshake', status: 'idle' },
+        { id: 'veo', label: 'Veo Video Spectrum', status: 'idle' }
+    ];
+    setDiagnosticSteps(steps);
+
+    const updateStep = (id: string, update: Partial<DiagnosticStep>) => {
+        setDiagnosticSteps(prev => prev.map(s => s.id === id ? { ...s, ...update } : s));
+    };
+
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+    // Step 1: Basic Key Check
+    updateStep('auth', { status: 'running' });
+    if (!process.env.API_KEY) {
+        updateStep('auth', { 
+            status: 'failed', 
+            error: 'Missing API_KEY in environment variables.',
+            advice: ["Check your .env or platform deployment settings."]
+        });
+    } else {
+        updateStep('auth', { status: 'success', details: `Gemini Key detected: ${process.env.API_KEY.substring(0, 8)}...` });
+    }
+
+    // Step 2: Standard API
+    updateStep('standard', { status: 'running' });
+    try {
+        const resp = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: 'Neural Heartbeat'
+        });
+        updateStep('standard', { status: 'success', details: `Latency: Low. Response: "${resp.text?.substring(0, 20)}..."` });
+    } catch (e: any) {
+        const msg = e instanceof Error ? e.message : String(e);
+        let advice = ["Check API Key permissions in Google AI Studio."];
+        
+        if (msg.includes("503") || msg.includes("overloaded") || msg.includes("UNAVAILABLE")) {
+            advice = [
+                "SERVER OVERLOAD: The Gemini 3 Flash Preview model is currently at capacity.",
+                "1. This is a transient Google server issue, not a problem with your code.",
+                "2. Wait 30-60 seconds and try the handshake again.",
+                "3. Consider using 'gemini-3-pro-preview' as a fallback if this persists."
+            ];
+        } else if (msg.includes("API keys are not supported")) {
+            advice = ["GCP Error: Ensure 'Generative Language API' is enabled and your project allows API Keys."];
+        } else if (msg.includes("429")) {
+            advice = ["Rate limit exceeded. Check your quota in AI Studio settings."];
+        }
+        
+        updateStep('standard', { status: 'failed', error: msg, advice });
+    }
+
+    // Step 3: Cloud TTS Handshake
+    updateStep('cloud_tts', { status: 'running' });
+    const activeGcpKey = userProfile?.cloudTtsApiKey || GCP_API_KEY || process.env.API_KEY;
+    try {
+        const res = await fetch(`https://texttospeech.googleapis.com/v1/voices?key=${activeGcpKey}`);
+        if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.error?.message || "GCP Handshake failed");
+        }
+        const data = await res.json();
+        updateStep('cloud_tts', { 
+            status: 'success', 
+            details: `Verified. Using key ${activeGcpKey.substring(0, 8)}... Received ${data.voices?.length || 0} enterprise voices.` 
+        });
+    } catch (e: any) {
+        const msg = e instanceof Error ? e.message : String(e);
+        updateStep('cloud_tts', { 
+            status: 'failed', 
+            error: msg,
+            advice: [
+                "1. Enable the 'Cloud Text-to-Speech API' in Google Cloud Console.",
+                "2. Check API Key Restrictions: Your key must allow 'Cloud Text-to-Speech API'.",
+                "3. Verify your project has an active Billing Account linked.",
+                "4. Important: Use a GCP API Key, not an AI Studio key."
+            ]
+        });
+    }
+
+    // Step 4: Veo API
+    updateStep('veo', { status: 'running' });
+    // Use the paid key source for Veo to avoid 429
+    const activeVeoKey = userProfile?.cloudTtsApiKey || GCP_API_KEY || process.env.API_KEY;
+    try {
+        const veoAi = new GoogleGenAI({ apiKey: activeVeoKey });
+        const operation = await veoAi.models.generateVideos({
+            model: 'veo-3.1-fast-generate-preview',
+            prompt: 'Neural Diagnostic Probe',
+            config: { numberOfVideos: 1 }
+        });
+        
+        const keyType = activeVeoKey === GCP_API_KEY ? "Dedicated GCP Key" : activeVeoKey === userProfile?.cloudTtsApiKey ? "User Custom Key" : "Default Env Key";
+        
+        if (operation && !operation.done) {
+            updateStep('veo', { status: 'success', details: `Handshake successful using ${keyType}. Operation initiated.` });
+        } else if (operation.error) {
+            throw new Error((operation.error as any).message || "Operation failed immediately.");
+        } else {
+            updateStep('veo', { status: 'success', details: `Ready. Used ${keyType}.` });
+        }
+    } catch (e: any) {
+        const msg = e instanceof Error ? e.message : String(e);
+        let advice = ["Veo requires a PAID Google Cloud Project with billing enabled."];
+        
+        if (msg.includes("429")) {
+            advice = [
+                "QUOTA EXHAUSTED: Even with a paid key, Veo has strict minute-by-minute rate limits.",
+                "1. Check if you have recently generated videos in AI Studio.",
+                "2. Ensure your Billing Account is in good standing.",
+                "3. Verify that your GCP Key has permissions for 'Vertex AI API'."
+            ];
+        } else if (msg.includes("not found") || msg.includes("404") || msg.includes("Requested entity was not found")) {
+            advice = [
+                "MODEL ACCESS DENIED: Veo is restricted to projects with an active Billing Account.",
+                "1. Go to console.cloud.google.com and ensure Billing is ENABLED.",
+                "2. Go to 'APIs & Services' and ensure 'Vertex AI API' is ENABLED.",
+                "3. Note: Standard AI Studio Free Tier keys do NOT support Veo."
+            ];
+        }
+        
+        updateStep('veo', { status: 'failed', error: msg, advice });
+    }
+  };
+
+  const handleCopyResult = () => {
+      const log = diagnosticSteps.map(s => `${s.status.toUpperCase()}: ${s.label}\n  Details: ${s.details || 'None'}\n  Error: ${s.error || 'None'}`).join('\n\n');
+      navigator.clipboard.writeText(log);
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2000);
   };
 
   const handleSeed = async () => {
@@ -151,7 +290,6 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
   };
 
   const renderValue = (val: any) => {
-    // Detect potential milliseconds timestamp (13 digits, starting with 17... for the 2020-2030 range)
     if (typeof val === 'number' && val > 1000000000000 && val < 10000000000000) {
         return new Intl.DateTimeFormat('en-US', {
             timeZone: 'America/Los_Angeles',
@@ -193,6 +331,14 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
          </div>
          
          <div className="flex gap-2">
+             <button 
+                onClick={handleRunFullDiagnostics}
+                disabled={isTestingGemini}
+                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-900/40 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 group"
+             >
+                {isTestingGemini ? <Loader2 size={14} className="animate-spin"/> : <Zap size={14} className="group-hover:fill-current"/>} 
+                Deep Neural Handshake
+             </button>
              {isSuperAdmin && (
                  <button 
                     onClick={handleCleanupDuplicates}
@@ -205,8 +351,8 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
              <button 
                 onClick={handleRecalculateStats}
                 disabled={isLoading}
-                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-colors shadow-lg"
-                title="Fix user count if incorrect"
+                className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition-colors shadow-lg"
+                title="Sync stats"
              >
                 <Users size={14} /> Sync Stats
              </button>
@@ -348,6 +494,102 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
               </div>
           </div>
       </div>
+
+      {isTestingGemini && (
+        <div className="fixed inset-0 z-[200] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
+            <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-3xl shadow-2xl overflow-hidden animate-fade-in-up">
+                <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <Activity className="text-indigo-400" />
+                        <h3 className="text-lg font-black text-white italic uppercase tracking-widest">Neural Diagnostic Matrix</h3>
+                    </div>
+                    <button onClick={() => setIsTestingGemini(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
+                </div>
+                
+                <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto scrollbar-hide">
+                    {diagnosticSteps.map((step) => (
+                        <div key={step.id} className={`p-5 rounded-2xl border transition-all ${
+                            step.status === 'success' ? 'bg-emerald-950/20 border-emerald-500/30' : 
+                            step.status === 'failed' ? 'bg-red-950/20 border-red-500/30' : 
+                            step.status === 'running' ? 'bg-indigo-950/20 border-indigo-500/30 animate-pulse' :
+                            'bg-slate-900/50 border-slate-800'
+                        }`}>
+                            <div className="flex justify-between items-start mb-2">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-lg ${
+                                        step.status === 'success' ? 'bg-emerald-500' :
+                                        step.status === 'failed' ? 'bg-red-500' :
+                                        'bg-slate-800'
+                                    }`}>
+                                        {step.id === 'veo' ? <Film size={16} className="text-white"/> : 
+                                         step.id === 'auth' ? <ShieldCheck size={16} className="text-white"/> :
+                                         step.id === 'cloud_tts' ? <Speech size={16} className="text-white"/> :
+                                         <Zap size={16} className="text-white"/>}
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-white">{step.label}</h4>
+                                        <p className="text-[10px] text-slate-500 uppercase tracking-widest">Diagnostic ID: {step.id}</p>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${
+                                        step.status === 'success' ? 'text-emerald-400' :
+                                        step.status === 'failed' ? 'text-red-400' :
+                                        'text-slate-50'
+                                    }`}>{step.status}</span>
+                                </div>
+                            </div>
+                            
+                            {step.details && <p className="text-xs text-slate-300 mt-3 leading-relaxed bg-black/30 p-3 rounded-xl border border-white/10">{step.details}</p>}
+                            
+                            {step.error && (
+                                <div className="mt-3 p-3 bg-red-900/40 rounded-xl border border-red-500/20">
+                                    <p className="text-[10px] font-black text-red-400 uppercase mb-1 flex items-center gap-1"><ShieldAlert size={10}/> Error Trace:</p>
+                                    <p className="text-[11px] font-mono text-red-200 break-all">{step.error}</p>
+                                </div>
+                            )}
+
+                            {step.advice && (
+                                <div className="mt-4 space-y-2">
+                                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest px-1">Troubleshooting Actions:</p>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {step.advice.map((adv, i) => (
+                                            <div key={i} className="flex items-start gap-3 bg-slate-950/40 p-3 rounded-xl border border-white/5">
+                                                <div className="mt-1 w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></div>
+                                                <p className="text-[11px] text-slate-300 leading-relaxed">{adv}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                    
+                    <div className="flex gap-3 pt-4">
+                        <button 
+                            onClick={handleCopyResult}
+                            className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-slate-700"
+                        >
+                            {copyFeedback ? <Check size={16} className="text-emerald-400"/> : <Copy size={16}/>}
+                            {copyFeedback ? 'Copied' : 'Copy Log'}
+                        </button>
+                        <button 
+                            onClick={() => setIsTestingGemini(false)}
+                            className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl transition-all"
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                </div>
+                
+                <div className="p-4 bg-slate-950 border-t border-slate-800 text-center">
+                    <p className="text-[8px] text-slate-600 font-black uppercase tracking-[0.2em]">Neural Handshake Protocol v5.6.0</p>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default FirestoreInspector;

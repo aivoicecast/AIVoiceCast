@@ -11,7 +11,6 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Robust Admin Check: Handles missing 'groups' field and email bypass
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.email == 'shengliang.song.ai@gmail.com' ||
@@ -21,14 +20,30 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
-    // Global Default: Deny everything unless explicitly allowed
+    // Global Default
     // ----------------------------------------------------------------------
     match /{document=**} {
-      allow read, write: if isAdmin(); // Super-admins bypass all restrictions
+      allow read, write: if isAdmin();
     }
 
     // ----------------------------------------------------------------------
-    // USERS COLLECTION
+    // SCRIPTURE LEDGERS (Community Caches)
+    // ----------------------------------------------------------------------
+    match /bible_corpus/{chapterId} {
+      allow read: if true; 
+      allow create, update: if isAuthenticated(); 
+      allow delete: if isAdmin();
+    }
+
+    match /bible_audio/{audioId} {
+      allow read: if true; 
+      allow create, update: if isAuthenticated(); 
+      allow delete: if isAdmin();
+    }
+
+    // ----------------------------------------------------------------------
+    // USERS & IDENTITY
+    // ----------------------------------------------------------------------
     match /users/{userId} {
       allow read: if isAuthenticated(); 
       allow create: if isOwner(userId);
@@ -36,23 +51,18 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
-    // GROUPS & CHAT
+    // COMMUNITY & APPS
+    // ----------------------------------------------------------------------
     match /groups/{groupId} {
       allow read, write: if isAuthenticated();
-      match /messages/{msgId} {
-        allow read, write: if isAuthenticated();
-      }
+      match /messages/{msgId} { allow read, write: if isAuthenticated(); }
     }
 
     match /chat_channels/{channelId} {
       allow read, write: if isAuthenticated();
-      match /messages/{msgId} {
-        allow read, write: if isAuthenticated();
-      }
+      match /messages/{msgId} { allow read, write: if isAuthenticated(); }
     }
 
-    // ----------------------------------------------------------------------
-    // PODCAST CHANNELS
     match /channels/{channelId} {
       allow read: if true; 
       allow create: if isAuthenticated();
@@ -60,47 +70,32 @@ service cloud.firestore {
         isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments', 'appendix'])
       );
       allow delete: if isAdmin() || isOwner(resource.data.ownerId);
-      
-      match /lectures/{lectureId} { allow read, write: if true; }
     }
 
-    // Separate Stats Table for Counters
     match /channel_stats/{channelId} {
       allow read: if true;
       allow write: if isAuthenticated();
     }
 
-    // ----------------------------------------------------------------------
-    // DISCUSSIONS & DOCUMENTS
     match /discussions/{discussionId} {
       allow read: if resource.data.visibility == 'public' || isOwner(resource.data.userId) || isAdmin();
       allow write: if isAuthenticated();
     }
 
-    // ----------------------------------------------------------------------
-    // MOCK INTERVIEWS
     match /mock_interviews/{interviewId} {
       allow read: if resource.data.visibility == 'public' || isOwner(resource.data.userId) || isAdmin();
       allow write: if isAuthenticated();
     }
 
-    // ----------------------------------------------------------------------
-    // SHARED ASSETS & UTILITY APPS
     match /invitations/{inviteId} { allow read, write: if isAuthenticated(); }
     match /bookings/{bookingId} { allow read, write: if isAuthenticated(); }
     match /recordings/{recordingId} { allow read, write: if isAuthenticated(); }
     match /saved_words/{wordId} { allow read, write: if isAuthenticated(); }
-    
-    // Utility App Collections
-    match /checks/{checkId} { 
-      allow read: if true;
-      allow write: if isAuthenticated(); 
-    }
+    match /checks/{checkId} { allow read: if true; allow write: if isAuthenticated(); }
     match /shipping/{labelId} { allow read, write: if isAuthenticated(); }
     match /icons/{iconId} { allow read, write: if isAuthenticated(); }
     match /cards/{cardId} { allow read, write: if isAuthenticated(); }
     match /coin_transactions/{txId} { allow read, write: if isAuthenticated(); }
-
     match /activity_logs/{logId} { allow create: if isAuthenticated(); allow read: if isAdmin(); }
   }
 }

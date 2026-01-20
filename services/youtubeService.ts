@@ -1,3 +1,4 @@
+
 /**
  * YouTube Data API v3 Resumable Upload Service
  */
@@ -12,23 +13,22 @@ export interface YouTubeUploadMetadata {
  * Uploads a video blob to the user's YouTube channel using the resumable protocol.
  */
 export async function uploadToYouTube(accessToken: string, videoBlob: Blob, metadata: YouTubeUploadMetadata): Promise<string> {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'unknown';
+    console.log("[YouTube] Resumable upload process started.");
     
-    console.log("[YouTube] Resumable upload started.");
-    
-    // Step 0: Permission Audit (Optional, but helps debug)
+    // Step 0: Channel Verification
     try {
         const auditRes = await fetch('https://www.googleapis.com/youtube/v3/channels?part=id&mine=true', {
             headers: { 'Authorization': `Bearer ${accessToken}` }
         });
         if (!auditRes.ok) {
-            console.warn("[YouTube Audit] User might not have a YouTube channel initialized.");
+            const err = await auditRes.json();
+            console.warn("[YouTube Audit] Channel check failed. Ensure the user has a YouTube channel created.", err);
         }
     } catch (auditErr: any) {
-        console.warn("[YouTube Audit] Pre-check failed, proceeding anyway:", auditErr.message);
+        console.warn("[YouTube Audit] Pre-check network error:", auditErr.message);
     }
 
-    const mimeType = videoBlob.type || 'video/webm';
+    const mimeType = videoBlob.type || 'video/mp4';
     const size = videoBlob.size;
     const initUrl = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
     
@@ -36,7 +36,7 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
         snippet: {
             title: metadata.title,
             description: metadata.description,
-            tags: ['AIVoiceCast', 'NeuralArchive'],
+            tags: ['AIVoiceCast', 'NeuralArchive', 'ScriptureSanctuary', 'Veo'],
             categoryId: '27' // Education
         },
         status: {
@@ -45,11 +45,10 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
         }
     };
 
-    console.log("[YouTube] Phase 1: Obtaining Upload Location...");
+    console.log(`[YouTube] Phase 1: Initiating resumable session for ${size} bytes...`);
     
     let initRes: Response;
     try {
-        // CRITICAL: Resumable uploads require X-Upload headers in the initiation request
         initRes = await fetch(initUrl, {
             method: 'POST',
             headers: {
@@ -61,25 +60,22 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
             body: JSON.stringify(body)
         });
     } catch (fetchErr: any) {
-        console.error("[YouTube Handshake Error]", fetchErr);
-        if (fetchErr.message === 'Failed to fetch') {
-            throw new Error(`YouTube Handshake Failed: Network Error or CORS Block.`);
-        }
-        throw new Error(`Handshake Failed: ${fetchErr.message}`);
+        console.error("[YouTube Handshake Network Error]", fetchErr);
+        throw new Error(`YouTube Metadata Sync Failed: ${fetchErr.message}`);
     }
 
     if (!initRes.ok) {
         const errorData = await initRes.json().catch(() => ({}));
         console.error("[YouTube Handshake Error Payload]", errorData);
-        throw new Error(`YouTube Handshake Error (${initRes.status}): ${errorData.error?.message || initRes.statusText}`);
+        throw new Error(`YouTube Init Error (${initRes.status}): ${errorData.error?.message || initRes.statusText}`);
     }
 
     const uploadUrl = initRes.headers.get('Location');
     if (!uploadUrl) {
-        throw new Error("Missing Location header from YouTube handshake response.");
+        throw new Error("Missing Location header from YouTube resumable initialization.");
     }
 
-    console.log("[YouTube] Phase 2: Pushing Binary Stream...");
+    console.log("[YouTube] Phase 2: Handshaking with session endpoint. Streaming bytes...");
     
     let uploadRes: Response;
     try {
@@ -92,17 +88,18 @@ export async function uploadToYouTube(accessToken: string, videoBlob: Blob, meta
             body: videoBlob
         });
     } catch (uploadErr: any) {
-        console.error("[YouTube Binary Stream Error]", uploadErr);
-        throw new Error(`Binary Stream Failure: ${uploadErr.message}`);
+        console.error("[YouTube Binary Stream Network Error]", uploadErr);
+        throw new Error(`YouTube Data Stream Failure: ${uploadErr.message}`);
     }
 
     if (!uploadRes.ok) {
         const error = await uploadRes.json().catch(() => ({}));
-        throw new Error(`YouTube Finalization Failure (${uploadRes.status}): ${error.error?.message || uploadRes.statusText}`);
+        console.error("[YouTube Binary Finalization Error]", error);
+        throw new Error(`YouTube Data Finalization Failure (${uploadRes.status}): ${error.error?.message || uploadRes.statusText}`);
     }
 
     const data = await uploadRes.json();
-    console.log("[YouTube] Phase 3: Transfer Complete. Video ID:", data.id);
+    console.log("[YouTube] Publishing verified. Video ID:", data.id);
     return data.id; 
 }
 

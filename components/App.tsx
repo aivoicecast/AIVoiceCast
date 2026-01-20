@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Radio, Lock, Crown
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewState, TranscriptItem, CodeFile } from '../types';
@@ -45,6 +45,7 @@ import { CoinWallet } from './CoinWallet';
 import { MockInterview } from './MockInterview';
 import { GraphStudio } from './GraphStudio';
 import { ProjectStory } from './ProjectStory';
+import { ScriptureSanctuary } from './ScriptureSanctuary';
 
 import { getCurrentUser, getDriveToken } from '../services/authService';
 import { auth, db } from '../services/firebaseConfig';
@@ -109,7 +110,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 const UI_TEXT = {
   en: {
     appTitle: "Neural Prism",
-    directory: "Explore Hub", 
+    directory: "Knowledge Hub", 
     myFeed: "Personal Stream",
     live: "Interactive Studio",
     search: "Search for activities...",
@@ -141,11 +142,19 @@ const UI_TEXT = {
     wallet: "Neural Assets",
     mockInterview: "Career Prep",
     graph: "Logic Visualizer",
-    story: "Project Story"
+    story: "Project Story",
+    bible: "Scripture Sanctuary",
+    proRequired: "Pro Membership Required",
+    proDesc: "Access to this advanced tool is reserved for Pro members. Join the elite spectrum to unlock 20+ specialized AI utilities.",
+    upgradeNow: "Upgrade to Pro",
+    unlockEverything: "Unlock the full spectrum of AI super-intelligence.",
+    interviewExp: "Software Interview",
+    kernelExp: "Linux Kernel Audit",
+    geminiExp: "Gemini Expert"
   },
   zh: {
     appTitle: "神经棱镜",
-    directory: "探索中心",
+    directory: "知识中心",
     myFeed: "个人动态",
     live: "互动空间",
     search: "搜索活动...",
@@ -177,9 +186,20 @@ const UI_TEXT = {
     wallet: "神经资产",
     mockInterview: "职业准备",
     graph: "逻辑可视化",
-    story: "项目故事"
+    story: "项目故事",
+    bible: "经文圣所",
+    proRequired: "需要 Pro 会员权限",
+    proDesc: "访问此高级工具仅限 Pro 会员。加入精英光谱以解锁 20 多个专业 AI 实用程序。",
+    upgradeNow: "立即升级 Pro",
+    unlockEverything: "解锁 AI 超级智能的完整光谱。",
+    interviewExp: "软件工程师面试",
+    kernelExp: "Linux 内核审计",
+    geminiExp: "Gemini 专家"
   }
 };
+
+const PUBLIC_VIEWS: ViewState[] = ['directory', 'podcast_detail', 'mission', 'story', 'privacy', 'user_guide'];
+const LANDING_VIEWS: ViewState[] = ['mission', 'story', 'privacy', 'user_guide'];
 
 const App: React.FC = () => {
   const [language, setLanguage] = useState<'en' | 'zh'>('en');
@@ -225,19 +245,6 @@ const App: React.FC = () => {
   const [channelToEdit, setChannelToEdit] = useState<Channel | null>(null);
   const [initialStudioFiles, setInitialStudioFiles] = useState<CodeFile[]>([]);
 
-  // Memoized Admin Status with Strict Developer Email Bypass
-  const isSuperAdmin = useMemo(() => {
-      if (!currentUser) return false;
-      // 1. Hardcoded Owner Bypass (The Ultimate Root)
-      const ownerEmails = ['shengliang.song.ai@gmail.com'];
-      if (ownerEmails.includes(currentUser.email)) return true;
-      // 2. Check Firestore Profile (Group Membership admin_neural_prism)
-      if (isUserAdmin(userProfile)) return true;
-      // 3. Local Override for debugging
-      if (localStorage.getItem('debug_admin_override') === 'true') return true;
-      return false;
-  }, [userProfile, currentUser]);
-
   const [liveSessionParams, setLiveSessionParams] = useState<{
     channel: Channel;
     context?: string;
@@ -251,18 +258,129 @@ const App: React.FC = () => {
     returnTo?: ViewState;
   } | null>(null);
 
+  const isSuperAdmin = useMemo(() => {
+      if (!currentUser) return false;
+      const ownerEmails = ['shengliang.song.ai@gmail.com'];
+      if (ownerEmails.includes(currentUser.email)) return true;
+      if (isUserAdmin(userProfile)) return true;
+      return false;
+  }, [userProfile, currentUser]);
+
+  const isProMember = useMemo(() => {
+    if (isSuperAdmin) return true;
+    return userProfile?.subscriptionTier === 'pro';
+  }, [userProfile, isSuperAdmin]);
+
+  const handleSetViewState = useCallback((newState: ViewState, params: Record<string, string> = {}) => {
+    const isPublic = PUBLIC_VIEWS.includes(newState);
+    
+    if (!isPublic && !isProMember) {
+        setIsPricingModalOpen(true);
+        setIsAppsMenuOpen(false);
+        setIsUserMenuOpen(false);
+        if (viewState !== 'directory') {
+            setViewState('directory');
+            window.history.replaceState({}, '', window.location.origin);
+        }
+        return;
+    }
+
+    stopAllPlatformAudio(`NavigationTransition:${viewState}->${newState}`);
+    setViewState(newState);
+    setIsAppsMenuOpen(false);
+    setIsUserMenuOpen(false);
+    const url = new URL(window.location.href);
+    if (newState === 'directory') url.searchParams.delete('view');
+    else url.searchParams.set('view', newState as string);
+    Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
+    if (!params.channelId) url.searchParams.delete('channelId');
+    if (!params.id) url.searchParams.delete('id');
+    window.history.replaceState({}, '', url.toString());
+  }, [viewState, isProMember]);
+
+  const handleStartLiveSession = useCallback((channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, initialTranscript?: TranscriptItem[], existingDiscussionId?: string) => {
+    if (!isProMember) {
+        setIsPricingModalOpen(true);
+        return;
+    }
+    setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId, returnTo: viewState });
+    handleSetViewState('live_session');
+  }, [viewState, handleSetViewState, isProMember]);
+
+  const ProGate = useCallback(({ children, view }: { children: ReactNode, view: ViewState }) => {
+    const isPublic = PUBLIC_VIEWS.includes(view);
+    if (isPublic || isSuperAdmin) return <>{children}</>;
+
+    if (!authLoading && currentUser && !userProfile) {
+        return (
+            <div className="h-full w-full flex flex-col items-center justify-center gap-6 bg-slate-950">
+                <Loader2 className="animate-spin text-indigo-500" size={32} />
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Verifying Neural Clearance...</span>
+            </div>
+        );
+    }
+
+    if (isProMember) return <>{children}</>;
+
+    return (
+        <div className="h-full w-full flex items-center justify-center p-6 bg-slate-950 overflow-y-auto">
+            <div className="max-w-xl w-full bg-slate-900 border border-indigo-500/30 rounded-[3rem] p-10 text-center shadow-2xl relative overflow-hidden animate-fade-in-up">
+                <div className="absolute top-0 right-0 p-32 bg-indigo-600/10 blur-[100px] rounded-full pointer-events-none"></div>
+                <div className="relative z-10 space-y-8">
+                    <div className="flex justify-center">
+                        <div className="relative">
+                            <div className="w-24 h-24 bg-indigo-600/10 rounded-[2rem] border border-indigo-500/20 flex items-center justify-center">
+                                <Lock size={48} className="text-indigo-400" />
+                            </div>
+                            <div className="absolute -top-3 -right-3 bg-amber-500 text-white p-2 rounded-xl shadow-lg ring-4 ring-slate-900">
+                                <Crown size={20} fill="currentColor"/>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">{t.proRequired}</h2>
+                        <p className="text-slate-400 font-medium leading-relaxed">{t.proDesc}</p>
+                    </div>
+
+                    <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-inner">
+                        <div className="flex items-center gap-4 text-left">
+                            <div className="p-2 bg-indigo-900/30 rounded-lg text-indigo-400"><Sparkles size={18}/></div>
+                            <p className="text-xs text-slate-300 font-bold">{t.unlockEverything}</p>
+                        </div>
+                        <button 
+                            onClick={() => setIsPricingModalOpen(true)}
+                            className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all hover:scale-[1.02] active:scale-95"
+                        >
+                            {t.upgradeNow}
+                        </button>
+                    </div>
+
+                    <button onClick={() => handleSetViewState('directory')} className="text-xs font-bold text-slate-500 hover:text-white uppercase tracking-widest transition-colors flex items-center gap-2 mx-auto">
+                        <ArrowLeft size={14}/> Back to {t.directory}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+  }, [isProMember, isSuperAdmin, userProfile, authLoading, currentUser, t, setIsPricingModalOpen, handleSetViewState]);
+
   const allApps = useMemo(() => {
     const baseApps = [
-        { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); }, color: 'text-indigo-400' },
+        { id: 'directory', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); }, color: 'text-indigo-400' },
+        { id: 'bible_study', label: t.bible, icon: Scroll, action: () => handleSetViewState('bible_study'), color: 'text-amber-500' },
+        { id: 'interview_expert', label: t.interviewExp, icon: GraduationCap, action: () => { const ch = HANDCRAFTED_CHANNELS.find(c => c.id === '1'); if (ch) handleStartLiveSession(ch); }, color: 'text-red-400' },
+        { id: 'kernel_expert', label: t.kernelExp, icon: Cpu, action: () => { const ch = HANDCRAFTED_CHANNELS.find(c => c.id === '2'); if (ch) handleStartLiveSession(ch); }, color: 'text-indigo-400' },
+        { id: 'gemini_expert', label: t.geminiExp, icon: Star, action: () => { const ch = HANDCRAFTED_CHANNELS.find(c => c.id === 'default-gem'); if (ch) handleStartLiveSession(ch); }, color: 'text-emerald-400' },
         { id: 'mock_interview', label: t.mockInterview, icon: Video, action: () => handleSetViewState('mock_interview'), color: 'text-red-500' },
         { id: 'graph_studio', label: t.graph, icon: Activity, action: () => handleSetViewState('graph_studio'), color: 'text-emerald-400' },
-        { id: 'wallet', label: t.wallet, icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400' },
+        { id: 'coin_wallet', label: t.wallet, icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400' },
         { id: 'docs', label: t.docs, icon: FileText, action: () => handleSetViewState('docs'), color: 'text-emerald-400' },
         { id: 'check_designer', label: t.checks, icon: Wallet, action: () => handleSetViewState('check_designer'), color: 'text-orange-400' },
         { id: 'chat', label: t.chat, icon: MessageSquare, action: () => handleSetViewState('chat'), color: 'text-blue-400' },
         { id: 'mentorship', label: t.mentorship, icon: Briefcase, action: () => handleSetViewState('mentorship'), color: 'text-emerald-400' },
         { id: 'shipping_labels', label: t.shipping, icon: Truck, action: () => handleSetViewState('shipping_labels'), color: 'text-emerald-400' },
-        { id: 'icon_lab', label: t.icons, icon: AppWindow, action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400' },
+        { id: 'icon_generator', label: t.icons, icon: AppWindow, action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400' },
         { id: 'code_studio', label: t.code, icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400' },
         { id: 'notebook_viewer', label: t.notebooks, icon: Book, action: () => handleSetViewState('notebook_viewer'), color: 'text-orange-300' },
         { id: 'whiteboard', label: t.whiteboard, icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400' },
@@ -287,26 +405,7 @@ const App: React.FC = () => {
     }
 
     return baseApps;
-  }, [t, isSuperAdmin]);
-
-  const handleSetViewState = (newState: ViewState, params: Record<string, string> = {}) => {
-    stopAllPlatformAudio(`NavigationTransition:${viewState}->${newState}`);
-    setViewState(newState);
-    setIsAppsMenuOpen(false);
-    setIsUserMenuOpen(false);
-    const url = new URL(window.location.href);
-    if (newState === 'directory') url.searchParams.delete('view');
-    else url.searchParams.set('view', newState as string);
-    Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
-    if (!params.channelId) url.searchParams.delete('channelId');
-    if (!params.id) url.searchParams.delete('id');
-    window.history.replaceState({}, '', url.toString());
-  };
-
-  const handleStartLiveSession = (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, initialTranscript?: TranscriptItem[], existingDiscussionId?: string) => {
-    setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId, returnTo: viewState });
-    handleSetViewState('live_session');
-  };
+  }, [t, isSuperAdmin, handleStartLiveSession, handleSetViewState]);
 
   useEffect(() => {
     if (currentUser?.uid && db) {
@@ -328,16 +427,6 @@ const App: React.FC = () => {
         if (user) {
             setCurrentUser(user);
             syncUserProfile(user).catch(console.error);
-            const params = new URLSearchParams(window.location.search);
-            const claimId = params.get('claim');
-            if (claimId) {
-                claimCoinCheck(claimId).then(amount => {
-                    alert(`Check Claimed! ${amount} coins added.`);
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete('claim');
-                    window.history.replaceState({}, '', url.toString());
-                }).catch(e => console.warn("Claim background fail", e));
-            }
         } else {
             setCurrentUser(null);
             setUserProfile(null);
@@ -347,26 +436,6 @@ const App: React.FC = () => {
 
     return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (currentUser) {
-        const token = getDriveToken();
-        if (token) {
-            setIsDriveSyncing(true);
-            (async () => {
-                try {
-                    const fid = await ensureCodeStudioFolder(token);
-                    const data = await loadAppStateFromDrive(token, fid);
-                    if (data && data.userChannels) {
-                        setUserChannels(data.userChannels);
-                        data.userChannels.forEach((ch: any) => saveUserChannel(ch));
-                    }
-                } catch(e) { console.warn("Lazy Drive sync failed", e); }
-                finally { setIsDriveSyncing(false); }
-            })();
-        }
-    }
-  }, [currentUser]);
 
   useEffect(() => {
     let unsub: (() => void) | undefined;
@@ -442,9 +511,7 @@ const App: React.FC = () => {
       );
   }
 
-  const isPublicView = ['mission', 'careers', 'user_guide', 'card_workshop', 'card_viewer', 'icon_viewer', 'shipping_viewer', 'check_viewer', 'story', 'privacy', 'user_guide'].includes(viewState as string);
-
-  if (!currentUser && !isPublicView) {
+  if (!currentUser && !LANDING_VIEWS.includes(viewState)) {
       return <LoginPage 
         onMissionClick={() => handleSetViewState('mission')} 
         onStoryClick={() => handleSetViewState('story')} 
@@ -465,7 +532,7 @@ const App: React.FC = () => {
                   className={`p-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 ${isAppsMenuOpen ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
                   aria-label="Activity Launcher"
                 >
-                  <LayoutGrid size={20} />
+                  <LayoutGrid size(20} />
                   <ChevronDown size={14} className={`transition-transform duration-200 ${isAppsMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
 
@@ -477,22 +544,40 @@ const App: React.FC = () => {
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Neural Prism Tools ({allApps.length})</span>
                       </div>
                       <div className="max-h-[80vh] md:max-h-none overflow-y-auto p-1 grid grid-cols-1 md:grid-cols-2 gap-0.5 scrollbar-hide">
-                        {allApps.map((app, idx) => (
-                          <button 
-                            key={app.id} 
-                            onClick={() => { app.action(); setIsAppsMenuOpen(false); }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-indigo-600/10 text-left transition-all group"
-                          >
-                            <span className="text-[10px] font-mono text-slate-600 w-4 group-hover:text-indigo-400 transition-colors">{idx + 1}</span>
-                            <div className={`p-1.5 rounded-lg bg-slate-800 border border-slate-700 group-hover:border-indigo-500/30 transition-colors`}>
-                              <app.icon className={`${app.color}`} size={16} />
-                            </div>
-                            <span className="text-xs font-bold text-slate-300 group-hover:text-white transition-colors">{app.label}</span>
-                          </button>
-                        ))}
+                        {allApps.map((app, idx) => {
+                          const isAppPublic = PUBLIC_VIEWS.includes(app.id as any);
+                          const isLocked = !isAppPublic && !isProMember;
+                          return (
+                            <button 
+                              key={app.id} 
+                              onClick={() => { 
+                                if (isLocked) {
+                                    setIsPricingModalOpen(true);
+                                } else {
+                                    app.action(); 
+                                }
+                                setIsAppsMenuOpen(false); 
+                              }}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all group relative overflow-hidden ${isLocked ? 'grayscale opacity-60' : 'hover:bg-indigo-600/10'}`}
+                            >
+                              {isLocked && <div className="absolute inset-0 bg-slate-950/10 backdrop-blur-[1px] pointer-events-none z-10"></div>}
+                              <span className="text-[10px] font-mono text-slate-600 w-4 group-hover:text-indigo-400 transition-colors z-20">{idx + 1}</span>
+                              <div className={`p-1.5 rounded-lg bg-slate-800 border border-slate-700 group-hover:border-indigo-500/30 transition-colors z-20`}>
+                                <app.icon className={`${app.color}`} size={16} />
+                              </div>
+                              <span className="text-xs font-bold text-slate-300 group-hover:text-white transition-colors z-20">{app.label}</span>
+                              {isLocked && (
+                                  <div className="ml-auto flex items-center gap-1.5 z-20">
+                                      <Lock size={12} className="text-slate-600 group-hover:text-indigo-400 transition-colors"/>
+                                      <span className="text-[8px] font-black uppercase text-amber-500 hidden group-hover:block">Upgrade</span>
+                                  </div>
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
                       <div className="p-3 bg-slate-950 border-t border-slate-800 flex justify-center">
-                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Neural Prism v5.1.0</p>
+                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Neural Prism v5.5.5</p>
                       </div>
                     </div>
                   </>
@@ -516,36 +601,29 @@ const App: React.FC = () => {
                     onChange={(e) => setSearchQuery(e.target.value)} 
                     className="w-full bg-slate-800/50 border border-slate-700 rounded-xl pl-10 pr-12 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all focus:bg-slate-900 shadow-inner" 
                  />
-                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    {searchQuery ? (
-                        <button onClick={() => setSearchQuery('')} className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-all"><X size={14}/></button>
-                    ) : (
-                        <div className="hidden lg:flex items-center gap-1 px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded text-[9px] font-black text-slate-500 uppercase select-none">
-                            <Command size={10}/>K
-                        </div>
-                    )}
-                 </div>
               </div>
            </div>
 
            <div className="flex items-center gap-2 sm:gap-4">
-              {isDriveSyncing && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-900/20 text-indigo-400 rounded-full border border-indigo-500/30 animate-pulse">
-                      <Cloud size={14}/><span className="text-[10px] font-bold uppercase hidden lg:inline">Syncing Hub...</span>
-                  </div>
-              )}
               {userProfile && (
                   <button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex">
                       <Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span>
                   </button>
               )}
               <Notifications />
-              <button onClick={() => setIsVoiceCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 group overflow-hidden relative">
+              <button onClick={() => isProMember ? setIsVoiceCreateOpen(true) : setIsPricingModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 group overflow-hidden relative">
+                  {!isProMember && <Lock size={12} className="relative z-10 mr-1 text-indigo-200"/>}
                   <span className="relative z-10">{t.magic}</span>
               </button>
               <div className="relative">
                  <button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">
-                    <img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=Guest`} alt="Profile" className="w-full h-full object-cover" />
+                    {currentUser?.photoURL ? (
+                        <img src={currentUser.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full bg-slate-800 flex items-center justify-center text-xs font-black text-indigo-400">
+                            {(currentUser?.displayName || 'Guest').substring(0, 1).toUpperCase()}
+                        </div>
+                    )}
                  </button>
                  <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice={globalVoice} setGlobalVoice={setGlobalVoice} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} onUpgradeClick={() => setIsPricingModalOpen(true)} setIsSyncModalOpen={() => {}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => handleSetViewState('user_guide')} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => handleSetViewState('privacy')} t={t} language={language} setLanguage={setLanguage} channels={allChannels} isSuperAdmin={isSuperAdmin} />
               </div>
@@ -553,46 +631,49 @@ const App: React.FC = () => {
         </header>
 
         <main className="flex-1 overflow-hidden relative">
-            {viewState === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice={globalVoice} currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={handleVote} searchQuery={searchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} /> )}
-            {viewState === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} onUpdateChannel={handleUpdateChannel} /> )}
-            {viewState === 'live_session' && liveSessionParams && ( 
-              <LiveSession 
-                channel={liveSessionParams.channel} 
-                onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} 
-                language={language} 
-                recordingEnabled={liveSessionParams.recordingEnabled}
-                videoEnabled={liveSessionParams.videoEnabled}
-                cameraEnabled={liveSessionParams.cameraEnabled}
-                initialContext={liveSessionParams.context}
-                lectureId={liveSessionParams.bookingId || liveSessionParams.activeSegment?.lectureId}
-                activeSegment={liveSessionParams.activeSegment}
-                initialTranscript={liveSessionParams.initialTranscript}
-                existingDiscussionId={liveSessionParams.existingDiscussionId}
-              /> 
-            )}
-            {viewState === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><DocumentList onBack={() => handleSetViewState('directory')} /></div> )}
-            {viewState === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={handleSetViewState as any} initialFiles={initialStudioFiles}/> )}
-            {viewState === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('directory')} /> )}
-            {viewState === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} /> )}
-            {viewState === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
-            {viewState === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
-            {viewState === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice={globalVoice} t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={handleSchedulePodcast} /> )}
-            {viewState === 'groups' && ( <div className="p-8 max-w-4xl mx-auto h-full overflow-y-auto scrollbar-hide"><GroupManager /></div> )}
-            {viewState === 'mentorship' && ( <MentorBooking currentUser={currentUser} userProfile={userProfile} channels={allChannels} onStartLiveSession={handleStartLiveSession} /> )}
-            {viewState === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><RecordingList onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} /></div> )}
-            {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} /> )}
-            {(viewState === 'shipping_labels' || viewState === 'shipping_viewer') && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}
-            {(viewState === 'icon_generator' || viewState === 'icon_viewer') && ( <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} iconId={activeItemId || undefined} /> )}
-            {viewState === 'notebook_viewer' && ( <NotebookViewer onBack={() => handleSetViewState('directory')} currentUser={currentUser} notebookId={activeItemId || undefined} /> )}
-            {(viewState === 'card_workshop' || viewState === 'card_viewer') && ( <CardWorkshop onBack={() => handleSetViewState('directory')} cardId={activeItemId || undefined} isViewer={viewState === 'card_viewer' || !!activeItemId} /> )}
-            {viewState === 'mission' && ( <MissionManifesto onBack={() => handleSetViewState('directory')} /> )}
-            {viewState === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('directory')} userProfile={userProfile} /> )}
-            {viewState === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('directory')} user={userProfile} /> )}
-            {viewState === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('directory')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} /> )}
-            {viewState === 'graph_studio' && ( <GraphStudio onBack={() => handleSetViewState('directory')} /> )}
-            {viewState === 'story' && ( <ProjectStory onBack={() => handleSetViewState('directory')} /> )}
-            {viewState === 'privacy' && ( <PrivacyPolicy onBack={() => handleSetViewState('directory')} /> )}
-            {viewState === 'user_guide' && ( <UserManual onBack={() => handleSetViewState('directory')} /> )}
+            <ProGate view={viewState}>
+                {viewState === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice={globalVoice} currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={handleVote} searchQuery={searchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} onOpenPricing={() => setIsPricingModalOpen(true)} /> )}
+                {viewState === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} onUpdateChannel={handleUpdateChannel} /> )}
+                {viewState === 'live_session' && liveSessionParams && ( 
+                  <LiveSession 
+                    channel={liveSessionParams.channel} 
+                    onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} 
+                    language={language} 
+                    recordingEnabled={liveSessionParams.recordingEnabled}
+                    videoEnabled={liveSessionParams.videoEnabled}
+                    cameraEnabled={liveSessionParams.cameraEnabled}
+                    initialContext={liveSessionParams.context}
+                    lectureId={liveSessionParams.bookingId || liveSessionParams.activeSegment?.lectureId}
+                    activeSegment={liveSessionParams.activeSegment}
+                    initialTranscript={liveSessionParams.initialTranscript}
+                    existingDiscussionId={liveSessionParams.existingDiscussionId}
+                  /> 
+                )}
+                {viewState === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><DocumentList onBack={() => handleSetViewState('directory')} /></div> )}
+                {viewState === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={handleSetViewState as any} initialFiles={initialStudioFiles} isProMember={isProMember}/> )}
+                {viewState === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('directory')} /> )}
+                {viewState === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} /> )}
+                {viewState === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
+                {viewState === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
+                {viewState === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice={globalVoice} t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={handleSchedulePodcast} /> )}
+                {viewState === 'groups' && ( <div className="p-8 max-w-4xl mx-auto h-full overflow-y-auto scrollbar-hide"><GroupManager /></div> )}
+                {viewState === 'mentorship' && ( <div className="h-full overflow-y-auto scrollbar-hide"><MentorBooking currentUser={currentUser} userProfile={userProfile} channels={allChannels} onStartLiveSession={handleStartLiveSession} /></div> )}
+                {viewState === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><RecordingList onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} /></div> )}
+                {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} isProMember={isProMember} /> )}
+                {(viewState === 'shipping_labels' || viewState === 'shipping_viewer') && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}
+                {(viewState === 'icon_generator' || viewState === 'icon_viewer') && ( <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} iconId={activeItemId || undefined} isProMember={isProMember} /> )}
+                {viewState === 'notebook_viewer' && ( <NotebookViewer onBack={() => handleSetViewState('directory')} currentUser={currentUser} notebookId={activeItemId || undefined} /> )}
+                {(viewState === 'card_workshop' || viewState === 'card_viewer') && ( <CardWorkshop onBack={() => handleSetViewState('directory')} cardId={activeItemId || undefined} isViewer={viewState === 'card_viewer' || !!activeItemId} /> )}
+                {viewState === 'mission' && ( <MissionManifesto onBack={() => handleSetViewState('directory')} /> )}
+                {viewState === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('directory')} userProfile={userProfile} /> )}
+                {viewState === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('directory')} user={userProfile} /> )}
+                {viewState === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('directory')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} isProMember={isProMember} /> )}
+                {viewState === 'graph_studio' && ( <GraphStudio onBack={() => handleSetViewState('directory')} isProMember={isProMember} /> )}
+                {viewState === 'story' && ( <ProjectStory onBack={() => handleSetViewState('directory')} /> )}
+                {viewState === 'privacy' && ( <PrivacyPolicy onBack={() => handleSetViewState('directory')} /> )}
+                {viewState === 'user_guide' && ( <UserManual onBack={() => handleSetViewState('directory')} /> )}
+                {viewState === 'bible_study' && ( <ScriptureSanctuary onBack={() => handleSetViewState('directory')} language={language} isProMember={isProMember} /> )}
+            </ProGate>
         </main>
 
         <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setCreateModalInitialDate(null); }} onCreate={handleCreateChannel} currentUser={currentUser} initialDate={createModalInitialDate} />

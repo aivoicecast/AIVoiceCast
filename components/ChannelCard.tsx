@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Channel, ChannelStats, UserProfile } from '../types';
 import { Play, Heart, MessageSquare, Lock, Globe, Users, Edit, Share2, Bookmark, User, Zap } from 'lucide-react';
@@ -129,18 +130,21 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
       )}
 
       <div className="aspect-video relative overflow-hidden bg-slate-800">
-        <img 
-          src={channel.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(channel.title)}&background=6366f1&color=fff`} 
-          alt={channel.title}
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            if (target.src.includes('placehold.co')) return;
-            target.src = `https://placehold.co/600x400/1e293b/white?text=${encodeURIComponent(channel.title)}`;
-          }}
-        />
+        {channel.imageUrl ? (
+            <img 
+              src={channel.imageUrl} 
+              alt={channel.title}
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+            />
+        ) : (
+            <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-slate-700 gap-2">
+                <div className="w-12 h-12 rounded-xl bg-slate-800 border-2 border-slate-700 flex items-center justify-center font-black text-indigo-400">
+                    {channel.title.substring(0, 1).toUpperCase()}
+                </div>
+            </div>
+        )}
         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors flex items-center justify-center">
           <div className="w-12 h-12 bg-white/10 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/20 group-hover:scale-110 transition-transform">
             <Play className="text-white ml-1" fill="currentColor" />

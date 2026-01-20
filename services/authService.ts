@@ -1,6 +1,6 @@
-
 import { 
     GoogleAuthProvider, 
+    // FIXED: Using @firebase/auth for consistency
     GithubAuthProvider,
     signInWithPopup, 
     linkWithPopup,
@@ -17,6 +17,7 @@ export async function signInWithGoogle(): Promise<User | null> {
 
     const provider = new GoogleAuthProvider();
     provider.addScope('https://www.googleapis.com/auth/drive.file');
+    provider.addScope('https://www.googleapis.com/auth/youtube.upload'); 
     provider.addScope('https://www.googleapis.com/auth/youtube.force-ssl'); 
     provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
     provider.addScope('https://www.googleapis.com/auth/userinfo.email');
@@ -122,7 +123,9 @@ export async function signOut(): Promise<void> {
     localStorage.removeItem('token_expiry');
     localStorage.removeItem('drive_user');
     localStorage.removeItem('github_token');
-    window.location.reload();
+    
+    // Redirect to the base origin to clear query parameters and deep links
+    window.location.assign(window.location.origin);
 }
 
 export function getCurrentUser(): any {

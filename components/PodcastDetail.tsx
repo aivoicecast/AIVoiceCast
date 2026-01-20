@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile } from '../types';
-import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, RefreshCcw, Wand2, Edit3, Save, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, RefreshCcw, Wand2, Edit3, Save, ShieldCheck, ImageIcon } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { generateCurriculum } from '../services/curriculumGenerator';
 import { synthesizeSpeech } from '../services/tts';
@@ -93,14 +94,17 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   const isAdmin = isUserAdmin(userProfile);
   const isOwner = currentUser && (channel.ownerId === currentUser.uid || isAdmin);
 
-  // DEBUG: Detail Permission Logging
-  useEffect(() => {
-    if (currentUser) {
-      console.log(`[Neural Debug] Detail View Permission Check: ${currentUser.email}`);
-      console.log(`[Neural Debug] Is Admin? ${isAdmin}`);
-      console.log(`[Neural Debug] Is Owner? ${isOwner} (Channel Owner: ${channel.ownerId})`);
-    }
-  }, [currentUser, channel, isAdmin, isOwner]);
+  const isThirdParty = useCallback((url?: string) => {
+    if (!url) return true;
+    const lowUrl = url.toLowerCase();
+    return (
+        lowUrl.includes('ui-avatars.com') || 
+        lowUrl.includes('placehold.co') || 
+        lowUrl.includes('placeholder') || 
+        lowUrl.includes('dummyimage.com') ||
+        lowUrl.includes('pravatar.cc')
+    );
+  }, []);
 
   const [chapters, setChapters] = useState<Chapter[]>(() => {
     if (channel.chapters && channel.chapters.length > 0) return channel.chapters;
@@ -308,11 +312,19 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       setShowShareModal(true);
   };
 
+  const hasValidHeaderImage = channel.imageUrl && !isThirdParty(channel.imageUrl);
+
   return (
     <div className="h-full bg-slate-950 text-slate-100 flex flex-col relative overflow-y-auto pb-24">
       <div className="relative h-48 md:h-64 w-full shrink-0">
         <div className="absolute inset-0">
-            <img src={channel.imageUrl} className="w-full h-full object-cover opacity-40" alt={channel.title}/>
+            {hasValidHeaderImage ? (
+                <img src={channel.imageUrl} className="w-full h-full object-cover opacity-40" alt={channel.title}/>
+            ) : (
+                <div className="w-full h-full bg-slate-900 flex items-center justify-center text-slate-800">
+                    <ImageIcon size={64} className="opacity-10"/>
+                </div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent" />
         </div>
         <div className="absolute top-4 left-4 z-20 flex items-center gap-3">
@@ -475,7 +487,12 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                     </div>
                 )}
             </div>
-          ) : (<div className="h-64 flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-800 rounded-2xl bg-slate-900/30"><Info size={32} className="mb-2 opacity-20" /><h3 className="text-lg font-bold text-slate-400">{t.selectTopic}</h3></div>)}
+          ) : (
+            <div className="h-64 flex flex-col items-center justify-center text-slate-500 border border-dashed border-slate-800 rounded-2xl bg-slate-900/30">
+              <Info size={32} className="mb-2 opacity-20" />
+              <h3 className="text-lg font-bold text-slate-400">{t.selectTopic}</h3>
+            </div>
+          )}
         </div>
       </main>
 

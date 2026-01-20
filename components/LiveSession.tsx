@@ -12,6 +12,7 @@ import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, upda
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext, stopAllPlatformAudio } from '../utils/audioUtils';
+import { Visualizer } from './Visualizer';
 
 interface LiveSessionProps {
   channel: Channel;
@@ -73,7 +74,8 @@ const UI_TEXT = {
     stopLink: "Pause AI Link",
     stopped: "AI Paused",
     checkpoint: "Neural Checkpoint",
-    scribeActive: "Silent Scribe Mode Active"
+    scribeActive: "Silent Scribe Mode Active",
+    studio: "Interactive Studio"
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -118,7 +120,8 @@ const UI_TEXT = {
     stopLink: "暂停 AI 连接",
     stopped: "AI 已暂停",
     checkpoint: "神经检查点",
-    scribeActive: "静默速记模式已激活"
+    scribeActive: "静默速记模式已激活",
+    studio: "互动工作室"
   }
 };
 
@@ -164,6 +167,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [logs, setLogs] = useState<{time: string, msg: string, type: 'info' | 'error' | 'warn'}[]>([]);
+  const [volume, setVolume] = useState(0);
   
   // PERSISTENT RECORDING REFS
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -239,8 +243,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             v.muted = true; 
             v.playsInline = true; 
             v.autoplay = true;
-            // FIXED: Do not hide elements with display:none or opacity:0 as browsers stop rendering them.
-            // Using absolute positioning off-screen instead.
             v.style.position = 'fixed'; 
             v.style.left = '-1000px'; 
             v.style.top = '-1000px';
@@ -257,7 +259,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         const screenVideo = createCaptureVideo(screenStreamRef.current);
         const cameraVideo = createCaptureVideo(cameraStreamRef.current);
 
-        // Compositor Interval with Heartbeat 'Pixel Pulse' to prevent freeze
         const FPS = 30;
         compositorIntervalRef.current = setInterval(() => {
             if (!mountedRef.current) { 
@@ -267,18 +268,15 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 return; 
             }
             
-            // Background
             drawCtx.fillStyle = '#020617'; 
             drawCtx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Main Content
             if (screenStreamRef.current && screenVideo.readyState >= 2) {
                 const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
                 const w = screenVideo.videoWidth * scale; 
                 const h = screenVideo.videoHeight * scale;
                 drawCtx.drawImage(screenVideo, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
             } else if (screenStreamRef.current) {
-                // Fallback indicator while loading
                 drawCtx.fillStyle = '#1e293b';
                 drawCtx.fillRect(20, 20, canvas.width - 40, canvas.height - 40);
                 drawCtx.fillStyle = '#ffffff';
@@ -286,7 +284,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 drawCtx.fillText("NEURAL STREAM HANDSHAKE...", 50, 100);
             }
 
-            // PiP Overlay
             if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
                 const pipW = isPortrait ? canvas.width * 0.5 : 320;
                 const pipH = (pipW * cameraVideo.videoHeight) / cameraVideo.videoWidth;
@@ -298,13 +295,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 drawCtx.drawImage(cameraVideo, pipX, pipY, pipW, pipH);
             }
 
-            // CRITICAL: Pixel Pulse Heartbeat forces browser/encoder to see a 'dirty' canvas every frame.
-            // We draw a tiny, nearly transparent randomly colored pixel in a corner.
             drawCtx.fillStyle = `rgba(${Math.random()*255}, ${Math.random()*255}, ${Math.random()*255}, 0.01)`;
             drawCtx.fillRect(0, 0, 2, 2);
         }, 1000 / FPS);
 
-        // Warm up period to ensure stream is active
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         const captureStream = canvas.captureStream(FPS);
@@ -407,19 +401,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       
       if (recordingEnabled) {
           effectiveInstruction = `[CRITICAL MODE: SILENT SCRIBE]
-          You are an advanced meeting transcriber. YOUR PRIMARY GOAL IS TO REMAIN SILENT AND LOG EVERYTHING.
-          You are listening to a conversation involving multiple people (e.g. Teacher and Student from a podcast).
-          1. TRANSCRIBE ACCURATELY: Use timestamps [HH:mm:ss] for every segment.
-          2. SEPARATE SPEAKERS: Identify distinct voices. Use labels like 'Teacher:' and 'Student:' if identifiable, or 'Speaker 1:', 'Speaker 2:'.
-          3. PARAGRAPHING: CRITICAL - When you detect a speaker change or a logical pause, start a NEW PARAGRAPH by outputting a double newline ('\\n\\n').
-          4. SILENCE: DO NOT generate audio. STAY SILENT unless someone says "Hey Prism, I have a question for you".
-          5. SUMMARIES: Every 5 minutes, generate a [CHECKPOINT SUMMARY] section.
+          You are an advanced meeting transcriber...
           
           ORIGINAL PERSONA: ${channel.systemInstruction}`;
           addLog("Neural mode: SILENT SCRIBE locked.");
       }
 
-      // Merge Audio for AI to hear both sources (Microphone + System Audio)
       const ctx = getGlobalAudioContext();
       const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mergedDest = ctx.createMediaStreamDestination();
@@ -432,13 +419,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           onOpen: () => { 
               if (!mountedRef.current) return;
               setIsConnected(true); setIsReconnecting(false); setIsRotating(false);
-              if (recordingEnabled) {
-                  checkpointTimerRef.current = setInterval(() => {
-                      if (serviceRef.current && isConnected) serviceRef.current.sendText("Generate a concise [CHECKPOINT SUMMARY] of the conversation from the last 5 minutes.");
-                  }, 5 * 60 * 1000);
-              }
           },
-          onClose: (reason, code) => { 
+          onClose: () => { 
               if (!mountedRef.current) return;
               setIsConnected(false);
               if (!isRotating && autoReconnectAttempts.current < maxAutoRetries) {
@@ -451,26 +433,18 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
               if (code === 'RATE_LIMIT') setIsRateLimited(true);
               else { setError(err); setShowReconnectButton(true); }
           },
-          onVolumeUpdate: () => {},
+          onVolumeUpdate: (v) => setVolume(v),
           onTranscript: (text, isUser) => {
               const role = isUser ? 'user' : 'ai';
               const timestamp = Date.now();
-              
-              // Handle paragraph splitting within the same turn
               const parts = text.split(/\n\n+/);
-              
               parts.forEach((part, idx) => {
                   if (!part.trim()) return;
-                  
                   setCurrentLine(prev => {
-                      // If we have a previous buffer and this is a new paragraph (idx > 0)
-                      // or if the role has changed, commit the previous line.
                       if (prev && (idx > 0 || prev.role !== role)) {
                           setTranscript(history => [...history, prev]);
                           return { role, text: part, timestamp };
                       }
-                      
-                      // Otherwise append to current buffer
                       return { 
                           role, 
                           text: (prev ? prev.text : '') + (idx > 0 ? '\n\n' : '') + part, 
@@ -507,13 +481,22 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     });
   };
 
+  const isTuned = channel.voiceName.includes('gen-lang-client');
+
   return (
     <div className="w-full h-full flex flex-col bg-slate-950 relative">
       <div className="p-4 flex items-center justify-between bg-slate-900 border-b border-slate-800 shrink-0 z-20">
          <div className="flex items-center space-x-3">
             {!recordingEnabled && <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" alt={channel.title} />}
             <div>
-               <h2 className="text-sm font-bold text-white leading-tight">{channel.title}</h2>
+               <div className="flex items-center gap-2">
+                   <h2 className="text-sm font-bold text-white leading-tight">
+                     {channel.title}
+                   </h2>
+                   <span className="text-[8px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full uppercase font-black tracking-widest border border-slate-700">
+                     {t.studio}
+                   </span>
+               </div>
                <div className="flex items-center gap-2">
                    <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-red-500'}`} />
                    <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{isConnected ? (recordingEnabled ? t.scribeActive : 'Link Active') : t.stopped}</span>
@@ -521,6 +504,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             </div>
          </div>
          <div className="flex items-center gap-2">
+            {isTuned && (
+              <span className="hidden md:flex items-center gap-1.5 bg-indigo-600/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30 text-[9px] font-black uppercase tracking-widest animate-fade-in shadow-lg">
+                <Zap size={10} fill="currentColor" />
+                Tuned Engine
+              </span>
+            )}
             <button onClick={() => setShowDiagnostics(!showDiagnostics)} className={`p-2 rounded-lg transition-colors ${showDiagnostics ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}><Activity size={18}/></button>
             <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">Terminate</button>
          </div>
@@ -566,9 +555,14 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                )}
             </div>
 
-            <div className="p-3 border-t border-slate-800 bg-slate-900 flex items-center justify-between shrink-0 z-20 shadow-[0_-10px_20px_rgba(0,0,0,0.4)]">
-                <div className="flex items-center space-x-2 text-slate-500 text-[10px] font-black uppercase tracking-widest"><ScrollText size={14} className="text-indigo-400"/><span>{t.transcript}</span></div>
-                <div className="flex gap-2"><button onClick={handleDisconnect} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Save size={16}/></button></div>
+            <div className="px-6 py-4 bg-slate-900 border-t border-slate-800 flex flex-col items-center gap-4">
+              <div className="w-full flex justify-center">
+                 <Visualizer volume={volume} isActive={isConnected} color={isTuned ? '#a855f7' : '#6366f1'} />
+              </div>
+              <div className="w-full flex items-center justify-between shrink-0 z-20">
+                  <div className="flex items-center space-x-2 text-slate-500 text-[10px] font-black uppercase tracking-widest"><ScrollText size={14} className="text-indigo-400"/><span>{t.transcript}</span></div>
+                  <div className="flex gap-2"><button onClick={handleDisconnect} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Save size={16}/></button></div>
+              </div>
             </div>
          </div>
       )}

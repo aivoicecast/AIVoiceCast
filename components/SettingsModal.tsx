@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, ReaderTheme, UserAvailability } from '../types';
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, ChevronRight, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive, Calendar, Clock, Info, Globe2, Terminal } from 'lucide-react';
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, ChevronRight, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive, Calendar, Clock, Info, Globe2, Terminal, Languages, Key } from 'lucide-react';
 import { logUserActivity, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut, getDriveToken, connectGoogleDrive } from '../services/authService';
 import { clearAudioCache } from '../services/tts';
@@ -41,6 +41,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(user.preferredReaderTheme || 'slate');
   const [recordingTarget, setRecordingTarget] = useState<'youtube' | 'drive'>(user.preferredRecordingTarget || 'drive');
   const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
+  const [languagePreference, setLanguagePreference] = useState<'en' | 'zh'>(user.languagePreference || 'en');
+  const [cloudTtsApiKey, setCloudTtsApiKey] = useState(user.cloudTtsApiKey || '');
   
   // Availability State
   const [availability, setAvailability] = useState<UserAvailability>(user.availability || {
@@ -74,6 +76,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setAiProvider(user.preferredAiProvider || 'gemini');
           setReaderTheme(user.preferredReaderTheme || 'slate');
           setRecordingTarget(user.preferredRecordingTarget || 'drive');
+          setLanguagePreference(user.languagePreference || 'en');
           setSenderAddress(user.senderAddress || '');
           setSignaturePreview(user.savedSignatureUrl || '');
           setNextCheckNumber(user.nextCheckNumber || 1001);
@@ -85,6 +88,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setLinkedinUrl(user.linkedinUrl || '');
           setResumeText(user.resumeText || '');
           setAvailability(user.availability || { days: [1,2,3,4,5], startHour: 9, endHour: 18, enabled: true });
+          setCloudTtsApiKey(user.cloudTtsApiKey || '');
           setResumeUploadStatus('idle');
           setResumeStatusMsg('');
       }
@@ -99,7 +103,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           let part: any;
 
           if (source.url) {
-              // Direct URL Ingestion via new API feature
               part = { fileData: { mimeType: 'application/pdf', fileUri: source.url } };
           } else if (source.file) {
               const base64 = await new Promise<string>((resolve) => {
@@ -126,16 +129,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           if (source.file) {
               setResumeStatusMsg('Syncing to Cloud Storage...');
               firebaseResumeUrl = await uploadFileToStorage(`users/${user.uid}/resume.pdf`, source.file);
-              
-              try {
-                setResumeStatusMsg('Backing up to Google Drive...');
-                const token = getDriveToken() || await connectGoogleDrive();
-                if (token) {
-                    const studioFolderId = await ensureFolder(token, 'CodeStudio');
-                    const resumesFolderId = await ensureFolder(token, 'Resumes', studioFolderId);
-                    await uploadToDrive(token, resumesFolderId, `Resume_${user.displayName.replace(/\s+/g, '_')}.pdf`, source.file);
-                }
-              } catch(driveErr) {}
           } else if (source.url) {
               firebaseResumeUrl = source.url;
           }
@@ -186,6 +179,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               preferredAiProvider: aiProvider,
               preferredReaderTheme: readerTheme,
               preferredRecordingTarget: recordingTarget,
+              languagePreference,
               senderAddress,
               savedSignatureUrl: finalSigUrl,
               nextCheckNumber,
@@ -193,7 +187,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               company,
               linkedinUrl,
               resumeText,
-              availability
+              availability,
+              cloudTtsApiKey
           };
 
           await updateUserProfile(user.uid, updateData);
@@ -266,60 +261,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <div className={`p-2 rounded-xl ${isPaid ? 'bg-emerald-600' : 'bg-slate-800'} text-white shadow-lg`}>{isPaid ? <Crown size={20} fill="currentColor"/> : <User size={20}/>}</div>
                                     <div><p className="text-xs font-black text-slate-500 uppercase tracking-widest">Tier</p><p className={`text-sm font-bold ${isPaid ? 'text-emerald-400' : 'text-slate-300'}`}>{currentTier.toUpperCase()}</p></div>
                                 </div>
-                                {!isPaid && <button onClick={onUpgradeClick} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase rounded-lg shadow-lg">Upgrade</button>}
+                                {!isPaid && <button onClick={onUpgradeClick} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase rounded-lg shadow-lg">Upgrade</button>}
                             </div>
                         </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-                        <div className="space-y-4"><h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><HardDrive size={16} className="text-indigo-400"/> Recording</h4><div className="space-y-2"><label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${recordingTarget === 'drive' ? 'bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-950 border-slate-800'}`}><div className="flex items-center gap-3"><input type="radio" checked={recordingTarget === 'drive'} onChange={() => setRecordingTarget('drive')} className="accent-indigo-500 w-4 h-4"/><div><p className="text-sm font-bold text-white">Drive</p></div></div><HardDrive size={20} className={recordingTarget === 'drive' ? 'text-indigo-400' : 'text-slate-700'}/></label><label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${recordingTarget === 'youtube' ? 'bg-red-900/20 border-red-500 ring-1 ring-red-500' : 'bg-slate-950 border-slate-800'}`}><div className="flex items-center gap-3"><input type="radio" checked={recordingTarget === 'youtube'} onChange={() => setRecordingTarget('youtube')} className="accent-red-500 w-4 h-4"/><div><p className="text-sm font-bold text-white">YouTube</p></div></div><Youtube size={20} className={recordingTarget === 'youtube' ? 'text-red-400' : 'text-slate-700'}/></label></div></div>
-                        <div className="space-y-4"><h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Cpu size={16}/> Engine</h4><div className="space-y-2"><label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'gemini' ? 'bg-indigo-900/20 border-indigo-500 ring-1 ring-indigo-500' : 'bg-slate-950 border-slate-800'}`}><div className="flex items-center gap-3"><input type="radio" checked={aiProvider === 'gemini'} onChange={() => setAiProvider('gemini')} className="accent-indigo-500 w-4 h-4"/><div><p className="text-sm font-bold text-white">Gemini</p></div></div><Sparkles size={20} className={aiProvider === 'gemini' ? 'text-indigo-400' : 'text-slate-700'}/></label><label className={`flex items-center justify-between p-4 rounded-2xl border cursor-pointer transition-all ${aiProvider === 'openai' ? 'bg-emerald-900/20 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-950 border-slate-800'}`}><div className="flex items-center gap-3"><input type="radio" checked={aiProvider === 'openai'} onChange={() => setAiProvider('openai')} className="accent-emerald-500 w-4 h-4"/><div><p className="text-sm font-bold text-white">GPT</p></div></div><Zap size={20} className={aiProvider === 'openai' ? 'text-emerald-400' : 'text-slate-700'}/></label></div></div>
-                    </div>
 
-                    {isSuperAdmin && (
-                        <div className="pt-8 border-t border-slate-800 space-y-4">
-                            <h4 className="text-xs font-bold text-red-400 uppercase tracking-[0.2em] flex items-center gap-2"><Terminal size={16}/> Admin Spectrum</h4>
-                            <button 
-                                onClick={() => { onClose(); onNavigateAdmin?.(); }}
-                                className="w-full flex items-center justify-between p-4 bg-red-900/10 border border-red-900/30 rounded-2xl hover:bg-red-900/20 transition-all group"
-                            >
-                                <div className="flex items-center gap-3 text-red-200">
-                                    <Shield size={20}/>
-                                    <div className="text-left">
-                                        <p className="text-sm font-bold">Open Admin Inspector</p>
-                                        <p className="text-[10px] opacity-60">Manage system channels and user tiers.</p>
-                                    </div>
-                                </div>
-                                <ChevronRight className="text-red-900 group-hover:text-red-400 group-hover:translate-x-1 transition-all" size={20}/>
-                            </button>
+                    <div className="space-y-4">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Key size={16} className="text-amber-400"/> Dedicated Cloud TTS Key</h4>
+                        <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                            <p className="text-[10px] text-slate-400 leading-relaxed">If you are getting "API key not valid" on enterprise voices, enter a dedicated GCP console key here.</p>
+                            <div className="relative">
+                                <input 
+                                    type="password" 
+                                    value={cloudTtsApiKey} 
+                                    onChange={e => setCloudTtsApiKey(e.target.value)} 
+                                    placeholder="GCP Enterprise Key (AIza...)"
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-xs text-indigo-300 font-mono focus:ring-1 focus:ring-indigo-500 outline-none"
+                                />
+                            </div>
                         </div>
-                    )}
+                    </div>
                 </div>
             )}
 
             {activeTab === 'profile' && (
                 <div className="space-y-8 animate-fade-in">
                     <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-center gap-3">
-                        <Linkedin className="text-indigo-400" size={24}/>
-                        <div><h3 className="text-sm font-bold text-white">Expert Profile</h3><p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-0.5">Mock Interview Handshake Context</p></div>
+                        <Github className="text-indigo-400" size={24}/>
+                        <div><h3 className="text-sm font-bold text-white">GitHub Integration</h3><p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-0.5">Auto-Refract Repositories in Builder Studio</p></div>
                     </div>
                     <div className="space-y-6">
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Default Repository URL</label>
+                            <input type="text" value={defaultRepo} onChange={e => setDefaultRepo(e.target.value)} placeholder="https://github.com/owner/repo" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/>
+                            <p className="text-[9px] text-slate-600 mt-2 ml-1">Builder Studio will automatically load this repository when the GitHub source is selected.</p>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Headline</label><input type="text" value={headline} onChange={e => setHeadline(e.target.value)} placeholder="Senior Software Engineer..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/></div>
                             <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Company</label><input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder="Tech Corp" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/></div>
                         </div>
                         <div>
-                            <div className="flex justify-between items-center mb-2 px-1"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Neural Resume Refraction</label><div className="flex gap-2"><button onClick={handleResumeUrlSelect} className="text-[10px] font-black text-indigo-400 flex items-center gap-1 hover:text-white transition-all"><Globe2 size={12}/> Link PDF URI</button><button onClick={() => resumeInputRef.current?.click()} className="text-[10px] font-black text-emerald-400 flex items-center gap-1 hover:text-white transition-all"><FileUp size={12}/> Upload PDF</button></div></div>
-                            <div className="relative">
-                                <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} rows={8} placeholder="Upload or link a resume to start analysis..." className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-slate-300 focus:ring-1 focus:ring-indigo-500 outline-none leading-relaxed resize-none shadow-inner" />
-                                {resumeUploadStatus !== 'idle' && (
-                                    <div className={`absolute inset-0 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center gap-3 transition-all ${resumeUploadStatus === 'success' ? 'bg-emerald-950/80' : resumeUploadStatus === 'error' ? 'bg-red-950/80' : 'bg-slate-950/60'}`}>
-                                        {resumeUploadStatus === 'processing' && <Loader2 className="animate-spin text-indigo-400" size={32}/>}{resumeUploadStatus === 'success' && <CheckCircle size={32} className="text-white"/>}{resumeUploadStatus === 'error' && <X size={32} className="text-white"/>}
-                                        <span className="text-xs font-black text-white uppercase tracking-widest">{resumeStatusMsg}</span>
-                                        {resumeUploadStatus !== 'processing' && <button onClick={() => setResumeUploadStatus('idle')} className="mt-2 text-[10px] font-bold text-white/60 hover:text-white underline uppercase">Dismiss</button>}
-                                    </div>
-                                )}
-                            </div>
-                            <input type="file" ref={resumeInputRef} className="hidden" accept=".pdf,.txt" onChange={handleResumeFileSelect} />
+                            <div className="flex justify-between items-center mb-2 px-1"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Resume Context</label><div className="flex gap-2"><button onClick={handleResumeUrlSelect} className="text-[10px] font-black text-indigo-400 flex items-center gap-1 hover:text-white transition-all"><Globe2 size={12}/> Link PDF</button><button onClick={() => resumeInputRef.current?.click()} className="text-[10px] font-black text-emerald-400 flex items-center gap-1 hover:text-white transition-all"><FileUp size={12}/> Upload</button></div></div>
+                            <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} rows={5} placeholder="AI summary of your skills..." className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-slate-300 focus:ring-1 focus:ring-indigo-500 outline-none resize-none" />
                         </div>
                     </div>
                 </div>
@@ -327,7 +310,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             {activeTab === 'availability' && (
                 <div className="space-y-8 animate-fade-in">
-                    <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-center gap-3"><Calendar className="text-indigo-400" size={24}/><div><h3 className="text-sm font-bold text-white">Office Hours</h3><p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-0.5">Control when peers can book technical sessions with you</p></div></div>
+                    <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-center gap-3"><Calendar className="text-indigo-400" size={24}/><div><h3 className="text-sm font-bold text-white">Office Hours</h3><p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-0.5">Manage appointment requests</p></div></div>
                     <div className="space-y-6">
                         <div className="flex items-center justify-between p-4 bg-slate-950 border border-slate-800 rounded-2xl"><div><p className="text-sm font-bold text-white">Accept Appointments</p></div><button onClick={() => setAvailability({...availability, enabled: !availability.enabled})} className={`w-12 h-6 rounded-full transition-all relative ${availability.enabled ? 'bg-indigo-600' : 'bg-slate-700'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${availability.enabled ? 'right-1' : 'left-1'}`}></div></button></div>
                         <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 px-1">Available Days</label><div className="flex gap-2">{DAYS.map((day, i) => (<button key={day} onClick={() => toggleDay(i)} className={`flex-1 py-3 rounded-xl border text-xs font-black transition-all ${availability.days.includes(i) ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{day.charAt(0)}</button>))}</div></div>
@@ -340,7 +323,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
 
             {activeTab === 'banking' && (
-                <div className="space-y-8 animate-fade-in"><div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-start gap-4"><div className="p-2 bg-indigo-600 rounded-lg text-white shadow-lg"><PenTool size={20}/></div><div><h3 className="text-sm font-bold text-white">Check Template</h3><p className="text-xs text-slate-400">Save details for refracting financial assets.</p></div></div><div className="space-y-6"><div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><MapPin size={12} className="text-indigo-400"/> Address</label><textarea value={senderAddress} onChange={(e) => setSenderAddress(e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none leading-relaxed transition-all shadow-inner"/></div><div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><PenTool size={12}/> Signature</label>{signaturePreview ? (<div className="relative w-full aspect-[3/1] bg-white rounded-xl border border-slate-700 overflow-hidden group shadow-lg"><img src={signaturePreview} className="w-full h-full object-contain p-4"/><div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3"><button onClick={() => setShowSignPad(true)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold shadow-lg">Change</button><button onClick={() => setSignaturePreview('')} className="px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-bold shadow-lg">Remove</button></div></div>) : (<button onClick={() => setShowSignPad(true)} className="w-full aspect-[3/1] border-2 border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-600 hover:border-indigo-500 bg-slate-950/50"><PenTool size={32} className="opacity-20"/><span className="text-[10px] font-bold uppercase tracking-widest">Register Signature</span></button>)}</div></div></div>
+                <div className="space-y-8 animate-fade-in"><div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-start gap-4"><div className="p-2 bg-indigo-600 rounded-lg text-white shadow-lg"><PenTool size={20}/></div><div><h3 className="text-sm font-bold text-white">Check Template</h3><p className="text-xs text-slate-400">Financial asset refraction data.</p></div></div><div className="space-y-6"><div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><MapPin size={12} className="text-indigo-400"/> Address</label><textarea value={senderAddress} onChange={(e) => setSenderAddress(e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner"/></div></div></div>
             )}
         </div>
 
@@ -349,10 +332,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
              <div className="flex items-center gap-3"><button onClick={onClose} className="px-6 py-2.5 text-xs font-bold text-slate-400 hover:text-white">Cancel</button><button onClick={handleSaveAll} disabled={isSaving} className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-black uppercase tracking-[0.2em] rounded-xl shadow-xl flex items-center gap-2 transition-all active:scale-0.98">{isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}<span>Apply Spectrum</span></button></div>
         </div>
       </div>
-
-      {showSignPad && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in"><div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl p-6 shadow-2xl animate-fade-in-up"><div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold text-white flex items-center gap-2"><PenTool size={20} className="text-indigo-400"/> Signature Studio</h3><button onClick={() => setShowSignPad(false)} className="p-2 text-slate-500 hover:text-white"><X/></button></div><div className="h-[300px] border-2 border-dashed border-slate-800 rounded-2xl overflow-hidden mb-6 bg-white"><Whiteboard backgroundColor="transparent" initialColor="#000000" /></div><div className="flex justify-end gap-2"><button onClick={() => setShowSignPad(false)} className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold">Cancel</button><button onClick={() => { const canvas = document.querySelector('.fixed canvas') as HTMLCanvasElement; if (canvas) setSignaturePreview(canvas.toDataURL('image/png')); setShowSignPad(false); }} className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold shadow-lg">Confirm</button></div></div></div>
-      )}
+      <input type="file" ref={resumeInputRef} className="hidden" accept=".pdf,.txt" onChange={handleResumeFileSelect} />
     </div>
   );
 };

@@ -1,4 +1,3 @@
-
 import { Channel, ChannelVisibility } from '../types';
 import { OFFLINE_CHANNEL_ID } from './offlineContent';
 
@@ -39,7 +38,7 @@ export const TOPIC_CATEGORIES: Record<string, string[]> = {
   'Personal Finance & Wealth': [
     'Investing for beginners', 'Stock market insights', 'Real estate investing', 
     'Passive income strategies', 'Financial independence / FIRE movement', 
-    'Cryptocurrency & blockchain', 'Side hustles', 'Retirement planning', 
+    'Cryptocurrency & brokerage', 'Side hustles', 'Retirement planning', 
     'Tax optimization', 'Budgeting & money management'
   ],
   'Career, Productivity & Self-Improvement': [
@@ -105,7 +104,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     imageUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&q=80', 
     welcomeMessage: "Welcome to Neural Prism. This platform refracts the power of Google Gemini 3 into a spectrum of accessible tools. We have evolved beyond a simple player into an Intelligence Hub—ready to help you create, learn, and grow.",
     starterPrompts: [
-      "What is the Magic Prism metaphor?",
+      "What is Neural Prism?",
       "Explain the Virtual File System in Code Studio",
       "Architecture of the new Rainbow Suite",
       "How do AI Agents interact with the Neural Canvas?"
@@ -135,8 +134,8 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   },
   {
     id: '2',
-    title: 'Linux Kernel Deep Dive',
-    description: 'Deep dive into the Linux Kernel internals. Discussion about schedulers, memory management, and drivers.',
+    title: 'Kernel Architect Lab',
+    description: 'Interactive audit of the Linux Kernel internals. Discussion about schedulers, memory management, and drivers.',
     author: 'Gemini Kernel',
     voiceName: 'Linux Kernel Voice gen-lang-client-0375218270',
     systemInstruction: 'You are a legendary Linux Kernel Maintainer. You speak with extreme technical precision about C programming, hardware-software interfaces, and memory safety. You are opinionated, deeply knowledgeable about Git, and have zero tolerance for sloppy abstractions.',

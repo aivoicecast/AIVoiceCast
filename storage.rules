@@ -6,7 +6,6 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // Cross-service Admin Check with safe field access
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.email == 'shengliang.song.ai@gmail.com' ||
@@ -15,14 +14,19 @@ service firebase.storage {
       );
     }
 
-    // Allow public read for check assets so the shared URI viewer works for guests
+    // PUBLIC SCRIPTURE AUDIO CACHE
+    match /bible_audio/{fileName} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // ASSETS FOR SHARED DOCUMENTS
     match /checks/{checkId}/{fileName} {
       allow read: if true;
-      // Only authenticated users (the owner) or admins can upload assets
       allow write: if isAuthenticated() || isAdmin();
     }
 
-    // Default rules for other paths
+    // DEFAULT SECURE PATHS
     match /{allPaths=**} {
       allow read, write: if isAuthenticated() || isAdmin();
     }

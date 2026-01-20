@@ -37,6 +37,7 @@ export interface UserProfile {
   preferredAiProvider?: 'gemini' | 'openai';
   preferredReaderTheme?: ReaderTheme;
   preferredRecordingTarget?: 'youtube' | 'drive';
+  languagePreference?: 'en' | 'zh';
   interests?: string[];
   senderAddress?: string;
   savedSignatureUrl?: string;
@@ -61,6 +62,7 @@ export interface UserProfile {
   followers?: string[];
   certificate?: string;
   publicKey?: string;
+  cloudTtsApiKey?: string;
 }
 
 export type AttachmentType = 'image' | 'video' | 'audio' | 'file';
@@ -513,7 +515,7 @@ export interface Booking {
   transcriptUrl?: string | null;
 }
 
-export type ViewState = 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'groups' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'shipping_viewer' | 'icon_generator' | 'icon_viewer' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide';
+export type ViewState = 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'groups' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'shipping_viewer' | 'icon_generator' | 'icon_viewer' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study';
 
 export interface MockInterviewRecording {
   id: string;

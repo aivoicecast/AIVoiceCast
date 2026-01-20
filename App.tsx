@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useMemo, ErrorInfo, ReactNode, Component } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewState, TranscriptItem, CodeFile } from './types';
@@ -46,6 +46,7 @@ import { CoinWallet } from './components/CoinWallet';
 import { MockInterview } from './components/MockInterview';
 import { GraphStudio } from './components/GraphStudio';
 import { ProjectStory } from './components/ProjectStory';
+import { ScriptureSanctuary } from './components/ScriptureSanctuary';
 
 import { getCurrentUser, getDriveToken } from './services/authService';
 import { auth, db } from './services/firebaseConfig';
@@ -142,7 +143,11 @@ const UI_TEXT = {
     wallet: "Neural Assets",
     mockInterview: "Career Prep",
     graph: "Logic Visualizer",
-    story: "Project Story"
+    story: "Project Story",
+    bible: "Scripture Sanctuary",
+    interviewExp: "Software Interview",
+    kernelExp: "Linux Kernel Audit",
+    geminiExp: "Gemini Expert"
   },
   zh: {
     appTitle: "神经棱镜",
@@ -178,7 +183,11 @@ const UI_TEXT = {
     wallet: "神经资产",
     mockInterview: "职业准备",
     graph: "逻辑可视化",
-    story: "项目故事"
+    story: "项目故事",
+    bible: "经文圣所",
+    interviewExp: "软件工程师面试",
+    kernelExp: "Linux 内核审计",
+    geminiExp: "Gemini 专家"
   }
 };
 
@@ -229,15 +238,18 @@ const App: React.FC = () => {
   // Memoized Admin Status with Strict Developer Email Bypass
   const isSuperAdmin = useMemo(() => {
       if (!currentUser) return false;
-      // 1. Hardcoded Owner Bypass (The Ultimate Root)
       const ownerEmails = ['shengliang.song.ai@gmail.com'];
       if (ownerEmails.includes(currentUser.email)) return true;
-      // 2. Check Firestore Profile (Group Membership admin_neural_prism)
       if (isUserAdmin(userProfile)) return true;
-      // 3. Local Override for debugging
       if (localStorage.getItem('debug_admin_override') === 'true') return true;
       return false;
   }, [userProfile, currentUser]);
+
+  /* Added isProMember calculation for feature gating and required props */
+  const isProMember = useMemo(() => {
+    if (isSuperAdmin) return true;
+    return userProfile?.subscriptionTier === 'pro';
+  }, [userProfile, isSuperAdmin]);
 
   const [liveSessionParams, setLiveSessionParams] = useState<{
     channel: Channel;
@@ -252,8 +264,20 @@ const App: React.FC = () => {
     returnTo?: ViewState;
   } | null>(null);
 
+  /**
+   * launches an interactive neural session
+   */
+  const handleStartLiveSession = useCallback((channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, initialTranscript?: TranscriptItem[], existingDiscussionId?: string) => {
+    setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId, returnTo: viewState });
+    handleSetViewState('live_session');
+  }, [viewState]);
+
   const allApps = useMemo(() => {
     const baseApps = [
+        { id: 'bible_study', label: t.bible, icon: Scroll, action: () => handleSetViewState('bible_study'), color: 'text-amber-500' },
+        { id: 'interview_expert', label: t.interviewExp, icon: GraduationCap, action: () => { const ch = HANDCRAFTED_CHANNELS.find(c => c.id === '1'); if (ch) handleStartLiveSession(ch); }, color: 'text-red-400' },
+        { id: 'kernel_expert', label: t.kernelExp, icon: Cpu, action: () => { const ch = HANDCRAFTED_CHANNELS.find(c => c.id === '2'); if (ch) handleStartLiveSession(ch); }, color: 'text-indigo-400' },
+        { id: 'gemini_expert', label: t.geminiExp, icon: Star, action: () => { const ch = HANDCRAFTED_CHANNELS.find(c => c.id === 'default-gem'); if (ch) handleStartLiveSession(ch); }, color: 'text-emerald-400' },
         { id: 'podcasts', label: t.podcasts, icon: Podcast, action: () => { handleSetViewState('directory'); }, color: 'text-indigo-400' },
         { id: 'mock_interview', label: t.mockInterview, icon: Video, action: () => handleSetViewState('mock_interview'), color: 'text-red-500' },
         { id: 'graph_studio', label: t.graph, icon: Activity, action: () => handleSetViewState('graph_studio'), color: 'text-emerald-400' },
@@ -288,7 +312,7 @@ const App: React.FC = () => {
     }
 
     return baseApps;
-  }, [t, isSuperAdmin]);
+  }, [t, isSuperAdmin, handleStartLiveSession]);
 
   const handleSetViewState = (newState: ViewState, params: Record<string, string> = {}) => {
     stopAllPlatformAudio(`NavigationTransition:${viewState}->${newState}`);
@@ -302,11 +326,6 @@ const App: React.FC = () => {
     if (!params.channelId) url.searchParams.delete('channelId');
     if (!params.id) url.searchParams.delete('id');
     window.history.replaceState({}, '', url.toString());
-  };
-
-  const handleStartLiveSession = (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }, initialTranscript?: TranscriptItem[], existingDiscussionId?: string) => {
-    setLiveSessionParams({ channel, context, recordingEnabled, videoEnabled, cameraEnabled, bookingId, activeSegment, initialTranscript, existingDiscussionId, returnTo: viewState });
-    handleSetViewState('live_session');
   };
 
   useEffect(() => {
@@ -443,7 +462,7 @@ const App: React.FC = () => {
       );
   }
 
-  const isPublicView = ['mission', 'careers', 'user_guide', 'card_workshop', 'card_viewer', 'icon_viewer', 'shipping_viewer', 'check_viewer', 'story', 'privacy', 'user_guide'].includes(viewState as string);
+  const isPublicView = ['mission', 'careers', 'user_guide', 'card_workshop', 'card_viewer', 'icon_viewer', 'shipping_viewer', 'check_viewer', 'story', 'privacy', 'user_guide', 'bible_study'].includes(viewState as string);
 
   if (!currentUser && !isPublicView) {
       return <LoginPage 
@@ -493,7 +512,7 @@ const App: React.FC = () => {
                         ))}
                       </div>
                       <div className="p-3 bg-slate-950 border-t border-slate-800 flex justify-center">
-                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Neural Prism v5.0.0</p>
+                        <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.2em]">Neural Prism v5.5.1</p>
                       </div>
                     </div>
                   </>
@@ -579,7 +598,7 @@ const App: React.FC = () => {
             {viewState === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
             {viewState === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice={globalVoice} t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={handleSchedulePodcast} /> )}
             {viewState === 'groups' && ( <div className="p-8 max-w-4xl mx-auto h-full overflow-y-auto scrollbar-hide"><GroupManager /></div> )}
-            {viewState === 'mentorship' && ( <MentorBooking currentUser={currentUser} userProfile={userProfile} channels={allChannels} onStartLiveSession={handleStartLiveSession} /> )}
+            {viewState === 'mentorship' && ( <div className="h-full overflow-y-auto scrollbar-hide"><MentorBooking currentUser={currentUser} userProfile={userProfile} channels={allChannels} onStartLiveSession={handleStartLiveSession} /></div> )}
             {viewState === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto scrollbar-hide"><RecordingList onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} /></div> )}
             {(viewState === 'check_designer' || viewState === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} /> )}
             {(viewState === 'shipping_labels' || viewState === 'shipping_viewer') && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}
@@ -594,6 +613,7 @@ const App: React.FC = () => {
             {viewState === 'story' && ( <ProjectStory onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'privacy' && ( <PrivacyPolicy onBack={() => handleSetViewState('directory')} /> )}
             {viewState === 'user_guide' && ( <UserManual onBack={() => handleSetViewState('directory')} /> )}
+            {viewState === 'bible_study' && ( <ScriptureSanctuary onBack={() => handleSetViewState('directory')} language={language} isProMember={isProMember} /> )}
         </main>
 
         <CreateChannelModal isOpen={isCreateModalOpen} onClose={() => { setIsCreateModalOpen(false); setCreateModalInitialDate(null); }} onCreate={handleCreateChannel} currentUser={currentUser} initialDate={createModalInitialDate} />

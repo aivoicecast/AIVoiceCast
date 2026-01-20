@@ -20,9 +20,9 @@ const memoryCache = new Map<string, AudioBuffer>();
 const pendingRequests = new Map<string, Promise<TtsResult>>();
 
 function getValidVoiceName(voiceName: string, provider: 'gemini' | 'openai'): string {
-    const isInterview = voiceName.includes('0648937375') || voiceName === 'Software Interview Voice';
-    const isLinux = voiceName.includes('0375218270') || voiceName === 'Linux Kernel Voice';
-    const isDefaultGem = voiceName.toLowerCase().includes('gem') || voiceName === 'Default Gem';
+    const isInterview = voiceName.includes('0648937375') || voiceName.includes('Software Interview Voice');
+    const isLinux = voiceName.includes('0375218270') || voiceName.includes('Linux Kernel Voice');
+    const isDefaultGem = voiceName.toLowerCase().includes('gem') || voiceName.includes('Default Gem');
 
     if (provider === 'openai') {
         if (isInterview) return 'onyx';
@@ -61,7 +61,7 @@ async function synthesizeOpenAI(text: string, voice: string, apiKey: string): Pr
 
 async function synthesizeGemini(text: string, voice: string): Promise<ArrayBuffer> {
     const targetVoice = getValidVoiceName(voice, 'gemini');
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY as string) || '' });
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-preview-tts',
         contents: [{ parts: [{ text }] }],

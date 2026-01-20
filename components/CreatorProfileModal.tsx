@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { X, User, MessageSquare, Heart, Users, Check, Bell, Play, ShieldCheck } from 'lucide-react';
 import { Channel, UserProfile } from '../types';
@@ -40,9 +41,6 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
     const loadProfile = async () => {
         setIsLoading(true);
         let oid = channel.ownerId;
-
-        // If system channel (no ownerId), we don't force-assign an email here anymore.
-        // It stays as 'Prism Official' unless specifically owned by a UID.
 
         if (oid) {
             if (isActive) setTargetOwnerId(oid);
@@ -134,6 +132,16 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
     }
   };
 
+  const isThirdParty = (url?: string) => {
+    if (!url) return true;
+    const lowUrl = url.toLowerCase();
+    return lowUrl.includes('ui-avatars.com') || lowUrl.includes('placehold.co') || lowUrl.includes('placeholder');
+  };
+
+  const profileImage = creatorProfile?.photoURL && !isThirdParty(creatorProfile.photoURL) 
+    ? creatorProfile.photoURL 
+    : null;
+
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full sm:w-[400px] bg-slate-900 border-t sm:border border-slate-800 rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
@@ -151,11 +159,17 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
         <div className="px-6 pb-6 -mt-12 flex flex-col items-center text-center">
             {/* Avatar */}
             <div className="relative">
-                <img 
-                    src={channel.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(creatorProfile?.displayName || channel.author)}&background=6366f1&color=fff`}
-                    alt={channel.title} 
-                    className="w-24 h-24 rounded-full border-4 border-slate-900 object-cover bg-slate-800"
-                />
+                {profileImage ? (
+                    <img 
+                        src={profileImage}
+                        alt={creatorProfile?.displayName || channel.author} 
+                        className="w-24 h-24 rounded-full border-4 border-slate-900 object-cover bg-slate-800"
+                    />
+                ) : (
+                    <div className="w-24 h-24 rounded-full border-4 border-slate-900 bg-slate-800 flex items-center justify-center text-2xl font-black text-indigo-400">
+                        {(creatorProfile?.displayName || channel.author).substring(0, 1).toUpperCase()}
+                    </div>
+                )}
                 {isFollowing && (
                     <div className="absolute bottom-1 right-1 bg-emerald-500 text-white p-1 rounded-full border-2 border-slate-900">
                         <Check size={12} strokeWidth={4} />
@@ -166,7 +180,7 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
             <h2 className="text-xl font-bold text-white mt-3">
                 {creatorProfile?.displayName || channel.author}
                 {!channel.ownerId && <span className="ml-1 text-[10px] text-indigo-400 bg-indigo-900/30 px-1 rounded border border-indigo-500/30 align-top">OFFICIAL</span>}
-                {isUserAdmin(creatorProfile) && <ShieldCheck size={16} className="inline ml-1 text-indigo-400" title="Neural Architect" />}
+                {isUserAdmin(creatorProfile) && <ShieldCheck size={16} className="inline ml-1 text-indigo-400" />}
             </h2>
             <p className="text-sm text-slate-400">@{channel.author.toLowerCase().replace(/\s+/g, '_')}</p>
 
@@ -253,12 +267,18 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
                                     onClick={() => onChannelClick(ch.id)}
                                     className="aspect-[3/4] bg-slate-800 relative group cursor-pointer border border-slate-900"
                                 >
-                                    <img 
-                                        src={ch.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(ch.title)}&background=6366f1&color=fff`} 
-                                        alt={ch.title}
-                                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                                        loading="lazy"
-                                    />
+                                    {ch.imageUrl && !isThirdParty(ch.imageUrl) ? (
+                                        <img 
+                                            src={ch.imageUrl} 
+                                            alt={ch.title}
+                                            className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                                            loading="lazy"
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-slate-900 font-black text-xs text-indigo-400">
+                                            {ch.title.substring(0, 1).toUpperCase()}
+                                        </div>
+                                    )}
                                     <div className="absolute bottom-1 right-1 flex items-center gap-1 text-[10px] text-white font-bold drop-shadow-md bg-black/40 px-1 rounded backdrop-blur-sm">
                                         <Play size={8} fill="white" /> {ch.likes || 0}
                                     </div>
@@ -293,7 +313,13 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
                                     onClick={() => onChannelClick(ch.id)}
                                     className="flex items-center gap-3 p-3 border-b border-slate-800 hover:bg-slate-800/50 transition-colors cursor-pointer"
                                 >
-                                    <img src={ch.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(ch.title)}&background=6366f1&color=fff`} className="w-12 h-12 rounded-lg object-cover bg-slate-800" />
+                                    {ch.imageUrl && !isThirdParty(ch.imageUrl) ? (
+                                        <img src={ch.imageUrl} className="w-12 h-12 rounded-lg object-cover bg-slate-800" />
+                                    ) : (
+                                        <div className="w-12 h-12 rounded-lg bg-slate-900 flex items-center justify-center font-black text-indigo-400">
+                                            {ch.title.substring(0, 1).toUpperCase()}
+                                        </div>
+                                    )}
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-bold text-white truncate">{ch.title}</p>
                                         <p className="text-xs text-slate-400">{ch.author}</p>
