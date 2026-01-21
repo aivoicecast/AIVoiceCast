@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile } from '../types';
+import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
 import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power, Database } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
@@ -522,7 +522,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
              <button onClick={handleStartSession} className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-full shadow-2xl shadow-indigo-500/30 transition-transform hover:scale-105 active:scale-95">Link Neural Fabric</button>
          </div>
       ) : (
-         <div className="flex-1 flex flex-col min-h-0 relative">
+         <div className="flex-1 flex flex-col min-0 relative">
             {isUploadingRecording && (
                <div className="absolute inset-0 z-[120] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
                   <div className="relative"><div className="w-32 h-32 border-4 border-indigo-500/10 rounded-full" /><div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" /><div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl font-black text-white">SYNC</div></div>
@@ -556,7 +556,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             </div>
 
             <div className="px-6 py-4 bg-slate-900 border-t border-slate-800 flex flex-col items-center gap-4">
-              <div className="w-full flex justify-center">
+              <div className="w-full flex justify-center h-48">
                  <Visualizer volume={volume} isActive={isConnected} color={isTuned ? '#a855f7' : '#6366f1'} />
               </div>
               <div className="w-full flex items-center justify-between shrink-0 z-20">

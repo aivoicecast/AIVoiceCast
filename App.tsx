@@ -6,7 +6,8 @@ import {
   Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star
 } from 'lucide-react';
 
-import { Channel, UserProfile, ViewState, TranscriptItem, CodeFile } from './types';
+// Fixed: Changed ViewState to ViewID as it's the correct exported type from types.ts
+import { Channel, UserProfile, ViewID, TranscriptItem, CodeFile } from './types';
 
 import { LiveSession } from './components/LiveSession';
 import { PodcastDetail } from './components/PodcastDetail';
@@ -195,7 +196,8 @@ const App: React.FC = () => {
   const [language, setLanguage] = useState<'en' | 'zh'>('en');
   const t = UI_TEXT[language];
   
-  const getInitialView = (): ViewState => {
+  // Fixed: Changed ViewState to ViewID
+  const getInitialView = (): ViewID => {
     const params = new URLSearchParams(window.location.search);
     const view = params.get('view');
     if (params.get('claim') || params.get('pay')) return 'coin_wallet'; 
@@ -208,7 +210,8 @@ const App: React.FC = () => {
     return (view as any) || 'directory';
   };
 
-  const [viewState, setViewState] = useState<ViewState>(getInitialView());
+  // Fixed: Changed ViewState to ViewID
+  const [viewState, setViewState] = useState<ViewID>(getInitialView());
   const [activeChannelId, setActiveChannelId] = useState<string | null>(() => {
       return new URLSearchParams(window.location.search).get('channelId');
   });
@@ -261,7 +264,8 @@ const App: React.FC = () => {
     activeSegment?: { index: number, lectureId: string };
     initialTranscript?: TranscriptItem[];
     existingDiscussionId?: string;
-    returnTo?: ViewState;
+    // Fixed: Changed ViewState to ViewID
+    returnTo?: ViewID;
   } | null>(null);
 
   /**
@@ -314,7 +318,8 @@ const App: React.FC = () => {
     return baseApps;
   }, [t, isSuperAdmin, handleStartLiveSession]);
 
-  const handleSetViewState = (newState: ViewState, params: Record<string, string> = {}) => {
+  // Fixed: Changed ViewState to ViewID
+  const handleSetViewState = (newState: ViewID, params: Record<string, string> = {}) => {
     stopAllPlatformAudio(`NavigationTransition:${viewState}->${newState}`);
     setViewState(newState);
     setIsAppsMenuOpen(false);
@@ -476,7 +481,7 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
-      <div className="h-screen flex flex-col bg-slate-950 text-slate-50 overflow-hidden">
+      <div className="h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
         <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 sm:px-6 shrink-0 z-50 backdrop-blur-xl">
            <div className="flex items-center gap-3">
               <div className="relative">

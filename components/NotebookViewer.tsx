@@ -311,7 +311,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
                   >
                       <h3 className={`font-bold text-sm ${activeNotebook?.id === nb.id ? 'text-indigo-300' : 'text-slate-200 group-hover:text-white'}`}>{nb.title}</h3>
                       <div className="flex items-center gap-2 mt-2">
-                          <span className="text-[9px] px-1.5 py-0.5 bg-slate-950 rounded text-slate-400 font-mono border border-slate-800">v5.1.0</span>
+                          <span className="text-[9px] px-1.5 py-0.5 bg-slate-950 rounded text-slate-400 font-mono border border-slate-800">v5.6.0</span>
                           <span className="text-[9px] text-slate-600 uppercase font-bold tracking-tighter">{nb.cells.length} Blocks</span>
                       </div>
                   </button>
@@ -357,7 +357,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
                           
                           {/* Title Metadata Section */}
                           <div className="mb-12 space-y-4">
-                              <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em]">Scientific Notebook v5.1.0</span>
+                              <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em]">Scientific Notebook v5.6.0</span>
                               <h1 className="text-5xl font-black text-white leading-tight tracking-tighter italic">{activeNotebook.title}</h1>
                               <p className="text-lg text-slate-400 font-medium max-w-2xl leading-relaxed">{activeNotebook.description}</p>
                               <div className="flex gap-4 pt-4">

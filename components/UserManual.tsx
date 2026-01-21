@@ -55,7 +55,7 @@ Create software or write documents with an AI pair-partner.
 Neural Prism is built to grow. As a member, you can contribute new tools and activities to the hub, helping us expand the spectrum of human potential.
 
 ---
-**Platform Version:** v5.1.0-SYN
+**Platform Version:** v5.6.0
 `;
 
 export const UserManual: React.FC<UserManualProps> = ({ onBack }) => {

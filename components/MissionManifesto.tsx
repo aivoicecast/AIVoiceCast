@@ -23,7 +23,7 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
           {/* Hero Section */}
           <section className="text-center space-y-8 animate-fade-in-up">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-900/30 border border-indigo-500/30 text-indigo-300 text-sm font-bold uppercase tracking-wider mb-4">
-              <Sparkles size={16} className="text-indigo-400"/> Neural Prism Platform v5.1.0
+              <Sparkles size={16} className="text-indigo-400"/> Neural Prism Platform v5.6.0
             </div>
             <h2 className="text-5xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-200 to-slate-400 leading-tight">
               Complex Intelligence.<br />Beautifully Accessible.
@@ -138,7 +138,7 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
             </p>
             <div className="mt-8 flex flex-col items-center">
                 <div className="w-12 h-px bg-indigo-500 mb-4"></div>
-                <p className="text-sm font-bold text-white uppercase tracking-[0.4em]">Neural Prism v5.1.0-SYN</p>
+                <p className="text-sm font-bold text-white uppercase tracking-[0.4em]">Neural Prism v5.6.0</p>
             </div>
           </div>
 

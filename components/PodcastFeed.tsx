@@ -1,3 +1,4 @@
+
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture } from '../types';
 import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCw, Scroll, Lock, Crown } from 'lucide-react';
@@ -12,6 +13,7 @@ import { getCachedLectureScript, cacheLectureScript, getUserChannels } from '../
 import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
 import { OFFLINE_CHANNEL_ID, OFFLINE_CURRICULUM, OFFLINE_LECTURES } from '../utils/offlineContent';
 import { warmUpAudioContext, getGlobalAudioContext, stopAllPlatformAudio, registerAudioOwner, logAudioEvent, isAudioOwner, getGlobalAudioGeneration } from '../utils/audioUtils';
+import { Visualizer } from './Visualizer';
 
 interface PodcastFeedProps {
   channels: Channel[];
@@ -35,79 +37,240 @@ interface PodcastFeedProps {
   searchQuery?: string;
   onNavigate?: (view: string) => void;
   onOpenPricing?: () => void;
+  language?: 'en' | 'zh';
 }
 
-const MobileFeedCard = ({ channel, isActive, onToggleLike, isLiked, isBookmarked, isFollowed, onToggleBookmark, onToggleFollow, onShare, onComment, onProfileClick, onChannelClick, onChannelFinish }: any) => {
+const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) => {
     const MY_TOKEN = useMemo(() => `MobileFeed:${channel.id}`, [channel.id]);
     const [playbackState, setPlaybackState] = useState<'idle' | 'buffering' | 'playing' | 'error'>('idle');
     const [statusMessage, setStatusMessage] = useState('');
     const [transcriptHistory, setTranscriptHistory] = useState<{speaker: string, text: string, id: string}[]>([]);
     const [activeTranscriptId, setActiveTranscriptId] = useState<string | null>(null);
     const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
-    const [provider, setProvider] = useState<'system' | 'gemini' | 'openai'>(() => !!(localStorage.getItem('openai_api_key') || process.env.OPENAI_API_KEY) ? 'openai' : 'system');
-    const [trackIndex, setTrackIndex] = useState(-1); 
+    
     const mountedRef = useRef(true);
-    const isLoopingRef = useRef(false);
     const localSessionIdRef = useRef(0);
     const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
     const transcriptScrollRef = useRef<HTMLDivElement>(null);
 
-    const stopAudioInternal = useCallback(() => { localSessionIdRef.current++; isLoopingRef.current = false; if (window.speechSynthesis) window.speechSynthesis.cancel(); activeSourcesRef.current.forEach(s => { s.stop(); s.disconnect(); }); activeSourcesRef.current.clear(); setPlaybackState('idle'); setStatusMessage(""); }, []);
+    const stopAudioInternal = useCallback(() => { 
+        localSessionIdRef.current++; 
+        if (window.speechSynthesis) window.speechSynthesis.cancel(); 
+        activeSourcesRef.current.forEach(s => { try { s.stop(); s.disconnect(); } catch(e) {} }); 
+        activeSourcesRef.current.clear(); 
+        setPlaybackState('idle'); 
+        setStatusMessage(""); 
+    }, []);
 
     useEffect(() => {
-        if (isActive) {
-            const introText = channel.welcomeMessage || channel.description || `Welcome.`;
-            setTranscriptHistory([{ speaker: 'Host', text: introText, id: 'intro' }]);
-            setActiveTranscriptId('intro');
-            const ctx = getGlobalAudioContext();
-            if (ctx.state === 'suspended') setIsAutoplayBlocked(true);
-            else setTimeout(() => { if (isActive && mountedRef.current) runTrackSequence(-1, ++localSessionIdRef.current, registerAudioOwner(MY_TOKEN, stopAudioInternal)); }, 400);
-        } else stopAudioInternal();
-    }, [isActive, MY_TOKEN, stopAudioInternal]);
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            stopAudioInternal();
+        };
+    }, [stopAudioInternal]);
 
-    const runTrackSequence = async (startIndex: number, localSessionId: number, targetGen: number) => {
-        isLoopingRef.current = true; setPlaybackState('playing'); let currentIndex = startIndex;
-        while (mountedRef.current && localSessionId === localSessionIdRef.current) {
-            setTrackIndex(currentIndex);
-            let text = currentIndex === -1 ? (channel.welcomeMessage || channel.description) : "Synthesizing...";
-            setTranscriptHistory(prev => [...prev, { speaker: 'AI', text, id: `track-${currentIndex}` }]);
-            setActiveTranscriptId(`track-${currentIndex}`);
-            await new Promise(r => setTimeout(r, 2000));
-            currentIndex++;
-            if (currentIndex > 5) break;
+    const runPlaybackSequence = async (localSessionId: number, targetGen: number) => {
+        if (!mountedRef.current || localSessionId !== localSessionIdRef.current) return;
+        
+        const ctx = getGlobalAudioContext();
+        setPlaybackState('playing');
+        
+        try {
+            // 1. Play Welcome Message
+            const welcomeText = channel.welcomeMessage || channel.description || "Welcome to this neural channel.";
+            setTranscriptHistory([{ speaker: 'Host', text: welcomeText, id: 'intro' }]);
+            setActiveTranscriptId('intro');
+            
+            const introRes = await synthesizeSpeech(welcomeText, channel.voiceName, ctx);
+            if (introRes.buffer && mountedRef.current && localSessionId === localSessionIdRef.current) {
+                await new Promise<void>((resolve) => {
+                    const source = ctx.createBufferSource();
+                    source.buffer = introRes.buffer;
+                    source.connect(ctx.destination);
+                    activeSourcesRef.current.add(source);
+                    source.onended = () => { activeSourcesRef.current.delete(source); resolve(); };
+                    source.start(0);
+                });
+            }
+
+            // 2. Generation Phase
+            setPlaybackState('buffering');
+            setStatusMessage("Refracting Lecture...");
+            
+            let lecture: GeneratedLecture | null = null;
+            const firstSubTopic = channel.chapters?.[0]?.subTopics?.[0];
+            const cacheKey = `lecture_${channel.id}_${firstSubTopic?.id || 'default'}_${language || 'en'}`;
+            
+            const cached = await getCachedLectureScript(cacheKey);
+            if (cached) {
+                lecture = cached;
+            } else {
+                const topic = firstSubTopic?.title || channel.title;
+                lecture = await generateLectureScript(topic, channel.description, language || 'en', channel.id, channel.voiceName);
+                if (lecture) await cacheLectureScript(cacheKey, lecture);
+            }
+
+            if (!lecture || !mountedRef.current || localSessionId !== localSessionIdRef.current) return;
+
+            // 3. Sequential Audio Sections
+            setPlaybackState('playing');
+            setStatusMessage("");
+            
+            for (let i = 0; i < lecture.sections.length; i++) {
+                if (!mountedRef.current || localSessionId !== localSessionIdRef.current || targetGen !== getGlobalAudioGeneration()) break;
+                
+                const section = lecture.sections[i];
+                const speakerName = section.speaker === 'Teacher' ? (lecture.professorName || 'Host') : (lecture.studentName || 'Guest');
+                const voice = section.speaker === 'Teacher' ? channel.voiceName : 'Zephyr';
+                
+                const sid = `section-${i}`;
+                setTranscriptHistory(prev => [...prev, { speaker: speakerName, text: section.text, id: sid }]);
+                setActiveTranscriptId(sid);
+                
+                setPlaybackState('buffering');
+                const res = await synthesizeSpeech(section.text, voice, ctx);
+                setPlaybackState('playing');
+                
+                if (res.buffer && mountedRef.current && localSessionId === localSessionIdRef.current) {
+                    await new Promise<void>((resolve) => {
+                        const source = ctx.createBufferSource();
+                        source.buffer = res.buffer;
+                        source.connect(ctx.destination);
+                        activeSourcesRef.current.add(source);
+                        source.onended = () => { activeSourcesRef.current.delete(source); resolve(); };
+                        source.start(0);
+                    });
+                }
+                
+                await new Promise(r => setTimeout(r, 600));
+            }
+        } catch (e) {
+            console.error("Sequence Error", e);
+            setPlaybackState('error');
+        } finally {
+            if (localSessionId === localSessionIdRef.current) {
+                setPlaybackState('idle');
+            }
         }
     };
 
+    useEffect(() => {
+        if (isActive) {
+            const ctx = getGlobalAudioContext();
+            if (ctx.state === 'suspended') {
+                setIsAutoplayBlocked(true);
+            } else {
+                setIsAutoplayBlocked(false);
+                const targetGen = registerAudioOwner(MY_TOKEN, stopAudioInternal);
+                runPlaybackSequence(++localSessionIdRef.current, targetGen);
+            }
+        } else {
+            stopAudioInternal();
+        }
+    }, [isActive, MY_TOKEN, stopAudioInternal, channel.id, language]);
+
+    const handleRetryUnmute = async () => {
+        const ctx = getGlobalAudioContext();
+        await warmUpAudioContext(ctx);
+        setIsAutoplayBlocked(false);
+        const targetGen = registerAudioOwner(MY_TOKEN, stopAudioInternal);
+        runPlaybackSequence(++localSessionIdRef.current, targetGen);
+    };
+
+    useEffect(() => {
+        if (transcriptScrollRef.current) {
+            transcriptScrollRef.current.scrollTop = transcriptScrollRef.current.scrollHeight;
+        }
+    }, [transcriptHistory]);
+
     return (
-        <div className="h-full w-full snap-start relative flex flex-col justify-center bg-slate-900 border-b border-slate-800 overflow-hidden">
-            <div className="absolute inset-0 bg-slate-950"></div>
-            <div className="absolute inset-0 bg-gradient-to-b from-indigo-900/10 via-transparent to-black/90"></div>
-            <div className="relative z-10 p-10 text-center space-y-6">
-                <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">{channel.title}</h2>
-                <div className="flex justify-center"><button onClick={() => onChannelClick(channel.id)} className="px-10 py-3 bg-indigo-600 text-white rounded-full font-black uppercase tracking-widest shadow-xl active:scale-95">Open Channel</button></div>
+        <div className="h-full w-full snap-start relative flex flex-col bg-slate-950 overflow-hidden">
+            <div className="absolute inset-0 z-0">
+                {channel.imageUrl ? (
+                    <img src={channel.imageUrl} className="w-full h-full object-cover opacity-20 blur-sm" alt="" />
+                ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-slate-900 to-indigo-950"></div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-slate-950/60 to-slate-950"></div>
+            </div>
+
+            <div className="relative z-10 flex-1 flex flex-col h-full pt-10 pb-20">
+                <div className="px-8 text-center shrink-0">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-600/20 border border-indigo-500/30 rounded-full text-indigo-400 text-[10px] font-black uppercase tracking-[0.2em] mb-4">
+                        <Radio size={12} className="animate-pulse" /> Neural Broadcast
+                    </div>
+                    <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-tight line-clamp-2">{channel.title}</h2>
+                    <p className="text-slate-400 text-xs mt-2 font-medium opacity-60">@{channel.author}</p>
+                </div>
+
+                <div className="flex-1 flex flex-col justify-end px-6 overflow-hidden">
+                    <div ref={transcriptScrollRef} className="max-h-[85%] overflow-y-auto space-y-4 py-4 scrollbar-hide">
+                        {transcriptHistory.map((item) => (
+                            <div key={item.id} className={`flex flex-col animate-fade-in-up ${item.id === activeTranscriptId ? 'opacity-100' : 'opacity-40'}`}>
+                                <span className="text-[9px] font-black uppercase text-indigo-500 tracking-widest mb-1">{item.speaker}</span>
+                                <p className="text-sm text-slate-200 leading-relaxed font-medium">{item.text}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="h-12 w-full flex items-center justify-center py-2">
+                        {playbackState === 'buffering' ? (
+                            <div className="flex flex-col items-center gap-1">
+                                <Loader2 className="animate-spin text-indigo-500" size={16}/>
+                                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{statusMessage}</span>
+                            </div>
+                        ) : (
+                            <Visualizer volume={isActive ? 0.5 : 0} isActive={playbackState === 'playing'} color="#6366f1" />
+                        )}
+                    </div>
+                </div>
+
+                <div className="px-8 py-6 flex flex-col gap-4 shrink-0">
+                    {isAutoplayBlocked && (
+                        <button 
+                            onClick={handleRetryUnmute}
+                            className="w-full py-4 bg-white text-slate-950 font-black uppercase tracking-widest rounded-2xl shadow-2xl animate-bounce flex items-center justify-center gap-3"
+                        >
+                            <Volume2 size={20}/> Tap to Unmute
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-6 items-center">
+                <button className="flex flex-col items-center gap-1 group">
+                    <div className="p-3 bg-slate-900/60 backdrop-blur-md rounded-full border border-white/10 group-hover:bg-red-600 transition-all">
+                        <Heart size={24} className="text-white" />
+                    </div>
+                    <span className="text-[10px] font-black text-white drop-shadow-md">{channel.likes}</span>
+                </button>
+                <button className="flex flex-col items-center gap-1 group">
+                    <div className="p-3 bg-slate-900/60 backdrop-blur-md rounded-full border border-white/10 group-hover:bg-indigo-600 transition-all">
+                        <MessageSquare size={24} className="text-white" />
+                    </div>
+                    <span className="text-[10px] font-black text-white drop-shadow-md">{channel.comments.length}</span>
+                </button>
             </div>
         </div>
     );
 };
 
 export const PodcastFeed: React.FC<PodcastFeedProps> = ({ 
-  channels, onChannelClick, onStartLiveSession, userProfile, globalVoice, currentUser, t, onCommentClick, handleVote, searchQuery = '', onNavigate, onOpenPricing, onUpdateChannel
+  channels, onChannelClick, onStartLiveSession, userProfile, globalVoice, currentUser, t, onCommentClick, handleVote, searchQuery = '', onNavigate, onOpenPricing, onUpdateChannel, language
 }) => {
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' }>({ key: 'likes', direction: 'desc' });
+  const [activeMobileId, setActiveMobileId] = useState<string | null>(null);
   
   const isSuperAdmin = useMemo(() => currentUser && (currentUser.email === 'shengliang.song.ai@gmail.com' || isUserAdmin(userProfile)), [userProfile, currentUser]);
   const isProMember = useMemo(() => isSuperAdmin || userProfile?.subscriptionTier === 'pro', [userProfile, isSuperAdmin]);
 
-  useEffect(() => { const handleResize = () => setIsDesktop(window.innerWidth >= 768); window.addEventListener('resize', handleResize); return () => window.removeEventListener('resize', handleResize); }, []);
-
-  const handleProtectedNavigate = (view: string) => {
-      if (!isProMember) { 
-          if (onOpenPricing) onOpenPricing(); 
-          return; 
-      }
-      if (onNavigate) onNavigate(view);
-  };
+  useEffect(() => { 
+      const handleResize = () => setIsDesktop(window.innerWidth >= 768); 
+      window.addEventListener('resize', handleResize); 
+      return () => window.removeEventListener('resize', handleResize); 
+  }, []);
 
   const handleSort = (key: SortKey) => {
       setSortConfig(prev => ({
@@ -134,6 +297,28 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
       });
   }, [channels, searchQuery, sortConfig]);
 
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+      if (isDesktop || !containerRef.current) return;
+      
+      observerRef.current = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+              if (entry.isIntersecting) {
+                  setActiveMobileId(entry.target.getAttribute('data-id'));
+              }
+          });
+      }, { threshold: 0.8 });
+
+      const children = containerRef.current.children;
+      for (let i = 0; i < children.length; i++) {
+          observerRef.current.observe(children[i]);
+      }
+
+      return () => observerRef.current?.disconnect();
+  }, [isDesktop, sortedChannels]);
+
   if (isDesktop) {
       return (
         <div className="h-full overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-800">
@@ -147,15 +332,21 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                             { id: 'mock_interview', label: 'Mock Interview', sub: 'Career Eval', icon: Video, color: 'text-red-500', bg: 'bg-red-950/40' },
                             { id: 'code_studio', label: 'Builder Studio', sub: 'Cloud Engineering', icon: Terminal, color: 'text-indigo-400', bg: 'bg-indigo-950/40' }
                         ].map(app => (
-                            <button key={app.id} onClick={() => handleProtectedNavigate(app.id)} className="flex items-center gap-4 p-5 bg-slate-900 border border-slate-800 rounded-2xl hover:border-indigo-500/50 hover:bg-indigo-900/10 transition-all text-left group shadow-xl relative overflow-hidden">
+                            <button 
+                                key={app.id} 
+                                onClick={() => isProMember ? onNavigate?.(app.id) : onOpenPricing?.()} 
+                                className="flex items-center gap-4 p-5 bg-slate-900 border border-slate-800 rounded-2xl hover:border-indigo-500/50 hover:bg-indigo-900/10 transition-all text-left group shadow-xl relative overflow-hidden"
+                            >
                                 {!isProMember && (
-                                    <div className="absolute inset-0 bg-slate-950/20 backdrop-blur-[1px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                                    <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-[4px] flex flex-col items-center justify-center z-20 transition-all group-hover:bg-slate-950/50">
+                                        <div className="p-2 bg-slate-900 border border-amber-500/50 rounded-xl shadow-2xl mb-2">
+                                            <Lock size={20} className="text-amber-500" />
+                                        </div>
                                         <div className="bg-amber-500 text-white px-3 py-1 rounded-full text-[9px] font-black uppercase shadow-lg flex items-center gap-1">
-                                            <Crown size={10} fill="currentColor"/> Upgrade to Unlock
+                                            <Crown size={10} fill="currentColor"/> Unlock Suite
                                         </div>
                                     </div>
                                 )}
-                                {!isProMember && <div className="absolute top-3 right-3 text-slate-700 group-hover:text-indigo-400 transition-colors"><Lock size={12}/></div>}
                                 <div className={`p-3 ${app.bg} rounded-xl border border-white/5 ${app.color} group-hover:scale-110 transition-transform`}><app.icon size={24}/></div>
                                 <div><h4 className="font-bold text-white group-hover:text-indigo-400 transition-colors">{app.label}</h4><p className="text-[10px] text-slate-500 uppercase font-black">{app.sub}</p></div>
                             </button>
@@ -183,10 +374,15 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
   }
 
   return (
-    <div className="h-[calc(100vh-64px)] w-full bg-black overflow-y-scroll snap-y snap-mandatory no-scrollbar relative">
+    <div ref={containerRef} className="h-[calc(100vh-64px)] w-full bg-black overflow-y-scroll snap-y snap-mandatory no-scrollbar relative">
         {sortedChannels.map((channel) => (
             <div key={channel.id} data-id={channel.id} className="h-full w-full snap-start">
-                <MobileFeedCard channel={channel} isActive={true} onChannelClick={onChannelClick} />
+                <MobileFeedCard 
+                    channel={channel} 
+                    isActive={activeMobileId === channel.id} 
+                    onChannelClick={onChannelClick} 
+                    language={language}
+                />
             </div>
         ))}
     </div>

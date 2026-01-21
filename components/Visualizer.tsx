@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef } from 'react';
 
 interface VisualizerProps {
@@ -79,7 +80,7 @@ export const Visualizer: React.FC<VisualizerProps> = ({ volume, isActive, color 
       ref={canvasRef} 
       width={600} 
       height={200} 
-      className="w-full h-48 rounded-lg bg-slate-900/50 border border-slate-800"
+      className="w-full h-full rounded-lg bg-slate-900/50 border border-slate-800"
     />
   );
 };

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { RecordingSession, Channel, TranscriptItem, UserProfile } from '../types';
+import { RecordingSession, Channel, TranscriptItem, UserProfile, ViewID } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
 import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap, Download, Share2, Square, CheckSquare, Pause, Search, Plus, RefreshCw, ChevronRight, FileVideo, Database } from 'lucide-react';
@@ -661,95 +661,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                   </div>
               </div>
           </div>
-      )}
-
-      {/* Sync Diagnostic Overlay */}
-      {showSyncLog && (
-          <div className="fixed inset-0 z-[200] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
-              <div className="max-w-md w-full bg-slate-900 border border-slate-700 rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col animate-fade-in-up">
-                  <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                      <div className="flex items-center gap-3">
-                          <Activity size={20} className="text-red-500"/>
-                          <h3 className="font-bold text-white uppercase tracking-[0.2em] text-sm">Neural Sync Diagnostics</h3>
-                      </div>
-                      <button onClick={() => setShowSyncLog(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-6 space-y-3 font-mono text-[10px] bg-black/40 min-h-[300px] scrollbar-hide">
-                      {syncLogs.length === 0 ? (
-                          <div className="h-full flex items-center justify-center text-slate-700 italic">Listening for handshake events...</div>
-                      ) : syncLogs.map((log, i) => (
-                          <div key={i} className={`flex gap-3 leading-relaxed ${log.type === 'error' ? 'text-red-400' : log.type === 'warn' ? 'text-amber-400' : log.type === 'success' ? 'text-emerald-400' : 'text-slate-500'}`}>
-                              <span className="opacity-30 shrink-0">[{log.time}]</span>
-                              <span className="break-words">{log.msg}</span>
-                          </div>
-                      ))}
-                  </div>
-                  <div className="p-4 bg-slate-950 border-t border-slate-800 text-center">
-                      <p className="text-[8px] text-slate-600 font-black uppercase tracking-[0.4em]">Transfer Protocol v5.1.0</p>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* Recorder Modal */}
-      {isRecorderModalOpen && (
-          <div className="fixed inset-0 z-[200] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
-              <div className="max-w-lg w-full bg-slate-900 border border-slate-700 rounded-[3rem] p-10 shadow-2xl space-y-8 animate-fade-in-up">
-                  <div className="text-center">
-                      <div className="inline-flex p-4 bg-red-600/10 rounded-full text-red-500 mb-4 border border-red-500/20">
-                          <Mic size={32}/>
-                      </div>
-                      <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">Initialize Scribe</h2>
-                      <p className="text-slate-400 text-sm mt-2 font-medium">AI will observe and log the session without interrupting.</p>
-                  </div>
-
-                  <div className="space-y-6">
-                      <div className="space-y-2">
-                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Meeting Identity</label>
-                          <input 
-                              type="text" 
-                              value={meetingTitle}
-                              onChange={e => setMeetingTitle(e.target.value)}
-                              placeholder="e.g. Brainstorming System Design"
-                              className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-white placeholder-slate-600 outline-none focus:ring-2 focus:ring-red-500/30 transition-all shadow-inner"
-                          />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                          <button 
-                            onClick={() => setRecordCamera(!recordCamera)}
-                            className={`p-5 rounded-[2rem] border-2 flex flex-col items-center gap-3 transition-all ${recordCamera ? 'bg-red-600 border-red-500 text-white shadow-xl shadow-red-900/20' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
-                          >
-                            <Camera size={24}/>
-                            <span className="text-[10px] font-black uppercase tracking-widest">Camera</span>
-                          </button>
-                          <button 
-                            onClick={() => setRecordScreen(!recordScreen)}
-                            className={`p-5 rounded-[2rem] border-2 flex flex-col items-center gap-3 transition-all ${recordScreen ? 'bg-red-600 border-red-500 text-white shadow-xl shadow-red-900/20' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
-                          >
-                            <Monitor size={24}/>
-                            <span className="text-[10px] font-black uppercase tracking-widest">Screen</span>
-                          </button>
-                      </div>
-                  </div>
-
-                  <div className="flex gap-4">
-                      <button onClick={() => setIsRecorderModalOpen(false)} className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-2xl font-black uppercase tracking-widest text-xs transition-all">Cancel</button>
-                      <button onClick={handleStartQuickRecording} className="flex-[2] py-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-red-900/40 transition-all active:scale-95">Link Neural Scribe</button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {showShareModal && (
-          <ShareModal 
-            isOpen={true} 
-            onClose={() => setShowShareModal(false)} 
-            link={shareUrl} 
-            title={sharingTitle}
-            onShare={async () => {}}
-            currentUserUid={currentUser?.uid}
-          />
       )}
     </div>
   );
