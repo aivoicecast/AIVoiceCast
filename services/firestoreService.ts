@@ -46,12 +46,47 @@ export const ADMIN_GROUP = 'admin_neural_prism';
 
 /**
  * Helper to check if a profile belongs to the admin group.
- * Defensive against undefined groups array.
  */
 export const isUserAdmin = (profile: UserProfile | null): boolean => {
     if (!profile || !profile.groups || !Array.isArray(profile.groups)) return false;
     return profile.groups.includes(ADMIN_GROUP);
 };
+
+/**
+ * Persists synthesized scripture to Firebase Storage for high-speed community access.
+ */
+export async function saveScriptureToVault(book: string, chapter: string, data: any[]): Promise<void> {
+    if (!storage) throw new Error("Storage unreachable.");
+    const path = `bible_corpus/${book}/${chapter}.json`;
+    const storageRef = ref(storage, path);
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    await uploadBytes(storageRef, blob);
+}
+
+/**
+ * Retrieves a direct download URL for a scripture audio file if it exists.
+ */
+export async function getScriptureAudioUrl(book: string, chapter: string, verse: string, lang: string): Promise<string | null> {
+    if (!storage) return null;
+    const path = `bible_audio/${book}/${chapter}/${verse}_${lang}.wav`;
+    try {
+        const storageRef = ref(storage, path);
+        return await getDownloadURL(storageRef);
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Uploads generated audio bytes to the community vault.
+ */
+export async function uploadScriptureAudio(book: string, chapter: string, verse: string, lang: string, audioBlob: Blob): Promise<string> {
+    if (!storage) throw new Error("Storage unreachable.");
+    const path = `bible_audio/${book}/${chapter}/${verse}_${lang}.wav`;
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, audioBlob);
+    return await getDownloadURL(storageRef);
+}
 
 /**
  * Robustly sanitizes data for Firestore, stripping non-serializable fields
@@ -824,7 +859,8 @@ export async function getUserRecordings(uid: string): Promise<RecordingSession[]
 }
 
 export async function deleteRecordingReference(id: string, mediaUrl: string, transcriptUrl: string): Promise<void> {
-    if (!db || !id) return;
+    if (!db) return;
+    if (!id) return;
     await deleteDoc(doc(db, RECORDINGS_COLLECTION, id));
 }
 
@@ -952,7 +988,7 @@ export async function deleteCodeFile(id: string, path: string) {
     if (!db || !id) return;
     const snap = await getDoc(doc(db, CODE_PROJECTS_COLLECTION, id));
     if (!snap.exists()) return;
-    const files = (snap.data()?.files || []) as CodeFile[];
+    const files = (snap.data()?.comments || []) as CodeFile[];
     const next = files.filter(f => f.path !== path);
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { files: next });
 }

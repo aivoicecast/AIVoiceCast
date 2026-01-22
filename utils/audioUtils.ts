@@ -1,4 +1,3 @@
-
 import { Blob as GeminiBlob } from '@google/genai';
 
 let mainAudioContext: AudioContext | null = null;
@@ -143,20 +142,47 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+/**
+ * Decodes raw PCM data into an AudioBuffer.
+ * Handles automatic detection and skipping of WAV headers to prevent start-of-verse noise.
+ */
 export async function decodeRawPcm(
   data: Uint8Array,
   ctx: AudioContext,
   sampleRate: number = 24000,
   numChannels: number = 1
 ): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
+  // 1. Header Detection: Check for 'RIFF' (82 73 70 70)
+  let offset = 0;
+  if (data.length > 44 && data[0] === 82 && data[1] === 73 && data[2] === 70 && data[3] === 70) {
+      // It's a WAV container. Skip the standard 44-byte header to reach raw samples.
+      offset = 44;
+  }
+
+  // Use the view offset/length to ensure we don't read garbage if the buffer is shared
+  const dataInt16 = new Int16Array(
+      data.buffer, 
+      data.byteOffset + offset, 
+      Math.floor((data.byteLength - offset) / 2)
+  );
+  
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  // 10ms micro-fade to prevent start-up clicks (assuming 24kHz)
+  const fadeLength = Math.min(frameCount, Math.floor(sampleRate * 0.01)); 
 
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
     for (let i = 0; i < frameCount; i++) {
-      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+      let sample = dataInt16[i * numChannels + channel] / 32768.0;
+      
+      // Apply micro fade-in
+      if (i < fadeLength) {
+          sample *= (i / fadeLength);
+      }
+      
+      channelData[i] = sample;
     }
   }
   return buffer;

@@ -106,16 +106,16 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
 
             <div className="h-px bg-slate-800 my-2 mx-2" />
             <div className="px-3 py-2">
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2 px-1">Linguistic Mode</p>
                 <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-700">
-                    <button onClick={() => setLanguage('en')} className={`flex-1 text-[10px] py-1.5 rounded transition-all font-bold ${language === 'en' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>ENGLISH</button>
-                    <button onClick={() => setLanguage('zh')} className={`flex-1 text-[10px] py-1.5 rounded transition-all font-bold ${language === 'zh' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>中文</button>
+                    <button onClick={() => setLanguage('en')} className={`flex-1 text-[10px] py-1.5 rounded transition-all font-black uppercase tracking-widest ${language === 'en' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>ENGLISH</button>
+                    <button onClick={() => setLanguage('zh')} className={`flex-1 text-[10px] py-1.5 rounded transition-all font-black uppercase tracking-widest ${language === 'zh' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>中文</button>
                 </div>
             </div>
 
             <button onClick={() => { onOpenUserGuide(); setIsUserMenuOpen(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Book size={16} /><span>User Guide</span></button>
             <button onClick={() => { onOpenPrivacy(); setIsUserMenuOpen(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Shield size={16} /><span>Privacy Policy</span></button>
             
-            {/* ENHANCEMENT: Highlight Settings or Upgrade depending on status */}
             <button onClick={() => { setIsSettingsModalOpen(true); setIsUserMenuOpen(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors">
                 <Settings size={16} />
                 <span className={!isProMember ? "font-bold text-indigo-400" : ""}>{!isProMember ? 'Upgrade & Settings' : 'Settings'}</span>

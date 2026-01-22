@@ -1,7 +1,7 @@
 
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture } from '../types';
-import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCw, Scroll, Lock, Crown } from 'lucide-react';
+import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCw, Scroll, Lock, Crown, Settings2, Globe, Cpu, Speaker } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { CreatorProfileModal } from './CreatorProfileModal';
 import { PodcastListTable, SortKey } from './PodcastListTable';
@@ -44,6 +44,10 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
     const MY_TOKEN = useMemo(() => `MobileFeed:${channel.id}`, [channel.id]);
     const [playbackState, setPlaybackState] = useState<'idle' | 'buffering' | 'playing' | 'error'>('idle');
     const [statusMessage, setStatusMessage] = useState('');
+    const [lastError, setLastError] = useState<string | null>(null);
+    const [ttsProvider, setTtsProvider] = useState<'gemini' | 'openai' | 'system'>('gemini');
+    const [showTtsMenu, setshowTtsMenu] = useState(false);
+    
     const [transcriptHistory, setTranscriptHistory] = useState<{speaker: string, text: string, id: string}[]>([]);
     const [activeTranscriptId, setActiveTranscriptId] = useState<string | null>(null);
     const [isAutoplayBlocked, setIsAutoplayBlocked] = useState(false);
@@ -60,6 +64,7 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
         activeSourcesRef.current.clear(); 
         setPlaybackState('idle'); 
         setStatusMessage(""); 
+        setLastError(null);
     }, []);
 
     useEffect(() => {
@@ -75,6 +80,7 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
         
         const ctx = getGlobalAudioContext();
         setPlaybackState('playing');
+        setLastError(null);
         
         try {
             // 1. Play Welcome Message
@@ -82,7 +88,11 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
             setTranscriptHistory([{ speaker: 'Host', text: welcomeText, id: 'intro' }]);
             setActiveTranscriptId('intro');
             
-            const introRes = await synthesizeSpeech(welcomeText, channel.voiceName, ctx);
+            const introRes = await synthesizeSpeech(welcomeText, channel.voiceName, ctx, ttsProvider);
+            if (introRes.errorMessage) {
+                setLastError(`Intro Error: ${introRes.errorMessage}`);
+            }
+
             if (introRes.buffer && mountedRef.current && localSessionId === localSessionIdRef.current) {
                 await new Promise<void>((resolve) => {
                     const source = ctx.createBufferSource();
@@ -111,7 +121,10 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
                 if (lecture) await cacheLectureScript(cacheKey, lecture);
             }
 
-            if (!lecture || !mountedRef.current || localSessionId !== localSessionIdRef.current) return;
+            if (!lecture || !mountedRef.current || localSessionId !== localSessionIdRef.current) {
+                if (!lecture) throw new Error("Could not refract lecture script. Check API quota.");
+                return;
+            }
 
             // 3. Sequential Audio Sections
             setPlaybackState('playing');
@@ -129,9 +142,13 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
                 setActiveTranscriptId(sid);
                 
                 setPlaybackState('buffering');
-                const res = await synthesizeSpeech(section.text, voice, ctx);
+                const res = await synthesizeSpeech(section.text, voice, ctx, ttsProvider);
                 setPlaybackState('playing');
                 
+                if (res.errorMessage) {
+                    setLastError(`Sync Error: ${res.errorMessage}`);
+                }
+
                 if (res.buffer && mountedRef.current && localSessionId === localSessionIdRef.current) {
                     await new Promise<void>((resolve) => {
                         const source = ctx.createBufferSource();
@@ -145,9 +162,10 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
                 
                 await new Promise(r => setTimeout(r, 600));
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Sequence Error", e);
             setPlaybackState('error');
+            setLastError(e.message || "Unknown neural processing error.");
         } finally {
             if (localSessionId === localSessionIdRef.current) {
                 setPlaybackState('idle');
@@ -168,7 +186,7 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
         } else {
             stopAudioInternal();
         }
-    }, [isActive, MY_TOKEN, stopAudioInternal, channel.id, language]);
+    }, [isActive, MY_TOKEN, stopAudioInternal, channel.id, language, ttsProvider]);
 
     const handleRetryUnmute = async () => {
         const ctx = getGlobalAudioContext();
@@ -195,7 +213,35 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
                 <div className="absolute inset-0 bg-gradient-to-b from-transparent via-slate-950/60 to-slate-950"></div>
             </div>
 
-            <div className="relative z-10 flex-1 flex flex-col h-full pt-10 pb-20">
+            {/* TTS Selection Menu - Top Right */}
+            <div className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 z-50 flex flex-col items-end gap-2">
+                <button 
+                    onClick={() => setshowTtsMenu(!showTtsMenu)}
+                    className="p-3 bg-slate-900/60 backdrop-blur-md rounded-full border border-white/10 text-white hover:bg-indigo-600 transition-all shadow-xl active:scale-95"
+                    title="TTS Settings"
+                >
+                    {ttsProvider === 'gemini' ? <Zap size={20} className="text-indigo-400" /> : 
+                     ttsProvider === 'openai' ? <Cpu size={20} className="text-emerald-400" /> : 
+                     <Speaker size={20} className="text-amber-400" />}
+                </button>
+                
+                {showTtsMenu && (
+                    <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 animate-fade-in-up flex flex-col min-w-[140px] gap-1">
+                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest px-3 py-1">Engine Select</p>
+                        <button onClick={() => { setTtsProvider('gemini'); setshowTtsMenu(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-bold uppercase transition-all ${ttsProvider === 'gemini' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                            <Zap size={14}/> Gemini
+                        </button>
+                        <button onClick={() => { setTtsProvider('openai'); setshowTtsMenu(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-bold uppercase transition-all ${ttsProvider === 'openai' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                            <Cpu size={14}/> OpenAI
+                        </button>
+                        <button onClick={() => { setTtsProvider('system'); setshowTtsMenu(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-bold uppercase transition-all ${ttsProvider === 'system' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                            <Speaker size={14}/> System
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            <div className="relative z-10 flex-1 flex flex-col h-full pt-[calc(2.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
                 <div className="px-8 text-center shrink-0">
                     <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-600/20 border border-indigo-500/30 rounded-full text-indigo-400 text-[10px] font-black uppercase tracking-[0.2em] mb-4">
                         <Radio size={12} className="animate-pulse" /> Neural Broadcast
@@ -234,6 +280,16 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
                         >
                             <Volume2 size={20}/> Tap to Unmute
                         </button>
+                    )}
+                    
+                    {/* Error Display Area */}
+                    {lastError && (
+                        <div className="w-full p-3 bg-red-900/40 border border-red-500/30 rounded-xl animate-fade-in flex items-center gap-3">
+                            <AlertCircle size={16} className="text-red-400 shrink-0" />
+                            <p className="text-[9px] font-bold text-red-200 uppercase tracking-widest line-clamp-2">
+                                System Alert: {lastError}
+                            </p>
+                        </div>
                     )}
                 </div>
             </div>

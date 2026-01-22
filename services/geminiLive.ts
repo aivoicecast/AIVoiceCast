@@ -161,14 +161,15 @@ export class GeminiLiveService {
             const wasIntentional = !this.session;
             this.cleanup();
             if (!wasIntentional) {
-               callbacks.onClose(e?.reason || "Connection closed by server", e?.code);
+               callbacks.onClose(e?.reason || "WebSocket closed unexpectedly", e?.code);
             }
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
             this.cleanup();
-            const code = e?.message?.includes('429') ? 'RATE_LIMIT' : 'ERROR';
-            callbacks.onError(e?.message || "Handshake Error", code);
+            const errMsg = e?.message || String(e);
+            const code = errMsg.includes('429') ? 'RATE_LIMIT' : 'API_ERROR';
+            callbacks.onError(errMsg, code);
           }
         }
       });
@@ -176,7 +177,8 @@ export class GeminiLiveService {
       this.session = await this.sessionPromise;
     } catch (error: any) {
       this.isActive = false;
-      callbacks.onError(error?.message || "Init Error", "ERROR");
+      const errMsg = error?.message || String(error);
+      callbacks.onError(errMsg, "INIT_ERROR");
       this.cleanup();
       throw error;
     }
@@ -186,9 +188,10 @@ export class GeminiLiveService {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     this.heartbeatInterval = setInterval(() => {
         if (this.session && this.isActive) {
+            // Send a tiny empty message to keep the socket alive
             this.sendText(" "); 
         }
-    }, 8000); // 8s heartbeat for high stability
+    }, 15000); 
   }
 
   public sendToolResponse(functionResponses: any) {

@@ -3,11 +3,12 @@ import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode,
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Lock, Crown, ShieldCheck, Flame, Zap
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Lock, Crown, ShieldCheck, Flame, Zap, RefreshCcw
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewID, TranscriptItem, CodeFile } from '../types';
 
+import { Dashboard } from './Dashboard';
 import { LiveSession } from './LiveSession';
 import { PodcastDetail } from './PodcastDetail';
 import { CreateChannelModal } from './CreateChannelModal';
@@ -52,12 +53,13 @@ import { onSnapshot, doc } from '@firebase/firestore';
 import { getUserChannels, saveUserChannel } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { stopAllPlatformAudio } from '../utils/audioUtils';
-import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, syncUserProfile, publishChannelToFirestore, isUserAdmin } from '../services/firestoreService';
+import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, syncUserProfile, publishChannelToFirestore, isUserAdmin, updateUserProfile } from '../services/firestoreService';
 
 interface ErrorBoundaryProps { children?: ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; error: Error | null; }
 
 class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  declare props: ErrorBoundaryProps;
   state: ErrorBoundaryState = { hasError: false, error: null };
   static getDerivedStateFromError(error: Error): ErrorBoundaryState { return { hasError: true, error }; }
   componentDidCatch(error: Error, errorInfo: ErrorInfo) { console.error("Uncaught runtime error:", error, errorInfo); }
@@ -81,7 +83,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 const UI_TEXT = {
   en: {
     appTitle: "Neural Prism",
-    directory: "Knowledge Hub", 
+    directory: "Discovery", 
     search: "Search for activities...",
     magic: "Neural Magic",
     podcasts: "Activity Hub",
@@ -112,11 +114,12 @@ const UI_TEXT = {
     upgradeBtn: "Upgrade to Unlock 24 Apps",
     interviewExp: "Software Interview",
     kernelExp: "Linux Kernel Audit",
-    geminiExp: "Gemini Expert"
+    geminiExp: "Gemini Expert",
+    dashboard: "Launchpad"
   },
   zh: {
     appTitle: "神经棱镜",
-    directory: "知识中心",
+    directory: "发现",
     search: "搜索活动...",
     magic: "神经魔法",
     podcasts: "活动中心",
@@ -147,12 +150,13 @@ const UI_TEXT = {
     upgradeBtn: "升级解锁 24 个应用",
     interviewExp: "软件工程师面试",
     kernelExp: "Linux 内核审计",
-    geminiExp: "Gemini 专家"
+    geminiExp: "Gemini 专家",
+    dashboard: "启动板"
   }
 };
 
 const PUBLIC_VIEWS: ViewID[] = ['mission', 'story', 'privacy', 'user_guide']; 
-const FREE_VIEWS: ViewID[] = ['directory', 'podcast_detail'];
+const FREE_VIEWS: ViewID[] = ['directory', 'podcast_detail', 'dashboard'];
 
 const isRestrictedView = (v: string): boolean => {
     const safeSet = [...PUBLIC_VIEWS, ...FREE_VIEWS];
@@ -165,7 +169,8 @@ const App: React.FC = () => {
   
   const [activeViewID, setActiveViewID] = useState<ViewID>(() => {
     const params = new URLSearchParams(window.location.search);
-    return (params.get('view') as ViewID) || 'directory';
+    const v = params.get('view') as ViewID;
+    return v || 'directory';
   });
 
   const [activeChannelId, setActiveChannelId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('channelId'));
@@ -216,14 +221,32 @@ const App: React.FC = () => {
     window.history.pushState({}, '', url.toString());
   }, [activeViewID, isProMember]);
 
+  // Unified persistent language update
+  const handleUpdateLanguage = useCallback(async (newLang: 'en' | 'zh') => {
+      setLanguage(newLang);
+      if (currentUser) {
+          try {
+              await updateUserProfile(currentUser.uid, { languagePreference: newLang });
+          } catch(e) {
+              console.error("Linguistic persistence failed:", e);
+          }
+      }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!authLoading && currentUser && activeViewID === 'directory' && !activeChannelId) {
+        setActiveViewID('dashboard');
+    }
+  }, [authLoading, currentUser, activeChannelId]);
+
   useEffect(() => {
     const guard = () => {
         const params = new URLSearchParams(window.location.search);
         const urlView = (params.get('view') as ViewID) || 'directory';
         
         if (isRestrictedView(urlView) && !isProMember && !authLoading && currentUser && userProfile) {
-            setActiveViewID('directory');
-            window.history.replaceState({}, '', window.location.origin);
+            setActiveViewID('dashboard');
+            window.history.replaceState({}, '', window.location.origin + '?view=dashboard');
         }
     };
     guard();
@@ -245,6 +268,7 @@ const App: React.FC = () => {
 
   const appsByTier = useMemo(() => {
     const list = [
+        { id: 'dashboard', label: t.dashboard, icon: LayoutGrid, action: () => handleSetViewState('dashboard'), color: 'text-indigo-400', restricted: false },
         { id: 'directory', label: t.podcasts, icon: Podcast, action: () => handleSetViewState('directory'), color: 'text-indigo-400', restricted: false },
         { id: 'bible_study', label: t.bible, icon: Scroll, action: () => handleSetViewState('bible_study'), color: 'text-amber-500', restricted: false },
         { id: 'mission', label: t.mission, icon: Rocket, action: () => handleSetViewState('mission'), color: 'text-orange-500', restricted: false },
@@ -276,12 +300,21 @@ const App: React.FC = () => {
         if (u) {
             setCurrentUser(u);
             syncUserProfile(u).catch(console.error);
-            onSnapshot(doc(db, 'users', u.uid), s => { if(s.exists()) setUserProfile(s.data() as UserProfile); });
+            onSnapshot(doc(db, 'users', u.uid), s => { 
+                if(s.exists()) {
+                    const profile = s.data() as UserProfile;
+                    setUserProfile(profile);
+                    // Sync global UI language with user's persistent preference
+                    if (profile.languagePreference && profile.languagePreference !== language) {
+                        setLanguage(profile.languagePreference);
+                    }
+                }
+            });
         } else { setCurrentUser(null); setUserProfile(null); }
         setAuthLoading(false);
     });
     return () => unsub();
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     subscribeToPublicChannels(setPublicChannels);
@@ -302,9 +335,6 @@ const App: React.FC = () => {
       if (updated.visibility === 'public') await publishChannelToFirestore(updated);
   };
 
-  /**
-   * FIX: Added handleCreateChannel to fix errors on lines 452, 472, 473
-   */
   const handleCreateChannel = async (newChannel: Channel) => {
       await saveUserChannel(newChannel);
       setUserChannels(prev => [newChannel, ...prev]);
@@ -312,15 +342,12 @@ const App: React.FC = () => {
       handleSetViewState('podcast_detail', { channelId: newChannel.id });
   };
 
-  /**
-   * FIX: Added activeChannel to fix errors on line 444
-   */
   const activeChannel = useMemo(() => 
     allChannels.find(c => c.id === activeChannelId),
     [allChannels, activeChannelId]
   );
 
-  const GuardedView = ({ id, children }: { id: ViewID, children: ReactNode }) => {
+  const GuardedView = ({ id, children }: { id: ViewID; children?: ReactNode }) => {
       if (isRestrictedView(id) && !isProMember) {
           return (
             <div className="h-full w-full flex items-center justify-center bg-slate-950 p-6">
@@ -346,13 +373,15 @@ const App: React.FC = () => {
       </div>;
   };
 
+  const showMagicCreator = activeViewID === 'directory' || activeViewID === 'podcast_detail';
+
   if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Spectrum...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} />;
 
   return (
     <ErrorBoundary>
       <div className="h-screen flex flex-col bg-slate-950 text-slate-50 overflow-hidden">
-        <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 shrink-0 z-50 backdrop-blur-xl">
+        <header className="min-h-[4rem] pt-[env(safe-area-inset-top)] border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 shrink-0 z-50 backdrop-blur-xl">
            <div className="flex items-center gap-3">
               <div className="relative">
                 <button onClick={() => setIsAppsMenuOpen(!isAppsMenuOpen)} className={`p-1.5 rounded-lg transition-all ${isAppsMenuOpen ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} aria-label="Launcher"><LayoutGrid size={20} /></button>
@@ -361,7 +390,6 @@ const App: React.FC = () => {
                     <div className="fixed inset-0 z-[100]" onClick={() => setIsAppsMenuOpen(false)}></div>
                     <div className="absolute left-0 top-full mt-3 w-80 md:w-[480px] bg-slate-900 border border-slate-700 rounded-[2.5rem] shadow-2xl overflow-hidden animate-fade-in-up z-[110] flex flex-col border-indigo-500/20">
                       
-                      {/* FREE MEMBER LAUNCHER UI */}
                       {!isProMember && (
                           <>
                             <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center">
@@ -377,7 +405,6 @@ const App: React.FC = () => {
                                 ))}
                             </div>
                             
-                            {/* PRO UPGRADE CALL-TO-ACTION */}
                             <div className="m-3 p-5 bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl shadow-xl relative overflow-hidden group/upgrade">
                                 <div className="absolute top-0 right-0 p-12 bg-white/10 blur-3xl rounded-full group-hover/upgrade:scale-110 transition-transform"></div>
                                 <div className="relative z-10">
@@ -402,7 +429,6 @@ const App: React.FC = () => {
                           </>
                       )}
 
-                      {/* PRO MEMBER LAUNCHER UI */}
                       {isProMember && (
                           <>
                             <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex justify-between items-center">
@@ -432,58 +458,73 @@ const App: React.FC = () => {
                   </>
                 )}
               </div>
-              <div className="flex items-center gap-3 cursor-pointer group" onClick={() => handleSetViewState('directory')}>
-                 <BrandLogo size={32} /><h1 className="text-xl font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400 transition-colors">Neural Prism</h1>
+              <div 
+                className="flex items-center gap-3 cursor-pointer group" 
+                onClick={() => window.location.assign(window.location.origin)}
+                title="Reload Site (Get Latest Version)"
+              >
+                 <BrandLogo size={32} />
+                 <h1 className="text-xl font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400 transition-colors">Neural Prism</h1>
               </div>
            </div>
 
            <div className="flex items-center gap-3 sm:gap-4">
+              <button 
+                  onClick={() => window.location.reload()} 
+                  className="p-2 text-slate-400 hover:text-white transition-colors"
+                  title="Reload Web App"
+              >
+                  <RefreshCcw size={18} />
+              </button>
               {userProfile && (
                   <button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex">
                       <Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span>
                   </button>
               )}
-              <button onClick={() => isProMember ? setIsVoiceCreateOpen(true) : setIsPricingModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95">
-                  {!isProMember && <Lock size={12} className="mr-0.5 text-indigo-300"/>}
-                  <span>{t.magic}</span>
-              </button>
+              {showMagicCreator && (
+                <button onClick={() => isProMember ? setIsVoiceCreateOpen(true) : setIsPricingModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95">
+                    {!isProMember && <Lock size={12} className="mr-0.5 text-indigo-300"/>}
+                    <span>{t.magic}</span>
+                </button>
+              )}
               <div className="relative">
                  <button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors">
                     <img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}`} alt="Profile" className="w-full h-full object-cover" />
                  </button>
-                 <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice="Auto" setGlobalVoice={()=>{}} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} onUpgradeClick={() => setIsPricingModalOpen(true)} setIsSyncModalOpen={()=>{}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => handleSetViewState('user_guide')} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => handleSetViewState('privacy')} t={t} language={language} setLanguage={setLanguage} channels={allChannels} isSuperAdmin={isSuperAdmin} isProMember={isProMember} />
+                 <StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice="Auto" setGlobalVoice={()=>{}} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} onUpgradeClick={() => setIsPricingModalOpen(true)} setIsSyncModalOpen={()=>{}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => handleSetViewState('user_guide')} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => handleSetViewState('privacy')} t={t} language={language} setLanguage={handleUpdateLanguage} channels={allChannels} isSuperAdmin={isSuperAdmin} isProMember={isProMember} />
               </div>
            </div>
         </header>
 
         <main className="flex-1 overflow-hidden relative">
             <GuardedView id={activeViewID}>
-                {activeViewID === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice="Auto" currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={()=>{}} searchQuery={searchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} onOpenPricing={() => setIsPricingModalOpen(true)} /> )}
+                {activeViewID === 'dashboard' && ( <Dashboard userProfile={userProfile} isProMember={isProMember} onNavigate={handleSetViewState} language={language} /> )}
+                {activeViewID === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice="Auto" currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={()=>{}} searchQuery={searchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} onOpenPricing={() => setIsPricingModalOpen(true)} language={language} /> )}
                 {activeViewID === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} onUpdateChannel={handleUpdateChannel} isProMember={isProMember} /> )}
                 {activeViewID === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} language={language} initialContext={liveSessionParams.context} recordingEnabled={liveSessionParams.recordingEnabled} lectureId={liveSessionParams.bookingId} /> )}
-                {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('directory')} /></div> )}
-                {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} isProMember={isProMember}/> )}
-                {activeViewID === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('directory')} /> )}
-                {activeViewID === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('directory')} /> )}
-                {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('directory')} currentUser={currentUser} /> )}
-                {activeViewID === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('directory')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
+                {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} /></div> )}
+                {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} isProMember={isProMember}/> )}
+                {activeViewID === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} /> )}
+                {activeViewID === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
                 {activeViewID === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice="Auto" t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={() => setIsCreateModalOpen(true)} /> )}
                 {activeViewID === 'mentorship' && ( <div className="h-full overflow-y-auto"><MentorBooking currentUser={currentUser} userProfile={userProfile} channels={allChannels} onStartLiveSession={handleStartLiveSession} /></div> )}
-                {activeViewID === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><RecordingList onBack={() => handleSetViewState('directory')} onStartLiveSession={handleStartLiveSession} /></div> )}
-                {(activeViewID === 'check_designer' || activeViewID === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('directory')} currentUser={currentUser} userProfile={userProfile} isProMember={isProMember} /> )}
-                {activeViewID === 'shipping_labels' && ( <ShippingLabelApp onBack={() => handleSetViewState('directory')} /> )}
-                {activeViewID === 'icon_generator' && ( <IconGenerator onBack={() => handleSetViewState('directory')} currentUser={currentUser} iconId={activeItemId || undefined} isProMember={isProMember} /> )}
-                {activeViewID === 'notebook_viewer' && ( <NotebookViewer onBack={() => handleSetViewState('directory')} currentUser={currentUser} notebookId={activeItemId || undefined} /> )}
-                {(activeViewID === 'card_workshop' || activeViewID === 'card_viewer') && ( <CardWorkshop onBack={() => handleSetViewState('directory')} cardId={activeItemId || undefined} isViewer={activeViewID === 'card_viewer' || !!activeItemId} /> )}
-                {activeViewID === 'mission' && ( <MissionManifesto onBack={() => handleSetViewState('directory')} /> )}
-                {activeViewID === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('directory')} userProfile={userProfile} /> )}
-                {activeViewID === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('directory')} user={userProfile} /> )}
-                {activeViewID === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('directory')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} isProMember={isProMember} /> )}
-                {activeViewID === 'graph_studio' && ( <GraphStudio onBack={() => handleSetViewState('directory')} isProMember={isProMember} /> )}
-                {activeViewID === 'story' && ( <ProjectStory onBack={() => handleSetViewState('directory')} /> )}
-                {activeViewID === 'privacy' && ( <PrivacyPolicy onBack={() => handleSetViewState('directory')} /> )}
-                {activeViewID === 'user_guide' && ( <UserManual onBack={() => handleSetViewState('directory')} /> )}
-                {activeViewID === 'bible_study' && ( <ScriptureSanctuary onBack={() => handleSetViewState('directory')} language={language} isProMember={isProMember} /> )}
+                {activeViewID === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><RecordingList onBack={() => handleSetViewState('dashboard')} onStartLiveSession={handleStartLiveSession} /></div> )}
+                {(activeViewID === 'check_designer' || activeViewID === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} isProMember={isProMember} /> )}
+                {activeViewID === 'shipping_labels' && ( <ShippingLabelApp onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'icon_generator' && ( <IconGenerator onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} iconId={activeItemId || undefined} isProMember={isProMember} /> )}
+                {activeViewID === 'notebook_viewer' && ( <NotebookViewer onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} notebookId={activeItemId || undefined} /> )}
+                {(activeViewID === 'card_workshop' || activeViewID === 'card_viewer') && ( <CardWorkshop onBack={() => handleSetViewState('dashboard')} cardId={activeItemId || undefined} isViewer={activeViewID === 'card_viewer' || !!activeItemId} /> )}
+                {activeViewID === 'mission' && ( <MissionManifesto onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
+                {activeViewID === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('dashboard')} user={userProfile} /> )}
+                {activeViewID === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} isProMember={isProMember} /> )}
+                {activeViewID === 'graph_studio' && ( <GraphStudio onBack={() => handleSetViewState('dashboard')} isProMember={isProMember} /> )}
+                {activeViewID === 'story' && ( <ProjectStory onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'privacy' && ( <PrivacyPolicy onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'user_guide' && ( <UserManual onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'bible_study' && ( <ScriptureSanctuary onBack={() => handleSetViewState('dashboard')} language={language} isProMember={isProMember} /> )}
             </GuardedView>
         </main>
 

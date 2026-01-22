@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject, RecordingSession } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -22,11 +21,11 @@ import {
   Cloud, Award, Terminal, CodeSquare, Quote, ImageIcon, LayoutPanelTop, 
   TerminalSquare, FolderOpen, HardDrive, Shield, Database, Link as LinkIcon, UserCircle, 
   Calendar, Palette, Award as AwardIcon, CheckCircle2, AlertTriangle, TrendingUp, Presentation, Rocket, Flame, ShieldOff, RefreshCw as RefreshIcon,
-  FolderPlus, Share2, Crown
+  FolderPlus, Share2, Crown, Terminal as TerminalIcon, FileCode, ExternalLink as ExternalLinkIcon, CodeSquare as CodeIcon, ChevronDown
 } from 'lucide-react';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext, stopAllPlatformAudio } from '../utils/audioUtils';
 import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
-import { ensureFolder, uploadToDrive, downloadDriveFileAsBlob, deleteDriveFile, ensureCodeStudioFolder } from '../services/googleDriveService';
+import { ensureFolder, uploadToDrive, downloadDriveFileAsBlob, deleteDriveFile, ensureCodeStudioFolder, getDrivePreviewUrl } from '../services/googleDriveService';
 
 interface OptimizedStarStory {
   title: string;
@@ -50,6 +49,15 @@ interface MockInterviewReport {
   idealAnswers?: { question: string, expectedAnswer: string, rationale: string }[];
   learningMaterial: string; 
   todoList?: string[];
+  sourceCode?: CodeFile[];
+  transcript?: TranscriptItem[];
+}
+
+interface ApiLog {
+    time: string;
+    msg: string;
+    type: 'info' | 'error' | 'warn';
+    code?: string;
 }
 
 interface MockInterviewProps {
@@ -126,6 +134,9 @@ const createInterviewFileTool: any = {
 const EvaluationReportDisplay = ({ report }: { report: MockInterviewReport }) => {
     if (!report) return null;
 
+    const [expandedFileIndex, setExpandedFileIndex] = useState<number | null>(null);
+    const [showTranscript, setShowTranscript] = useState(false);
+
     return (
         <div className="w-full space-y-8 animate-fade-in-up">
             <div className="flex flex-wrap justify-center gap-6">
@@ -141,6 +152,95 @@ const EvaluationReportDisplay = ({ report }: { report: MockInterviewReport }) =>
                     </div>
                 </div>
             </div>
+
+            {/* Source Code Artifacts Section */}
+            {report.sourceCode && report.sourceCode.length > 0 && (
+                <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] shadow-xl">
+                    <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <FileCode size={18} /> Neural Source Artifacts
+                    </h4>
+                    <div className="space-y-4">
+                        {report.sourceCode.map((file, idx) => {
+                            const driveUrl = file.driveId ? getDrivePreviewUrl(file.driveId) : null;
+                            const isExpanded = expandedFileIndex === idx;
+
+                            return (
+                                <div key={idx} className="border border-slate-800 rounded-2xl overflow-hidden bg-slate-950/50">
+                                    <div 
+                                        className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-800/50 transition-colors"
+                                        onClick={() => setExpandedFileIndex(isExpanded ? null : idx)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-indigo-600/20 rounded-lg text-indigo-400">
+                                                <CodeIcon size={14} />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-white uppercase tracking-tight">{file.name}</p>
+                                                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{file.language}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            {driveUrl && (
+                                                <a 
+                                                    href={driveUrl} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="p-2 bg-slate-800 hover:bg-indigo-600 rounded-lg text-slate-400 hover:text-white transition-all border border-slate-700"
+                                                    title="Open in Google Drive"
+                                                >
+                                                    <ExternalLinkIcon size={14} />
+                                                </a>
+                                            )}
+                                            {isExpanded ? <ChevronDown size={18} className="text-slate-600 rotate-180 transition-transform" /> : <ChevronDown size={18} className="text-slate-600 transition-transform" />}
+                                        </div>
+                                    </div>
+                                    {isExpanded && (
+                                        <div className="p-4 border-t border-slate-800 animate-fade-in-up">
+                                            <pre className="p-6 bg-black/40 rounded-xl text-xs font-mono text-indigo-200 overflow-x-auto leading-relaxed max-h-[400px]">
+                                                <code>{file.content}</code>
+                                            </pre>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* Chat Transcript Section */}
+            {report.transcript && report.transcript.length > 0 && (
+                <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] shadow-xl overflow-hidden">
+                    <div 
+                        className="flex items-center justify-between cursor-pointer group"
+                        onClick={() => setShowTranscript(!showTranscript)}
+                    >
+                        <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                            <MessageCircleCode size={18} /> Interview Chat Record
+                        </h4>
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500 group-hover:text-indigo-400 transition-colors">
+                            {showTranscript ? 'Hide History' : 'View History'}
+                            <ChevronDown size={16} className={`transition-transform duration-300 ${showTranscript ? 'rotate-180' : ''}`} />
+                        </div>
+                    </div>
+                    
+                    {showTranscript && (
+                        <div className="mt-8 space-y-4 max-h-[500px] overflow-y-auto pr-4 scrollbar-thin scrollbar-thumb-slate-800">
+                            {report.transcript.map((msg, i) => (
+                                <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
+                                    <span className={`text-[8px] font-black uppercase mb-1 tracking-widest ${msg.role === 'user' ? 'text-indigo-400' : 'text-red-400'}`}>
+                                        {msg.role === 'user' ? 'Candidate' : 'Interviewer'}
+                                    </span>
+                                    <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-300 rounded-tl-sm border border-slate-700'}`}>
+                                        {msg.text}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-slate-900 border border-slate-800 p-6 rounded-[2.5rem] shadow-xl">
@@ -216,18 +316,22 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [isRecovering, setIsRecovering] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
+  const transcriptRef = useRef<TranscriptItem[]>([]);
   const [files, setFiles] = useState<CodeFile[]>([]);
   const filesRef = useRef<CodeFile[]>([]); 
   const [activeFileIndex, setActiveFileIndex] = useState(0);
   const activeFileIndexRef = useRef(0);
   const [volume, setVolume] = useState(0);
 
+  const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
+
   const [interviewDuration, setInterviewDuration] = useState(15); 
   const [timeLeft, setTimeLeft] = useState(15 * 60); 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoReconnectAttempts = useRef(0);
-  const maxAutoRetries = 5;
+  const maxAutoRetries = 10;
   
   const [isLoading, setIsLoading] = useState(false);
   const [report, setReport] = useState<MockInterviewReport | null>(null);
@@ -237,6 +341,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const sessionFolderIdRef = useRef<string | null>(null);
   const currentUser = auth?.currentUser;
 
+  const addApiLog = useCallback((msg: string, type: ApiLog['type'] = 'info', code?: string) => {
+      const time = new Date().toLocaleTimeString();
+      setApiLogs(prev => [{ time, msg, type, code }, ...prev].slice(0, 100));
+  }, []);
+
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
@@ -244,6 +353,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   useEffect(() => {
     activeFileIndexRef.current = activeFileIndex;
   }, [activeFileIndex]);
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
 
   useEffect(() => {
     if (view === 'archive' && auth.currentUser) {
@@ -282,26 +395,31 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     if (serviceRef.current) {
         const syncMessage = `NEURAL SNAPSHOT: I have updated the code in "${file.name}". Please review the current state:\n\n\`\`\`${file.language}\n${file.content}\n\`\`\``;
         serviceRef.current.sendText(syncMessage);
+        addApiLog("Manually synced code to AI context", "info");
     }
-  }, []);
+  }, [addApiLog]);
 
   const connectToAI = useCallback(async (isAutoRetry = false) => {
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     
     if (isAutoRetry) {
         setIsRecovering(true);
+        addApiLog(`Attempting reconnection ${autoReconnectAttempts.current + 1}/${maxAutoRetries}...`, "warn");
         if (serviceRef.current) await serviceRef.current.disconnect();
     } else {
         setIsLive(false);
         setIsRecovering(false);
         autoReconnectAttempts.current = 0;
+        addApiLog("Starting fresh AI connection handshake", "info");
     }
 
     const service = new GeminiLiveService();
     serviceRef.current = service;
 
+    const isResuming = isAutoRetry || transcriptRef.current.length > 0;
+
     const systemInstruction = `
-        You are conducting a professional mock interview. 
+        You are conducting a professional technical mock interview. 
         MODE: ${interviewMode.toUpperCase()}
         PROGRAMMING LANGUAGE: ${interviewLanguage.toUpperCase()}
         INTERVIEWER PERSONA: ${interviewerPersona}
@@ -309,14 +427,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         CANDIDATE: ${userProfile?.displayName || 'Candidate'}
         TIME LIMIT: ${interviewDuration} minutes
 
-        CRITICAL INSTRUCTIONS:
-        1. YOU MUST CONDUCT THE INTERVIEW IN ${interviewLanguage.toUpperCase()}. Do NOT change to Python or any other language unless explicitly requested.
-        2. Start by introducing yourself and the problem.
-        3. For CODING: Create a problem file using 'create_interview_file'. Use the extension for ${interviewLanguage.toUpperCase()}.
-        4. YOU MUST use 'get_current_code' periodically to see what the candidate is typing.
-        5. Be conversational. Don't just lecture.
-        6. If the candidate asks you to "check my code" or "evaluate", call 'get_current_code' first.
-        7. IMPORTANT: If this is a RECONNECTION, do not restart the problem or change the language. Acknowledge the neural snapshot and continue exactly where we left off.
+        CRITICAL RECOVERY RULES:
+        1. IF YOU ARE RESUMING (Check first message): You MUST continue exactly where you left off. 
+        2. DO NOT greet the candidate again. 
+        3. DO NOT ask a new question if the candidate was already working on a problem.
+        4. YOU MUST use 'get_current_code' immediately after resuming to see the latest progress.
+        5. If you see code in the snapshot, acknowledge it briefly and resume the dialogue.
     `;
 
     try {
@@ -325,25 +441,52 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             onOpen: () => {
                 setIsLive(true);
                 setIsRecovering(false);
-                autoReconnectAttempts.current = 0;
+                addApiLog("Neural Link established", "info");
                 
-                // On reconnection, sync the state back to the AI
-                if (isAutoRetry && filesRef.current.length > 0) {
-                    const active = filesRef.current[activeFileIndexRef.current];
-                    const snapshot = `NEURAL LINK RESTORED: Resuming ${interviewLanguage.toUpperCase()} interview. Current focused file: "${active.name}".\n\nCODE SNAPSHOT:\n\`\`\`${active.language}\n${active.content}\n\`\`\`\n\nPlease acknowledge this state and continue exactly from where we stopped. Do not start a new problem. Remaining time: ${Math.floor(timeLeft / 60)} minutes.`;
-                    service.sendText(snapshot);
+                if (isResuming) {
+                    const active = filesRef.current[activeFileIndexRef.current] || filesRef.current[0];
+                    const recentTranscript = transcriptRef.current.slice(-6).map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
+                    
+                    const snapshot = `[NEURAL_SNAPSHOT - RECOVERY HANDSHAKE]
+                    RECOVERY MODE: ON
+                    We are resuming an active interview. 
+                    TIME REMAINING: ${Math.floor(timeLeft / 60)} minutes.
+                    
+                    CURRENT ACTIVE FILE: "${active?.name || 'Untitled'}"
+                    LATEST CODE STATE:
+                    \`\`\`${active?.language || 'c++'}
+                    ${active?.content || ""}
+                    \`\`\`
+                    
+                    CONVERSATION CONTEXT (Last few turns):
+                    ${recentTranscript}
+                    
+                    INSTRUCTION: Resume immediately. Do NOT introduce yourself. Acknowledge the code above and continue your interrogation.`;
+                    
+                    serviceRef.current.sendText(snapshot);
+                    addApiLog("Context snapshot dispatched for recovery", "info");
                 }
             },
-            onClose: () => {
+            onClose: (reason, code) => {
                 setIsLive(false);
+                addApiLog(`Connection lost: ${reason}`, "error", String(code));
                 if (autoReconnectAttempts.current < maxAutoRetries) {
                     autoReconnectAttempts.current++;
-                    reconnectTimeoutRef.current = setTimeout(() => connectToAI(true), 2000 + (autoReconnectAttempts.current * 1000));
+                    const delay = 1000 + (autoReconnectAttempts.current * 1500);
+                    addApiLog(`Scheduling retry in ${delay}ms`, "info");
+                    reconnectTimeoutRef.current = setTimeout(() => connectToAI(true), delay);
+                } else {
+                    setIsRecovering(false);
+                    addApiLog("Maximum reconnection attempts reached.", "error");
                 }
             },
             onError: (err, code) => {
                 setIsLive(false);
-                if (code !== 'RATE_LIMIT' && autoReconnectAttempts.current < maxAutoRetries) {
+                addApiLog(`API Error: ${err}`, "error", code);
+                if (code === 'RATE_LIMIT') {
+                    addApiLog("Rate limit hit. Cooling down for 10s...", "warn");
+                    reconnectTimeoutRef.current = setTimeout(() => connectToAI(true), 10000);
+                } else if (autoReconnectAttempts.current < maxAutoRetries) {
                     autoReconnectAttempts.current++;
                     reconnectTimeoutRef.current = setTimeout(() => connectToAI(true), 3000);
                 }
@@ -352,6 +495,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             onTranscript: (text, isUser) => {
                 setTranscript(prev => {
                     const role = isUser ? 'user' : 'ai';
+                    if (text.includes('[NEURAL_SNAPSHOT')) return prev;
+
                     if (prev.length > 0 && prev[prev.length - 1].role === role) {
                         return [...prev.slice(0, -1), { ...prev[prev.length - 1], text: prev[prev.length - 1].text + text }];
                     }
@@ -361,6 +506,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             onToolCall: async (toolCall) => {
                 for (const fc of toolCall.functionCalls) {
                     const args = fc.args as any;
+                    addApiLog(`Tool Call: ${fc.name}`, "info");
                     if (fc.name === 'create_interview_file') {
                         const filename = args.filename;
                         const content = args.content;
@@ -374,12 +520,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             loaded: true, isDirectory: false
                         };
 
-                        // Immediate Drive Sync if possible
                         const token = getDriveToken();
                         if (token && sessionFolderIdRef.current) {
                             try {
-                                await uploadToDrive(token, sessionFolderIdRef.current, filename, content);
-                            } catch(e) { console.warn("Failed to sync new interview file to drive", e); }
+                                const fileId = await uploadToDrive(token, sessionFolderIdRef.current, filename, content);
+                                newFile.driveId = fileId;
+                            } catch(e) { addApiLog("Drive sync failed for new file", "warn"); }
                         }
 
                         setFiles(prev => {
@@ -400,11 +546,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             const active = filesRef.current[activeFileIndexRef.current];
                             handleFileChange({ ...active, content: newContent });
                             
-                            // Background Drive Sync
                             const token = getDriveToken();
                             if (token && sessionFolderIdRef.current && !active.path.startsWith('local-')) {
-                                // Extract fileId from drive:// path if available or use filename
-                                uploadToDrive(token, sessionFolderIdRef.current, active.name, newContent).catch(console.warn);
+                                uploadToDrive(token, sessionFolderIdRef.current, active.name, newContent).then(fid => {
+                                    handleFileChange({ ...active, content: newContent, driveId: fid });
+                                }).catch(console.warn);
                             }
                         }
                         service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: "File updated." } });
@@ -412,15 +558,18 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 }
             }
         }, [{ functionDeclarations: [getCodeTool, createInterviewFileTool, updateActiveFileTool] }]);
-    } catch(e) {
+    } catch(e: any) {
         setIsLive(false);
         setIsRecovering(false);
+        addApiLog(`Connection Exception: ${e.message}`, "error");
     }
-  }, [interviewMode, interviewLanguage, interviewerPersona, jobDescription, userProfile, interviewDuration, timeLeft]);
+  }, [interviewMode, interviewLanguage, interviewerPersona, jobDescription, userProfile, interviewDuration, timeLeft, addApiLog]);
 
   const handleStartInterview = async () => {
     setIsLoading(true);
+    setApiLogs([]);
     const sid = generateSecureId().substring(0, 8);
+    addApiLog("Initializing workspace and Drive folders...", "info");
     
     try {
         const token = getDriveToken() || await connectGoogleDrive();
@@ -428,9 +577,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             const root = await ensureCodeStudioFolder(token);
             const interviewsFolder = await ensureFolder(token, 'MockInterviews', root);
             sessionFolderIdRef.current = await ensureFolder(token, `Session_${sid}_${interviewLanguage}`, interviewsFolder);
+            addApiLog("Drive vault secured.", "info");
         }
     } catch(e) {
-        console.warn("Drive initialization skipped", e);
+        addApiLog("Drive integration disabled for this session.", "warn");
     }
 
     const welcomeFile: CodeFile = {
@@ -449,6 +599,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setTimeLeft(interviewDuration * 60);
 
     setTranscript([]);
+    transcriptRef.current = [];
     setReport(null);
     setView('active');
     
@@ -460,6 +611,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       setIsLoading(true);
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       autoReconnectAttempts.current = maxAutoRetries;
+      addApiLog("Interview ended by user. Generating technical evaluation...", "info");
 
       if (serviceRef.current) {
           try {
@@ -473,7 +625,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const fullTranscript = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
-          const finalCode = files.map(f => `FILE: ${f.name}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
+          const finalCodeStr = files.map(f => `FILE: ${f.name}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
           
           const prompt = `Perform a comprehensive technical evaluation of this mock interview. 
           Language: ${interviewLanguage.toUpperCase()}. 
@@ -483,7 +635,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           ${fullTranscript}
           
           FINAL CODE:
-          ${finalCode}`;
+          ${finalCodeStr}`;
 
           const response = await ai.models.generateContent({ 
             model: 'gemini-3-flash-preview', 
@@ -510,10 +662,13 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           });
 
           if (!response.text) throw new Error("Empty response from evaluation engine.");
-          const reportData = JSON.parse(response.text);
+          const reportData: MockInterviewReport = JSON.parse(response.text);
+          
+          // Inject code and transcript artifacts into report
+          reportData.sourceCode = [...files];
+          reportData.transcript = [...transcript];
           setReport(reportData);
 
-          // Save to Firestore & Drive
           if (auth.currentUser) {
               const recordingId = generateSecureId();
               await saveInterviewRecording({ 
@@ -544,6 +699,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           setView('feedback');
       } catch (e: any) { 
           console.error("Evaluation failed", e);
+          addApiLog("Evaluation synthesis failed.", "error");
           alert("Neural Evaluation failed to synthesize. Returning to main menu.");
           setView('selection');
       } finally { 
@@ -654,7 +810,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         )}
 
         {view === 'active' && (
-            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
                 <div className="flex-1 flex flex-col bg-slate-950 relative overflow-hidden">
                     <header className="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 shrink-0">
                         <div className="flex items-center gap-3">
@@ -663,12 +819,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                 {isRecovering ? 'Neural Link Interrupted' : 'Live Recording Studio'}
                             </span>
                             <div className="flex items-center gap-2 px-3 py-1 bg-slate-950 border border-slate-800 rounded-lg shadow-inner">
-                                <Timer size={14} className={timeLeft < 120 ? 'text-red-500 animate-pulse' : 'text-indigo-400'}/>
+                                <Clock size={14} className={timeLeft < 120 ? 'text-red-500 animate-pulse' : 'text-indigo-400'}/>
                                 <span className={`text-xs font-mono font-black ${timeLeft < 120 ? 'text-red-400' : 'text-white'}`}>{formatTimeLeft(timeLeft)}</span>
                             </div>
-                            <div className="px-3 py-1 bg-indigo-950/40 border border-indigo-500/20 rounded-lg text-[9px] font-black text-indigo-300 uppercase tracking-tighter shadow-lg">
-                                {interviewLanguage.toUpperCase()}
-                            </div>
+                            <button onClick={() => setShowLogs(!showLogs)} className={`p-2 rounded-lg transition-colors ${showLogs ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                                <TerminalIcon size={16}/>
+                            </button>
                         </div>
                         <div className="flex items-center gap-4">
                             <div className="flex items-center gap-2">
@@ -688,6 +844,34 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             <CodeStudio onBack={() => {}} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={() => {}} initialFiles={files} isInterviewerMode={true} onFileChange={handleFileChange} externalChatContent={transcript} isAiThinking={isThinking} onSyncCodeWithAi={handleSyncCodeWithAi} />
                         )}
                     </div>
+
+                    {/* API Logs Overlay */}
+                    {showLogs && (
+                        <div className="absolute top-14 left-0 w-80 h-[400px] bg-slate-900/95 border-r border-b border-indigo-500/30 shadow-2xl z-[150] flex flex-col animate-fade-in-up backdrop-blur-md">
+                            <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Neural Diagnostic Matrix</span>
+                                <button onClick={() => setShowLogs(false)} className="text-slate-500 hover:text-white"><X size={14}/></button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 font-mono text-[10px] space-y-3 scrollbar-hide">
+                                {apiLogs.length === 0 ? (
+                                    <p className="text-slate-600 italic">No events recorded.</p>
+                                ) : (
+                                    apiLogs.map((log, i) => (
+                                        <div key={i} className={`p-2 rounded-lg border ${log.type === 'error' ? 'bg-red-950/20 border-red-900/50 text-red-300' : log.type === 'warn' ? 'bg-amber-950/20 border-amber-900/50 text-amber-300' : 'bg-slate-950/50 border-slate-800 text-slate-300'}`}>
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className="opacity-40">{log.time}</span>
+                                                {log.code && <span className="px-1.5 py-0.5 bg-black/40 rounded text-[8px] font-black">{log.code}</span>}
+                                            </div>
+                                            <p className="break-words leading-relaxed">{log.msg}</p>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                            <div className="p-3 bg-slate-950/50 border-t border-slate-800 text-center">
+                                <button onClick={() => setApiLogs([])} className="text-[9px] font-bold text-slate-500 hover:text-white uppercase tracking-widest transition-colors">Clear Ledger</button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         )}

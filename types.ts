@@ -38,6 +38,7 @@ export interface UserProfile {
   preferredReaderTheme?: ReaderTheme;
   preferredRecordingTarget?: 'youtube' | 'drive';
   languagePreference?: 'en' | 'zh';
+  preferredScriptureView?: 'dual' | 'en' | 'zh';
   interests?: string[];
   senderAddress?: string;
   savedSignatureUrl?: string;
@@ -515,7 +516,7 @@ export interface Booking {
   transcriptUrl?: string | null;
 }
 
-export type ViewID = 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'groups' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'shipping_viewer' | 'icon_generator' | 'icon_viewer' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study';
+export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'groups' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'shipping_viewer' | 'icon_generator' | 'icon_viewer' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study';
 
 export interface MockInterviewRecording {
   id: string;
@@ -533,4 +534,13 @@ export interface MockInterviewRecording {
   coachingTranscript?: TranscriptItem[]; 
   feedback?: string;
   visibility?: 'public' | 'private';
+}
+
+/**
+ * MISSING EXPORT FIX: Added DualVerse interface for ScriptureSanctuary component.
+ */
+export interface DualVerse {
+  number: string;
+  en: string;
+  zh: string;
 }

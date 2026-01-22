@@ -1,10 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, ReaderTheme, UserAvailability } from '../types';
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, ChevronRight, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive, Calendar, Clock, Info, Globe2, Terminal, Languages, Key } from 'lucide-react';
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, ChevronRight, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive, Calendar, Clock, Info, Globe2, Terminal, Languages, Key, Speaker, BookOpen } from 'lucide-react';
 import { logUserActivity, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut, getDriveToken, connectGoogleDrive } from '../services/authService';
-import { clearAudioCache } from '../services/tts';
 import { TOPIC_CATEGORIES } from '../utils/initialData';
 import { Whiteboard } from './Whiteboard';
 import { GoogleGenAI } from '@google/genai';
@@ -29,6 +28,8 @@ const THEME_OPTIONS: { id: ReaderTheme, label: string, icon: any, desc: string }
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+const LANGUAGES = ['C++', 'Python', 'JavaScript', 'TypeScript', 'Rust', 'Go', 'Java', 'C#', 'Swift', 'PHP', 'HTML/CSS'];
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
   isOpen, onClose, user, onUpdateProfile, onUpgradeClick, isSuperAdmin, onNavigateAdmin
 }) => {
@@ -42,6 +43,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [recordingTarget, setRecordingTarget] = useState<'youtube' | 'drive'>(user.preferredRecordingTarget || 'drive');
   const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
   const [languagePreference, setLanguagePreference] = useState<'en' | 'zh'>(user.languagePreference || 'en');
+  const [preferredScriptureView, setPreferredScriptureView] = useState<'dual' | 'en' | 'zh'>(user.preferredScriptureView || 'dual');
   const [cloudTtsApiKey, setCloudTtsApiKey] = useState(user.cloudTtsApiKey || '');
   
   // Availability State
@@ -77,6 +79,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setReaderTheme(user.preferredReaderTheme || 'slate');
           setRecordingTarget(user.preferredRecordingTarget || 'drive');
           setLanguagePreference(user.languagePreference || 'en');
+          setPreferredScriptureView(user.preferredScriptureView || 'dual');
           setSenderAddress(user.senderAddress || '');
           setSignaturePreview(user.savedSignatureUrl || '');
           setNextCheckNumber(user.nextCheckNumber || 1001);
@@ -180,6 +183,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               preferredReaderTheme: readerTheme,
               preferredRecordingTarget: recordingTarget,
               languagePreference,
+              preferredScriptureView,
               senderAddress,
               savedSignatureUrl: finalSigUrl,
               nextCheckNumber,
@@ -267,6 +271,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     <div className="space-y-4">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Globe size={16} className="text-indigo-400"/> Primary Language & Neural Voice</h4>
+                        <p className="text-[10px] text-slate-500 uppercase font-black px-1">This setting dictates the default spoken language and UI locale.</p>
+                        <div className="p-1.5 bg-slate-950 border border-slate-800 rounded-2xl flex shadow-inner">
+                            <button onClick={() => setLanguagePreference('en')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${languagePreference === 'en' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>English</button>
+                            <button onClick={() => setLanguagePreference('zh')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${languagePreference === 'zh' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Chinese (中文)</button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><BookOpen size={16} className="text-amber-500"/> Default Scripture View Mode</h4>
+                        <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-950 border border-slate-800 rounded-2xl shadow-inner">
+                            <button onClick={() => setPreferredScriptureView('dual')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${preferredScriptureView === 'dual' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'}`}>Bilingual</button>
+                            <button onClick={() => setPreferredScriptureView('en')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${preferredScriptureView === 'en' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'}`}>English</button>
+                            <button onClick={() => setPreferredScriptureView('zh')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${preferredScriptureView === 'zh' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'}`}>Chinese</button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
                         <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Key size={16} className="text-amber-400"/> Dedicated Cloud TTS Key</h4>
                         <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
                             <p className="text-[10px] text-slate-400 leading-relaxed">If you are getting "API key not valid" on enterprise voices, enter a dedicated GCP console key here.</p>
@@ -288,13 +310,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="space-y-8 animate-fade-in">
                     <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-center gap-3">
                         <Github className="text-indigo-400" size={24}/>
-                        <div><h3 className="text-sm font-bold text-white">GitHub Integration</h3><p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-0.5">Auto-Refract Repositories in Builder Studio</p></div>
+                        <div><h3 className="text-sm font-bold text-white">GitHub & IDE Sync</h3><p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-0.5">Configure Neural Workspace Defaults</p></div>
                     </div>
                     <div className="space-y-6">
-                        <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Default Repository URL</label>
-                            <input type="text" value={defaultRepo} onChange={e => setDefaultRepo(e.target.value)} placeholder="https://github.com/owner/repo" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/>
-                            <p className="text-[9px] text-slate-600 mt-2 ml-1">Builder Studio will automatically load this repository when the GitHub source is selected.</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Primary Language / Stack</label>
+                                <select 
+                                    value={defaultLanguage} 
+                                    onChange={e => setDefaultLanguage(e.target.value)} 
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                                >
+                                    {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Default Repository URL</label>
+                                <input type="text" value={defaultRepo} onChange={e => setDefaultRepo(e.target.value)} placeholder="https://github.com/owner/repo" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/>
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Headline</label><input type="text" value={headline} onChange={e => setHeadline(e.target.value)} placeholder="Senior Software Engineer..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/></div>
