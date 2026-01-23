@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ArrowLeft, Book, Sparkles } from 'lucide-react';
 import { MarkdownView } from './MarkdownView';
@@ -47,7 +46,7 @@ Create software or write documents with an AI pair-partner.
 
 ### 4. 📂 Getting Started
 *   **Sign In**: Use your Google Account for seamless sync. Everything you do is saved to your personal Google Drive for privacy.
-*   **The Magic Button**: Not sure where to start? Click the **Neural Magic** button and just *speak* your goal. We'll find the right tool for you.
+*   **The Magic Button**: Not sure where to start? Click the **AI VoiceCast** button and just *speak* your goal. We'll find the right tool for you.
 
 ---
 

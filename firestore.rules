@@ -42,6 +42,15 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
+    // LECTURE CACHE (Community Content)
+    // ----------------------------------------------------------------------
+    match /lecture_cache/{cacheId} {
+      allow read: if true;
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // ----------------------------------------------------------------------
     // USERS & IDENTITY
     // ----------------------------------------------------------------------
     match /users/{userId} {

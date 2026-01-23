@@ -1,4 +1,3 @@
-
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -41,6 +40,7 @@ const TASKS_COLLECTION = 'tasks';
 const NOTEBOOKS_COLLECTION = 'notebooks';
 const INVITATIONS_COLLECTION = 'invitations';
 const INTERVIEWS_COLLECTION = 'mock_interviews';
+const LECTURE_CACHE_COLLECTION = 'lecture_cache';
 
 export const ADMIN_GROUP = 'admin_neural_prism';
 
@@ -100,6 +100,25 @@ const sanitizeData = (data: any) => {
     }));
     return cleaned; 
 };
+
+// --- Lecture Caching ---
+
+export async function getCloudCachedLecture(channelId: string, subTopicId: string, lang: string): Promise<GeneratedLecture | null> {
+    if (!db) return null;
+    // Sanitize subTopicId to prevent path issues if it's complex
+    const docId = `${channelId}_${subTopicId}_${lang}`.replace(/\//g, '_');
+    const snap = await getDoc(doc(db, LECTURE_CACHE_COLLECTION, docId));
+    return snap.exists() ? (snap.data() as GeneratedLecture) : null;
+}
+
+export async function saveCloudCachedLecture(channelId: string, subTopicId: string, lang: string, lecture: GeneratedLecture): Promise<void> {
+    if (!db) return;
+    const docId = `${channelId}_${subTopicId}_${lang}`.replace(/\//g, '_');
+    await setDoc(doc(db, LECTURE_CACHE_COLLECTION, docId), sanitizeData({
+        ...lecture,
+        cachedAt: Date.now()
+    }));
+}
 
 // --- Admin & Cleanup ---
 
@@ -696,7 +715,7 @@ export async function getPublicChannels(): Promise<Channel[]> {
 
 export async function getChannelsByIds(ids: string[]): Promise<Channel[]> {
     if (!db || ids.length === 0) return [];
-    const q = query(collection(db, CHANNELS_COLLECTION), where(documentId(), 'in', ids.slice(0, 10)));
+    const q = query(collection(db, USERS_COLLECTION), where(documentId(), 'in', ids.slice(0, 10)));
     const snap = await getDocs(q);
     return snap.docs.map(d => ({ ...d.data(), id: d.id } as Channel));
 }

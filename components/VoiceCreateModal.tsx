@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Channel, Group } from '../types';
 import { generateChannelFromPrompt } from '../services/channelGenerator';
@@ -110,7 +109,7 @@ export const VoiceCreateModal: React.FC<VoiceCreateModalProps> = ({ isOpen, onCl
           <h2 className="text-xl font-bold text-white flex items-center space-x-3">
             <div className="p-2 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-500/20"><Wand2 className="text-white" size={20} /></div>
             <div className="flex flex-col">
-                <span className="leading-tight">Magic Creator</span>
+                <span className="leading-tight">AI VoiceCast</span>
                 <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Consultative Assistant</span>
             </div>
           </h2>

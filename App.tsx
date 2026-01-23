@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -85,7 +84,7 @@ const UI_TEXT = {
     appTitle: "Neural Prism",
     directory: "Discovery", 
     search: "Search for activities...",
-    magic: "Neural Magic",
+    magic: "AI VoiceCast",
     podcasts: "Activity Hub",
     mission: "Vision",
     code: "Builder Studio",
@@ -121,7 +120,7 @@ const UI_TEXT = {
     appTitle: "神经棱镜",
     directory: "发现",
     search: "搜索活动...",
-    magic: "神经魔法",
+    magic: "智能语音",
     podcasts: "活动中心",
     mission: "愿景",
     code: "构建者工作室",

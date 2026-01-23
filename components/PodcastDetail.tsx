@@ -1,19 +1,20 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile } from '../types';
-import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, RefreshCcw, Wand2, Edit3, Save, ShieldCheck, ImageIcon, Lock } from 'lucide-react';
+import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, RefreshCcw, Wand2, Edit3, Save, ShieldCheck, ImageIcon, Lock, Cloud } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { generateCurriculum } from '../services/curriculumGenerator';
 import { synthesizeSpeech } from '../services/tts';
 import { OFFLINE_CHANNEL_ID, OFFLINE_CURRICULUM, OFFLINE_LECTURES } from '../utils/offlineContent';
 import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
 import { cacheLectureScript, getCachedLectureScript, saveUserChannel } from '../utils/db';
-import { getGlobalAudioContext, registerAudioOwner, stopAllPlatformAudio, getGlobalAudioGeneration, warmUpAudioContext } from '../utils/audioUtils';
+import { getGlobalAudioContext, registerAudioOwner, stopAllPlatformAudio, getGlobalAudioGeneration, warmUpAudioContext, decodeRawPcm } from '../utils/audioUtils';
 import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { ShareModal } from './ShareModal';
-import { isUserAdmin } from '../services/firestoreService';
+import { auth } from '../services/firebaseConfig';
+import { isUserAdmin, getCloudCachedLecture, saveCloudCachedLecture } from '../services/firestoreService';
 
 interface PodcastDetailProps {
   channel: Channel;
@@ -50,13 +51,15 @@ const UI_TEXT = {
     editScript: "Edit Script Manually",
     saveScript: "Save Script Override",
     editChannel: "Edit Channel Settings",
-    proToRefract: "Pro Required to Refract"
+    proToRefract: "Pro Required to Refract",
+    cloudSync: "Syncing with Cloud Vault...",
+    foundInVault: "Restored from Sanctuary Vault"
   },
   zh: {
     back: "返回", curriculum: "课程大纲", selectTopic: "选择一个课程开始阅读",
     generating: "正在准备材料...", genDesc: "AI 正在编写讲座脚本。",
     lectureTitle: "讲座文稿", downloadPdf: "下载 PDF",
-    playAudio: "播放讲座音频", stopAudio: "停止播放",
+    playAudio: "播放讲座音频", stopAudio: "停止朗读",
     buffering: "神经合成中...", regenerate: "神经重构",
     regenerating: "正在重构...",
     regenCurriculum: "重构课程大纲",
@@ -65,7 +68,9 @@ const UI_TEXT = {
     editScript: "手动编辑文稿",
     saveScript: "保存文稿修改",
     editChannel: "编辑频道设置",
-    proToRefract: "需要 Pro 权限进行重构"
+    proToRefract: "需要 Pro 权限进行重构",
+    cloudSync: "正在同步云端金库...",
+    foundInVault: "已从圣所金库恢复"
   }
 };
 
@@ -81,6 +86,8 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   const [activeSubTopicTitle, setActiveSubTopicTitle] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
+  const [loadingStatus, setLoadingStatus] = useState<string>(t.generating);
+  const [dataSource, setDataSource] = useState<'vault' | 'ai' | null>(null);
 
   // Manual Editing State
   const [isEditing, setIsEditing] = useState(false);
@@ -140,37 +147,81 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
     };
   }, [stopPlaybackInternal]);
 
-  const handleTopicClick = async (topicTitle: string, subTopicId?: string) => {
+  const handleTopicClick = useCallback(async (topicTitle: string, subTopicId?: string) => {
     stopPlaybackInternal();
     setIsEditing(false);
-    setActiveSubTopicId(subTopicId || null);
+    const sid = subTopicId || 'default';
+    setActiveSubTopicId(sid);
     setActiveSubTopicTitle(topicTitle);
     setActiveLecture(null);
     setIsLoadingLecture(true);
+    setLoadingStatus(t.generating);
+    setDataSource(null);
+
     try {
-        const cacheKey = `lecture_${channel.id}_${subTopicId}_${language}`;
-        const cached = await getCachedLectureScript(cacheKey);
-        if (cached) { 
-            setActiveLecture(cached); 
-            setEditBuffer(JSON.stringify(cached, null, 2));
+        const cacheKey = `lecture_${channel.id}_${sid}_${language}`;
+        
+        // 1. Try Local IndexedDB Cache
+        const cachedLocal = await getCachedLectureScript(cacheKey);
+        if (cachedLocal) { 
+            setActiveLecture(cachedLocal); 
+            setEditBuffer(JSON.stringify(cachedLocal, null, 2));
+            setIsLoadingLecture(false);
+            setDataSource('vault');
             return; 
         }
+
+        // 2. Try Cloud Firestore Cache
+        setLoadingStatus(t.cloudSync);
+        const cachedCloud = await getCloudCachedLecture(channel.id, sid, language);
+        if (cachedCloud) {
+            setActiveLecture(cachedCloud);
+            setEditBuffer(JSON.stringify(cachedCloud, null, 2));
+            // Backfill local cache
+            await cacheLectureScript(cacheKey, cachedCloud);
+            setIsLoadingLecture(false);
+            setDataSource('vault');
+            return;
+        }
         
-        // AUTO-REFRACT CHECK: Only pro members can trigger initial generation for custom content
+        // 3. AUTO-REFRACT CHECK: Only pro members can trigger initial generation for custom content
         if (!isProMember && channel.id !== OFFLINE_CHANNEL_ID && !SPOTLIGHT_DATA[channel.id]) {
             alert(t.proToRefract);
             setIsLoadingLecture(false);
             return;
         }
 
+        // 4. AI Generation Fallback
+        setLoadingStatus(t.generating);
         const script = await generateLectureScript(topicTitle, channel.description, language, channel.id, channel.voiceName);
         if (script) { 
             setActiveLecture(script); 
             setEditBuffer(JSON.stringify(script, null, 2));
+            setDataSource('ai');
+            // Save to both caches
             await cacheLectureScript(cacheKey, script); 
+            if (auth.currentUser) {
+                await saveCloudCachedLecture(channel.id, sid, language, script);
+            }
         }
-    } finally { setIsLoadingLecture(false); }
-  };
+    } catch (e) {
+        console.error("Lecture retrieval failed", e);
+    } finally { 
+        setIsLoadingLecture(false); 
+    }
+  }, [channel.id, channel.description, channel.voiceName, language, stopPlaybackInternal, t, isProMember]);
+
+  // AUTO-SELECT FIRST TOPIC ON MOUNT
+  useEffect(() => {
+    if (chapters.length > 0 && !activeSubTopicId && !isLoadingLecture) {
+        const firstChapter = chapters[0];
+        if (firstChapter.subTopics.length > 0) {
+            const firstSub = firstChapter.subTopics[0];
+            handleTopicClick(firstSub.title, firstSub.id);
+            setExpandedChapterId(firstChapter.id);
+        }
+    }
+  }, [chapters, activeSubTopicId, isLoadingLecture, handleTopicClick]);
 
   const handleRegenerateLecture = async () => {
     if (!activeSubTopicId || !activeSubTopicTitle) return;
@@ -190,8 +241,12 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
         if (script) {
             const cacheKey = `lecture_${channel.id}_${activeSubTopicId}_${language}`;
             await cacheLectureScript(cacheKey, script);
+            if (auth.currentUser) {
+                await saveCloudCachedLecture(channel.id, activeSubTopicId, language, script);
+            }
             setActiveLecture(script);
             setEditBuffer(JSON.stringify(script, null, 2));
+            setDataSource('ai');
         }
     } catch (e) {
         console.error("Regeneration failed", e);
@@ -207,7 +262,11 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
           setActiveLecture(parsed);
           const cacheKey = `lecture_${channel.id}_${activeSubTopicId}_${language}`;
           await cacheLectureScript(cacheKey, parsed);
+          if (auth.currentUser) {
+              await saveCloudCachedLecture(channel.id, activeSubTopicId, language, parsed);
+          }
           setIsEditing(false);
+          setDataSource('vault');
           alert("Lecture script manually updated.");
       } catch (e) {
           alert("Invalid JSON format. Please ensure the script matches the expected structure.");
@@ -231,13 +290,20 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
 
     try {
         const newChapters = await generateCurriculum(channel.title, channel.description, language);
-        if (newChapters) {
+        if (newChapters && newChapters.length > 0) {
             setChapters(newChapters);
             const updatedChannel = { ...channel, chapters: newChapters };
             if (onUpdateChannel) {
                 onUpdateChannel(updatedChannel);
             } else {
                 await saveUserChannel(updatedChannel);
+            }
+
+            // AUTO-SELECT FIRST TOPIC FROM NEW CURRICULUM
+            const firstSub = newChapters[0].subTopics[0];
+            if (firstSub) {
+                handleTopicClick(firstSub.title, firstSub.id);
+                setExpandedChapterId(newChapters[0].id);
             }
         }
     } catch (e) {
@@ -409,7 +475,13 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
             </div>
         </div>
         <div className="col-span-12 lg:col-span-8">
-          {isLoadingLecture ? (<div className="h-64 flex flex-col items-center justify-center p-12 text-center bg-slate-900/50 rounded-2xl animate-pulse"><Loader2 size={40} className="text-indigo-500 animate-spin mb-4" /><h3 className="text-lg font-bold text-white">{t.generating}</h3></div>) : activeLecture ? (
+          {isLoadingLecture ? (
+            <div className="h-64 flex flex-col items-center justify-center p-12 text-center bg-slate-900/50 rounded-2xl animate-pulse">
+                <Loader2 size={40} className="text-indigo-500 animate-spin mb-4" />
+                <h3 className="text-lg font-bold text-white">{loadingStatus}</h3>
+                <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-2">{t.genDesc}</p>
+            </div>
+          ) : activeLecture ? (
             <div className="space-y-6 animate-fade-in">
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 md:p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -418,6 +490,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                             {isPlaying && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>}
                             {t.lectureTitle} 
                             {isPlaying && <span className="text-indigo-400">• Session Active</span>}
+                            {dataSource === 'vault' && <span className="text-emerald-500 ml-2">Verified Cache</span>}
                         </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">

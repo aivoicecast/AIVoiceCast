@@ -223,8 +223,6 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
   // Added ref to break circular dependency between reading functions
   const startReadingSequenceRef = useRef<any>(null);
 
-  // Fix: Move all function definitions before any useEffect hook to avoid 'used before declaration' errors.
-
   /**
    * Helper to resolve the English storage key for a book name in either language.
    * This ensures consistent lookup in CHAPTER_COUNTS.
@@ -280,7 +278,6 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
       return { nextBook: null, nextChapter: null };
   }, [getStorageBookName, language]);
 
-  // Fix: Declaration of handleRefractScripture moved before first use.
   const handleRefractScripture = useCallback(async (book?: string, chapter?: string, autoPlay: boolean = false) => {
     const targetBook = book || selectedBook;
     const targetChapter = chapter || selectedChapter;
@@ -345,7 +342,6 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
     }
   }, [selectedBook, selectedChapter, t, addDebugLog, resetPlaybackState, getStorageBookName]);
 
-  // Fix: Declaration of startReadingSequence moved before first use.
   const startReadingSequence = useCallback(async (verses: DualVerse[], bookName: string, chapterNum: string, startIndex: number = 0) => {
       stopReading();
       
@@ -763,7 +759,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                               {parsedVerses.map((v, idx) => (
                                   <div 
                                     key={v.number} 
-                                    ref={el => verseRefs.current[v.number] = el} 
+                                    ref={el => { verseRefs.current[v.number] = el; }} 
                                     onClick={() => !isReading && setCurrentReadingIndex(idx)}
                                     className={`p-6 md:p-8 bg-slate-900/40 rounded-[2rem] md:rounded-[2.5rem] border transition-all shadow-lg relative group/verse cursor-pointer ${currentReadingIndex === idx ? 'border-indigo-500/60 bg-indigo-950/20 ring-4 ring-indigo-500/5' : 'border-slate-800 hover:border-slate-700'}`}
                                   >

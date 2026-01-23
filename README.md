@@ -1,4 +1,3 @@
-
 # 🌈 Neural Prism Platform
 
 **Refracting Super-Intelligence into Human Utility.**
@@ -39,10 +38,10 @@ When you click "Run", your code is not compiled into machine code on a heavy ser
 
 ### 2. Neural Interaction
 *   **Interactive Guides**: Don't just listen to podcasts; talk to guides who know the material inside out.
-*   **Live Studio**: Share your **Screen** or **Camera**. The AI can see your work and provide real-time feedback.
+*   **Live Studio**: Share your **Screen** or **Camera**. The guide can "see" what you are working on and provide instant feedback.
 
 ### 3. The Magic Button
-*   **Neural Magic**: Not sure where to start? Click the **Magic** button and speak your intent. We will find the right part of the spectrum for you.
+*   **AI VoiceCast**: Not sure where to start? Click the **AI VoiceCast** button and just speak your intent. We will find the right part of the spectrum for you.
 
 ---
 

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History, Signature } from 'lucide-react';
+import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History, Signature, UserPlus, QrCode as QrIcon, SendHorizonal } from 'lucide-react';
 import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
 import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile, registerIdentity, claimOfflinePayment, DEFAULT_MONTHLY_GRANT } from '../services/firestoreService';
 import { auth, db } from '../services/firebaseConfig';
@@ -8,6 +8,7 @@ import { onAuthStateChanged } from '@firebase/auth';
 import { generateMemberIdentity, requestIdentityCertificate, verifyCertificateOffline, verifySignature, signPayment, AIVOICECAST_TRUST_PUBLIC_KEY } from '../utils/cryptoUtils';
 import { generateSecureId } from '../utils/idUtils';
 import { getLocalPrivateKey, saveLocalPrivateKey } from '../utils/db';
+import { Visualizer } from './Visualizer';
 
 interface CoinWalletProps {
   onBack: () => void;
@@ -25,11 +26,16 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [ledgerFilter, setLedgerFilter] = useState<'all' | 'in' | 'out'>('all');
 
   // Transfer States
-  const [showTransfer, setShowTransfer] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [transferType, setTransferType] = useState<'online' | 'offline'>('online');
   const [transferAmount, setTransferAmount] = useState('');
   const [transferMemo, setTransferMemo] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
   const [paymentStep, setPaymentStep] = useState<'input' | 'processing' | 'receipt'>('input');
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [selectedRecipient, setSelectedRecipient] = useState<UserProfile | null>(null);
+  const [generatedToken, setGeneratedToken] = useState<string | null>(null);
 
   // Identity & Offline States
   const [isCreatingIdentity, setIsCreatingIdentity] = useState(false);
@@ -39,7 +45,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const [verifiedToken, setVerifiedToken] = useState<OfflinePaymentToken | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [isClaiming, setIsClaiming] = useState(false);
-  const [isAutoSyncing, setIsAutoSyncing] = useState(false);
 
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
 
@@ -57,6 +62,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               if (key) setPrivateKey(key);
           });
           loadTransactions();
+          getAllUsers().then(users => setAllUsers(users.filter(u => u.uid !== user.uid)));
       }
   }, [user?.uid]);
 
@@ -113,6 +119,58 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       }
   };
 
+  const handleSendOnline = async () => {
+      if (!user || !selectedRecipient || !transferAmount) return;
+      const amt = parseInt(transferAmount);
+      if (isNaN(amt) || amt <= 0) return alert("Invalid amount.");
+      if (amt > (user.coinBalance || 0)) return alert("Insufficient balance.");
+
+      setPaymentStep('processing');
+      try {
+          await transferCoins(selectedRecipient.uid, selectedRecipient.displayName, amt, transferMemo);
+          setPaymentStep('receipt');
+          handleRefresh();
+      } catch (e: any) {
+          alert("Transfer failed: " + e.message);
+          setPaymentStep('input');
+      }
+  };
+
+  const handleGenerateOfflineToken = async () => {
+      if (!user || !transferAmount || !privateKey || !user.certificate) return;
+      const amt = parseInt(transferAmount);
+      if (isNaN(amt) || amt <= 0) return alert("Invalid amount.");
+      
+      setPaymentStep('processing');
+      try {
+          const nonce = generateSecureId().substring(0, 12);
+          const timestamp = Date.now();
+          const paymentData = {
+              senderId: user.uid,
+              senderName: user.displayName,
+              recipientId: 'any', // Anyone with the token can claim
+              amount: amt,
+              timestamp,
+              nonce,
+              memo: transferMemo
+          };
+
+          const signature = await signPayment(privateKey, paymentData);
+          const token: OfflinePaymentToken = {
+              ...paymentData,
+              signature,
+              certificate: user.certificate
+          };
+
+          const encoded = btoa(JSON.stringify(token));
+          setGeneratedToken(encoded);
+          setPaymentStep('receipt');
+      } catch (e: any) {
+          alert("Signing failed: " + e.message);
+          setPaymentStep('input');
+      }
+  };
+
   const handleVerifyToken = async () => {
       if (!pastedToken.trim()) return;
       setIsVerifying(true);
@@ -143,10 +201,11 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       setIsClaiming(true);
       try {
           await claimOfflinePayment(verifiedToken);
-          alert(`Successfully claimed ${verifiedToken.amount} VoiceCoins!`);
           setVerifiedToken(null);
           setPastedToken('');
+          setShowTokenInput(false);
           handleRefresh();
+          alert(`Successfully claimed ${verifiedToken.amount} VoiceCoins!`);
       } catch (e: any) {
           alert("Claim failed: " + e.message);
       } finally {
@@ -169,6 +228,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       }
       return result;
   }, [transactions, ledgerSearch, ledgerFilter, user?.uid]);
+
+  const filteredRecipients = useMemo(() => {
+      if (!userSearch.trim()) return [];
+      const q = userSearch.toLowerCase();
+      return allUsers.filter(u => u.displayName.toLowerCase().includes(q) || (u.email && u.email.toLowerCase().includes(q))).slice(0, 5);
+  }, [allUsers, userSearch]);
 
   return (
     <div className="h-full bg-slate-950 text-slate-100 flex flex-col overflow-hidden animate-fade-in">
@@ -198,8 +263,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                           </div>
                       </div>
                       <div className="flex gap-3">
-                          <button onClick={() => setShowTokenInput(true)} className="px-6 py-3 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-2xl text-xs font-black uppercase tracking-widest text-white transition-all active:scale-95">Claim Offline</button>
-                          <button className="px-8 py-3 bg-white text-indigo-600 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl hover:scale-105 active:scale-95 transition-all">Send Coins</button>
+                          <button onClick={() => setShowTokenInput(true)} className="px-6 py-3 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-2xl text-xs font-black uppercase tracking-widest text-white transition-all active:scale-95">Receive</button>
+                          <button onClick={() => { setShowSendModal(true); setPaymentStep('input'); }} className="px-8 py-3 bg-white text-indigo-600 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl hover:scale-105 active:scale-95 transition-all">Send Coins</button>
                       </div>
                   </div>
               </div>
@@ -283,24 +348,176 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           </div>
       </main>
 
-      {/* Offline Claim Modal */}
+      {/* Send Modal */}
+      {showSendModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
+              <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-fade-in-up">
+                  <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
+                      <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                        <SendHorizonal className="text-indigo-400" size={18}/> Send Sovereign Assets
+                      </h3>
+                      <button onClick={() => setShowSendModal(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
+                  </div>
+
+                  <div className="p-8">
+                      {paymentStep === 'input' && (
+                          <div className="space-y-6">
+                              <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                  <button onClick={() => setTransferType('online')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'online' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>Online Transfer</button>
+                                  <button onClick={() => setTransferType('offline')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'offline' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>Neural Token</button>
+                              </div>
+
+                              {transferType === 'online' ? (
+                                  <div className="space-y-4">
+                                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Recipient</label>
+                                      {selectedRecipient ? (
+                                          <div className="flex items-center justify-between bg-indigo-900/20 border border-indigo-500/30 p-3 rounded-xl animate-fade-in">
+                                              <div className="flex items-center gap-3">
+                                                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">{selectedRecipient.displayName[0]}</div>
+                                                  <span className="text-sm font-bold">@{selectedRecipient.displayName}</span>
+                                              </div>
+                                              <button onClick={() => setSelectedRecipient(null)} className="p-1 hover:bg-white/10 rounded-full text-slate-400"><X size={14}/></button>
+                                          </div>
+                                      ) : (
+                                          <div className="relative">
+                                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={16}/>
+                                              <input 
+                                                type="text" 
+                                                value={userSearch}
+                                                onChange={e => setUserSearch(e.target.value)}
+                                                placeholder="Search members by name or email..."
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                              />
+                                              {filteredRecipients.length > 0 && (
+                                                  <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-700 rounded-xl mt-1 shadow-2xl z-20 overflow-hidden divide-y divide-slate-700">
+                                                      {filteredRecipients.map(r => (
+                                                          <button key={r.uid} onClick={() => { setSelectedRecipient(r); setUserSearch(''); }} className="w-full text-left px-4 py-3 hover:bg-slate-700 flex items-center gap-3 transition-colors">
+                                                              <div className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">{r.displayName[0]}</div>
+                                                              <span className="text-xs text-white">@{r.displayName}</span>
+                                                          </button>
+                                                      ))}
+                                                  </div>
+                                              )}
+                                          </div>
+                                      )}
+                                  </div>
+                              ) : (
+                                  <div className="p-4 bg-indigo-900/20 border border-indigo-500/20 rounded-2xl space-y-2">
+                                      <div className="flex items-center gap-2 text-indigo-300">
+                                          <Shield size={16}/>
+                                          <span className="text-xs font-bold uppercase">Sovereign Signing</span>
+                                      </div>
+                                      <p className="text-[10px] text-slate-400 leading-relaxed">This will generate an encrypted token using your local private key. Anyone with the token can claim the coins. Useful for gifting or offline exchange.</p>
+                                      {!privateKey && <p className="text-[10px] text-amber-500 font-bold">Register your identity first to sign tokens.</p>}
+                                  </div>
+                              )}
+
+                              <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Amount</label>
+                                      <div className="flex bg-slate-950 border border-slate-800 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
+                                          <input 
+                                            type="number" 
+                                            value={transferAmount}
+                                            onChange={e => setTransferAmount(e.target.value)}
+                                            className="w-full bg-transparent px-4 py-3 text-white text-lg font-black outline-none"
+                                            placeholder="0"
+                                          />
+                                          <div className="bg-slate-800 p-3 text-amber-400"><Coins size={18}/></div>
+                                      </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Purpose</label>
+                                      <input 
+                                        type="text" 
+                                        value={transferMemo}
+                                        onChange={e => setTransferMemo(e.target.value)}
+                                        placeholder="Optional memo..."
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                      />
+                                  </div>
+                              </div>
+
+                              <button 
+                                onClick={transferType === 'online' ? handleSendOnline : handleGenerateOfflineToken}
+                                disabled={isTransferring || !transferAmount || (transferType === 'online' && !selectedRecipient) || (transferType === 'offline' && !privateKey)}
+                                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
+                              >
+                                  {transferType === 'online' ? <Send size={18}/> : <Signature size={18}/>}
+                                  {transferType === 'online' ? 'Authorize Ledger Update' : 'Generate Signed Token'}
+                              </button>
+                          </div>
+                      )}
+
+                      {paymentStep === 'processing' && (
+                          <div className="py-20 text-center space-y-6 animate-pulse">
+                              <div className="relative mx-auto w-24 h-24">
+                                  <div className="absolute inset-0 border-4 border-indigo-500/10 rounded-full"></div>
+                                  <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                                  <div className="absolute inset-0 flex items-center justify-center"><Sparkles className="text-indigo-400" size={32}/></div>
+                              </div>
+                              <div className="space-y-2">
+                                <h4 className="text-xl font-black text-white italic uppercase tracking-tighter">Handshaking...</h4>
+                                <p className="text-xs text-slate-500 uppercase tracking-widest">Validating with Neural Network</p>
+                              </div>
+                          </div>
+                      )}
+
+                      {paymentStep === 'receipt' && (
+                          <div className="space-y-8 animate-fade-in-up">
+                              <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-[2.5rem] p-8 text-center space-y-4">
+                                  <div className="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-900/30">
+                                      <Check size={32} strokeWidth={4}/>
+                                  </div>
+                                  <div>
+                                      <h4 className="text-2xl font-black text-white italic uppercase tracking-tighter">Transaction Verified</h4>
+                                      <p className="text-sm text-emerald-400 font-bold">-{transferAmount} VoiceCoins</p>
+                                  </div>
+                              </div>
+
+                              {generatedToken ? (
+                                  <div className="space-y-4">
+                                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Offline Redemption Link</p>
+                                      <div className="flex gap-2">
+                                          <input readOnly value={generatedToken} className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-[10px] font-mono text-indigo-300 truncate outline-none" />
+                                          <button onClick={() => { navigator.clipboard.writeText(generatedToken); alert("Token Copied!"); }} className="p-3 bg-slate-800 hover:bg-indigo-600 rounded-xl text-white transition-all"><Copy size={18}/></button>
+                                      </div>
+                                      <p className="text-[9px] text-slate-600 italic">This token is unique and one-time use. Send it to your recipient to claim.</p>
+                                  </div>
+                              ) : (
+                                  <div className="p-6 bg-slate-950 rounded-2xl border border-slate-800 space-y-3">
+                                      <div className="flex justify-between text-xs"><span className="text-slate-500">Recipient:</span><span className="text-white font-bold">@{selectedRecipient?.displayName}</span></div>
+                                      <div className="flex justify-between text-xs"><span className="text-slate-500">Network Fee:</span><span className="text-emerald-400 font-bold">0.00 VC</span></div>
+                                      <div className="flex justify-between text-xs border-t border-slate-800 pt-3"><span className="text-slate-500">Status:</span><span className="text-indigo-400 font-black uppercase tracking-widest">Broadcasted</span></div>
+                                  </div>
+                              )}
+
+                              <button onClick={() => setShowSendModal(false)} className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-black uppercase rounded-2xl transition-all">Close</button>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Redemption Modal */}
       {showTokenInput && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up">
                   <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                      <h3 className="text-lg font-bold text-white flex items-center gap-2"><Key className="text-indigo-400" size={18}/> Offline Redemption</h3>
+                      <h3 className="text-lg font-bold text-white flex items-center gap-2"><Key className="text-indigo-400" size={18}/> Redemption Center</h3>
                       <button onClick={() => { setShowTokenInput(false); setVerifiedToken(null); setPastedToken(''); }} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
                   </div>
                   <div className="p-8 space-y-6">
                       {!verifiedToken ? (
                         <>
                           <div className="space-y-4">
-                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block px-1">Neural Payment Token (Base64)</label>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block px-1">Neural Payment Token</label>
                               <textarea 
                                 value={pastedToken}
                                 onChange={e => setPastedToken(e.target.value)}
                                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-mono text-indigo-300 outline-none focus:ring-2 focus:ring-indigo-500 h-32 resize-none"
-                                placeholder="Paste the encrypted token here..."
+                                placeholder="Paste encrypted token string here..."
                               />
                               {verificationError && <p className="text-xs text-red-400 flex items-center gap-1"><AlertTriangle size={12}/> {verificationError}</p>}
                           </div>
@@ -310,19 +527,19 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                               className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
                           >
                               {isVerifying ? <Loader2 size={18} className="animate-spin"/> : <ShieldCheck size={18}/>}
-                              Verify Authenticity
+                              Decrypt & Verify
                           </button>
                         </>
                       ) : (
                         <div className="space-y-6 animate-fade-in">
                             <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-2xl p-6 text-center">
                                 <CheckCircle size={48} className="text-emerald-400 mx-auto mb-4" />
-                                <h4 className="text-xl font-bold text-white">Token Verified</h4>
-                                <p className="text-3xl font-black text-emerald-400 mt-2">+{verifiedToken.amount} Coins</p>
+                                <h4 className="text-xl font-bold text-white">Token Authenticated</h4>
+                                <p className="text-3xl font-black text-emerald-400 mt-2">+{verifiedToken.amount} VC</p>
                                 <div className="mt-4 pt-4 border-t border-emerald-500/20 text-left space-y-2">
-                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Issuer: <span className="text-white">@{verifiedToken.senderName}</span></p>
-                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Timestamp: <span className="text-white">{new Date(verifiedToken.timestamp).toLocaleString()}</span></p>
-                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Memo: <span className="text-white italic">"{verifiedToken.memo || 'None'}"</span></p>
+                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Source: <span className="text-white">@{verifiedToken.senderName}</span></p>
+                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Signed: <span className="text-white">{new Date(verifiedToken.timestamp).toLocaleString()}</span></p>
+                                    {verifiedToken.memo && <p className="text-[10px] text-slate-500 uppercase font-bold">Memo: <span className="text-white italic">"{verifiedToken.memo}"</span></p>}
                                 </div>
                             </div>
                             <button 
@@ -330,7 +547,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                 disabled={isClaiming}
                                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase rounded-2xl shadow-xl transition-all"
                             >
-                                {isClaiming ? <Loader2 size={18} className="animate-spin mx-auto"/> : 'Redeem to Wallet'}
+                                {isClaiming ? <Loader2 size={18} className="animate-spin mx-auto"/> : 'Redeem into Wallet'}
                             </button>
                         </div>
                       )}
