@@ -1,3 +1,4 @@
+
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -10,7 +11,7 @@ import {
   GeneratedLecture, CommunityDiscussion, Booking, Invitation, RecordingSession, CodeProject, 
   CodeFile, CursorPosition, CloudItem, WhiteboardElement, Blog, BlogPost, JobPosting, 
   CareerApplication, Notebook, AgentMemory, GlobalStats, SubscriptionTier, Chapter, 
-  TranscriptItem, ChannelVisibility, GeneratedIcon, BankingCheck, ShippingLabel, CoinTransaction, TodoItem, OfflinePaymentToken, MockInterviewRecording
+  TranscriptItem, ChannelVisibility, GeneratedIcon, BankingCheck, ShippingLabel, CoinTransaction, TodoItem, OfflinePaymentToken, MockInterviewRecording, TrustScore
 } from '../types';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { generateSecureId } from '../utils/idUtils';
@@ -45,12 +46,39 @@ const LECTURE_CACHE_COLLECTION = 'lecture_cache';
 export const ADMIN_GROUP = 'admin_neural_prism';
 
 /**
+ * AI SERVICE COSTS
+ */
+export const AI_COSTS = {
+    TEXT_REFRACTION: 100,
+    CURRICULUM_SYNTHESIS: 250,
+    AUDIO_SYNTHESIS: 50,
+    IMAGE_GENERATION: 500,
+    VIDEO_GENERATION: 5000,
+    TECHNICAL_EVALUATION: 1000
+};
+
+/**
  * Helper to check if a profile belongs to the admin group.
  */
 export const isUserAdmin = (profile: UserProfile | null): boolean => {
     if (!profile || !profile.groups || !Array.isArray(profile.groups)) return false;
     return profile.groups.includes(ADMIN_GROUP);
 };
+
+/**
+ * Atomically deducts coins for an AI action.
+ */
+export async function deductCoins(uid: string, amount: number): Promise<void> {
+    if (!db || !uid) return;
+    try {
+        const userRef = doc(db, USERS_COLLECTION, uid);
+        await updateDoc(userRef, {
+            coinBalance: increment(-amount)
+        });
+    } catch (e) {
+        console.error("[Ledger] Deduction failed:", e);
+    }
+}
 
 /**
  * Persists synthesized scripture to Firebase Storage for high-speed community access.
@@ -262,6 +290,111 @@ export async function deleteInterview(id: string): Promise<void> {
     }
 }
 
+// --- Trust and Insurance ---
+
+/**
+ * Calculates a real-time trust score based on verified check issuance.
+ */
+export async function calculateUserTrustScore(uid: string): Promise<TrustScore> {
+    if (!db) throw new Error("DB offline");
+    const q = query(collection(db, CHECKS_COLLECTION), where('ownerId', '==', uid), where('isVerified', '==', true));
+    const snap = await getDocs(q);
+    
+    let totalVal = 0;
+    let count = 0;
+    const last3Months = Date.now() - (86400000 * 90);
+    let recentVal = 0;
+
+    snap.forEach(d => {
+        const data = d.data() as BankingCheck;
+        totalVal += data.amount || 0;
+        count++;
+        // Check if date is within 3 months (approx check against timestamp)
+        // Note: data.date is YYYY-MM-DD
+        const dTime = new Date(data.date).getTime();
+        if (dTime > last3Months) recentVal += data.amount || 0;
+    });
+
+    const average = count > 0 ? totalVal / count : 0;
+    // Score algorithm: base 500 + 1 point per $1000 total volume + 10 points per verified check, max 1000
+    const score = Math.min(1000, 500 + Math.floor(totalVal / 1000) + (count * 10));
+
+    const trust: TrustScore = {
+        score,
+        totalChecksIssued: count,
+        averageAmount: average,
+        verifiedVolume: totalVal,
+        lastActivity: Date.now()
+    };
+
+    await updateDoc(doc(db, USERS_COLLECTION, uid), { trustScore: trust });
+    return trust;
+}
+
+/**
+ * Claims a payout from an insured offline token.
+ */
+export async function handleInsuredOfflineClaim(token: OfflinePaymentToken): Promise<number> {
+    if (!db || !auth?.currentUser) throw new Error("Auth required");
+    if (!token.isInsured || !token.policyId) throw new Error("Token is not insured.");
+
+    const recipientUid = auth.currentUser.uid;
+    const policyRef = doc(db, CHECKS_COLLECTION, token.policyId);
+    const recipientRef = doc(db, USERS_COLLECTION, recipientUid);
+    const senderRef = doc(db, USERS_COLLECTION, token.senderId);
+
+    let amountToClaim = 0;
+
+    await runTransaction(db, async (t) => {
+        const policySnap = await t.get(policyRef);
+        if (!policySnap.exists()) throw new Error("Insurance policy not found on ledger.");
+        
+        const policy = policySnap.data() as BankingCheck;
+        if (!policy.insurancePolicy) throw new Error("Policy data corrupted.");
+
+        // 1. Recipient Lock Check
+        if (policy.insurancePolicy.recipientUid && policy.insurancePolicy.recipientUid !== recipientUid) {
+            throw new Error(`Policy is locked to another recipient (ID: ${policy.insurancePolicy.recipientUid.substring(0,8)}).`);
+        }
+
+        // 2. Temporal Window Check
+        const now = Date.now();
+        const inWindow = policy.insurancePolicy.validWindows.some(w => now >= w.start && now <= w.end);
+        if (!inWindow) throw new Error("Current time is outside the policy's valid temporal window.");
+
+        // 3. Streaming Value Calculation
+        const secondsSinceStart = (now - token.timestamp) / 1000;
+        const streamedAmount = Math.max(0, Math.floor(secondsSinceStart * policy.insurancePolicy.amountPerSecond));
+        amountToClaim = Math.min(streamedAmount, policy.insurancePolicy.maxAmount, token.amount);
+
+        if (amountToClaim <= 0) throw new Error("Streaming liquidity has not reached a claimable threshold yet.");
+
+        // 4. Verify Sender Trust Score (Must be > 600 for insured claims)
+        const senderSnap = await t.get(senderRef);
+        const senderData = senderSnap.data() as UserProfile;
+        if ((senderData.trustScore?.score || 0) < 600) {
+            throw new Error("Sender Neural Trust Score too low for insured payout.");
+        }
+
+        // 5. Execute Transfer
+        const txId = `insured-${token.nonce}-${Date.now()}`;
+        const txRef = doc(db, TRANSACTIONS_COLLECTION, txId);
+        
+        const tx: CoinTransaction = {
+            id: txId, fromId: token.senderId, fromName: token.senderName, toId: recipientUid,
+            toName: auth.currentUser?.displayName || 'Recipient', amount: amountToClaim, type: 'insured_claim',
+            memo: `Insured Payout: ${policy.memo}`, timestamp: now, isVerified: true,
+            offlineToken: btoa(JSON.stringify(token))
+        };
+
+        t.update(senderRef, { coinBalance: increment(-amountToClaim) });
+        t.update(recipientRef, { coinBalance: increment(amountToClaim) });
+        t.set(txRef, sanitizeData(tx));
+    });
+
+    return amountToClaim;
+}
+
 // --- Coins & Wallet ---
 export const DEFAULT_MONTHLY_GRANT = 1000000;
 
@@ -324,6 +457,13 @@ export async function claimOnlineTransfer(txId: string): Promise<void> {
 
 export async function claimOfflinePayment(token: OfflinePaymentToken): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Auth required");
+    
+    // If it's an insured claim, route to the specialized logic
+    if (token.isInsured) {
+        await handleInsuredOfflineClaim(token);
+        return;
+    }
+
     const txRef = doc(db, TRANSACTIONS_COLLECTION, `offline-${token.nonce}`);
     const recipientRef = doc(db, USERS_COLLECTION, token.recipientId === 'any' ? auth.currentUser.uid : token.recipientId);
     const senderRef = doc(db, USERS_COLLECTION, token.senderId);
@@ -717,7 +857,7 @@ export async function getChannelsByIds(ids: string[]): Promise<Channel[]> {
     if (!db || ids.length === 0) return [];
     const q = query(collection(db, USERS_COLLECTION), where(documentId(), 'in', ids.slice(0, 10)));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({ ...d.data(), id: d.id } as Channel));
+    return snap.docs.map(d => ({ ...d.data(), uid: d.id } as Channel));
 }
 
 export async function getCreatorChannels(uid: string): Promise<Channel[]> {
@@ -741,7 +881,8 @@ export async function publishChannelToFirestore(channel: Channel) {
 }
 
 export async function deleteChannelFromFirestore(id: string): Promise<void> {
-    if (!db || !id) return;
+    if (!db) return;
+    if (!id) return;
     await deleteDoc(doc(db, CHANNELS_COLLECTION, id));
 }
 
@@ -1005,9 +1146,10 @@ export async function updateProjectActiveFile(id: string, path: string) {
 
 export async function deleteCodeFile(id: string, path: string) {
     if (!db || !id) return;
-    const snap = await getDoc(doc(db, CODE_PROJECTS_COLLECTION, id));
-    if (!snap.exists()) return;
-    const files = (snap.data()?.comments || []) as CodeFile[];
+    const snap = await getDoc(doc(doc(db, CODE_PROJECTS_COLLECTION, id), 'comments', 'null')); // Fixed improper ref
+    const pSnap = await getDoc(doc(db, CODE_PROJECTS_COLLECTION, id));
+    if (!pSnap.exists()) return;
+    const files = (pSnap.data()?.files || []) as CodeFile[];
     const next = files.filter(f => f.path !== path);
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, id), { files: next });
 }
@@ -1094,6 +1236,11 @@ export async function updateBlogPost(id: string, data: Partial<BlogPost>) {
 export async function deleteBlogPost(id: string) {
     if (!db || !id) return;
     await deleteDoc(doc(db, POSTS_COLLECTION, id));
+}
+
+export async function deleteBlog(blogId: string) {
+    if (!db || !blogId) return;
+    await deleteDoc(doc(db, BLOGS_COLLECTION, blogId));
 }
 
 export async function updateBlogSettings(id: string, data: Partial<Blog>) {

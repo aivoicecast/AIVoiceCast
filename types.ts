@@ -18,6 +18,22 @@ export interface UserAvailability {
   enabled: boolean;
 }
 
+export interface TrustScore {
+  score: number; // 0-1000
+  totalChecksIssued: number;
+  averageAmount: number;
+  verifiedVolume: number;
+  lastActivity: number;
+}
+
+export interface InsurancePolicy {
+  amountPerSecond: number;
+  maxAmount: number;
+  validWindows: { start: number; end: number }[];
+  recipientUid?: string;
+  recipientName?: string;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -64,6 +80,7 @@ export interface UserProfile {
   certificate?: string;
   publicKey?: string;
   cloudTtsApiKey?: string;
+  trustScore?: TrustScore;
 }
 
 export type AttachmentType = 'image' | 'video' | 'audio' | 'file';
@@ -406,11 +423,16 @@ export interface BankingCheck {
   signature?: string;
   signatureUrl?: string;
   watermarkUrl?: string;
+  checkImageUrl?: string;
   isCoinCheck?: boolean;
   coinAmount?: number;
   isClaimed?: boolean;
   ownerId?: string;
   drivePdfUrl?: string;
+  // Extended fields for Neural Insurance Protocol
+  isInsured?: boolean;
+  insurancePolicy?: InsurancePolicy;
+  isVerified?: boolean;
 }
 
 export interface Address {
@@ -447,7 +469,7 @@ export interface CoinTransaction {
   toId: string;
   toName: string;
   amount: number;
-  type: 'transfer' | 'grant' | 'contribution' | 'check' | 'offline';
+  type: 'transfer' | 'grant' | 'contribution' | 'check' | 'offline' | 'insured_claim';
   memo?: string;
   timestamp: number;
   isVerified: boolean;
@@ -472,6 +494,9 @@ export interface OfflinePaymentToken {
   memo?: string;
   signature: string;
   certificate: string;
+  // Extended for insurance
+  policyId?: string;
+  isInsured?: boolean;
 }
 
 export interface PendingClaim {

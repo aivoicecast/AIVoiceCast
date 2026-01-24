@@ -1,6 +1,7 @@
+
 import { GoogleGenAI, Type } from '@google/genai';
 import { Chapter } from '../types';
-import { incrementApiUsage } from './firestoreService';
+import { incrementApiUsage, deductCoins, AI_COSTS } from './firestoreService';
 import { auth } from './firebaseConfig';
 
 /**
@@ -72,7 +73,10 @@ export async function generateCurriculum(
     if (!text) throw new Error("Empty AI response");
 
     const parsed = JSON.parse(text);
-    if (auth.currentUser) incrementApiUsage(auth.currentUser.uid);
+    if (auth.currentUser) {
+        incrementApiUsage(auth.currentUser.uid);
+        deductCoins(auth.currentUser.uid, AI_COSTS.CURRICULUM_SYNTHESIS);
+    }
 
     return parsed.map((ch: any, cIdx: number) => ({
       id: `ch-${Date.now()}-${cIdx}`,

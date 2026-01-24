@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera, AlertCircle, Share2, Link, Copy, Lock } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { resizeImage } from '../utils/imageUtils';
-import { saveIcon, uploadFileToStorage, getIcon } from '../services/firestoreService';
+import { saveIcon, uploadFileToStorage, getIcon, deductCoins, AI_COSTS } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
@@ -75,7 +75,13 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
       });
       if (response.candidates?.[0]?.content?.parts) {
         for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) { setGeneratedIcon(`data:image/png;base64,${part.inlineData.data}`); break; }
+          if (part.inlineData) { 
+            setGeneratedIcon(`data:image/png;base64,${part.inlineData.data}`); 
+            if (currentUser) {
+                deductCoins(currentUser.uid, AI_COSTS.IMAGE_GENERATION);
+            }
+            break; 
+          }
         }
       }
     } catch (e: any) { setError(e.message || "Failed to generate."); } finally { setIsGenerating(false); }

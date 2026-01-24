@@ -1,9 +1,11 @@
+
 import { GoogleGenAI, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, getGlobalAudioContext, hashString } from '../utils/audioUtils';
 import { getCachedAudioBuffer, cacheAudioBuffer } from '../utils/db';
 import { OPENAI_API_KEY, GCP_API_KEY } from './private_keys';
 import { auth, storage } from './firebaseConfig';
 import { ref, getDownloadURL } from '@firebase/storage';
+import { deductCoins, AI_COSTS } from './firestoreService';
 
 export type TtsErrorType = 'none' | 'quota' | 'daily_limit' | 'network' | 'unknown' | 'auth' | 'unsupported' | 'voice_not_found';
 export type TtsProvider = 'gemini' | 'google' | 'openai' | 'system';
@@ -223,6 +225,10 @@ export async function synthesizeSpeech(
           rawBuffer = await synthesizeGoogleCloud(cleanText, voiceName, lang, googleKey);
       } else {
           rawBuffer = await synthesizeGemini(cleanText, voiceName, lang);
+      }
+
+      if (auth.currentUser) {
+          deductCoins(auth.currentUser.uid, AI_COSTS.AUDIO_SYNTHESIS);
       }
 
       await cacheAudioBuffer(cacheKey, rawBuffer);

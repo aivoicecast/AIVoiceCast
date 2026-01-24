@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, ReaderTheme, UserAvailability } from '../types';
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, ChevronRight, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive, Calendar, Clock, Info, Globe2, Terminal, Languages, Key, Speaker, BookOpen } from 'lucide-react';
+// Fixed: Added missing Wallet and ShieldCheck icon to lucide-react imports
+import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, ChevronRight, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive, Calendar, Clock, Info, Globe2, Terminal, Languages, Key, Speaker, BookOpen, Fingerprint, Wallet, ShieldCheck } from 'lucide-react';
 import { logUserActivity, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { signOut, getDriveToken, connectGoogleDrive } from '../services/authService';
 import { TOPIC_CATEGORIES } from '../utils/initialData';
@@ -68,6 +69,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [signaturePreview, setSignaturePreview] = useState(user.savedSignatureUrl || '');
   const [nextCheckNumber, setNextCheckNumber] = useState(user.nextCheckNumber || 1001);
   const [showSignPad, setShowSignPad] = useState(false);
+  const [isUpdatingSignature, setIsUpdatingSignature] = useState(false);
   
   const currentTier = user.subscriptionTier || 'free';
   const isPaid = currentTier === 'pro';
@@ -164,14 +166,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (url) handleResumeRefraction({ url });
   };
 
+  const handleAdoptSignature = async () => {
+      // Fixed: Targeting the specific whiteboard canvas for extraction
+      const canvas = document.getElementById('whiteboard-canvas-core') as HTMLCanvasElement;
+      if (!canvas) return;
+      
+      const b64 = canvas.toDataURL('image/png', 1.0);
+      // Update local state immediately so user sees it "saved" in memory
+      setSignaturePreview(b64);
+      setShowSignPad(false);
+  };
+
   const handleSaveAll = async () => {
       setIsSaving(true);
       try {
           let finalSigUrl = signaturePreview;
-          if (signaturePreview.startsWith('data:')) {
+          // If the preview is a data URL (newly adopted), upload it to storage
+          if (signaturePreview && signaturePreview.startsWith('data:')) {
               const res = await fetch(signaturePreview);
               const blob = await res.blob();
-              finalSigUrl = await uploadFileToStorage(`users/${user.uid}/signature_profile.png`, blob);
+              finalSigUrl = await uploadFileToStorage(`users/${user.uid}/signature_authority.png`, blob);
           }
 
           const updateData: Partial<UserProfile> = {
@@ -274,17 +288,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Globe size={16} className="text-indigo-400"/> Primary Language & Neural Voice</h4>
                         <p className="text-[10px] text-slate-500 uppercase font-black px-1">This setting dictates the default spoken language and UI locale.</p>
                         <div className="p-1.5 bg-slate-950 border border-slate-800 rounded-2xl flex shadow-inner">
-                            <button onClick={() => setLanguagePreference('en')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${languagePreference === 'en' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>English</button>
-                            <button onClick={() => setLanguagePreference('zh')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${languagePreference === 'zh' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Chinese (中文)</button>
+                            <button onClick={() => setLanguagePreference('en')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${languagePreference === 'en' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>English</button>
+                            <button onClick={() => setLanguagePreference('zh')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${languagePreference === 'zh' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>Chinese (中文)</button>
                         </div>
                     </div>
 
                     <div className="space-y-4">
                         <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><BookOpen size={16} className="text-amber-500"/> Default Scripture View Mode</h4>
                         <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-950 border border-slate-800 rounded-2xl shadow-inner">
-                            <button onClick={() => setPreferredScriptureView('dual')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${preferredScriptureView === 'dual' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'}`}>Bilingual</button>
-                            <button onClick={() => setPreferredScriptureView('en')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${preferredScriptureView === 'en' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'}`}>English</button>
-                            <button onClick={() => setPreferredScriptureView('zh')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${preferredScriptureView === 'zh' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-500'}`}>Chinese</button>
+                            <button onClick={() => setPreferredScriptureView('dual')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${preferredScriptureView === 'dual' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-50'}`}>Bilingual</button>
+                            <button onClick={() => setPreferredScriptureView('en')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${preferredScriptureView === 'en' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-50'}`}>English</button>
+                            <button onClick={() => setPreferredScriptureView('zh')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${preferredScriptureView === 'zh' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-50'}`}>Chinese</button>
                         </div>
                     </div>
 
@@ -356,7 +370,62 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
 
             {activeTab === 'banking' && (
-                <div className="space-y-8 animate-fade-in"><div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-start gap-4"><div className="p-2 bg-indigo-600 rounded-lg text-white shadow-lg"><PenTool size={20}/></div><div><h3 className="text-sm font-bold text-white">Check Template</h3><p className="text-xs text-slate-400">Financial asset refraction data.</p></div></div><div className="space-y-6"><div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><MapPin size={12} className="text-indigo-400"/> Address</label><textarea value={senderAddress} onChange={(e) => setSenderAddress(e.target.value)} rows={3} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner"/></div></div></div>
+                <div className="space-y-8 animate-fade-in">
+                    <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-start gap-4">
+                        <div className="p-2 bg-indigo-600 rounded-lg text-white shadow-lg"><Wallet size={20}/></div>
+                        <div><h3 className="text-sm font-bold text-white">Financial Authority Profile</h3><p className="text-xs text-slate-400">Configure default data for check issuance and ledger verification.</p></div>
+                    </div>
+                    <div className="space-y-6">
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><MapPin size={12} className="text-indigo-400"/> Ledger Address</label>
+                            <textarea value={senderAddress} onChange={(e) => setSenderAddress(e.target.value)} rows={3} placeholder="123 Neural Way, San Francisco, CA..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner"/>
+                        </div>
+                        
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1"><Fingerprint size={12} className="text-emerald-400"/> Authorized Signature</label>
+                            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 flex flex-col items-center gap-4 relative group">
+                                {signaturePreview ? (
+                                    <div className="relative w-full max-w-xs flex flex-col items-center">
+                                        <img 
+                                            src={signaturePreview} 
+                                            className="h-20 object-contain drop-shadow-lg" 
+                                            alt="Stored Signature" 
+                                        />
+                                        <div className="w-full border-b border-slate-800 mt-2"></div>
+                                        <button 
+                                            onClick={() => { setSignaturePreview(''); }}
+                                            className="absolute -top-2 -right-2 p-1.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                                        >
+                                            <Trash2 size={12}/>
+                                        </button>
+                                        <div className="absolute -bottom-6 flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                                            <ShieldCheck size={10} className="text-emerald-400"/>
+                                            <span className="text-[8px] font-black uppercase text-slate-500">Verified Sovereign Asset</span>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4">
+                                        <PenTool size={32} className="text-slate-800 mx-auto mb-2"/>
+                                        <p className="text-xs text-slate-600 uppercase font-bold tracking-tighter">No Signature Verified</p>
+                                    </div>
+                                )}
+                                <button onClick={() => setShowSignPad(true)} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
+                                    {signaturePreview ? 'Overwrite Signature' : 'Draw Signature'}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><Hash size={12} className="text-indigo-400"/> Next Asset Serial Number</label>
+                            <input 
+                                type="number" 
+                                value={nextCheckNumber} 
+                                onChange={(e) => setNextCheckNumber(parseInt(e.target.value) || 1001)} 
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white font-mono text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                            />
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
 
@@ -365,6 +434,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
              <div className="flex items-center gap-3"><button onClick={onClose} className="px-6 py-2.5 text-xs font-bold text-slate-400 hover:text-white">Cancel</button><button onClick={handleSaveAll} disabled={isSaving} className="px-8 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-black uppercase tracking-[0.2em] rounded-xl shadow-xl flex items-center gap-2 transition-all active:scale-0.98">{isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}<span>Apply Spectrum</span></button></div>
         </div>
       </div>
+
+      {showSignPad && (
+          <div className="fixed inset-0 z-[150] bg-slate-950/95 flex items-center justify-center p-6 animate-fade-in">
+              <div className="w-full max-w-2xl bg-white rounded-3xl overflow-hidden shadow-2xl border-8 border-indigo-600">
+                  <div className="p-6 bg-indigo-600 flex justify-between items-center">
+                    <h3 className="text-white font-black uppercase tracking-widest flex items-center gap-2"><PenTool size={20}/> Member Signature Capture</h3>
+                    <button onClick={() => setShowSignPad(false)} className="text-white/60 hover:text-white transition-colors"><X size={24}/></button>
+                  </div>
+                  <div className="h-64 bg-white relative">
+                    <Whiteboard backgroundColor="#ffffff" initialColor="#000000" onChange={() => {}} onBack={() => setShowSignPad(false)}/>
+                  </div>
+                  <div className="p-6 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+                    <p className="text-[10px] text-slate-400 flex-1 uppercase font-bold self-center">Sign above to authorize global financial refractions.</p>
+                    <button onClick={() => setShowSignPad(false)} className="px-6 py-2 text-sm font-bold text-slate-400">Cancel</button>
+                    <button onClick={handleAdoptSignature} className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all">Verify & Adopt</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <input type="file" ref={resumeInputRef} className="hidden" accept=".pdf,.txt" onChange={handleResumeFileSelect} />
     </div>
   );

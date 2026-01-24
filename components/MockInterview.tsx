@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject, RecordingSession } from '../types';
 import { auth } from '../services/firebaseConfig';
-import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage, getUserInterviews, updateInterviewMetadata, saveCodeProject, getCodeProject, getUserProfile, saveRecordingReference } from '../services/firestoreService';
+import { saveInterviewRecording, getPublicInterviews, deleteInterview, updateUserProfile, uploadFileToStorage, getUserInterviews, updateInterviewMetadata, saveCodeProject, getCodeProject, getUserProfile, saveRecordingReference, deductCoins, AI_COSTS } from '../services/firestoreService';
 import { GeminiLiveService } from '../services/geminiLive';
 import { GoogleGenAI, Type } from "@google/genai";
 import { generateSecureId } from '../utils/idUtils';
@@ -684,6 +685,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 visibility: 'private',
                 language: interviewLanguage
               });
+              
+              await deductCoins(auth.currentUser.uid, AI_COSTS.TECHNICAL_EVALUATION);
               
               const token = getDriveToken();
               if (token && sessionFolderIdRef.current) {

@@ -38,21 +38,24 @@ const appInstance = initializeFirebase();
 
 /**
  * Robust Firestore Initialization
+ * Configured specifically to bypass WebSocket blocks in restricted environments.
  */
 const initDb = (): Firestore | null => {
     if (!appInstance) return null;
     
     const firestore = initializeFirestore(appInstance, {
-        // Updated to autodetect for better reliability in sandboxed previews
-        experimentalAutoDetectLongPolling: true,
+        // CRITICAL FIX: Force long polling to bypass WebSocket timeout/blocks
+        experimentalForceLongPolling: true,
+        // Disable fetch streams for maximum compatibility
+        useFetchStreams: false
     });
 
     // Simplify persistence for iframe environments which often block multi-tab logic
     enableIndexedDbPersistence(firestore).catch((err) => {
         if (err.code === 'failed-precondition') {
-            console.warn("[Firestore] Persistence failed: Multiple tabs open.");
+            console.warn("[Firestore] Persistence disabled: Multiple tabs detected.");
         } else if (err.code === 'unimplemented') {
-            console.warn("[Firestore] Persistence failed: Browser not supported.");
+            console.warn("[Firestore] Persistence disabled: Browser environment not supported.");
         }
     });
 

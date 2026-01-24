@@ -2,6 +2,8 @@
 import { GoogleGenAI, Modality } from '@google/genai';
 import { AgentMemory } from '../types';
 import { base64ToBytes, pcmToWavBlobUrl } from '../utils/audioUtils';
+import { deductCoins, AI_COSTS } from './firestoreService';
+import { auth } from './firebaseConfig';
 
 export async function generateCardMessage(memory: AgentMemory, tone: string = 'warm'): Promise<string> {
     try {
@@ -63,6 +65,10 @@ export async function generateCardMessage(memory: AgentMemory, tone: string = 'w
             contents: prompt
         });
         
+        if (auth.currentUser) {
+            deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+        }
+        
         return response.text?.trim() || "Wishing you joy and peace this season.";
     } catch (e: any) {
         console.error("Message gen failed", e);
@@ -103,6 +109,11 @@ export async function generateSongLyrics(memory: AgentMemory): Promise<string> {
             model: 'gemini-3-flash-preview',
             contents: prompt
         });
+
+        if (auth.currentUser) {
+            deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+        }
+
         return response.text?.trim() || "Happy holidays to you, may your dreams come true.";
     } catch (e: any) {
         console.error("Lyrics gen failed", e);
@@ -131,6 +142,10 @@ export async function generateCardAudio(text: string, voiceName: string = 'Kore'
         
         const pcmBytes = base64ToBytes(base64Audio);
         const wavUrl = pcmToWavBlobUrl(pcmBytes, 24000);
+        
+        if (auth.currentUser) {
+            deductCoins(auth.currentUser.uid, AI_COSTS.AUDIO_SYNTHESIS);
+        }
         
         return wavUrl;
     } catch (e: any) {
@@ -203,6 +218,9 @@ export async function generateCardImage(
         if (response.candidates?.[0]?.content?.parts) {
             for (const part of response.candidates[0].content.parts) {
                 if (part.inlineData) {
+                    if (auth.currentUser) {
+                        deductCoins(auth.currentUser.uid, AI_COSTS.IMAGE_GENERATION);
+                    }
                     return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
                 }
             }

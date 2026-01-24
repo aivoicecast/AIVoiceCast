@@ -6,7 +6,8 @@ const TEXT_STORE_NAME = 'lecture_scripts';
 const CHANNELS_STORE_NAME = 'user_channels'; 
 const RECORDINGS_STORE_NAME = 'local_recordings';
 const IDENTITY_STORE_NAME = 'identity_keys';
-const VERSION = 7; 
+const ASSETS_STORE_NAME = 'neural_assets'; // For heavy UI assets like signatures
+const VERSION = 8; 
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -26,6 +27,7 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(CHANNELS_STORE_NAME)) db.createObjectStore(CHANNELS_STORE_NAME, { keyPath: 'id' });
       if (!db.objectStoreNames.contains(RECORDINGS_STORE_NAME)) db.createObjectStore(RECORDINGS_STORE_NAME, { keyPath: 'id' });
       if (!db.objectStoreNames.contains(IDENTITY_STORE_NAME)) db.createObjectStore(IDENTITY_STORE_NAME);
+      if (!db.objectStoreNames.contains(ASSETS_STORE_NAME)) db.createObjectStore(ASSETS_STORE_NAME);
     };
 
     request.onsuccess = () => {
@@ -45,6 +47,32 @@ function openDB(): Promise<IDBDatabase> {
   });
 
   return dbPromise;
+}
+
+export async function saveLocalAsset(key: string, data: string): Promise<void> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(ASSETS_STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(ASSETS_STORE_NAME);
+            const request = store.put(data, key);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    } catch(e) {}
+}
+
+export async function getLocalAsset(key: string): Promise<string | undefined> {
+    try {
+        const db = await openDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(ASSETS_STORE_NAME, 'readonly');
+            const store = transaction.objectStore(ASSETS_STORE_NAME);
+            const request = store.get(key);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    } catch(e) { return undefined; }
 }
 
 export async function getLocalRecordings(): Promise<RecordingSession[]> {
@@ -326,7 +354,7 @@ export interface DebugEntry { store: string; key: string; size: number; }
 export async function getAllDebugEntries(): Promise<DebugEntry[]> {
   const db = await openDB();
   const entries: DebugEntry[] = [];
-  const stores = [STORE_NAME, TEXT_STORE_NAME, CHANNELS_STORE_NAME, RECORDINGS_STORE_NAME, IDENTITY_STORE_NAME];
+  const stores = [STORE_NAME, TEXT_STORE_NAME, CHANNELS_STORE_NAME, RECORDINGS_STORE_NAME, IDENTITY_STORE_NAME, ASSETS_STORE_NAME];
   for (const storeName of stores) {
     try {
       await new Promise<void>((resolve) => {

@@ -6,7 +6,7 @@ import { ArrowLeft, Download, Globe, Loader2, MapPin, Printer, Scale, Share2, Sp
 import React, { useMemo, useRef, useState } from 'react';
 import { auth } from '../services/firebaseConfig';
 import { connectGoogleDrive, getDriveToken } from '../services/authService';
-import { saveShippingLabel } from '../services/firestoreService';
+import { saveShippingLabel, deductCoins, AI_COSTS } from '../services/firestoreService';
 import { ensureCodeStudioFolder, ensureFolder, uploadToDrive } from '../services/googleDriveService';
 import { Address, PackageDetails } from '../types';
 import { generateSecureId } from '../utils/idUtils';
@@ -71,6 +71,10 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
           const parsed = JSON.parse(response.text || '{}');
           if (type === 'sender') setSender({ ...sender, ...parsed });
           else setRecipient({ ...recipient, ...parsed });
+          
+          if (auth.currentUser) {
+              deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+          }
       } catch (e) {
           alert("Neural refraction of address failed. Please enter manually.");
       } finally {

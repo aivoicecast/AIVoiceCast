@@ -154,7 +154,7 @@ const UI_TEXT = {
   }
 };
 
-const PUBLIC_VIEWS: ViewID[] = ['mission', 'story', 'privacy', 'user_guide']; 
+const PUBLIC_VIEWS: ViewID[] = ['mission', 'story', 'privacy', 'user_guide', 'check_viewer']; 
 const FREE_VIEWS: ViewID[] = ['directory', 'podcast_detail', 'dashboard'];
 
 const isRestrictedView = (v: string): boolean => {
@@ -220,7 +220,6 @@ const App: React.FC = () => {
     window.history.pushState({}, '', url.toString());
   }, [activeViewID, isProMember]);
 
-  // Unified persistent language update
   const handleUpdateLanguage = useCallback(async (newLang: 'en' | 'zh') => {
       setLanguage(newLang);
       if (currentUser) {
@@ -281,7 +280,7 @@ const App: React.FC = () => {
         { id: 'docs', label: t.docs, icon: FileText, action: () => handleSetViewState('docs'), color: 'text-emerald-400', restricted: true },
         { id: 'check_designer', label: t.checks, icon: Wallet, action: () => handleSetViewState('check_designer'), color: 'text-orange-400', restricted: true },
         { id: 'chat', label: t.chat, icon: MessageSquare, action: () => handleSetViewState('chat'), color: 'text-blue-400', restricted: true },
-        { id: 'mentorship', label: t.mentorship, icon: Briefcase, action: () => handleSetViewState('mentorship'), color: 'text-emerald-400', restricted: true },
+        { id: 'mentorship', label: t.mentorship, icon: Users, action: () => handleSetViewState('mentorship'), color: 'text-emerald-400', restricted: true },
         { id: 'shipping_labels', label: t.shipping, icon: Truck, action: () => handleSetViewState('shipping_labels'), color: 'text-emerald-400', restricted: true },
         { id: 'icon_generator', label: t.icons, icon: AppWindow, action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400', restricted: true },
         { id: 'code_studio', label: t.code, icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400', restricted: true },
@@ -303,7 +302,6 @@ const App: React.FC = () => {
                 if(s.exists()) {
                     const profile = s.data() as UserProfile;
                     setUserProfile(profile);
-                    // Sync global UI language with user's persistent preference
                     if (profile.languagePreference && profile.languagePreference !== language) {
                         setLanguage(profile.languagePreference);
                     }

@@ -1,6 +1,7 @@
+
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedLecture, SubTopic, TranscriptItem } from '../types';
-import { incrementApiUsage, getUserProfile } from './firestoreService';
+import { incrementApiUsage, getUserProfile, deductCoins, AI_COSTS } from './firestoreService';
 import { auth } from './firebaseConfig';
 import { OPENAI_API_KEY } from './private_keys';
 
@@ -142,7 +143,10 @@ export async function generateLectureScript(
     const parsed = safeJsonParse(text);
     if (!parsed) return null;
     
-    if (auth.currentUser) incrementApiUsage(auth.currentUser.uid);
+    if (auth.currentUser) {
+        incrementApiUsage(auth.currentUser.uid);
+        deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+    }
 
     return {
       topic,
@@ -202,7 +206,10 @@ export async function generateBatchLectures(
         }
       });
     }
-    if (auth.currentUser) incrementApiUsage(auth.currentUser.uid);
+    if (auth.currentUser) {
+        incrementApiUsage(auth.currentUser.uid);
+        deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION * subTopics.length);
+    }
     return resultMap;
   } catch (error) { return null; }
 }
@@ -236,6 +243,11 @@ export async function summarizeDiscussionAsSection(
         text = response.text || null;
     }
     const parsed = safeJsonParse(text || '');
+    
+    if (auth.currentUser) {
+        deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+    }
+    
     return parsed ? parsed.sections : null;
   } catch (error) { return null; }
 }
@@ -269,6 +281,11 @@ export async function generateDesignDocFromTranscript(
         });
         text = response.text || null;
     }
+    
+    if (auth.currentUser) {
+        deductCoins(auth.currentUser.uid, AI_COSTS.CURRICULUM_SYNTHESIS);
+    }
+    
     return text;
   } catch (error) { return null; }
 }

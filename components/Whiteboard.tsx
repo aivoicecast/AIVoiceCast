@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Share2, Trash2, Undo, PenTool, Pen, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, RotateCcw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save, Activity, RefreshCcw, Type as TypeIcon, Hand } from 'lucide-react';
 import { auth, db } from '../services/firebaseConfig';
@@ -18,6 +17,7 @@ interface WhiteboardProps {
   initialColor?: string;
   backgroundColor?: string;
   initialContent?: string;
+  initialImage?: string; 
   onChange?: (content: string) => void;
 }
 
@@ -54,10 +54,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   initialColor = '#ffffff',
   backgroundColor = '#000000', 
   initialContent,
+  initialImage,
   onChange
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const [elements, setElements] = useState<WhiteboardElement[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentElement, setCurrentElement] = useState<WhiteboardElement | null>(null);
@@ -92,10 +93,30 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
   const [sessionId, setSessionId] = useState<string>(propSessionId || '');
   const [isReadOnly, setIsReadOnly] = useState(propReadOnly);
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [shareUrl, setShareUrl] = useState('');
 
   const isDarkBackground = currentBgColor !== 'transparent' && currentBgColor !== '#ffffff';
+
+  const bgImageRef = useRef<HTMLImageElement | null>(null);
+  const [bgImageReady, setBgImageReady] = useState(false);
+
+  useEffect(() => {
+    if (initialImage) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+            bgImageRef.current = img;
+            setBgImageReady(true);
+        };
+        img.onerror = () => {
+            bgImageRef.current = null;
+            setBgImageReady(false);
+        };
+        img.src = initialImage;
+    } else {
+        bgImageRef.current = null;
+        setBgImageReady(false);
+    }
+  }, [initialImage]);
 
   const finalizeCurve = useCallback(async () => {
     if (partialPoints.length < 2) {
@@ -161,7 +182,6 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
     }
   }, [clipboardBuffer, elements, isReadOnly, sessionId]);
 
-  // Keyboard Listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isReadOnly || textInput.visible) return;
@@ -185,9 +205,9 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   }, [selectedElementIds, isReadOnly, textInput.visible, tool, partialPoints, finalizeCurve, handleCopy, handlePaste]);
 
   useEffect(() => {
-    if (initialContent && initialContent !== lastKnownContentRef.current) {
+    if (initialContent !== undefined && initialContent !== lastKnownContentRef.current) {
         try {
-            const parsed = JSON.parse(initialContent);
+            const parsed = initialContent === '' ? [] : JSON.parse(initialContent);
             if (Array.isArray(parsed)) {
                 setElements(parsed);
                 lastKnownContentRef.current = initialContent;
@@ -195,12 +215,11 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
         } catch (e) {
             console.warn("Could not parse initial whiteboard content");
         }
-        return;
     }
   }, [initialContent]);
 
   useEffect(() => {
-      if (onChange && elements.length > 0) {
+      if (onChange && elements.length >= 0) {
           const content = JSON.stringify(elements);
           if (content !== lastKnownContentRef.current) {
               lastKnownContentRef.current = content;
@@ -228,19 +247,23 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   }, [sessionId]);
 
   const getWorldCoordinates = (e: any) => {
-      if (!canvasRef.current) return { x: 0, y: 0 }; 
+      if (!canvasRef.current || !canvasWrapperRef.current) return { x: 0, y: 0 }; 
       const rect = canvasRef.current.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
       
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
       const cx = rect.width / 2;
       const cy = rect.height / 2;
-      let x = clientX - rect.left - cx;
-      let y = clientY - rect.top - cy;
+      
+      let dx = x - cx;
+      let dy = y - cy;
 
       const rad = -(boardRotation * Math.PI) / 180;
-      const rx = x * Math.cos(rad) - y * Math.sin(rad);
-      const ry = x * Math.sin(rad) + y * Math.cos(rad);
+      const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
+      const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
 
       return { 
           x: (rx + cx - offset.x) / scale, 
@@ -501,16 +524,52 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   };
 
   useEffect(() => {
-      const canvas = canvasRef.current; if (!canvas) return; 
-      const ctx = canvas.getContext('2d'); if (!ctx) return;
-      canvas.width = containerRef.current?.clientWidth || 800; 
-      canvas.height = containerRef.current?.clientHeight || 600;
-      ctx.clearRect(0, 0, canvas.width, canvas.height); 
-      if (currentBgColor !== 'transparent') { ctx.fillStyle = currentBgColor; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+      const canvas = canvasRef.current;
+      const wrapper = canvasWrapperRef.current;
+      if (!canvas || !wrapper) return; 
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const width = wrapper.clientWidth;
+      const height = wrapper.clientHeight;
+
+      if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+          canvas.width = width * dpr;
+          canvas.height = height * dpr;
+      }
+      
+      ctx.setTransform(1, 0, 0, 1, 0, 0); 
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, width, height); 
+
+      if (currentBgColor !== 'transparent') { 
+          ctx.fillStyle = currentBgColor; 
+          ctx.fillRect(0, 0, width, height); 
+      }
+
+      if (bgImageRef.current && bgImageReady) {
+          const img = bgImageRef.current;
+          const padding = 20;
+          const availableWidth = width - (padding * 2);
+          const availableHeight = height - (padding * 2);
+          const scaleFactor = Math.min(availableWidth / img.width, availableHeight / img.height, 1);
+          const dw = img.width * scaleFactor;
+          const dh = img.height * scaleFactor;
+          ctx.drawImage(img, (width - dw) / 2, (height - dh) / 2, dw, dh);
+      }
+
       ctx.save(); 
-      const cx = canvas.width / 2; const cy = canvas.height / 2;
-      ctx.translate(cx, cy); ctx.rotate((boardRotation * Math.PI) / 180); ctx.translate(-cx, -cy);
-      ctx.translate(offset.x, offset.y); ctx.scale(scale, scale);
+      const cx = width / 2;
+      const cy = height / 2;
+      
+      ctx.translate(cx, cy); 
+      ctx.rotate((boardRotation * Math.PI) / 180); 
+      ctx.translate(-cx, -cy);
+      
+      ctx.translate(offset.x, offset.y); 
+      ctx.scale(scale, scale);
       
       const drawCap = (x1: number, y1: number, x2: number, y2: number, size: number, color: string, style?: CapStyle) => {
           if (!style || style === 'none') return;
@@ -524,7 +583,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
       const renderCurve = (points: {x: number, y: number}[], el: WhiteboardElement | { strokeWidth: number, color: string, lineStyle: any, brushType?: string }) => {
           if (points.length < 2) return;
           ctx.save(); ctx.beginPath(); ctx.lineWidth = el.strokeWidth / scale; ctx.strokeStyle = el.color;
-          const styleConfig = LINE_STYLES.find(s => s.value === (('lineStyle' in el) ? el.lineStyle : 'solid'));
+          const styleConfig = LINE_STYLES.find(s => s.value === (('lineStyle' in el) ? (el as any).lineStyle : 'solid'));
           ctx.setLineDash(styleConfig?.dash || []);
           
           if ('brushType' in el) {
@@ -569,7 +628,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           if (el.type === 'type' && el.text) {
               ctx.fillStyle = el.color; ctx.font = `${(el.fontSize || 16)}px 'JetBrains Mono', monospace`; ctx.textBaseline = 'top';
               const lines = el.text.split('\n'); lines.forEach((line, i) => { ctx.fillText(line, el.x, el.y + (i * (el.fontSize || 16) * 1.2)); });
-          } else if (el.type === 'curve') { renderCurve(el.points || [], el); } 
+          } else if (el.type === 'curve' && el.points) { renderCurve(el.points, el); } 
           else if (el.type === 'pen' || el.type === 'eraser') {
               if (el.points?.length) { ctx.lineWidth = el.strokeWidth / scale; ctx.moveTo(el.points[0].x, el.points[0].y); el.points.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke(); }
           } else if (el.type === 'rect') { 
@@ -608,7 +667,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
 
       elements.forEach(renderElement);
       if (currentElement) renderElement(currentElement);
-      if (tool === 'curve' && partialPoints.length > 0) { renderCurve([...partialPoints, mousePos], { strokeWidth: lineWidth, color, lineStyle, brushType }); }
+      if (tool === 'curve' && partialPoints.length > 0) { renderCurve([...partialPoints, mousePos], { strokeWidth: lineWidth, color, lineStyle, brushType: brushType as any }); }
       
       if (selectionRect) {
           ctx.save(); ctx.strokeStyle = 'rgba(99, 102, 241, 0.5)'; ctx.fillStyle = 'rgba(99, 102, 241, 0.1)';
@@ -618,10 +677,10 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           ctx.restore();
       }
       ctx.restore();
-  }, [elements, currentElement, scale, offset, boardRotation, currentBgColor, selectedElementIds, tool, partialPoints, mousePos, selectionRect, color, lineWidth, lineStyle, brushType]);
+  }, [elements, currentElement, scale, offset, boardRotation, currentBgColor, selectedElementIds, tool, partialPoints, mousePos, selectionRect, color, lineWidth, lineStyle, brushType, bgImageReady]);
 
   return (
-    <div ref={containerRef} className={`flex flex-col h-full w-full ${isDarkBackground ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden relative`}>
+    <div className={`flex flex-col h-full w-full ${isDarkBackground ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden relative`}>
         <div className={`${isDarkBackground ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'} border-b p-2 flex flex-wrap justify-between gap-2 shrink-0 z-10 items-center px-4`}>
             <div className="flex items-center gap-2">
                 {onBack && <button onClick={onBack} className={`p-2 rounded-lg ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-2`}><ArrowLeft size={20}/></button>}
@@ -764,13 +823,14 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
             </div>
         </div>
         
-        <div className={`flex-1 relative overflow-hidden ${isDarkBackground ? 'bg-slate-950' : 'bg-white'} touch-none`}>
+        <div ref={canvasWrapperRef} className={`flex-1 relative overflow-hidden ${isDarkBackground ? 'bg-slate-950' : 'bg-white'} touch-none`}>
             {isLoading && (
                 <div className="absolute inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
                     <Loader2 size={32} className="animate-spin text-indigo-500"/><span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Hydrating Session...</span>
                 </div>
             )}
             <canvas 
+                id="whiteboard-canvas-core"
                 ref={canvasRef} onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
                 onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
                 className={`block w-full h-full ${tool === 'move' ? 'cursor-move' : tool === 'hand' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`} 

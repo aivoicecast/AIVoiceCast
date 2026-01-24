@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Blog, BlogPost, Comment, UserProfile } from '../types';
-import { ensureUserBlog, getCommunityPosts, getUserPosts, createBlogPost, updateBlogPost, deleteBlogPost, updateBlogSettings, addPostComment, getBlogPost, getUserProfile } from '../services/firestoreService';
+import { ensureUserBlog, getCommunityPosts, getUserPosts, createBlogPost, updateBlogPost, deleteBlogPost, updateBlogSettings, addPostComment, getBlogPost, getUserProfile, isUserAdmin, deleteBlog } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
-import { Edit3, Plus, Trash2, Globe, User, MessageSquare, Loader2, ArrowLeft, Save, Image as ImageIcon, Search, LayoutList, PenTool, Rss, X, Pin, AlertCircle, RefreshCw, Eye, Code } from 'lucide-react';
+import { Edit3, Plus, Trash2, Globe, User, MessageSquare, Loader2, ArrowLeft, Save, Image as ImageIcon, Search, LayoutList, PenTool, Rss, X, Pin, AlertCircle, RefreshCw, Eye, Code, ShieldAlert } from 'lucide-react';
 import { MarkdownView } from './MarkdownView';
 import { CommentsModal } from './CommentsModal';
 import { SYSTEM_BLOG_POSTS } from '../utils/blogContent';
@@ -34,6 +34,9 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
   const [activePost, setActivePost] = useState<BlogPost | null>(null);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
 
+  const isAdmin = useMemo(() => isUserAdmin(profile), [profile]);
+  const isSuperAdmin = useMemo(() => currentUser?.email === 'shengliang.song.ai@gmail.com', [currentUser]);
+
   useEffect(() => {
     setErrorMsg(null);
     if (currentUser) {
@@ -51,9 +54,13 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
     setErrorMsg(null);
     try {
       const data = await getCommunityPosts();
+      const hiddenIds = JSON.parse(localStorage.getItem('hidden_system_posts') || '[]');
       const systemIds = SYSTEM_BLOG_POSTS.map(p => p.id);
+      
       const filteredDbPosts = data.filter(p => !systemIds.includes(p.id));
-      const finalPosts = [...SYSTEM_BLOG_POSTS, ...filteredDbPosts];
+      const visibleSystemPosts = SYSTEM_BLOG_POSTS.filter(p => !hiddenIds.includes(p.id));
+      
+      const finalPosts = [...visibleSystemPosts, ...filteredDbPosts];
       setPosts(finalPosts.sort((a, b) => (b.publishedAt || b.createdAt) - (a.publishedAt || a.createdAt)));
     } catch (e: any) {
       console.error("Feed load error:", e);
@@ -102,6 +109,35 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
     } catch(e) { alert("Failed to save settings"); }
   };
 
+  const handleDeleteBlog = async () => {
+      if (!myBlog) return;
+      const confirmMsg = isSuperAdmin 
+          ? "ADMIN ACTION: Permanently delete this entire blog workspace and all associated posts? This cannot be undone." 
+          : "Are you sure you want to delete your entire blog workspace? All your posts will be removed from the community feed.";
+          
+      if (!confirm(confirmMsg)) return;
+
+      setLoading(true);
+      try {
+          // Delete all associated posts first
+          for (const post of myPosts) {
+              await deleteBlogPost(post.id);
+          }
+          // Delete the blog doc itself
+          await deleteBlog(myBlog.id);
+          
+          setMyBlog(null);
+          setMyPosts([]);
+          setActiveTab('feed');
+          await loadFeed();
+          alert("Blog workspace deleted successfully.");
+      } catch (e: any) {
+          alert("Deletion failed: " + e.message);
+      } finally {
+          setLoading(false);
+      }
+  };
+
   const handleCreatePost = () => {
     setEditingPost({ title: '', content: '', tags: [], status: 'draft' });
     setIsPreviewMode(false);
@@ -116,9 +152,34 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
 
   const handleDeletePost = async (postId: string) => {
     if (!confirm("Are you sure you want to delete this post?")) return;
+    
+    const isSystemPost = SYSTEM_BLOG_POSTS.some(p => p.id === postId);
+    
+    if (isSystemPost) {
+        if (isAdmin || isSuperAdmin) {
+            if (confirm("This is a system post. Hide it from the community view?")) {
+                const hidden = JSON.parse(localStorage.getItem('hidden_system_posts') || '[]');
+                if (!hidden.includes(postId)) {
+                    hidden.push(postId);
+                    localStorage.setItem('hidden_system_posts', JSON.stringify(hidden));
+                }
+                loadFeed();
+                return;
+            }
+        } else {
+            alert("You cannot delete system-defined posts.");
+            return;
+        }
+    }
+
     try {
       await deleteBlogPost(postId);
       setMyPosts(prev => prev.filter(p => p.id !== postId));
+      setPosts(prev => prev.filter(p => p.id !== postId));
+      if (activePost?.id === postId) {
+          setActivePost(null);
+          setActiveTab('feed');
+      }
     } catch(e) { alert("Failed to delete post"); }
   };
 
@@ -177,8 +238,10 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
       } catch(e) { alert("Failed to post comment."); }
   };
 
-  const renderPostCard = (post: BlogPost, isOwner = false) => {
+  const renderPostCard = (post: BlogPost, canDelete = false) => {
       const isPinned = SYSTEM_BLOG_POSTS.some(p => p.id === post.id);
+      const isAuthor = currentUser && post.authorId === currentUser.uid;
+      
       return (
       <div key={post.id} className={`bg-slate-900 border ${isPinned ? 'border-indigo-500 shadow-lg shadow-indigo-500/10' : 'border-slate-800'} rounded-xl p-5 hover:border-indigo-500/30 transition-all flex flex-col gap-3 group relative`}>
           {isPinned && (
@@ -187,7 +250,7 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
               </div>
           )}
           <div className="flex justify-between items-start">
-              <div>
+              <div className="flex-1 min-w-0 pr-10">
                   <h3 onClick={() => handleViewPost(post)} className={`text-lg font-bold hover:text-indigo-400 cursor-pointer transition-colors line-clamp-1 ${isPinned ? 'text-indigo-100' : 'text-white'}`}>{post.title}</h3>
                   <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
                       <span>By {post.authorName}</span>
@@ -196,12 +259,14 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
                       {post.status === 'draft' && <span className="bg-amber-900/30 text-amber-400 px-1.5 py-0.5 rounded text-[10px] uppercase font-bold">Draft</span>}
                   </div>
               </div>
-              {isOwner && (
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => handleEditPost(post)} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-white" title="Edit"><Edit3 size={14}/></button>
-                      <button onClick={() => handleDeletePost(post.id)} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-red-400" title="Delete"><Trash2 size={14}/></button>
-                  </div>
-              )}
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {isAuthor && (
+                    <button onClick={() => handleEditPost(post)} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-white" title="Edit"><Edit3 size={14}/></button>
+                  )}
+                  {(canDelete || isSuperAdmin) && (
+                    <button onClick={() => handleDeletePost(post.id)} className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-red-400" title="Delete"><Trash2 size={14}/></button>
+                  )}
+              </div>
           </div>
           <p className="text-sm text-slate-400 line-clamp-2">{post.excerpt}</p>
           <div className="flex items-center justify-between mt-auto pt-2">
@@ -234,14 +299,76 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
 
             {activeTab === 'feed' && (
                 <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-6 animate-fade-in">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"><h2 className="text-lg font-bold text-white flex items-center gap-2"><Globe size={18} className="text-emerald-400"/> Latest Posts</h2><div className="relative"><input type="text" placeholder="Search topics..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-10 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500 w-full sm:w-64 transition-all"/><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"/>{searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X size={14} /></button>}</div></div>
-                    {loading ? <div className="py-12 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : filteredPosts.length === 0 ? <div className="py-12 text-center text-slate-500 italic border border-dashed border-slate-800 rounded-xl">{searchQuery ? `No posts found for "${searchQuery}"` : "No posts yet."}</div> : <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{filteredPosts.map(post => renderPostCard(post, currentUser && post.authorId === currentUser.uid))}</div>}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                            <Globe size={18} className="text-emerald-400"/> Latest Posts
+                        </h2>
+                        <div className="flex items-center gap-3">
+                            <div className="relative">
+                                <input type="text" placeholder="Search topics..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-10 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500 w-full sm:w-64 transition-all"/>
+                                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500"/>
+                                {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"><X size={14} /></button>}
+                            </div>
+                        </div>
+                    </div>
+                    {loading ? (
+                        <div className="py-12 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div>
+                    ) : filteredPosts.length === 0 ? (
+                        <div className="py-12 text-center text-slate-500 italic border border-dashed border-slate-800 rounded-xl">
+                            {searchQuery ? `No posts found for "${searchQuery}"` : "No posts yet."}
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {filteredPosts.map(post => {
+                                const isPostAuthor = currentUser && post.authorId === currentUser.uid;
+                                return renderPostCard(post, isPostAuthor || isAdmin || isSuperAdmin);
+                            })}
+                        </div>
+                    )}
                 </div>
             )}
 
             {activeTab === 'my_blog' && (
                 <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-8 animate-fade-in">
-                    <div className="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 border border-indigo-500/30 rounded-xl p-6"><div className="flex justify-between items-start">{isEditingSettings ? <div className="space-y-3 w-full"><input type="text" value={blogTitle} onChange={e => setBlogTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white font-bold" placeholder="Blog Title"/><textarea value={blogDesc} onChange={e => setBlogDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white resize-none" placeholder="Blog Description" rows={2}/><div className="flex gap-2"><button onClick={handleSaveSettings} className="px-4 py-1.5 bg-indigo-600 text-white rounded text-xs font-bold">Save</button><button onClick={() => setIsEditingSettings(false)} className="px-4 py-1.5 bg-slate-800 text-slate-300 rounded text-xs font-bold">Cancel</button></div></div> : <div><h2 className="text-2xl font-bold text-white">{myBlog?.title}</h2><p className="text-slate-400 mt-1">{myBlog?.description}</p></div>}{!isEditingSettings && <button onClick={() => setIsEditingSettings(true)} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-white"><Edit3 size={16}/></button>}</div></div>
+                    <div className="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 border border-indigo-500/30 rounded-xl p-6">
+                        <div className="flex justify-between items-start">
+                            {isEditingSettings ? (
+                                <div className="space-y-3 w-full">
+                                    <input type="text" value={blogTitle} onChange={e => setBlogTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white font-bold" placeholder="Blog Title"/>
+                                    <textarea value={blogDesc} onChange={e => setBlogDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white resize-none" placeholder="Blog Description" rows={2}/>
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex gap-2">
+                                            <button onClick={handleSaveSettings} className="px-4 py-1.5 bg-indigo-600 text-white rounded text-xs font-bold">Save</button>
+                                            <button onClick={() => setIsEditingSettings(false)} className="px-4 py-1.5 bg-slate-800 text-slate-300 rounded text-xs font-bold">Cancel</button>
+                                        </div>
+                                        <button onClick={handleDeleteBlog} className="px-4 py-1.5 bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-900/50 rounded text-xs font-bold flex items-center gap-2 transition-all">
+                                            <Trash2 size={12}/> Delete Workspace
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-white">{myBlog?.title}</h2>
+                                        <p className="text-slate-400 mt-1">{myBlog?.description}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        {(isSuperAdmin || currentUser?.uid === myBlog?.ownerId) && (
+                                            <button onClick={() => setIsEditingSettings(true)} className="p-2 hover:bg-slate-800 rounded text-slate-400 hover:text-white" title="Settings"><Edit3 size={16}/></button>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    
+                    {isSuperAdmin && !myBlog && (
+                        <div className="bg-red-900/10 border border-red-900/30 p-4 rounded-xl flex items-center gap-3 text-red-200">
+                            <ShieldAlert size={20}/>
+                            <span className="text-xs font-bold uppercase tracking-widest">Admin Observer Mode: No Workspace Detected</span>
+                        </div>
+                    )}
+
                     <div className="flex justify-between items-center"><h3 className="text-lg font-bold text-white flex items-center gap-2"><LayoutList size={18}/> My Posts</h3><button onClick={handleCreatePost} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold text-sm shadow-lg transition-transform hover:scale-105"><Plus size={16}/> New Post</button></div>
                     {loading ? <div className="py-12 text-center"><Loader2 className="animate-spin mx-auto text-indigo-400" size={32}/></div> : myPosts.length === 0 ? <div className="py-12 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">You haven't written anything yet.</div> : <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{myPosts.map(post => renderPostCard(post, true))}</div>}
                 </div>

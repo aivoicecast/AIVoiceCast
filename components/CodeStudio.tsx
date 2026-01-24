@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem, TranscriptItem } from '../types';
 import { 
     subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, 
     claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess,
-    getCodeProject 
+    getCodeProject, deductCoins, AI_COSTS 
 } from '../services/firestoreService';
 import { 
     ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, 
@@ -371,6 +372,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
 
         const correctedContent = response.text || activeFile.content;
         handleFileChangeLocal({ ...activeFile, content: correctedContent });
+        
+        if (currentUser) {
+            deductCoins(currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+        }
     } catch (e: any) {
         alert("Magic Pen failed: " + e.message);
     } finally {
@@ -482,6 +487,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
             config: { thinkingConfig: { thinkingBudget: 0 } }
         });
         setTerminalOutput(response.text || "Execution finished with no output.");
+        
+        if (currentUser) {
+            deductCoins(currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+        }
     } catch (e: any) {
         setTerminalOutput(`[INTERNAL ERROR]: ${e.message}`);
     } finally {
@@ -514,6 +523,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
                 thinkingConfig: { thinkingBudget: 0 }
             }
         });
+
+        if (currentUser) {
+            deductCoins(currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+        }
 
         if (response.functionCalls && response.functionCalls.length > 0) {
             for (const fc of response.functionCalls) {
@@ -764,7 +777,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
                                 value={repoUrlInput} 
                                 onChange={e => setRepoUrlInput(e.target.value)} 
                                 onKeyDown={e => e.key === 'Enter' && handleRefreshSource()}
-                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs outline-none focus:border-indigo-500 text-slate-200"
+                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs outline-none focus:border-indigo-500 text-slate-200"
                               />
                           </div>
                           <button onClick={() => handleRefreshSource()} className="w-full py-2.5 bg-indigo-600 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-lg active:scale-95">Sync Tree</button>
@@ -807,7 +820,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
       </div>
 
       {/* Editor Area */}
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-950 relative">
+      <div className="flex-1 flex flex-col min-0 bg-slate-950 relative">
           <header className="h-14 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 shrink-0 z-20">
               <div className="flex items-center gap-4">
                   <div className="w-8 h-8 bg-indigo-600/10 rounded-lg flex items-center justify-center border border-indigo-500/20"><Code size={18} className="text-indigo-400" /></div>
