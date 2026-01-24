@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, CodeProject, RecordingSession } from '../types';
 import { auth } from '../services/firebaseConfig';
@@ -25,7 +24,7 @@ import {
   FolderPlus, Share2, Crown, Terminal as TerminalIcon, FileCode, ExternalLink as ExternalLinkIcon, CodeSquare as CodeIcon, ChevronDown
 } from 'lucide-react';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext, stopAllPlatformAudio } from '../utils/audioUtils';
-import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
+import { getDriveToken, signInWithGoogle, connectGoogleDrive, isJudgeSession } from '../services/authService';
 import { ensureFolder, uploadToDrive, downloadDriveFileAsBlob, deleteDriveFile, ensureCodeStudioFolder, getDrivePreviewUrl } from '../services/googleDriveService';
 
 interface OptimizedStarStory {
@@ -308,7 +307,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   }
 
   const [view, setView] = useState<'selection' | 'setup' | 'active' | 'feedback' | 'archive'>('selection');
-  const [interviewMode, setInterviewMode] = useState<'coding' | 'system_design' | 'behavioral' | 'quick_screen'>('coding');
+  const [interviewMode, setInterviewMode] = useState<'coding' | 'system_design' | 'behavioral' | 'quick_screen' | 'assessment_30' | 'assessment_60'>('coding');
   const [interviewLanguage, setInterviewLanguage] = useState<'c++' | 'python' | 'javascript' | 'java'>('c++');
   const [jobDescription, setJobDescription] = useState('');
   const [interviewerPersona, setInterviewerPersona] = useState('Senior Staff Engineer at Google. Rigorous but fair. Focuses on scalability and data structures.');
@@ -521,12 +520,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             loaded: true, isDirectory: false
                         };
 
-                        const token = getDriveToken();
-                        if (token && sessionFolderIdRef.current) {
-                            try {
-                                const fileId = await uploadToDrive(token, sessionFolderIdRef.current, filename, content);
-                                newFile.driveId = fileId;
-                            } catch(e) { addApiLog("Drive sync failed for new file", "warn"); }
+                        const isJudge = isJudgeSession();
+                        if (isJudge) {
+                           // No Drive sync needed for judge during tool execution
+                        } else {
+                            const token = getDriveToken();
+                            if (token && sessionFolderIdRef.current) {
+                                try {
+                                    const fileId = await uploadToDrive(token, sessionFolderIdRef.current, filename, content);
+                                    newFile.driveId = fileId;
+                                } catch(e) { addApiLog("Drive sync failed for new file", "warn"); }
+                            }
                         }
 
                         setFiles(prev => {
@@ -547,11 +551,13 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             const active = filesRef.current[activeFileIndexRef.current];
                             handleFileChange({ ...active, content: newContent });
                             
-                            const token = getDriveToken();
-                            if (token && sessionFolderIdRef.current && !active.path.startsWith('local-')) {
-                                uploadToDrive(token, sessionFolderIdRef.current, active.name, newContent).then(fid => {
-                                    handleFileChange({ ...active, content: newContent, driveId: fid });
-                                }).catch(console.warn);
+                            if (!isJudgeSession()) {
+                                const token = getDriveToken();
+                                if (token && sessionFolderIdRef.current && !active.path.startsWith('local-')) {
+                                    uploadToDrive(token, sessionFolderIdRef.current, active.name, newContent).then(fid => {
+                                        handleFileChange({ ...active, content: newContent, driveId: fid });
+                                    }).catch(console.warn);
+                                }
                             }
                         }
                         service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: "File updated." } });
@@ -570,18 +576,22 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setIsLoading(true);
     setApiLogs([]);
     const sid = generateSecureId().substring(0, 8);
-    addApiLog("Initializing workspace and Drive folders...", "info");
     
-    try {
-        const token = getDriveToken() || await connectGoogleDrive();
-        if (token) {
-            const root = await ensureCodeStudioFolder(token);
-            const interviewsFolder = await ensureFolder(token, 'MockInterviews', root);
-            sessionFolderIdRef.current = await ensureFolder(token, `Session_${sid}_${interviewLanguage}`, interviewsFolder);
-            addApiLog("Drive vault secured.", "info");
+    if (isJudgeSession()) {
+        addApiLog("Sovereign Evaluation Mode: Using High-Speed Firebase Storage.", "info");
+    } else {
+        addApiLog("Initializing workspace and Drive folders...", "info");
+        try {
+            const token = getDriveToken() || await connectGoogleDrive();
+            if (token) {
+                const root = await ensureCodeStudioFolder(token);
+                const interviewsFolder = await ensureFolder(token, 'MockInterviews', root);
+                sessionFolderIdRef.current = await ensureFolder(token, `Session_${sid}_${interviewLanguage}`, interviewsFolder);
+                addApiLog("Drive vault secured.", "info");
+            }
+        } catch(e) {
+            addApiLog("Drive integration disabled for this session.", "warn");
         }
-    } catch(e) {
-        addApiLog("Drive integration disabled for this session.", "warn");
     }
 
     const welcomeFile: CodeFile = {
@@ -665,13 +675,14 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           if (!response.text) throw new Error("Empty response from evaluation engine.");
           const reportData: MockInterviewReport = JSON.parse(response.text);
           
-          // Inject code and transcript artifacts into report
           reportData.sourceCode = [...files];
           reportData.transcript = [...transcript];
           setReport(reportData);
 
           if (auth.currentUser) {
               const recordingId = generateSecureId();
+              const isJudge = isJudgeSession();
+
               await saveInterviewRecording({ 
                 id: recordingId, 
                 userId: auth.currentUser.uid, 
@@ -688,14 +699,21 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               
               await deductCoins(auth.currentUser.uid, AI_COSTS.TECHNICAL_EVALUATION);
               
-              const token = getDriveToken();
-              if (token && sessionFolderIdRef.current) {
-                  const reportBlob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
-                  await uploadToDrive(token, sessionFolderIdRef.current, 'evaluation_report.json', reportBlob);
-                  
-                  const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
-                  const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
-                  await uploadToDrive(token, sessionFolderIdRef.current, 'interview_transcript.txt', transcriptBlob);
+              const reportBlob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+              const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
+              const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
+
+              if (isJudge) {
+                  // JUDGE REDIRECTION: Save artifacts to Firebase Storage
+                  await uploadFileToStorage(`interviews/${auth.currentUser.uid}/${recordingId}/evaluation_report.json`, reportBlob);
+                  await uploadFileToStorage(`interviews/${auth.currentUser.uid}/${recordingId}/interview_transcript.txt`, transcriptBlob);
+              } else {
+                  // STANDARD MEMBER: Sync artifacts to Google Drive
+                  const token = getDriveToken();
+                  if (token && sessionFolderIdRef.current) {
+                      await uploadToDrive(token, sessionFolderIdRef.current, 'evaluation_report.json', reportBlob);
+                      await uploadToDrive(token, sessionFolderIdRef.current, 'interview_transcript.txt', transcriptBlob);
+                  }
               }
           }
           
@@ -775,7 +793,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         <button onClick={() => setView('selection')} className="p-3 hover:bg-slate-800 rounded-2xl text-slate-400 transition-colors"><ArrowLeft size={24}/></button>
                         <div>
                             <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Configure Session</h2>
-                            <p className="text-indigo-400 text-[10px] font-black uppercase tracking-widest mt-1">{interviewMode} Interview</p>
+                            <p className="text-indigo-400 text-[10px] font-black uppercase tracking-widest">{interviewMode} Interview</p>
                         </div>
                     </div>
                     <div className="space-y-8">

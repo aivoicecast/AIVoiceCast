@@ -12,7 +12,7 @@ import { auth } from '../services/firebaseConfig';
 import { Whiteboard } from './Whiteboard';
 import { generateSecureId } from '../utils/idUtils';
 import { ShareModal } from './ShareModal';
-import { connectGoogleDrive, getDriveToken } from '../services/authService';
+import { connectGoogleDrive, getDriveToken, isJudgeSession } from '../services/authService';
 import { ensureFolder, uploadToDrive, makeFilePubliclyViewable, getDriveFileSharingLink, ensureCodeStudioFolder, getDrivePreviewUrl } from '../services/googleDriveService';
 import { MarkdownView } from './MarkdownView';
 import { saveLocalAsset, getLocalAsset } from '../utils/db';
@@ -412,15 +412,23 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         pdf.addImage(assembledImageB64, 'PNG', 0, 0, 600, 270);
         const pdfBlob = pdf.output('blob');
 
-        try {
-            const token = getDriveToken() || await connectGoogleDrive();
-            if (token) {
-                const root = await ensureCodeStudioFolder(token);
-                const folder = await ensureFolder(token, 'Checks', root);
-                const driveFileId = await uploadToDrive(token, folder, `Asset_${check.checkNumber}.pdf`, pdfBlob);
-                finalizedCheck.drivePdfUrl = await getDriveFileSharingLink(token, driveFileId);
-            }
-        } catch (driveErr: any) {}
+        const isJudge = isJudgeSession();
+        if (isJudge) {
+            // JUDGE REDIRECTION: Use Firebase Storage instead of Google Drive
+            const firebasePdfUrl = await uploadFileToStorage(`checks/${id}/Asset_${check.checkNumber}.pdf`, pdfBlob);
+            finalizedCheck.drivePdfUrl = firebasePdfUrl;
+        } else {
+            // STANDARD MEMBER: Use Google Drive
+            try {
+                const token = getDriveToken() || await connectGoogleDrive();
+                if (token) {
+                    const root = await ensureCodeStudioFolder(token);
+                    const folder = await ensureFolder(token, 'Checks', root);
+                    const driveFileId = await uploadToDrive(token, folder, `Asset_${check.checkNumber}.pdf`, pdfBlob);
+                    finalizedCheck.drivePdfUrl = await getDriveFileSharingLink(token, driveFileId);
+                }
+            } catch (driveErr: any) {}
+        }
 
         await saveBankingCheck(finalizedCheck);
         if (currentUser) await calculateUserTrustScore(currentUser.uid);

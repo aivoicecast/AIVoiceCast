@@ -1,14 +1,13 @@
-
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
 import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power, Database } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
-import { getDriveToken, signInWithGoogle } from '../services/authService';
+import { getDriveToken, signInWithGoogle, isJudgeSession } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
-import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, syncUserProfile, getUserProfile } from '../services/firestoreService';
+import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, syncUserProfile, getUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext, stopAllPlatformAudio } from '../utils/audioUtils';
@@ -328,18 +327,34 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     mediaType: 'video/webm', transcriptUrl: URL.createObjectURL(transcriptBlob), 
                     blob: videoBlob, size: videoBlob.size
                 });
-                const token = getDriveToken();
-                if (token) {
-                    const folderId = await ensureCodeStudioFolder(token);
-                    const driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
-                    const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
+
+                const isJudge = isJudgeSession();
+                if (isJudge) {
+                    // JUDGE REDIRECTION: Save to Firebase Storage
+                    const fbVideoUrl = await uploadFileToStorage(`recordings/${currentUser.uid}/${recId}.webm`, videoBlob);
+                    const fbTranscriptUrl = await uploadFileToStorage(`recordings/${currentUser.uid}/${recId}_transcript.txt`, transcriptBlob);
                     await saveRecordingReference({
                         id: recId, userId: currentUser.uid, channelId: channel.id, 
                         channelTitle: channel.title, channelImage: channel.imageUrl, 
-                        timestamp, mediaUrl: driveVideoUrl, driveUrl: driveVideoUrl, 
-                        mediaType: 'video/webm', transcriptUrl: `drive://${tFileId}`, 
+                        timestamp, mediaUrl: fbVideoUrl, driveUrl: fbVideoUrl, 
+                        mediaType: 'video/webm', transcriptUrl: fbTranscriptUrl, 
                         size: videoBlob.size
                     });
+                } else {
+                    // STANDARD MEMBER: Sync to Google Drive
+                    const token = getDriveToken();
+                    if (token) {
+                        const folderId = await ensureCodeStudioFolder(token);
+                        const driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
+                        const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
+                        await saveRecordingReference({
+                            id: recId, userId: currentUser.uid, channelId: channel.id, 
+                            channelTitle: channel.title, channelImage: channel.imageUrl, 
+                            timestamp, mediaUrl: driveVideoUrl, driveUrl: driveVideoUrl, 
+                            mediaType: 'video/webm', transcriptUrl: `drive://${tFileId}`, 
+                            size: videoBlob.size
+                        });
+                    }
                 }
             } catch(e: any) { addLog("Backup failed: " + e.message, "error"); } 
             finally { setIsUploadingRecording(false); onEndSession(); }

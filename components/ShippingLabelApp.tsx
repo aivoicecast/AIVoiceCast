@@ -1,12 +1,11 @@
-
 import { GoogleGenAI } from '@google/genai';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { ArrowLeft, Download, Globe, Loader2, MapPin, Printer, Scale, Share2, Sparkles, Truck, User } from 'lucide-react';
 import React, { useMemo, useRef, useState } from 'react';
 import { auth } from '../services/firebaseConfig';
-import { connectGoogleDrive, getDriveToken } from '../services/authService';
-import { saveShippingLabel, deductCoins, AI_COSTS } from '../services/firestoreService';
+import { connectGoogleDrive, getDriveToken, isJudgeSession } from '../services/authService';
+import { saveShippingLabel, deductCoins, AI_COSTS, uploadFileToStorage } from '../services/firestoreService';
 import { ensureCodeStudioFolder, ensureFolder, uploadToDrive } from '../services/googleDriveService';
 import { Address, PackageDetails } from '../types';
 import { generateSecureId } from '../utils/idUtils';
@@ -87,26 +86,40 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
       setIsSharing(true);
       try {
           const id = generateSecureId();
-          await saveShippingLabel({
-              id, sender, recipient, package: pkg,
-              trackingNumber: trackingNum, createdAt: Date.now(), ownerId: auth.currentUser.uid
-          });
+          const isJudge = isJudgeSession();
 
-          // High DPI capture
+          // High DPI capture for PDF
           const canvas = await html2canvas(labelRef.current!, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
           const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [288, 432] }); // 4x6 inches
           pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, 288, 432);
           const pdfBlob = pdf.output('blob');
 
-          const token = getDriveToken() || await connectGoogleDrive();
-          if (token) {
-              const folderId = await ensureCodeStudioFolder(token);
-              const shipFolder = await ensureFolder(token, 'Shipments', folderId);
-              await uploadToDrive(token, shipFolder, `Label_${recipient.name.replace(/\s+/g, '_')}.pdf`, pdfBlob);
+          if (isJudge) {
+              // JUDGE REDIRECTION: Save directly to Firebase Storage
+              const fbPdfUrl = await uploadFileToStorage(`shipping/${auth.currentUser.uid}/Label_${id}.pdf`, pdfBlob);
+              await saveShippingLabel({
+                  id, sender, recipient, package: pkg,
+                  trackingNumber: trackingNum, createdAt: Date.now(), ownerId: auth.currentUser.uid
+              });
+              const link = `${window.location.origin}?view=shipping&id=${id}`;
+              setShareLink(link);
+          } else {
+              // STANDARD MEMBER: Sync to Google Drive
+              await saveShippingLabel({
+                  id, sender, recipient, package: pkg,
+                  trackingNumber: trackingNum, createdAt: Date.now(), ownerId: auth.currentUser.uid
+              });
+              
+              const token = getDriveToken() || await connectGoogleDrive();
+              if (token) {
+                  const folderId = await ensureCodeStudioFolder(token);
+                  const shipFolder = await ensureFolder(token, 'Shipments', folderId);
+                  await uploadToDrive(token, shipFolder, `Label_${recipient.name.replace(/\s+/g, '_')}.pdf`, pdfBlob);
+              }
+              const link = `${window.location.origin}?view=shipping&id=${id}`;
+              setShareLink(link);
           }
 
-          const link = `${window.location.origin}?view=shipping&id=${id}`;
-          setShareLink(link);
           setShowShareModal(true);
       } catch (e: any) {
           alert("Sharing failed: " + e.message);

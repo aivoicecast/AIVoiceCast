@@ -53,6 +53,7 @@ import { getUserChannels, saveUserChannel } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { stopAllPlatformAudio } from '../utils/audioUtils';
 import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, syncUserProfile, publishChannelToFirestore, isUserAdmin, updateUserProfile } from '../services/firestoreService';
+import { getSovereignSession, isJudgeSession } from '../services/authService';
 
 interface ErrorBoundaryProps { children?: ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; error: Error | null; }
@@ -176,9 +177,12 @@ const App: React.FC = () => {
   const [activeItemId, setActiveItemId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('id'));
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  
+  // CRITICAL: Synchronous boot resolution for Judges
+  const [currentUser, setCurrentUser] = useState<any>(() => getSovereignSession().user);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => getSovereignSession().profile);
   const [authLoading, setAuthLoading] = useState(true);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [publicChannels, setPublicChannels] = useState<Channel[]>([]);
   const [userChannels, setUserChannels] = useState<Channel[]>([]);
@@ -191,7 +195,7 @@ const App: React.FC = () => {
 
   const isSuperAdmin = useMemo(() => {
       if (!currentUser) return false;
-      return currentUser.email === 'shengliang.song.ai@gmail.com' || isUserAdmin(userProfile);
+      return currentUser.email?.toLowerCase() === 'shengliang.song.ai@gmail.com' || isUserAdmin(userProfile);
   }, [userProfile, currentUser]);
 
   const isProMember = useMemo(() => {
@@ -222,7 +226,7 @@ const App: React.FC = () => {
 
   const handleUpdateLanguage = useCallback(async (newLang: 'en' | 'zh') => {
       setLanguage(newLang);
-      if (currentUser) {
+      if (currentUser && !isJudgeSession()) {
           try {
               await updateUserProfile(currentUser.uid, { languagePreference: newLang });
           } catch(e) {
@@ -307,7 +311,19 @@ const App: React.FC = () => {
                     }
                 }
             });
-        } else { setCurrentUser(null); setUserProfile(null); }
+        } else {
+            // CRITICAL: If a Judge session exists in cache, ignore Firebase null state
+            if (isJudgeSession()) {
+                const { user, profile } = getSovereignSession();
+                if (user) {
+                    setCurrentUser(user);
+                    if (profile) setUserProfile(profile);
+                }
+            } else {
+                setCurrentUser(null);
+                setUserProfile(null);
+            }
+        }
         setAuthLoading(false);
     });
     return () => unsub();

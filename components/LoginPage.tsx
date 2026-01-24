@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2, Sparkles, BookOpen } from 'lucide-react';
-import { signInWithGoogle } from '../services/authService';
+import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2, Sparkles, BookOpen, Key, User, ShieldAlert, Lock } from 'lucide-react';
+import { signInWithGoogle, signInAsJudge, JUDGE_EMAIL } from '../services/authService';
 import { BrandLogo } from './BrandLogo';
 
 interface LoginPageProps {
@@ -21,15 +21,35 @@ const GoogleLogo = ({ size = 20 }: { size?: number }) => (
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionClick, onStoryClick }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [showJudgeLogin, setShowJudgeLogin] = useState(false);
+  const [judgeId, setJudgeId] = useState(JUDGE_EMAIL);
+  const [judgeKey, setJudgeKey] = useState('12.17.2025.pi31415926');
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const handleLogin = async () => {
     setIsLoading(true);
+    setAuthError(null);
     try {
       await signInWithGoogle();
       window.location.reload();
     } catch (e: any) {
       console.error(e);
       setIsLoading(false);
+    }
+  };
+
+  const handleJudgeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setAuthError(null);
+    
+    console.log("[Auth] Attempting judge handshake...");
+    const success = await signInAsJudge(judgeId, judgeKey);
+    if (success) {
+        window.location.reload();
+    } else {
+        setAuthError("Registry ID or Neural Key mismatch. Authentication denied.");
+        setIsLoading(false);
     }
   };
 
@@ -49,44 +69,110 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
             Making super-intelligence beautifully accessible for daily life.
           </p>
 
-          <div className="space-y-4 mb-10">
-              <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
-                  <ShieldCheck className="text-emerald-400" size={20}/>
-                  <div className="text-left">
-                      <p className="text-xs font-bold text-white uppercase">Sovereign Entry</p>
-                      <p className="text-[10px] text-slate-500">Secure Google Account handshake required.</p>
-                  </div>
-              </div>
-              <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
-                  <Sparkles className="text-indigo-400" size={20}/>
-                  <div className="text-left">
-                      <p className="text-xs font-bold text-white uppercase">Refracted Logic</p>
-                      <p className="text-[10px] text-slate-500">20+ specialized tools for projects and growth.</p>
-                  </div>
-              </div>
-              <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
-                  <HardDrive className="text-purple-400" size={20}/>
-                  <div className="text-left">
-                      <p className="text-xs font-bold text-white uppercase">Personal Storage</p>
-                      <p className="text-[10px] text-slate-500">Archives save directly to your own Google Drive.</p>
-                  </div>
-              </div>
-          </div>
-
-          <button
-            onClick={handleLogin}
-            disabled={isLoading}
-            className="group w-full bg-white hover:bg-slate-50 text-slate-900 font-black py-5 rounded-2xl shadow-2xl flex items-center justify-center gap-4 transition-all active:scale-[0.98]"
-          >
-            {isLoading ? (
-              <Loader2 size={24} className="animate-spin text-indigo-600" />
-            ) : (
+          {!showJudgeLogin ? (
               <>
-                <GoogleLogo size={24} />
-                <span className="text-base uppercase tracking-wider">Continue with Google Account</span>
+                  <div className="space-y-4 mb-10">
+                      <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
+                          <ShieldCheck className="text-emerald-400" size={20}/>
+                          <div className="text-left">
+                              <p className="text-xs font-bold text-white uppercase">Sovereign Entry</p>
+                              <p className="text-[10px] text-slate-500">Secure Google Account handshake required.</p>
+                          </div>
+                      </div>
+                      <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
+                          <Sparkles className="text-indigo-400" size={20}/>
+                          <div className="text-left">
+                              <p className="text-xs font-bold text-white uppercase">Refracted Logic</p>
+                              <p className="text-[10px] text-slate-500">20+ specialized tools for projects and growth.</p>
+                          </div>
+                      </div>
+                      <div className="flex items-center gap-3 bg-slate-800/30 p-3 rounded-xl border border-slate-700/50">
+                          <HardDrive className="text-purple-400" size={20}/>
+                          <div className="text-left">
+                              <p className="text-xs font-bold text-white uppercase">Personal Storage</p>
+                              <p className="text-[10px] text-slate-500">Archives save directly to your own Google Drive.</p>
+                          </div>
+                      </div>
+                  </div>
+
+                  <div className="space-y-4">
+                      <button
+                        onClick={handleLogin}
+                        disabled={isLoading}
+                        className="group w-full bg-white hover:bg-slate-50 text-slate-900 font-black py-5 rounded-2xl shadow-2xl flex items-center justify-center gap-4 transition-all active:scale-[0.98]"
+                      >
+                        {isLoading ? (
+                          <Loader2 size={24} className="animate-spin text-indigo-600" />
+                        ) : (
+                          <>
+                            <GoogleLogo size={24} />
+                            <span className="text-base uppercase tracking-wider">Continue with Google Account</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button 
+                        onClick={() => setShowJudgeLogin(true)}
+                        className="w-full py-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-indigo-400 transition-colors flex items-center justify-center gap-2"
+                      >
+                         <Lock size={12}/> Judge Access Portal
+                      </button>
+                  </div>
               </>
-            )}
-          </button>
+          ) : (
+              <div className="animate-fade-in">
+                  <div className="bg-slate-950/50 border border-indigo-500/30 rounded-[2rem] p-8 mb-8 space-y-6">
+                      <div className="flex items-center gap-3 justify-center mb-2">
+                          <Key className="text-indigo-400" size={20} />
+                          <h3 className="text-sm font-black text-white uppercase tracking-widest">Judge Authentication</h3>
+                      </div>
+                      
+                      <form onSubmit={handleJudgeSubmit} className="space-y-4">
+                          <div className="relative">
+                              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={16}/>
+                              <input 
+                                type="text"
+                                placeholder="Registry ID"
+                                value={judgeId}
+                                onChange={e => setJudgeId(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-12 pr-4 py-3 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner transition-all"
+                              />
+                          </div>
+                          <div className="relative">
+                              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={16}/>
+                              <input 
+                                type="password"
+                                placeholder="Neural Key"
+                                value={judgeKey}
+                                onChange={e => setJudgeKey(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-12 pr-4 py-3 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner transition-all"
+                              />
+                          </div>
+                          
+                          {authError && (
+                              <div className="p-3 bg-red-900/20 border border-red-900/50 rounded-xl flex items-center gap-2 text-red-400 text-[10px] font-bold uppercase">
+                                  <ShieldAlert size={14}/> {authError}
+                              </div>
+                          )}
+
+                          <button 
+                            type="submit"
+                            disabled={isLoading || !judgeId || !judgeKey}
+                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50"
+                          >
+                              {isLoading ? <Loader2 size={18} className="animate-spin mx-auto"/> : 'Begin Handshake'}
+                          </button>
+                      </form>
+                  </div>
+                  
+                  <button 
+                    onClick={() => setShowJudgeLogin(false)}
+                    className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors"
+                  >
+                     Back to Sovereign Entry
+                  </button>
+              </div>
+          )}
           
           <div className="mt-10 flex flex-wrap justify-center gap-6">
               <button onClick={onMissionClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold tracking-[0.2em] transition-colors">Vision</button>
