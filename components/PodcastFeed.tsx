@@ -1,7 +1,7 @@
 
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture } from '../types';
-import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCw, Scroll, Lock, Crown, Settings2, Globe, Cpu, Speaker } from 'lucide-react';
+import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCw, Scroll, Lock, Crown, Settings2, Globe, Cpu, Speaker, Search, X } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { CreatorProfileModal } from './CreatorProfileModal';
 import { PodcastListTable, SortKey } from './PodcastListTable';
@@ -35,6 +35,7 @@ interface PodcastFeedProps {
   filterMode?: 'foryou' | 'following' | 'mine';
   isFeedActive?: boolean; 
   searchQuery?: string;
+  setSearchQuery?: (q: string) => void;
   onNavigate?: (view: string) => void;
   onOpenPricing?: () => void;
   language?: 'en' | 'zh';
@@ -313,7 +314,7 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
 };
 
 export const PodcastFeed: React.FC<PodcastFeedProps> = ({ 
-  channels, onChannelClick, onStartLiveSession, userProfile, globalVoice, currentUser, t, onCommentClick, handleVote, searchQuery = '', onNavigate, onOpenPricing, onUpdateChannel, language
+  channels, onChannelClick, onStartLiveSession, userProfile, globalVoice, currentUser, t, onCommentClick, handleVote, searchQuery = '', setSearchQuery, onNavigate, onOpenPricing, onUpdateChannel, language
 }) => {
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' }>({ key: 'likes', direction: 'desc' });
@@ -379,14 +380,38 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
       return (
         <div className="h-full overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-800">
             <div className="max-w-7xl mx-auto space-y-8">
-                <div className="space-y-4 animate-fade-in-up">
+                {/* Search Bar Section */}
+                <div className="animate-fade-in-up">
+                    <div className="relative group max-w-2xl mx-auto">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <Search size={20} className="text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                        </div>
+                        <input 
+                            type="text" 
+                            placeholder="Search activities, lessons, or neural labs..." 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery?.(e.target.value)}
+                            className="block w-full bg-slate-900 border border-slate-800 rounded-[2rem] pl-12 pr-12 py-5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 shadow-2xl transition-all text-lg font-medium"
+                        />
+                        {searchQuery && (
+                            <button 
+                                onClick={() => setSearchQuery?.('')}
+                                className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-500 hover:text-white transition-colors"
+                            >
+                                <X size={20} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="space-y-4 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
                     <div className="flex items-center justify-between px-2"><h3 className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em]">Specialized AI Intelligence Suite</h3></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         {[
                             { id: 'bible_study', label: 'Scripture', sub: 'Neural Sanctuary', icon: Scroll, color: 'text-amber-400', bg: 'bg-amber-950/40' },
                             { id: 'graph_studio', label: 'Neural Graph', sub: 'Visual Math', icon: Activity, color: 'text-emerald-400', bg: 'bg-emerald-950/40' },
                             { id: 'mock_interview', label: 'Mock Interview', sub: 'Career Eval', icon: Video, color: 'text-red-500', bg: 'bg-red-950/40' },
-                            { id: 'code_studio', label: 'Builder Studio', sub: 'Cloud Engineering', icon: Terminal, color: 'text-indigo-400', bg: 'bg-indigo-950/40' }
+                            { id: 'code_studio', label: 'Builder Studio', sub: 'Cloud Engineering', icon: Terminal, color: 'text-indigo-400', bg: 'bg-indigo-900/30' }
                         ].map(app => (
                             <button 
                                 key={app.id} 
@@ -431,16 +456,43 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
 
   return (
     <div ref={containerRef} className="h-[calc(100vh-64px)] w-full bg-black overflow-y-scroll snap-y snap-mandatory no-scrollbar relative">
-        {sortedChannels.map((channel) => (
-            <div key={channel.id} data-id={channel.id} className="h-full w-full snap-start">
-                <MobileFeedCard 
-                    channel={channel} 
-                    isActive={activeMobileId === channel.id} 
-                    onChannelClick={onChannelClick} 
-                    language={language}
-                />
+        {/* Mobile Search Overlay Toggle */}
+        <div className="fixed top-[calc(1rem+env(safe-area-inset-top))] left-4 z-50">
+            <button 
+                onClick={() => {
+                    const q = prompt("Search activities:", searchQuery);
+                    if (q !== null) setSearchQuery?.(q);
+                }}
+                className="p-3 bg-slate-900/60 backdrop-blur-md rounded-full border border-white/10 text-white shadow-xl"
+            >
+                <Search size={20} />
+            </button>
+        </div>
+
+        {sortedChannels.length === 0 ? (
+            <div className="h-full w-full flex flex-col items-center justify-center bg-slate-950 p-8 text-center">
+                <SearchX size={64} className="text-slate-700 mb-4 opacity-20" />
+                <h3 className="text-xl font-bold text-white mb-2">No activities found</h3>
+                <p className="text-sm text-slate-500 mb-8">Try adjusting your neural search filters.</p>
+                <button 
+                    onClick={() => setSearchQuery?.('')}
+                    className="px-8 py-3 bg-indigo-600 text-white font-black uppercase tracking-widest rounded-xl shadow-lg"
+                >
+                    Clear Search
+                </button>
             </div>
-        ))}
+        ) : (
+            sortedChannels.map((channel) => (
+                <div key={channel.id} data-id={channel.id} className="h-full w-full snap-start">
+                    <MobileFeedCard 
+                        channel={channel} 
+                        isActive={activeMobileId === channel.id} 
+                        onChannelClick={onChannelClick} 
+                        language={language}
+                    />
+                </div>
+            ))
+        )}
     </div>
   );
 };

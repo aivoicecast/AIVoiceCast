@@ -10,30 +10,34 @@ interface MarkdownViewProps {
   showThemeSwitcher?: boolean;
 }
 
-const THEME_CONFIG: Record<ReaderTheme, { container: string, prose: string, icon: any, label: string }> = {
+const THEME_CONFIG: Record<ReaderTheme, { container: string, prose: string, icon: any, label: string, textColor: string }> = {
     slate: { 
         container: 'bg-slate-900 text-slate-200', 
         prose: 'prose-invert prose-indigo', 
         icon: Palette, 
-        label: 'Slate' 
+        label: 'Slate',
+        textColor: 'text-slate-200'
     },
     light: { 
         container: 'bg-white text-slate-900 border border-slate-200', 
         prose: 'prose-slate', 
         icon: Sun, 
-        label: 'Paper' 
+        label: 'Paper',
+        textColor: 'text-slate-900'
     },
     dark: { 
         container: 'bg-black text-white', 
         prose: 'prose-invert prose-blue', 
         icon: Moon, 
-        label: 'Night' 
+        label: 'Night',
+        textColor: 'text-white'
     },
     sepia: { 
         container: 'bg-[#f4ecd8] text-[#5b4636]', 
         prose: 'prose-sepia', 
         icon: Coffee, 
-        label: 'Sepia' 
+        label: 'Sepia',
+        textColor: 'text-[#5b4636]'
     }
 };
 
@@ -275,7 +279,7 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, initialThem
                 } else if (trimmed.startsWith('- ')) {
                     renderedElements.push(<li key={`${index}-${lineIdx}`} className="ml-4 list-disc my-3 pl-2 marker:text-indigo-500 text-base leading-relaxed">{formatInline(trimmed.substring(2))}</li>);
                 } else {
-                    renderedElements.push(<p key={`${index}-${lineIdx}`} className="mb-5 leading-relaxed text-lg antialiased">{formatInline(line)}</p>);
+                    renderedElements.push(<p key={`${index}-${lineIdx}`} className={`mb-5 leading-relaxed text-lg antialiased ${config.textColor}`}>{formatInline(line)}</p>);
                 }
             }
         });

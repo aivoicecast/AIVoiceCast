@@ -97,8 +97,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
   const handleCreateIdentity = async () => {
       if (!user || isCreatingIdentity) return;
-      if (!confirm("Generate a new Cryptographic Identity? This will store a unique Private Key in this browser's local database. This key is used to sign offline payments.")) return;
-      
+      // Confirmation removed for seamless experience
       setIsCreatingIdentity(true);
       try {
           const { publicKey, privateKey } = await generateMemberIdentity();
@@ -111,9 +110,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           const updated = await getUserProfile(user.uid);
           if (updated) setUser(updated);
           
-          alert("Neural Identity Registered! You can now participate in peer-to-peer VoiceCoin transactions.");
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Neural Identity Registered: Sovereign keys secured in local storage.", type: 'success' } }));
       } catch (e: any) {
-          alert("Identity registration failed: " + e.message);
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Identity registration failed: " + e.message, type: 'error' } }));
       } finally {
           setIsCreatingIdentity(false);
       }
@@ -122,8 +121,14 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const handleSendOnline = async () => {
       if (!user || !selectedRecipient || !transferAmount) return;
       const amt = parseInt(transferAmount);
-      if (isNaN(amt) || amt <= 0) return alert("Invalid amount.");
-      if (amt > (user.coinBalance || 0)) return alert("Insufficient balance.");
+      if (isNaN(amt) || amt <= 0) {
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Invalid transaction amount.", type: 'warn' } }));
+          return;
+      }
+      if (amt > (user.coinBalance || 0)) {
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Insufficient ledger balance.", type: 'warn' } }));
+          return;
+      }
 
       setPaymentStep('processing');
       try {
@@ -131,7 +136,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           setPaymentStep('receipt');
           handleRefresh();
       } catch (e: any) {
-          alert("Transfer failed: " + e.message);
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Transfer handshake failed: " + e.message, type: 'error' } }));
           setPaymentStep('input');
       }
   };
@@ -139,7 +144,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const handleGenerateOfflineToken = async () => {
       if (!user || !transferAmount || !privateKey || !user.certificate) return;
       const amt = parseInt(transferAmount);
-      if (isNaN(amt) || amt <= 0) return alert("Invalid amount.");
+      if (isNaN(amt) || amt <= 0) return;
       
       setPaymentStep('processing');
       try {
@@ -166,7 +171,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           setGeneratedToken(encoded);
           setPaymentStep('receipt');
       } catch (e: any) {
-          alert("Signing failed: " + e.message);
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Sovereign signing failed: " + e.message, type: 'error' } }));
           setPaymentStep('input');
       }
   };
@@ -205,9 +210,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           setPastedToken('');
           setShowTokenInput(false);
           handleRefresh();
-          alert(`Successfully claimed ${verifiedToken.amount} VoiceCoins!`);
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `Successfully claimed ${verifiedToken.amount} VoiceCoins!`, type: 'success' } }));
       } catch (e: any) {
-          alert("Claim failed: " + e.message);
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Redemption failed: " + e.message, type: 'error' } }));
       } finally {
           setIsClaiming(false);
       }
@@ -363,8 +368,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                       {paymentStep === 'input' && (
                           <div className="space-y-6">
                               <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-                                  <button onClick={() => setTransferType('online')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'online' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>Online Transfer</button>
-                                  <button onClick={() => setTransferType('offline')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'offline' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500'}`}>Neural Token</button>
+                                  <button onClick={() => setTransferType('online')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'online' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-50'}`}>Online Transfer</button>
+                                  <button onClick={() => setTransferType('offline')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'offline' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-50'}`}>Neural Token</button>
                               </div>
 
                               {transferType === 'online' ? (
@@ -480,7 +485,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                       <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Offline Redemption Link</p>
                                       <div className="flex gap-2">
                                           <input readOnly value={generatedToken} className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-[10px] font-mono text-indigo-300 truncate outline-none" />
-                                          <button onClick={() => { navigator.clipboard.writeText(generatedToken); alert("Token Copied!"); }} className="p-3 bg-slate-800 hover:bg-indigo-600 rounded-xl text-white transition-all"><Copy size={18}/></button>
+                                          <button onClick={() => { navigator.clipboard.writeText(generatedToken); window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Token copied to clipboard.", type: 'success' } })); }} className="p-3 bg-slate-800 hover:bg-indigo-600 rounded-xl text-white transition-all"><Copy size={18}/></button>
                                       </div>
                                       <p className="text-[9px] text-slate-600 italic">This token is unique and one-time use. Send it to your recipient to claim.</p>
                                   </div>

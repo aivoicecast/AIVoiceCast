@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { getDebugCollectionDocs, seedDatabase, recalculateGlobalStats, cleanupDuplicateUsers, isUserAdmin, deleteFirestoreDoc, purgeFirestoreCollection, setUserSubscriptionTier } from '../services/firestoreService';
-import { ArrowLeft, RefreshCw, Database, Table, Code, Search, UploadCloud, Users, ShieldCheck, Crown, Trash2, ShieldAlert, Loader2, Zap, Activity, CheckCircle, Copy, Check, X, Film, GraduationCap, AlertCircle, Info, Cloud, Speech, Settings } from 'lucide-react';
+import { getDebugCollectionDocs, seedDatabase, recalculateGlobalStats, cleanupDuplicateUsers, isUserAdmin, deleteFirestoreDoc, purgeFirestoreCollection, setUserSubscriptionTier, updateAllChannelDatesToToday } from '../services/firestoreService';
+import { ArrowLeft, RefreshCw, Database, Table, Code, Search, UploadCloud, Users, ShieldCheck, Crown, Trash2, ShieldAlert, Loader2, Zap, Activity, CheckCircle, Copy, Check, X, Film, GraduationCap, AlertCircle, Info, Cloud, Speech, Settings, Calendar } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { UserProfile } from '../types';
 import { GoogleGenAI } from "@google/genai";
@@ -212,6 +212,20 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
     }
   };
 
+  const handleResetAllDates = async () => {
+      if(!confirm("Reset ALL channel creation dates to right now? This affects sorting in the discovery feed.")) return;
+      setIsLoading(true);
+      try {
+          const count = await updateAllChannelDatesToToday();
+          alert(`Success! Updated ${count} cloud channels to today's date.`);
+          await fetchCollection('channels');
+      } catch(e: any) {
+          alert("Update failed: " + e.message);
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
   const handleCleanupDuplicates = async () => {
       if (!confirm("Are you sure? This fixes 'Accept Invitation' errors caused by duplicate UIDs.")) return;
       setIsLoading(true);
@@ -386,10 +400,16 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
                                     {isLoading ? 'Syncing...' : `${docs.length} Entries`}
                                 </span>
                                 {activeCollection === 'channels' && isSuperAdmin && (
-                                    <button onClick={handleSeed} disabled={isLoading} className="flex items-center space-x-2 px-3 py-1 bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-900 text-emerald-400 rounded text-xs font-bold ml-2">
-                                        <UploadCloud size={14} />
-                                        <span>Seed DB</span>
-                                    </button>
+                                    <>
+                                        <button onClick={handleSeed} disabled={isLoading} className="flex items-center space-x-2 px-3 py-1 bg-emerald-900/30 hover:bg-emerald-900/50 border border-emerald-900 text-emerald-400 rounded text-xs font-bold ml-2">
+                                            <UploadCloud size={14} />
+                                            <span>Seed DB</span>
+                                        </button>
+                                        <button onClick={handleResetAllDates} disabled={isLoading} className="flex items-center space-x-2 px-3 py-1 bg-indigo-900/30 hover:bg-indigo-900/50 border border-indigo-900 text-indigo-400 rounded text-xs font-bold ml-2">
+                                            <Calendar size={14} />
+                                            <span>Reset All Dates</span>
+                                        </button>
+                                    </>
                                 )}
                                 {isSuperAdmin && (
                                     <button 

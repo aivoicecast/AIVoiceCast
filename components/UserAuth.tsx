@@ -40,9 +40,8 @@ export const UserAuth: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    if (confirm("Sign out?")) {
-        await signOut();
-    }
+    // Confirmation removed for seamless experience
+    await signOut();
   };
 
   if (loading) return (

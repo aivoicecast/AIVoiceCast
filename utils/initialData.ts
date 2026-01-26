@@ -1,3 +1,4 @@
+
 import { Channel, ChannelVisibility } from '../types';
 import { OFFLINE_CHANNEL_ID } from './offlineContent';
 
@@ -18,78 +19,38 @@ export const SPECIALIZED_VOICES = [
   'Default Gem'
 ];
 
-// Use a fixed past date (Jan 15, 2024) to ensure initial data doesn't clutter the "Today" view in Calendar
+export const TOPIC_CATEGORIES: Record<string, string[]> = {
+  'Technology': ['AI/ML', 'Cloud Computing', 'React', 'TypeScript', 'Cybersecurity', 'Systems Architecture', 'Database Internals'],
+  'Professional': ['Software Engineering', 'Product Management', 'Career Growth', 'Mentorship', 'Leadership'],
+  'Daily Living': ['Personal Finance', 'Wellness', 'Cooking', 'Travel', 'Productivity'],
+  'Creativity': ['Digital Art', 'Music Composition', 'Storytelling', 'UI/UX Design'],
+  'Knowledge': ['History', 'Philosophy', 'Science', 'Languages', 'Biblical Studies']
+};
+
 const INITIAL_DATE = 1705276800000; 
 
-export const CATEGORY_STYLES: Record<string, string> = {
-  'Personal Finance & Wealth': 'luxury gold coins financial chart minimalist clean 4k',
-  'Career, Productivity & Self-Improvement': 'modern office success motivation sunrise minimalist',
-  'Technology & AI': 'futuristic cyberpunk glowing blue circuit board robot high tech',
-  'Health, Fitness & Wellness': 'organic healthy food yoga nature sunlight bright fresh',
-  'Relationships & Family': 'warm cozy home family dinner sunset emotional connection',
-  'True Crime': 'detective noir dark moody mystery crime scene flashlight cinematic',
-  'Politics, Society & Culture': 'newsroom capitol debate podium microphone crowd journalism',
-  'Business & Entrepreneurship': 'skyscraper boardroom handshake startup rocket launch business',
-  'Entertainment & Pop Culture': 'neon lights cinema concert stage spotlight colorful pop art',
-  'Lifestyle, Travel & Hobbies': 'adventure travel backpack landscape camera coffee cozy'
-};
-
-export const TOPIC_CATEGORIES: Record<string, string[]> = {
-  'Personal Finance & Wealth': [
-    'Investing for beginners', 'Stock market insights', 'Real estate investing', 
-    'Passive income strategies', 'Financial independence / FIRE movement', 
-    'Cryptocurrency & brokerage', 'Side hustles', 'Retirement planning', 
-    'Tax optimization', 'Budgeting & money management'
-  ],
-  'Career, Productivity & Self-Improvement': [
-    'Career growth & leadership', 'Productivity hacks', 'Time management', 
-    'Public speaking & communication', 'Mental models & decision-making', 
-    'Negotiation skills', 'Goal-setting systems', 'Motivation & discipline', 
-    'Creativity techniques', 'Work-life balance'
-  ],
-  'Technology & AI': [
-    'Artificial intelligence explained', 'How to use AI tools', 'Future of jobs with AI', 
-    'Tech news breakdown', 'Software engineering insights', 'Cybersecurity & privacy', 
-    'Robotics & automation', 'Space tech', 'Biotechnology advances', 'Silicon Valley founder stories'
-  ],
-  'Health, Fitness & Wellness': [
-    'Healthy eating & nutrition', 'Strength training', 'Weight loss science', 
-    'Longevity research', 'Mental health & anxiety', 'Sleep optimization', 
-    'Holistic health', 'Chronic pain management', 'Sports performance', 'Biohacking'
-  ],
-  'Relationships & Family': [
-    'Marriage & long-term relationships', 'Dating tips', 'Parenting strategies', 
-    'Conflict resolution', 'Emotional intelligence', 'Communication in relationships', 
-    'Divorce recovery', 'Raising teens', 'Friendship building', 'Work-family dynamics'
-  ],
-  'True Crime': [
-    'Unsolved mysteries', 'Famous criminal cases', 'Wrongful convictions', 
-    'Serial killers', 'FBI case breakdowns', 'Forensic science explained', 
-    'Courtroom drama', 'Criminal psychology', 'Cold cases', 'Missing person investigations'
-  ],
-  'Politics, Society & Culture': [
-    'US political analysis', 'Geopolitics', 'Social issues explained', 
-    'Media bias & news breakdown', 'American culture & history', 'Law & constitutional topics', 
-    'Immigration stories', 'Generational differences', 'DEI / workplace culture', 'Religion & belief discussions'
-  ],
-  'Business & Entrepreneurship': [
-    'Startup stories', 'Small business growth', 'Marketing strategy', 
-    'E-commerce tactics', 'Venture capital & funding', 'Scaling companies', 
-    'Branding', 'Leadership challenges', 'Remote work & future of work', 'Business failures & lessons'
-  ],
-  'Entertainment & Pop Culture': [
-    'Movie & TV reviews', 'Celebrity interviews', 'Music analysis', 
-    'Comedy conversations', 'Internet culture trends', 'TikTok & YouTube creator stories', 
-    'eSports & gaming', 'Anime & fandom discussions', 'Sports news & commentary', 'Book discussions'
-  ],
-  'Lifestyle, Travel & Hobbies': [
-    'US travel guides', 'International travel tips', 'Food exploration', 
-    'Minimalism & decluttering', 'Home organization', 'Gardening', 
-    'DIY projects', 'Pets & dog training', 'Photography & videography', 'Outdoor adventures & hiking'
-  ]
-};
-
 export const HANDCRAFTED_CHANNELS: Channel[] = [
+  {
+    id: 'judge-deep-dive',
+    title: '🏆 JUDGE: Neural Prism Technical Audit',
+    description: 'A detailed interactive guide specifically for Hackathon Judges. We answer all judging criteria (Execution, Innovation, Impact) while demonstrating the platform live.',
+    author: 'Project Lead',
+    voiceName: 'Default Gem',
+    systemInstruction: 'You are the project lead of Neural Prism. You are speaking directly to a hackathon judge. Your tone is professional, confident, and highly technical. You explain how the project leverages Gemini 3, the innovation of Heuristic Simulation, and the impact of the refractive suite.',
+    likes: 500,
+    dislikes: 0,
+    comments: [],
+    tags: ['Judging', 'Architecture', 'Innovation', 'Impact'],
+    imageUrl: 'https://images.unsplash.com/photo-1454165833767-027ee6a7cbb4?w=600&q=80',
+    welcomeMessage: "Welcome, Judge. This channel is pinned for your convenience. We have used this platform to self-document our adherence to your criteria. Select a lesson in the curriculum to see the 'Refractive Cache' in action.",
+    starterPrompts: [
+      "Show me the Gemini 3 implementation details",
+      "Why is Heuristic Simulation better than a real VM?",
+      "Explain the Potential Impact of the Finance Lab",
+      "How is this project innovative?"
+    ],
+    createdAt: Date.now()
+  },
   {
     id: OFFLINE_CHANNEL_ID,
     title: 'Neural Prism Platform',
@@ -151,27 +112,6 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
       "What is a zombie process?",
       "Explain RCU (Read-Copy-Update) synchronization",
       "Walk me through the boot process"
-    ],
-    createdAt: INITIAL_DATE
-  },
-  {
-    id: 'default-gem',
-    title: 'Default Gem Assistant',
-    description: 'The standard Neural Prism general assistant. Master the platform features: Live Studio, Code Studio, and Neural Assets.',
-    author: 'Gemini Standard',
-    voiceName: 'Default Gem',
-    systemInstruction: 'You are Default Gem, the helpful and creative AI assistant for the Neural Prism platform. You help users navigate the hub. You explain the "Magic Prism" concept, the Neural Execution Engine in Code Studio, and how the platform empowers daily human activities.',
-    likes: 1500,
-    dislikes: 1,
-    comments: [],
-    tags: ['Onboarding', 'Tutorial', 'Neural Prism'],
-    imageUrl: 'https://images.unsplash.com/photo-1620712943543-bcc4628c7215?w=600&q=80',
-    welcomeMessage: "Hello! I'm Default Gem. I'm here to help you master the Neural Prism platform. Where shall we begin our tour of the rainbow tools?",
-    starterPrompts: [
-      "What is Neural Prism?",
-      "How does the Neural Execution Engine work?",
-      "Explain the decentralized identity model",
-      "How do I create my first interactive activity?"
     ],
     createdAt: INITIAL_DATE
   }

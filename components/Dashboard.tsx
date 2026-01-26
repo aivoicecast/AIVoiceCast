@@ -5,7 +5,7 @@ import {
   Briefcase, Truck, AppWindow, Book, PenTool, Rss, Gift, Rocket, BookOpen, 
   Activity, Scroll, GraduationCap, Cpu, Star, Coins, Zap, ShieldCheck,
   Globe, Users, Clock, Sparkles, ChevronRight, Crown, Lock, Radio,
-  Disc, Calendar, History, FolderOpen
+  Disc, Calendar, History, FolderOpen, BookText
 } from 'lucide-react';
 import { ViewID, UserProfile } from '../types';
 
@@ -57,7 +57,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
       title: t.discoverySector,
       apps: [
         { id: 'directory', label: 'Knowledge Hub', sub: 'Podcast Stream', description: 'Interactive AI-guided learning sessions with real-time Q&A and screen-sharing support.', icon: Radio, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: false },
-        { id: 'bible_study', label: 'Scripture', sub: 'Ancient Text', description: 'A sacred digital space for dual-language scripture study and cinematic AI visualizations.', icon: Scroll, color: 'text-amber-500', bg: 'bg-amber-950/40', restricted: false }
+        { id: 'bible_study', label: 'Scripture', sub: 'Ancient Text', description: 'A sacred digital space for dual-language scripture study and cinematic AI visualizations.', icon: Scroll, color: 'text-amber-500', bg: 'bg-amber-950/40', restricted: false },
+        { id: 'book_studio', label: 'Author Studio', sub: 'Neural Books', description: 'Synthesize full-length technical books and manuals into high-fidelity PDF formats instantly.', icon: BookText, color: 'text-indigo-500', bg: 'bg-indigo-900/30', restricted: false }
       ]
     },
     {
@@ -89,7 +90,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
       apps: [
         { id: 'mock_interview', label: 'Career Eval', sub: 'Simulation Lab', description: 'Practice with rigorous AI interviewer personas. Receive deep technical feedback and scoring.', icon: Video, color: 'text-red-500', bg: 'bg-red-950/40', restricted: true },
         { id: 'mentorship', label: 'Expert Hub', sub: 'Knowledge Match', description: 'Book 1-on-1 sessions with human domain experts or specialized AI technical mentors.', icon: Users, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true },
-        { id: 'careers', label: 'Talent Pool', sub: 'Hiring Registry', description: 'Showcase your AI-augmented portfolio and browse high-level roles in the Prism community.', icon: Briefcase, color: 'text-yellow-400', bg: 'bg-yellow-900/30', restricted: true }
+        { id: 'careers', label: 'Talent Hub', sub: 'Hiring Registry', description: 'Showcase your AI-augmented portfolio and browse high-level roles in the Prism community.', icon: Briefcase, color: 'text-yellow-400', bg: 'bg-yellow-900/30', restricted: true }
       ]
     },
     {
@@ -200,7 +201,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
         ))}
 
         <footer className="pt-12 text-center">
-            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Prism v5.6.0-SYN • Sovereign Activity Hub</p>
+            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Prism v5.6.5-SYN • Sovereign Activity Hub</p>
         </footer>
       </div>
     </div>

@@ -62,18 +62,6 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
       : <ArrowDown size={14} className="text-indigo-400" />;
   };
 
-  const formatPST = (timestamp: number) => {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Los_Angeles',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    }).format(new Date(timestamp));
-  };
-
   const HeaderCell = ({ label, sortKey, className = "" }: { label: string, sortKey: SortKey, className?: string }) => (
     <th 
       className={`px-6 py-4 text-left text-xs font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-white hover:bg-slate-800/50 transition-colors group ${className}`}
@@ -117,12 +105,10 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
             <tr>
               <HeaderCell label="Podcast Channel" sortKey="title" className="min-w-[300px]" />
               <HeaderCell label="Neural Persona" sortKey="voiceName" />
-              <HeaderCell label="Registry Visibility" sortKey="author" />
               <th className="px-6 py-4 text-left text-[10px] font-black text-slate-500 uppercase tracking-widest hidden lg:table-cell">
                  <div className="flex items-center gap-2"><Hash size={14} /> Tags</div>
               </th>
               <HeaderCell label="Engagement" sortKey="likes" />
-              <HeaderCell label="Handshake Date" sortKey="createdAt" className="hidden sm:table-cell" />
               <th className="px-6 py-4 text-right"></th>
             </tr>
           </thead>
@@ -164,13 +150,6 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
                     </div>
                   </td>
 
-                  <td className="px-6 py-4 whitespace-nowrap">
-                     <div className="flex items-center gap-2">
-                        {channel.visibility === 'public' ? <Globe size={14} className="text-emerald-500" /> : channel.visibility === 'group' ? <Users size={14} className="text-purple-500" /> : <Lock size={14} className="text-slate-600" />}
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">@{channel.author}</div>
-                     </div>
-                  </td>
-
                   <td className="px-6 py-4 hidden lg:table-cell">
                     <div className="flex flex-wrap gap-1 max-w-[200px]">
                       {channel.tags.slice(0, 2).map(tag => (
@@ -189,15 +168,6 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
                       <div className="flex items-center gap-1.5 text-indigo-400">
                          <MessageSquare size={12} /> {channel.comments?.length || 0}
                       </div>
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell">
-                    <div className="flex flex-col text-[10px] text-slate-500 font-mono">
-                       <div className="flex items-center gap-1.5">
-                          <Calendar size={12} className="text-slate-600" />
-                          <span>{channel.createdAt ? formatPST(channel.createdAt).split(',')[0] : '-'}</span>
-                       </div>
                     </div>
                   </td>
 
@@ -233,7 +203,7 @@ export const PodcastListTable: React.FC<PodcastListTableProps> = ({
             
             {channels.length === 0 && (
                 <tr>
-                    <td colSpan={7} className="px-6 py-20 text-center">
+                    <td colSpan={5} className="px-6 py-20 text-center">
                         <div className="flex flex-col items-center gap-3 opacity-20">
                             <Activity size={48} />
                             <p className="text-xs font-black uppercase tracking-widest">No activities detected in current spectrum</p>

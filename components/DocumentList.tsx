@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { CommunityDiscussion } from '../types';
 import { getUserDesignDocs, deleteDiscussion, getPublicDesignDocs, getGroupDesignDocs, getUserProfile } from '../services/firestoreService';
@@ -72,19 +73,19 @@ export const DocumentList: React.FC<DocumentListProps> = ({ onBack }) => {
       e.stopPropagation();
       if (!id || id === 'new') return;
       if ([APP_COMPARISON_DOC.id, STACK_STORY_DOC.id, BUILT_WITH_DOC.id].includes(id)) {
-          if (confirm("Hide system example document from your library?")) { 
-              localStorage.setItem('hide_system_doc_v1', 'true'); 
-              loadData(); 
-          }
+          // System doc hiding executes immediately
+          localStorage.setItem('hide_system_doc_v1', 'true'); 
+          loadData(); 
           return;
       }
-      if (!confirm("Permanently delete this document? This action cannot be undone.")) return;
+      // Confirmation removed for seamless experience
       setIsDeleting(id);
       try { 
           await deleteDiscussion(id); 
           setDocs(prev => prev.filter(d => d.id !== id)); 
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Document purged from registry.", type: 'info' } }));
       } catch (err) {
-          alert("Failed to delete document.");
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Failed to delete document.", type: 'error' } }));
       } finally { 
           setIsDeleting(null); 
       }
@@ -92,7 +93,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({ onBack }) => {
 
   const handleCreateNew = () => { 
       if (!currentUser) {
-          alert("Please sign in to create custom documents.");
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Authentication required to create custom specifications.", type: 'warn' } }));
           return;
       }
       setSelectedDocId('new'); 

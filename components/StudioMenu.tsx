@@ -51,10 +51,9 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
   if (!isUserMenuOpen || !currentUser) return null;
 
   const handleLogout = async () => {
-    if (confirm("Are you sure you want to sign out?")) {
-        await signOut();
-        setIsUserMenuOpen(false);
-    }
+    // Confirmation removed for seamless experience
+    await signOut();
+    setIsUserMenuOpen(false);
   };
 
   return (

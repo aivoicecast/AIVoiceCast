@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ArrowLeft, Book, Sparkles } from 'lucide-react';
 import { MarkdownView } from './MarkdownView';
@@ -54,7 +55,7 @@ Create software or write documents with an AI pair-partner.
 Neural Prism is built to grow. As a member, you can contribute new tools and activities to the hub, helping us expand the spectrum of human potential.
 
 ---
-**Platform Version:** v5.6.0
+**Platform Version:** v5.6.5
 `;
 
 export const UserManual: React.FC<UserManualProps> = ({ onBack }) => {

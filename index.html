@@ -19,11 +19,6 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Plotly for Graphing -->
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js" charset="utf-8"></script>
-    <!-- Math.js for Expression Parsing -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.2.1/math.all.min.js"></script>
-
     <!-- PrismJS for Syntax Highlighting -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
@@ -44,8 +39,8 @@
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
     
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
       
       body {
         font-family: 'Inter', sans-serif;
@@ -60,6 +55,12 @@
       ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
       ::-webkit-scrollbar-thumb:hover { background: #334155; }
 
+      @keyframes fade-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .animate-fade-in { animation: fade-in 0.4s ease-out; }
+
       @keyframes fade-in-up {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
@@ -72,6 +73,10 @@
       }
       .animate-scan-line {
         animation: scan-line 2s linear infinite;
+      }
+      
+      .font-mono-tech {
+        font-family: 'JetBrains Mono', monospace;
       }
     </style>
   <script type="importmap">

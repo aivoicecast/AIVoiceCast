@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, Share2, Trash2, Undo, PenTool, Pen, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, RotateCcw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save, Activity, RefreshCcw, Type as TypeIcon, Hand } from 'lucide-react';
 import { auth, db } from '../services/firebaseConfig';
@@ -213,7 +214,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 lastKnownContentRef.current = initialContent;
             }
         } catch (e) {
-            console.warn("Could not parse initial whiteboard content");
+            console.warn("Could not parse whiteboard content");
         }
     }
   }, [initialContent]);
@@ -819,7 +820,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
                 <button onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-1`} title="Zoom In"><ZoomIn size={16}/></button>
                 <button onClick={() => setScale(prev => Math.max(prev / 1.2, 0.2))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-1`} title="Zoom Out"><ZoomOut size={16}/></button>
                 <button onClick={() => setElements(prev => prev.slice(0, -1))} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Undo"><Undo size={16} /></button>
-                <button onClick={() => { if(confirm("Clear everything?")) { setElements([]); if(sessionId) deleteWhiteboardElements(sessionId); } }} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`} title="Clear Canvas"><Trash2 size={16} /></button>
+                <button onClick={() => { setElements([]); if(sessionId) deleteWhiteboardElements(sessionId); }} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`} title="Clear Canvas"><Trash2 size={16} /></button>
             </div>
         </div>
         

@@ -111,7 +111,7 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
 
             <div className="pt-8 border-t border-slate-800 text-center text-xs text-slate-500">
                 <p>Neural Prism Privacy Framework v4.4.0</p>
-                <p className="mt-1">Last Updated: December 22, 2025</p>
+                <p className="mt-1">Last Updated: January 25, 2026</p>
                 <p className="mt-4">For data deletion or identity revocation, contact <a href="mailto:ops@neuralprism.io" className="text-indigo-400 hover:underline">ops@neuralprism.io</a>.</p>
             </div>
         </div>

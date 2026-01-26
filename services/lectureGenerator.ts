@@ -1,73 +1,15 @@
 
 import { GoogleGenAI } from '@google/genai';
-import { GeneratedLecture, SubTopic, TranscriptItem } from '../types';
-import { incrementApiUsage, getUserProfile, deductCoins, AI_COSTS } from './firestoreService';
+import { GeneratedLecture, TranscriptItem } from '../types';
+import { getCloudCachedLecture, saveCloudCachedLecture, deductCoins, AI_COSTS, incrementApiUsage } from './firestoreService';
 import { auth } from './firebaseConfig';
-import { OPENAI_API_KEY } from './private_keys';
 
-function safeJsonParse(text: string): any {
-  try {
-    let clean = text.trim();
-    if (clean.startsWith('```')) {
-      clean = clean.replace(/^```(json)?/i, '').replace(/```$/, '');
-    }
-    return JSON.parse(clean);
-  } catch (e) {
-    console.error("JSON Parse Error:", e, "Input:", text);
-    return null;
-  }
-}
-
-async function callOpenAI(
-    systemPrompt: string, 
-    userPrompt: string, 
-    apiKey: string,
-    model: string = 'gpt-4o'
-): Promise<string | null> {
-    try {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: model,
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userPrompt }
-                ],
-                response_format: { type: "json_object" }
-            })
-        });
-
-        if (!response.ok) {
-            const err = await response.json();
-            console.error("OpenAI API Error:", err);
-            return null;
-        }
-
-        const data = await response.json();
-        return data.choices[0]?.message?.content || null;
-    } catch (e) {
-        console.error("OpenAI Fetch Error:", e);
-        return null;
-    }
-}
-
-async function getAIProvider(): Promise<'gemini' | 'openai'> {
-    let provider: 'gemini' | 'openai' = 'gemini';
-    if (auth.currentUser) {
-        try {
-            const profile = await getUserProfile(auth.currentUser.uid);
-            if (profile?.subscriptionTier === 'pro' && profile?.preferredAiProvider === 'openai') {
-                provider = 'openai';
-            }
-        } catch (e) {
-            console.warn("Failed to check user profile for AI provider preference", e);
-        }
-    }
-    return provider;
+async function generateContentUid(topic: string, context: string, lang: string): Promise<string> {
+    const data = `${topic}|${context}|${lang}`;
+    const msgBuffer = new TextEncoder().encode(data);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
 }
 
 export async function generateLectureScript(
@@ -75,80 +17,72 @@ export async function generateLectureScript(
   channelContext: string,
   language: 'en' | 'zh' = 'en',
   channelId?: string,
-  voiceName?: string
+  voiceName?: string,
+  force: boolean = false
 ): Promise<GeneratedLecture | null> {
   try {
-    const provider = await getAIProvider();
-    const openaiKey = localStorage.getItem('openai_api_key') || OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
-
-    let activeProvider = provider;
-    if (provider === 'openai' && !openaiKey) {
-        activeProvider = 'gemini';
+    const contentUid = await generateContentUid(topic, channelContext, language);
+    
+    // 1. Handshake with Knowledge Database (Skip if force is true)
+    if (!force) {
+      const cached = await getCloudCachedLecture(channelId || 'global', contentUid, language);
+      if (cached) {
+          window.dispatchEvent(new CustomEvent('neural-log', { 
+              detail: { text: `[Ledger] Cache Hit: ${contentUid}.`, type: 'success' } 
+          }));
+          return cached;
+      }
     }
 
-    const langInstruction = language === 'zh' 
-      ? 'Output Language: Simplified Chinese (Mandarin).' 
-      : 'Output Language: English.';
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    // RESOLVE TUNED MODELS
+    let modelName = 'gemini-3-pro-preview';
+    if (voiceName) {
+        if (voiceName.includes('0648937375')) modelName = 'gen-lang-client-0648937375';
+        else if (voiceName.includes('0375218270')) modelName = 'gen-lang-client-0375218270';
+    }
 
-    const systemInstruction = `You are an expert educational content creator and podcast writer. ${langInstruction}`;
+    window.dispatchEvent(new CustomEvent('neural-log', { 
+        detail: { text: `[Neural Core] ${force ? 'FORCING' : 'INITIALIZING'} Handshake with ${modelName}...`, type: force ? 'warn' : 'info' } 
+    }));
+
+    const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
+    const systemInstruction = `
+        You are an expert educator on the Neural Prism Platform. 
+        ${langInstruction}
+        Format your response as a standard JSON lecture object.
+    `;
     
     const userPrompt = `
       Topic: "${topic}"
       Context: "${channelContext}"
       
-      Task:
-      1. Identify a famous expert relevant to this topic as "Teacher".
-      2. Identify a "Student" name.
-      3. Create a natural, high-quality conversational dialogue (approx 500 words).
-      4. ADD A "readingMaterial" section in Markdown. Include 3-5 specific links or book references.
-      5. ADD A "homework" section in Markdown. Include 2-3 interactive exercises or thought experiments.
-
-      Return ONLY a JSON object with this structure:
+      Generate a conversational JSON lecture:
       {
-        "professorName": "...",
-        "studentName": "...",
+        "professorName": "Teacher Name",
+        "studentName": "Student Name",
         "sections": [ {"speaker": "Teacher", "text": "..."}, {"speaker": "Student", "text": "..."} ],
-        "readingMaterial": "Markdown content here...",
-        "homework": "Markdown content here..."
+        "readingMaterial": "Markdown...",
+        "homework": "Markdown..."
       }
     `;
 
-    let text: string | null = null;
-
-    if (activeProvider === 'openai') {
-        text = await callOpenAI(systemInstruction, userPrompt, openaiKey);
-    } else {
-        const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY as string) || '' });
-        
-        // Use tuned model if present in voiceName
-        let modelName = 'gemini-3-pro-preview';
-        if (voiceName && voiceName.includes('gen-lang-client-')) {
-            const match = voiceName.match(/gen-lang-client-[a-zA-Z0-9]+/);
-            if (match) modelName = match[0];
+    const response = await ai.models.generateContent({
+        model: modelName, 
+        contents: userPrompt,
+        config: { 
+            systemInstruction: systemInstruction,
+            responseMimeType: 'application/json'
         }
+    });
 
-        const response = await ai.models.generateContent({
-            model: modelName, 
-            contents: userPrompt,
-            config: { 
-                systemInstruction: systemInstruction,
-                responseMimeType: 'application/json'
-            }
-        });
-        text = response.text || null;
-    }
-
+    const text = response.text;
     if (!text) return null;
 
-    const parsed = safeJsonParse(text);
-    if (!parsed) return null;
-    
-    if (auth.currentUser) {
-        incrementApiUsage(auth.currentUser.uid);
-        deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
-    }
-
-    return {
+    const parsed = JSON.parse(text);
+    const result: GeneratedLecture = {
+      uid: contentUid,
       topic,
       professorName: parsed.professorName || "Professor",
       studentName: parsed.studentName || "Student",
@@ -156,136 +90,62 @@ export async function generateLectureScript(
       readingMaterial: parsed.readingMaterial,
       homework: parsed.homework
     };
+    
+    if (auth.currentUser) {
+        incrementApiUsage(auth.currentUser.uid);
+        deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+        await saveCloudCachedLecture(channelId || 'global', contentUid, language, result);
+    }
+
+    return result;
   } catch (error) {
     console.error("Failed to generate lecture:", error);
     return null;
   }
 }
 
-export async function generateBatchLectures(
-  chapterTitle: string,
-  subTopics: SubTopic[], 
-  channelContext: string,
-  language: 'en' | 'zh' = 'en'
-): Promise<Record<string, GeneratedLecture> | null> {
-  try {
-    if (subTopics.length === 0) return {};
-    const provider = await getAIProvider();
-    const openaiKey = localStorage.getItem('openai_api_key') || OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
-    let activeProvider = provider;
-    if (provider === 'openai' && !openaiKey) activeProvider = 'gemini';
-    const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
-    const systemInstruction = `You are an expert educator. ${langInstruction}`;
-    const userPrompt = `
-      Generate short dialogues for these topics: ${JSON.stringify(subTopics.map(s => s.title))}.
-      Return JSON: { "results": [ { "id": "...", "lecture": { "professorName": "...", "studentName": "...", "sections": [], "readingMaterial": "...", "homework": "..." } } ] }
-    `;
-    let text: string | null = null;
-    if (activeProvider === 'openai') {
-        text = await callOpenAI(systemInstruction, userPrompt, openaiKey);
-    } else {
-        const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY as string) || '' });
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview', 
-            contents: userPrompt,
-            config: { 
-                systemInstruction: systemInstruction,
-                responseMimeType: 'application/json' 
-            }
-        });
-        text = response.text || null;
-    }
-    if (!text) return null;
-    const parsed = safeJsonParse(text);
-    const resultMap: Record<string, GeneratedLecture> = {};
-    if (parsed?.results) {
-      parsed.results.forEach((item: any) => {
-        const original = subTopics.find(s => s.id === item.id);
-        if (original && item.lecture) {
-           resultMap[item.id] = { topic: original.title, ...item.lecture };
-        }
-      });
-    }
-    if (auth.currentUser) {
-        incrementApiUsage(auth.currentUser.uid);
-        deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION * subTopics.length);
-    }
-    return resultMap;
-  } catch (error) { return null; }
-}
-
 export async function summarizeDiscussionAsSection(
   transcript: TranscriptItem[],
-  currentLecture: GeneratedLecture,
-  language: 'en' | 'zh'
-): Promise<GeneratedLecture['sections'] | null> {
+  language: 'en' | 'zh' = 'en'
+): Promise<{ speaker: string; text: string } | null> {
   try {
-    const provider = await getAIProvider();
-    const openaiKey = localStorage.getItem('openai_api_key') || OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
-    let activeProvider = provider;
-    if (provider === 'openai' && !openaiKey) activeProvider = 'gemini';
-    const chatLog = transcript.map(t => `${t.role}: ${t.text}`).join('\n');
-    const systemInstruction = `Summarize Q&A into formal dialogue. Return JSON only.`;
-    const userPrompt = `Context: ${currentLecture.topic}\nLog: ${chatLog}`;
-    let text: string | null = null;
-    if (activeProvider === 'openai') {
-        text = await callOpenAI(systemInstruction, userPrompt, openaiKey);
-    } else {
-        const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY as string) || '' });
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview', 
-            contents: userPrompt,
-            config: { 
-                systemInstruction: systemInstruction,
-                responseMimeType: 'application/json' 
-            }
-        });
-        text = response.text || null;
-    }
-    const parsed = safeJsonParse(text || '');
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const fullTranscript = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
+    const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
     
-    if (auth.currentUser) {
-        deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
-    }
-    
-    return parsed ? parsed.sections : null;
-  } catch (error) { return null; }
+    const prompt = `Summarize the following discussion into a cohesive educational section from a "Teacher" persona. ${langInstruction}\n\nDISCUSSION:\n${fullTranscript}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: { thinkingConfig: { thinkingBudget: 0 } }
+    });
+
+    return { speaker: 'Teacher', text: response.text || '' };
+  } catch (error) {
+    return null;
+  }
 }
 
 export async function generateDesignDocFromTranscript(
   transcript: TranscriptItem[],
-  meta: { date: string; topic: string; segmentIndex?: number; },
+  metadata: { date: string; topic: string; segmentIndex?: number },
   language: 'en' | 'zh' = 'en'
 ): Promise<string | null> {
   try {
-    const provider = await getAIProvider();
-    const openaiKey = localStorage.getItem('openai_api_key') || OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
-    let activeProvider = provider;
-    if (provider === 'openai' && !openaiKey) activeProvider = 'gemini';
-    const chatLog = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-    const systemInstruction = `You are a Senior Technical Writer.`;
-    const userPrompt = `Convert discussion to Design Doc: ${meta.topic}. Log: ${chatLog}`;
-    let text: string | null = null;
-    if (activeProvider === 'openai') {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST", headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: "system", content: systemInstruction }, { role: "user", content: userPrompt }] })
-        });
-        if(response.ok) { const data = await response.json(); text = data.choices[0]?.message?.content || null; }
-    } else {
-        const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY as string) || '' });
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview', 
-            contents: userPrompt,
-            config: { systemInstruction: systemInstruction }
-        });
-        text = response.text || null;
-    }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const fullTranscript = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
+    const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
     
-    if (auth.currentUser) {
-        deductCoins(auth.currentUser.uid, AI_COSTS.CURRICULUM_SYNTHESIS);
-    }
-    
-    return text;
-  } catch (error) { return null; }
+    const prompt = `Generate a professional Technical Specification based on the transcript. ${langInstruction}\n\nMETADATA: ${JSON.stringify(metadata)}\n\nTRANSCRIPT:\n${fullTranscript}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: prompt
+    });
+
+    return response.text || null;
+  } catch (error) {
+    return null;
+  }
 }

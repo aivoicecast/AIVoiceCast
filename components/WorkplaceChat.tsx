@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatChannel, RealTimeMessage, Group, UserProfile } from '../types';
-// Removed getUniqueGroupMembers from the import list below as it is not exported by firestoreService
 import { sendMessage, subscribeToMessages, getUserGroups, getAllUsers, createOrGetDMChannel, getUserDMChannels, deleteMessage, uploadFileToStorage } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
 import { Send, Hash, Lock, User, Plus, Search, MessageSquare, MoreVertical, Paperclip, Loader2, ArrowLeft, Menu, Users, Briefcase, Reply, Trash2, X, FileText, Image as ImageIcon, Video, CheckCircle } from 'lucide-react';
@@ -39,7 +38,6 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Helper to render text with clickable links
   const renderMessageText = (text: string) => {
       if (!text) return null;
       const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -68,15 +66,13 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
       getUserGroups(activeUser.uid).then(setGroups);
       getUserDMChannels().then(dmData => {
           setDms(dmData);
-          // If deep link provided, switch to it
           if (initialChannelId) {
               const target = dmData.find(d => d.id === initialChannelId);
               if (target) {
                   setActiveChannelId(target.id);
                   setActiveChannelType(target.type as any);
-                  setActiveChannelName(target.name.replace(activeUser?.displayName || '', '').replace('&', '').trim() || 'Chat');
-                  
-                  // On mobile, close sidebar if deep linked
+                  const cleanName = (target.name || '').replace(activeUser?.displayName || '', '').replace('&', '').trim();
+                  setActiveChannelName(cleanName || 'Chat');
                   if (window.innerWidth < 768) setIsSidebarOpen(false);
               }
           }
@@ -108,7 +104,6 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
       setFilePreviews([]);
   }, [activeChannelId]);
 
-  // Clean up object URLs to avoid memory leaks
   useEffect(() => {
       return () => {
           filePreviews.forEach(url => URL.revokeObjectURL(url));
@@ -119,18 +114,14 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
       if (e.target.files && e.target.files.length > 0) {
           const newFiles: File[] = Array.from(e.target.files);
           setSelectedFiles(prev => [...prev, ...newFiles]);
-          
-          // Generate previews immediately
           const newPreviews = newFiles.map(file => URL.createObjectURL(file));
           setFilePreviews(prev => [...prev, ...newPreviews]);
       }
-      e.target.value = ''; // Reset input to allow re-selection
+      e.target.value = '';
   };
 
   const removeAttachment = (index: number) => {
       setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-      
-      // Clean up the specific URL being removed
       URL.revokeObjectURL(filePreviews[index]);
       setFilePreviews(prev => prev.filter((_, i) => i !== index));
   };
@@ -154,11 +145,9 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
         for (const file of selectedFiles) {
              const path = `chat_attachments/${activeChannelId}/${Date.now()}_${file.name}`;
              const url = await uploadFileToStorage(path, file);
-             
              let type = 'file';
              if (file.type.startsWith('image/')) type = 'image';
              else if (file.type.startsWith('video/')) type = 'video';
-             
              attachmentData.push({ type, url, name: file.name });
         }
 
@@ -178,7 +167,7 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
         setFilePreviews([]);
     } catch (error) {
         console.error("Send failed", error);
-        alert("Failed to send message. Please try again.");
+        alert("Failed to send message.");
     } finally {
         setIsUploading(false);
     }
@@ -186,19 +175,11 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
 
   const handleDeleteMessage = async (msgId: string) => {
       if (!confirm("Unsend this message?")) return;
-      
-      let collectionPath;
-      if (activeChannelType === 'group') {
-          collectionPath = `groups/${activeChannelId}/messages`;
-      } else {
-          collectionPath = `chat_channels/${activeChannelId}/messages`;
-      }
-
+      let collectionPath = activeChannelType === 'group' ? `groups/${activeChannelId}/messages` : `chat_channels/${activeChannelId}/messages`;
       try {
           await deleteMessage(activeChannelId, msgId, collectionPath);
       } catch (error) {
           console.error("Delete failed", error);
-          alert("Failed to delete message.");
       }
   };
 
@@ -207,7 +188,6 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
           const channelId = await createOrGetDMChannel(otherUserId, otherUserName);
           const updatedDMs = await getUserDMChannels();
           setDms(updatedDMs);
-          
           setActiveChannelId(channelId);
           setActiveChannelName(otherUserName);
           setActiveChannelType('dm');
@@ -220,16 +200,15 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
 
   const activeUser = currentUser || auth?.currentUser;
 
-  // Only filter by name/email but DO NOT display email in UI
-  const filteredUsers = allUsers.filter(u => 
-      u.displayName.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
-      (u.email && u.email.toLowerCase().includes(userSearchQuery.toLowerCase()))
-  );
+  const filteredUsers = allUsers.filter(u => {
+      const name = (u.displayName || '').toLowerCase();
+      const email = (u.email || '').toLowerCase();
+      const query = (userSearchQuery || '').toLowerCase();
+      return name.includes(query) || email.includes(query);
+  });
 
   return (
     <div className="flex h-full bg-slate-950 text-slate-100 overflow-hidden">
-      
-      {/* Sidebar */}
       <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-slate-900 border-r border-slate-800 flex-shrink-0 transition-all duration-300 flex flex-col overflow-hidden`}>
           <div className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0">
               <h2 className="font-bold text-lg text-white flex items-center gap-2">
@@ -258,15 +237,14 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
                   <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 px-2 flex justify-between items-center">
                       Direct Messages <button onClick={() => setIsSearchingUsers(!isSearchingUsers)} className="hover:text-white"><Plus size={14}/></button>
                   </h3>
-                  
                   {isSearchingUsers && (
                       <div className="mb-2 px-2 relative">
                           <input autoFocus type="text" placeholder="Find user..." value={userSearchQuery} onChange={e => setUserSearchQuery(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none"/>
                           <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-700 rounded mt-1 max-h-40 overflow-y-auto z-20 shadow-xl">
                               {filteredUsers.map(u => (
                                   <button key={u.uid} onClick={() => handleStartDM(u.uid, u.displayName)} className="w-full text-left px-2 py-1.5 text-xs text-slate-300 hover:bg-slate-700 hover:text-white flex items-center gap-2">
-                                      <div className="w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center text-[8px] font-bold">{u.displayName[0]}</div>
-                                      <span>{u.displayName}</span>
+                                      <div className="w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center text-[8px] font-bold">{(u.displayName || 'U')[0]}</div>
+                                      <span>{u.displayName || 'Anonymous User'}</span>
                                   </button>
                               ))}
                           </div>
@@ -274,12 +252,14 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
                   )}
 
                   <div className="space-y-0.5">
-                      {dms.map(dm => (
-                          <button key={dm.id} onClick={() => { setActiveChannelId(dm.id); setActiveChannelType('dm'); setActiveChannelName(dm.name.replace(activeUser?.displayName || '', '').replace('&', '').trim() || 'DM'); }} className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm ${activeChannelId === dm.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+                      {dms.map(dm => {
+                          const name = (dm.name || '').replace(activeUser?.displayName || '', '').replace('&', '').trim() || 'Chat';
+                          return (
+                          <button key={dm.id} onClick={() => { setActiveChannelId(dm.id); setActiveChannelType('dm'); setActiveChannelName(name); }} className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm ${activeChannelId === dm.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
                               <User size={14} />
-                              <span className="truncate">{dm.name.replace(activeUser?.displayName || '', '').replace('&', '').trim() || 'Chat'}</span>
+                              <span className="truncate">{name}</span>
                           </button>
-                      ))}
+                      )})}
                   </div>
               </div>
           </div>
@@ -287,17 +267,16 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
           {activeUser && (
               <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold overflow-hidden">
-                      {activeUser.photoURL ? <img src={activeUser.photoURL} className="w-full h-full object-cover"/> : activeUser.displayName?.[0]}
+                      {activeUser.photoURL ? <img src={activeUser.photoURL} className="w-full h-full object-cover"/> : (activeUser.displayName || 'U')[0]}
                   </div>
                   <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-white truncate">{activeUser.displayName}</p>
+                      <p className="text-sm font-bold text-white truncate">{activeUser.displayName || 'Anonymous'}</p>
                       <p className="text-xs text-slate-500 truncate">Online</p>
                   </div>
               </div>
           )}
       </div>
 
-      {/* Main Chat */}
       <div className="flex-1 flex flex-col min-w-0 bg-slate-950">
           <div className="h-14 border-b border-slate-800 flex items-center justify-between px-4 bg-slate-900/50">
               <div className="flex items-center gap-3">
@@ -330,19 +309,17 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
                                   <div className="flex-shrink-0 w-10 mr-2 flex flex-col justify-start pt-1">
                                       {showHeader && (
                                           msg.senderImage ? <img src={msg.senderImage} className="w-10 h-10 rounded-full object-cover border-2 border-slate-700" /> : 
-                                          <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 font-bold border-2 border-slate-700">{msg.senderName?.[0]?.toUpperCase()}</div>
+                                          <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-xs text-slate-400 font-bold border-2 border-slate-700">{(msg.senderName || 'U')[0]?.toUpperCase()}</div>
                                       )}
                                   </div>
                               )}
-
                               <div className={`flex flex-col max-w-[75%] ${isMe ? 'items-end' : 'items-start'}`}>
                                   {showHeader && (
                                       <div className={`flex items-center gap-2 mb-1 ${isMe ? 'flex-row-reverse' : ''}`}>
-                                          <span className="text-xs font-bold text-slate-300">{msg.senderName}</span>
+                                          <span className="text-xs font-bold text-slate-300">{msg.senderName || 'Anonymous'}</span>
                                           <span className="text-[10px] text-slate-500">{msg.timestamp?.toMillis ? new Date(msg.timestamp.toMillis()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
                                       </div>
                                   )}
-                                  
                                   <div 
                                       className={`px-4 py-2 rounded-2xl text-sm leading-relaxed relative cursor-pointer group/bubble transition-all duration-200 ${isMe ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-200 rounded-tl-sm hover:bg-slate-700'} ${isSelected ? 'ring-2 ring-white/20' : ''}`}
                                       onClick={(e) => { e.stopPropagation(); setSelectedMessageId(isSelected ? null : msg.id); }}
@@ -354,9 +331,7 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
                                               <p className="truncate">{msg.replyTo.text}</p>
                                           </div>
                                       )}
-                                      
                                       {renderMessageText(msg.text)}
-
                                       {attachments.length > 0 && (
                                           <div className="mt-2 space-y-2">
                                               {attachments.map((att: any, idx: number) => (
@@ -368,20 +343,17 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
                                               ))}
                                           </div>
                                       )}
-
-                                      {/* Actions Menu - Appears on Hover (Desktop) or Selection (Mobile/Click) */}
                                       <div className={`absolute bottom-1 ${isMe ? 'left-1 -translate-x-full pr-2' : 'right-1 translate-x-full pl-2'} flex items-center gap-1 opacity-0 group-hover/bubble:opacity-100 ${isSelected ? '!opacity-100' : ''} transition-opacity`}>
                                           <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); }} className="p-1 bg-slate-900/80 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 shadow-sm"><Reply size={12} /></button>
                                           {isMe && <button onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id); }} className="p-1 bg-slate-900/80 rounded-full hover:bg-slate-700 text-slate-400 hover:text-red-500 border border-slate-700 shadow-sm"><Trash2 size={12} /></button>}
                                       </div>
                                   </div>
                               </div>
-
                               {isMe && (
                                   <div className="flex-shrink-0 w-10 ml-2 flex flex-col justify-start pt-1">
                                       {showHeader && (
                                           msg.senderImage ? <img src={msg.senderImage} className="w-10 h-10 rounded-full object-cover border-2 border-indigo-500" /> : 
-                                          <div className="w-10 h-10 rounded-full bg-indigo-700 flex items-center justify-center text-xs text-indigo-200 font-bold border-2 border-indigo-600">{msg.senderName?.[0]?.toUpperCase()}</div>
+                                          <div className="w-10 h-10 rounded-full bg-indigo-700 flex items-center justify-center text-xs text-indigo-200 font-bold border-2 border-indigo-600">{(msg.senderName || 'U')[0]?.toUpperCase()}</div>
                                       )}
                                   </div>
                               )}
@@ -398,15 +370,13 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
                       <div className="flex items-center gap-2 overflow-hidden">
                           <Reply size={14} className="text-indigo-400 shrink-0" />
                           <div className="truncate">
-                              <span className="font-bold text-indigo-300">Replying to {replyingTo.senderName}: </span>
+                              <span className="font-bold text-indigo-300">Replying to {replyingTo.senderName || 'Anonymous'}: </span>
                               <span className="text-slate-400">{replyingTo.text}</span>
                           </div>
                       </div>
                       <button onClick={() => setReplyingTo(null)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-700"><X size={14} /></button>
                   </div>
               )}
-
-              {/* Enhanced File Preview */}
               {selectedFiles.length > 0 && (
                   <div className="flex gap-4 overflow-x-auto pb-4 px-2 mb-2 bg-slate-950/50 p-2 rounded-lg border border-slate-800">
                       {selectedFiles.map((file, idx) => (
@@ -424,19 +394,15 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
                       ))}
                   </div>
               )}
-
               <form onSubmit={handleSendMessage} className="bg-slate-800 border border-slate-700 rounded-xl flex items-center p-2 gap-2 relative z-10">
                   <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors relative" title="Attach File">
                       <Paperclip size={20} />
                       {selectedFiles.length > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-indigo-500 rounded-full animate-pulse"></span>}
                   </button>
                   <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileSelect} accept="image/*,video/*,.pdf,.doc,.docx,.txt" />
-                  
                   <input type="text" value={newMessage} onChange={e => setNewMessage(e.target.value)} placeholder={`Message #${activeChannelName}`} className="flex-1 bg-transparent text-white outline-none placeholder-slate-500" />
-                  
                   <button type="submit" disabled={(!newMessage.trim() && selectedFiles.length === 0) || isUploading} className={`p-2 rounded-lg flex items-center gap-2 transition-all ${isUploading ? 'bg-indigo-900/50 text-indigo-300' : 'bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed'}`}>
                       {isUploading ? <Loader2 size={18} className="animate-spin"/> : <Send size={18} />}
-                      {isUploading && <span className="text-xs font-bold">Uploading...</span>}
                   </button>
               </form>
           </div>

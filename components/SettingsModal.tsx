@@ -12,7 +12,7 @@ import { ensureFolder, uploadToDrive } from '../services/googleDriveService';
 
 interface SettingsModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  onBack: () => void;
   user: UserProfile;
   onUpdateProfile?: (updated: UserProfile) => void;
   onUpgradeClick?: () => void;
@@ -215,16 +215,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setIsSaving(false);
           onClose();
       } catch(e: any) {
-          alert("Save failed: " + e.message);
+          const systemMsg = "Save failed: " + e.message;
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: systemMsg, type: 'error' } }));
           setIsSaving(false);
       }
   };
 
   const handleLogout = async () => {
-    if (confirm("Sign out of Neural Prism?")) {
-        await signOut();
-        onClose();
-    }
+    // Confirmation removed for seamless experience
+    await signOut();
+    onClose();
   };
 
   const toggleDay = (day: number) => {

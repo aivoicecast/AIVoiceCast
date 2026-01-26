@@ -106,17 +106,14 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
       await updateBlogSettings(myBlog.id, { title: blogTitle, description: blogDesc });
       setMyBlog({ ...myBlog, title: blogTitle, description: blogDesc });
       setIsEditingSettings(false);
-    } catch(e) { alert("Failed to save settings"); }
+    } catch(e) { 
+        window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Failed to save settings", type: 'error' } }));
+    }
   };
 
   const handleDeleteBlog = async () => {
       if (!myBlog) return;
-      const confirmMsg = isSuperAdmin 
-          ? "ADMIN ACTION: Permanently delete this entire blog workspace and all associated posts? This cannot be undone." 
-          : "Are you sure you want to delete your entire blog workspace? All your posts will be removed from the community feed.";
-          
-      if (!confirm(confirmMsg)) return;
-
+      // Confirmation removed for seamless experience
       setLoading(true);
       try {
           // Delete all associated posts first
@@ -130,9 +127,9 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
           setMyPosts([]);
           setActiveTab('feed');
           await loadFeed();
-          alert("Blog workspace deleted successfully.");
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Blog workspace purged from ledger.", type: 'info' } }));
       } catch (e: any) {
-          alert("Deletion failed: " + e.message);
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Deletion failed: " + e.message, type: 'error' } }));
       } finally {
           setLoading(false);
       }
@@ -151,23 +148,20 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
   };
 
   const handleDeletePost = async (postId: string) => {
-    if (!confirm("Are you sure you want to delete this post?")) return;
-    
+    // Confirmation removed for seamless experience
     const isSystemPost = SYSTEM_BLOG_POSTS.some(p => p.id === postId);
     
     if (isSystemPost) {
         if (isAdmin || isSuperAdmin) {
-            if (confirm("This is a system post. Hide it from the community view?")) {
-                const hidden = JSON.parse(localStorage.getItem('hidden_system_posts') || '[]');
-                if (!hidden.includes(postId)) {
-                    hidden.push(postId);
-                    localStorage.setItem('hidden_system_posts', JSON.stringify(hidden));
-                }
-                loadFeed();
-                return;
+            const hidden = JSON.parse(localStorage.getItem('hidden_system_posts') || '[]');
+            if (!hidden.includes(postId)) {
+                hidden.push(postId);
+                localStorage.setItem('hidden_system_posts', JSON.stringify(hidden));
             }
+            loadFeed();
+            return;
         } else {
-            alert("You cannot delete system-defined posts.");
+            window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Permission denied: System post.", type: 'warn' } }));
             return;
         }
     }
@@ -180,12 +174,15 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
           setActivePost(null);
           setActiveTab('feed');
       }
-    } catch(e) { alert("Failed to delete post"); }
+      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Post deleted successfully.", type: 'info' } }));
+    } catch(e) { 
+        window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Failed to delete post", type: 'error' } }));
+    }
   };
 
   const handleSavePost = async () => {
     if (!myBlog || !currentUser || !editingPost.title || !editingPost.content) {
-        alert("Please fill in title and content.");
+        window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Title and content required.", type: 'warn' } }));
         return;
     }
     setLoading(true);
@@ -207,8 +204,12 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
         else await createBlogPost(postData);
         setActiveTab('my_blog');
         await loadMyBlog(); 
-        alert(editingPost.status === 'published' ? "Post published successfully!" : "Draft saved successfully!");
-    } catch(e: any) { alert("Failed to save post: " + (e.message || "Unknown error")); } finally { setLoading(false); }
+        window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: editingPost.status === 'published' ? "Post published!" : "Draft saved.", type: 'success' } }));
+    } catch(e: any) { 
+        window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Failed to save post: " + (e.message || "Unknown error"), type: 'error' } }));
+    } finally {
+        setLoading(false);
+    }
   };
 
   const handleViewPost = (post: BlogPost) => {
@@ -235,7 +236,9 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
           setActivePost(updatedPost);
           setPosts(prev => prev.map(p => p.id === activePost.id ? updatedPost : p));
           setMyPosts(prev => prev.map(p => p.id === activePost.id ? updatedPost : p));
-      } catch(e) { alert("Failed to post comment."); }
+      } catch(e) { 
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Failed to post comment.", type: 'error' } }));
+      }
   };
 
   const renderPostCard = (post: BlogPost, canDelete = false) => {
@@ -286,9 +289,9 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
                 )}
                 <h1 className="text-xl font-bold flex items-center gap-2"><Rss className="text-indigo-400"/><span className="hidden sm:inline">{activeTab === 'my_blog' ? 'My Blog' : activeTab === 'editor' ? 'Post Editor' : activeTab === 'post_detail' ? 'Reading Mode' : 'Community Blog'}</span></h1>
             </div>
-            <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+            <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700 overflow-x-auto">
                 <button onClick={() => setActiveTab('feed')} className={`px-4 py-2 text-sm font-bold rounded transition-colors ${activeTab === 'feed' || activeTab === 'post_detail' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>Feed</button>
-                <button onClick={() => currentUser ? setActiveTab('my_blog') : alert("Sign in to view your blog")} className={`px-4 py-2 text-sm font-bold rounded transition-colors ${activeTab === 'my_blog' || activeTab === 'editor' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>My Blog</button>
+                <button onClick={() => currentUser ? setActiveTab('my_blog') : window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Authentication required.", type: 'warn' } }))} className={`px-4 py-2 text-sm font-bold rounded transition-colors ${activeTab === 'my_blog' || activeTab === 'editor' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>My Blog</button>
             </div>
         </div>
 

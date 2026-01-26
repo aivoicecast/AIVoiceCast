@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -324,24 +325,22 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     id: recId, userId: currentUser.uid, channelId: channel.id, 
                     channelTitle: channel.title, channelImage: channel.imageUrl, 
                     timestamp, mediaUrl: URL.createObjectURL(videoBlob), 
-                    mediaType: 'video/webm', transcriptUrl: URL.createObjectURL(transcriptBlob), 
+                    mediaType: 'video/webm' as any, transcriptUrl: URL.createObjectURL(transcriptBlob), 
                     blob: videoBlob, size: videoBlob.size
                 });
 
                 const isJudge = isJudgeSession();
                 if (isJudge) {
-                    // JUDGE REDIRECTION: Save to Firebase Storage
                     const fbVideoUrl = await uploadFileToStorage(`recordings/${currentUser.uid}/${recId}.webm`, videoBlob);
                     const fbTranscriptUrl = await uploadFileToStorage(`recordings/${currentUser.uid}/${recId}_transcript.txt`, transcriptBlob);
                     await saveRecordingReference({
                         id: recId, userId: currentUser.uid, channelId: channel.id, 
                         channelTitle: channel.title, channelImage: channel.imageUrl, 
                         timestamp, mediaUrl: fbVideoUrl, driveUrl: fbVideoUrl, 
-                        mediaType: 'video/webm', transcriptUrl: fbTranscriptUrl, 
+                        mediaType: 'video/webm' as any, transcriptUrl: fbTranscriptUrl, 
                         size: videoBlob.size
                     });
                 } else {
-                    // STANDARD MEMBER: Sync to Google Drive
                     const token = getDriveToken();
                     if (token) {
                         const folderId = await ensureCodeStudioFolder(token);
@@ -351,7 +350,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                             id: recId, userId: currentUser.uid, channelId: channel.id, 
                             channelTitle: channel.title, channelImage: channel.imageUrl, 
                             timestamp, mediaUrl: driveVideoUrl, driveUrl: driveVideoUrl, 
-                            mediaType: 'video/webm', transcriptUrl: `drive://${tFileId}`, 
+                            mediaType: 'video/webm' as any, transcriptUrl: `drive://${tFileId}`, 
                             size: videoBlob.size
                         });
                     }

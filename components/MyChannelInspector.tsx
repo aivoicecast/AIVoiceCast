@@ -80,6 +80,23 @@ export const MyChannelInspector: React.FC<MyChannelInspectorProps> = ({ onBack }
       }
   };
 
+  const handleResetAllDatesLocal = async () => {
+      if(!confirm("Reset ALL local channel creation dates to right now? This affects sorting in your feed.")) return;
+      setIsLoading(true);
+      try {
+          const now = Date.now();
+          for (const ch of channels) {
+              await saveUserChannel({ ...ch, createdAt: now });
+          }
+          await loadData();
+          alert(`Successfully updated ${channels.length} local channels to today.`);
+      } catch(e: any) {
+          alert("Update failed: " + e.message);
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
   const handleSeedLocal = async () => {
       if (!confirm("Import built-in channels to your Local Storage? This is useful for testing offline availability.")) return;
       setIsLoading(true);
@@ -155,6 +172,11 @@ export const MyChannelInspector: React.FC<MyChannelInspectorProps> = ({ onBack }
                        <span>Sync from Cloud</span>
                    </button>
                )}
+
+               <button onClick={handleResetAllDatesLocal} disabled={isLoading || channels.length === 0} className="flex items-center space-x-2 px-4 py-2 bg-indigo-900/30 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 rounded-lg transition-colors font-bold text-xs shadow-lg">
+                   <Calendar size={16} />
+                   <span>Reset All Dates</span>
+               </button>
                
                <button onClick={handleSeedLocal} disabled={isLoading} className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors font-bold text-xs border border-slate-700">
                    <DownloadCloud size={16} />

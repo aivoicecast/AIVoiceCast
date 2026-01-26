@@ -1,3 +1,4 @@
+
 import { CommunityDiscussion } from '../types';
 
 export const APP_COMPARISON_DOC: CommunityDiscussion = {
@@ -7,13 +8,13 @@ export const APP_COMPARISON_DOC: CommunityDiscussion = {
   userId: 'system',
   userName: 'System Architect',
   transcript: [],
-  createdAt: 1766016000000, 
+  createdAt: 1769308800000, 
   isManual: true,
   title: "Neural Prism: The Human-AI Interface Spec",
   designDoc: `
 # Neural Prism: Architecture of Accessibility
 
-**Revision:** 5.0.0 | **Author:** Lead Architect | **Date:** Dec 22, 2025
+**Revision:** 5.0.0 | **Author:** Lead Architect | **Date:** Jan 25, 2026
 
 ## 1. Philosophical Refraction
 The Neural Prism Platform moves beyond the "Knowledge OS" model. Our core architecture acts as a **refractive lens** for AI Super-Intelligence. 
@@ -70,7 +71,7 @@ export const STACK_STORY_DOC: CommunityDiscussion = {
   userId: 'system',
   userName: 'Lead Architect',
   transcript: [],
-  createdAt: Date.now(),
+  createdAt: 1769308800000,
   isManual: true,
   title: "The Stack Story: Building the Prism",
   designDoc: `
@@ -103,7 +104,7 @@ export const BUILT_WITH_DOC: CommunityDiscussion = {
   userId: 'system',
   userName: 'System Architect',
   transcript: [],
-  createdAt: Date.now(),
+  createdAt: 1769308800000,
   isManual: true,
   title: "Technical Manifest: Built With",
   designDoc: `

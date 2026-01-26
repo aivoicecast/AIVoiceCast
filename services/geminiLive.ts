@@ -19,7 +19,11 @@ function getValidLiveVoice(voiceName: string): string {
   if (name.includes('Default Gem')) return 'Zephyr';
   
   const validGemini = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
-  return validGemini.includes(voiceName) ? voiceName : 'Puck';
+  // Iterate to find partial match for long IDs
+  for (const v of validGemini) {
+      if (name.toLowerCase().includes(v.toLowerCase())) return v;
+  }
+  return 'Puck';
 }
 
 export class GeminiLiveService {
@@ -188,7 +192,6 @@ export class GeminiLiveService {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     this.heartbeatInterval = setInterval(() => {
         if (this.session && this.isActive) {
-            // Send a tiny empty message to keep the socket alive
             this.sendText(" "); 
         }
     }, 15000); 

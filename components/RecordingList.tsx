@@ -167,7 +167,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
       } catch (e: any) {
-          alert("Download failed: " + e.message);
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Download failed: " + e.message, type: 'error' } }));
       } finally {
           setDownloadingId(null);
       }
@@ -196,7 +196,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
               setActiveMediaId(rec.id);
               setActiveRecording(rec);
           } catch (e: any) {
-              alert("Drive Access Denied: " + e.message);
+              window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Drive Access Denied: " + e.message, type: 'error' } }));
           } finally {
               setResolvingId(null);
           }
@@ -366,17 +366,17 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   };
 
   const handleDelete = async (rec: RecordingSession) => {
-    if (!confirm(`Permanently delete "${rec.channelTitle}" archive?`)) return;
-    
+    // Confirmation removed for seamless experience
     setDeletingId(rec.id);
     try {
         const token = getDriveToken();
         await purgeRecordingAssets(rec, token);
         setRecordings(prev => prev.filter(r => r.id !== rec.id));
+        window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Recording purged from sovereign vault.", type: 'info' } }));
     } catch (e: any) {
-        alert("Delete failed: " + e.message);
+        window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Purge failed: " + e.message, type: 'error' } }));
     } finally {
-        setDownloadingId(null);
+        setDeletingId(null);
     }
   };
 
@@ -391,7 +391,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Delete ${selectedIds.size} recordings?`)) return;
+    // Confirmation removed for seamless experience
 
     setIsBulkDeleting(true);
     const token = getDriveToken();
