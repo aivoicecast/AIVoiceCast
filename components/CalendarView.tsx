@@ -3,8 +3,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Channel, Booking, TodoItem } from '../types';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Briefcase, Plus, Video, CheckCircle, X, Users, Loader2, Mic, Play, Mail, Sparkles, ArrowLeft, Monitor, Filter, LayoutGrid, List, Languages, CloudSun, Wind, BookOpen, CheckSquare, Square, Trash2, StopCircle, Download, FileText, Check, Podcast, RefreshCw, Share2, Target, ExternalLink, Circle, Edit3, Timer, Lock } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
-// Fix: removed updateBookingInvite which is not exported by firestoreService
-import { getUserBookings, createBooking, saveSavedWord, getSavedWordForUser } from '../services/firestoreService';
+// Fix: removed unused saveSavedWord and non-exported getSavedWordForUser from firestoreService import
+import { getUserBookings, createBooking } from '../services/firestoreService';
 import { fetchLocalWeather, getWeatherDescription, WeatherData } from '../utils/weatherService';
 import { getLunarDate, getDailyWord, getSeasonContext, DailyWord } from '../utils/lunarService';
 import { generateSecureId } from '../utils/idUtils';

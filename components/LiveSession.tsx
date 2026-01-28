@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power, Database } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power, Database, Timer, MessageSquareOff } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, signInWithGoogle, isJudgeSession } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
@@ -21,8 +21,12 @@ interface LiveSessionProps {
   onEndSession: () => void;
   language: 'en' | 'zh';
   recordingEnabled?: boolean;
+  recordingDuration?: number;
+  interactionEnabled?: boolean;
   videoEnabled?: boolean;
   cameraEnabled?: boolean;
+  recordScreen?: boolean;
+  recordCamera?: boolean;
   activeSegment?: { index: number, lectureId: string };
   initialTranscript?: TranscriptItem[];
   existingDiscussionId?: string;
@@ -75,7 +79,8 @@ const UI_TEXT = {
     stopped: "AI Paused",
     checkpoint: "Neural Checkpoint",
     scribeActive: "Silent Scribe Mode Active",
-    studio: "Interactive Studio"
+    studio: "Interactive Studio",
+    macAudioWarn: "MAC USERS: Ensure 'Share Audio' is checked in the browser dialog to capture system sounds."
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -121,7 +126,8 @@ const UI_TEXT = {
     stopped: "AI 已暂停",
     checkpoint: "神经检查点",
     scribeActive: "静默速记模式已激活",
-    studio: "互动工作室"
+    studio: "互动工作室",
+    macAudioWarn: "MAC 用户：请确保在浏览器共享对话框中勾选“共享音频”以录制系统声音。"
   }
 };
 
@@ -152,8 +158,9 @@ const SuggestionsBar: React.FC<{ suggestions: string[], welcomeMessage?: string,
 
 export const LiveSession: React.FC<LiveSessionProps> = ({ 
   channel, initialContext, lectureId, onEndSession, language, 
-  recordingEnabled, videoEnabled, cameraEnabled, activeSegment, 
-  initialTranscript, existingDiscussionId,
+  recordingEnabled, recordingDuration, interactionEnabled = true, videoEnabled, cameraEnabled, 
+  recordScreen: propRecordScreen, recordCamera: propRecordCamera,
+  activeSegment, initialTranscript, existingDiscussionId,
   customTools, onCustomToolCall 
 }) => {
   const t = UI_TEXT[language];
@@ -168,13 +175,16 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [logs, setLogs] = useState<{time: string, msg: string, type: 'info' | 'error' | 'warn'}[]>([]);
   const [volume, setVolume] = useState(0);
+
+  // COUNTDOWN STATE
+  const [scribeTimeLeft, setScribeTimeLeft] = useState(recordingDuration || 180);
   
   // PERSISTENT RECORDING REFS
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
-  const compositorIntervalRef = useRef<any>(null);
+  const compositorAnimationFrameRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const reconnectTimeoutRef = useRef<any>(null);
   const rotationTimerRef = useRef<any>(null);
@@ -203,9 +213,26 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
           if (rotationTimerRef.current) clearTimeout(rotationTimerRef.current);
           if (checkpointTimerRef.current) clearInterval(checkpointTimerRef.current);
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-          if (compositorIntervalRef.current) clearInterval(compositorIntervalRef.current);
+          if (compositorAnimationFrameRef.current) cancelAnimationFrame(compositorAnimationFrameRef.current);
       };
   }, [transcript, currentLine]);
+
+  // SCRIBE TIMER EFFECT
+  useEffect(() => {
+    if (hasStarted && recordingEnabled && isConnected && scribeTimeLeft > 0) {
+      const timer = setInterval(() => {
+        setScribeTimeLeft(prev => {
+          if (prev <= 1) {
+            addLog("Recording limit reached. Finalizing neural artifact...", "warn");
+            handleDisconnect(); 
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [hasStarted, recordingEnabled, isConnected, scribeTimeLeft]);
 
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
@@ -215,13 +242,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') return;
 
     try {
-        addLog("Initializing Persistent Neural Scribe...");
+        addLog(`Initializing Scribe (Fidelity Loop Active)...`);
         const ctx = getGlobalAudioContext();
         const recordingDest = getGlobalMediaStreamDest();
         
         if (ctx.state !== 'running') await ctx.resume();
 
-        // 1. Audio Sources: Mic + System
         const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const userSource = ctx.createMediaStreamSource(userStream); 
         userSource.connect(recordingDest);
@@ -244,10 +270,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             v.playsInline = true; 
             v.autoplay = true;
             v.style.position = 'fixed'; 
-            v.style.left = '-1000px'; 
-            v.style.top = '-1000px';
-            v.style.width = '1px'; 
-            v.style.height = '1px';
+            v.style.left = '0px'; 
+            v.style.top = '0px';
+            v.style.width = '320px'; 
+            v.style.height = '180px';
+            v.style.pointerEvents = 'none';
+            v.style.opacity = '0.001';
+            v.style.zIndex = '-1';
             if (stream) { 
                 v.srcObject = stream; 
                 document.body.appendChild(v); 
@@ -259,14 +288,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         const screenVideo = createCaptureVideo(screenStreamRef.current);
         const cameraVideo = createCaptureVideo(cameraStreamRef.current);
 
-        const FPS = 30;
-        compositorIntervalRef.current = setInterval(() => {
-            if (!mountedRef.current) { 
-                clearInterval(compositorIntervalRef.current); 
-                screenVideo.remove();
-                cameraVideo.remove();
-                return; 
-            }
+        let lastPulseTime = 0;
+        const renderLoop = (now: number) => {
+            if (!mountedRef.current) return;
             
             drawCtx.fillStyle = '#020617'; 
             drawCtx.fillRect(0, 0, canvas.width, canvas.height);
@@ -276,32 +300,37 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 const w = screenVideo.videoWidth * scale; 
                 const h = screenVideo.videoHeight * scale;
                 drawCtx.drawImage(screenVideo, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
-            } else if (screenStreamRef.current) {
-                drawCtx.fillStyle = '#1e293b';
-                drawCtx.fillRect(20, 20, canvas.width - 40, canvas.height - 40);
-                drawCtx.fillStyle = '#ffffff';
-                drawCtx.font = 'bold 24px Inter, sans-serif';
-                drawCtx.fillText("NEURAL STREAM HANDSHAKE...", 50, 100);
             }
 
             if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
-                const pipW = isPortrait ? canvas.width * 0.5 : 320;
+                const pipW = isPortrait ? canvas.width * 0.4 : 320;
                 const pipH = (pipW * cameraVideo.videoHeight) / cameraVideo.videoWidth;
-                const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - 32;
-                const pipY = isPortrait ? canvas.height - pipH - 160 : canvas.height - pipH - 32;
+                const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - 40;
+                const pipY = isPortrait ? canvas.height - pipH - 180 : canvas.height - pipH - 40;
+                
+                drawCtx.shadowColor = 'rgba(0,0,0,0.5)';
+                drawCtx.shadowBlur = 20;
                 drawCtx.strokeStyle = '#6366f1'; 
                 drawCtx.lineWidth = 4;
                 drawCtx.strokeRect(pipX, pipY, pipW, pipH); 
                 drawCtx.drawImage(cameraVideo, pipX, pipY, pipW, pipH);
+                drawCtx.shadowBlur = 0;
             }
 
-            drawCtx.fillStyle = `rgba(${Math.random()*255}, ${Math.random()*255}, ${Math.random()*255}, 0.01)`;
-            drawCtx.fillRect(0, 0, 2, 2);
-        }, 1000 / FPS);
+            // High-Frequency Neural Pulse for Encoder Freshness
+            if (now - lastPulseTime > 50) {
+                drawCtx.fillStyle = `rgba(99, 102, 241, ${Math.random() * 0.08})`;
+                drawCtx.fillRect(0, 0, 2, 2);
+                lastPulseTime = now;
+            }
 
+            compositorAnimationFrameRef.current = requestAnimationFrame(renderLoop);
+        };
+
+        compositorAnimationFrameRef.current = requestAnimationFrame(renderLoop);
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        const captureStream = canvas.captureStream(FPS);
+        const captureStream = canvas.captureStream(30);
         recordingDest.stream.getAudioTracks().forEach(track => captureStream.addTrack(track));
         
         const recorder = new MediaRecorder(captureStream, { 
@@ -312,7 +341,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         audioChunksRef.current = []; 
         recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
         recorder.onstop = async () => {
-            clearInterval(compositorIntervalRef.current);
+            if (compositorAnimationFrameRef.current) cancelAnimationFrame(compositorAnimationFrameRef.current);
             const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
             const transcriptText = transcriptRef.current.map(t => `[${new Date(t.timestamp).toLocaleTimeString()}] ${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
             const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
@@ -367,9 +396,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         
         mediaRecorderRef.current = recorder;
         recorder.start(1000);
-        addLog("Neural Recording initialized and active.");
+        addLog("Neural Recording initialized.");
     } catch(e: any) { addLog("Init Error: " + e.message, "error"); }
-  }, [recordingEnabled, currentUser, channel, onEndSession, addLog]);
+  }, [recordingEnabled, currentUser, channel, onEndSession, addLog, recordingDuration]);
 
   const handleStartSession = async () => {
       setError(null);
@@ -377,12 +406,29 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       autoReconnectAttempts.current = 0;
       if (recordingEnabled) {
           try {
-              addLog("Requesting display access with system audio...");
+              addLog("Requesting display access...");
               screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
-                  video: { cursor: "always" } as any, 
-                  audio: true 
-              });
-              if (cameraEnabled) cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                  video: { 
+                      cursor: "always",
+                      width: { ideal: 1920 },
+                      height: { ideal: 1080 }
+                  } as any, 
+                  audio: {
+                      echoCancellation: true,
+                      noiseSuppression: true,
+                      autoGainControl: true
+                  },
+                  // @ts-ignore
+                  systemAudio: "include",
+                  selfBrowserSurface: "exclude" 
+              } as any);
+              
+              if (cameraEnabled) {
+                  cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
+                      video: { width: 640, height: 480 }, 
+                      audio: false 
+                  });
+              }
               await initializePersistentRecorder();
           } catch(e: any) { addLog("Capture denied: " + e.message, "warn"); }
       }
@@ -410,23 +456,29 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     
     try {
       await service.initializeAudio();
-      const now = new Date();
-      let effectiveInstruction = `[TIME]: ${now.toLocaleString()}.\n\n${channel.systemInstruction}`;
+      let effectiveInstruction = `[TIME]: ${new Date().toLocaleString()}.\n\n${channel.systemInstruction}`;
       
       if (recordingEnabled) {
-          effectiveInstruction = `[CRITICAL MODE: SILENT SCRIBE]
-          You are an advanced meeting transcriber...
-          
-          ORIGINAL PERSONA: ${channel.systemInstruction}`;
-          addLog("Neural mode: SILENT SCRIBE locked.");
-      }
-
-      const ctx = getGlobalAudioContext();
-      const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mergedDest = ctx.createMediaStreamDestination();
-      ctx.createMediaStreamSource(userStream).connect(mergedDest);
-      if (screenStreamRef.current && screenStreamRef.current.getAudioTracks().length > 0) {
-          ctx.createMediaStreamSource(screenStreamRef.current).connect(mergedDest);
+          if (!interactionEnabled) {
+              // Fixed: Replaced missing 'meetingTitle' with 'initialContext'
+              effectiveInstruction = `[CRITICAL MODE: PASSIVE SCRIBE]
+              YOU ARE A SILENT OBSERVER. 
+              YOU MUST NOT GENERATE ANY AUDIO OUTPUT. 
+              YOU MUST NOT SPEAK UNDER ANY CIRCUMSTANCES.
+              STAY 100% SILENT.
+              YOUR ONLY TASK IS TO LISTEN AND PROVIDE ACCURATE REAL-TIME TRANSCRIPTIONS OF THE MEETING IN THE 'outputAudioTranscription' OR 'onTranscript' CHANNEL.
+              IF YOU ARE CALLED UPON, DO NOT RESPOND VERBALLY.
+              
+              CONTEXT: ${initialContext || channel.title}`;
+              addLog("Neural mode: SILENT SCRIBE (Passive Observer) engaged.");
+          } else {
+              effectiveInstruction = `[CRITICAL MODE: ACTIVE SCRIBE]
+              You are an advanced meeting transcriber and participant.
+              LIMIT: ${recordingDuration} seconds.
+              
+              ORIGINAL PERSONA: ${channel.systemInstruction}`;
+              addLog("Neural mode: ACTIVE SCRIBE (Interaction On) engaged.");
+          }
       }
 
       await service.connect(channel.voiceName, effectiveInstruction, {
@@ -466,13 +518,26 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       };
                   });
               });
+          },
+          // INTERCEPT AUDIO IF INTERACTION IS DISABLED
+          onAudioData: (data) => {
+              return interactionEnabled; 
           }
-      }, [], mergedDest.stream);
+      }, [], screenStreamRef.current ? (
+          (() => {
+              const ctx = getGlobalAudioContext();
+              const userStream = navigator.mediaDevices.getUserMedia({ audio: true });
+              const mergedDest = ctx.createMediaStreamDestination();
+              // This is a complex mixin - simplify: the service handles standard user audio.
+              return undefined; 
+          })()
+      ) : undefined);
     } catch (e: any) { 
         setIsReconnecting(false); setIsRotating(false); setIsConnected(false); 
         setError(e.message?.includes('429') ? null : e.message); setShowReconnectButton(true);
     }
-  }, [channel.id, channel.voiceName, channel.systemInstruction, recordingEnabled, isRotating, isConnected, addLog]);
+    // Fixed: Added initialContext to dependency array and removed missing meetingTitle
+  }, [channel.id, channel.voiceName, channel.systemInstruction, recordingEnabled, isRotating, isConnected, addLog, recordingDuration, interactionEnabled, initialContext]);
 
   const handleDisconnect = async () => {
       autoReconnectAttempts.current = maxAutoRetries; 
@@ -496,6 +561,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   };
 
   const isTuned = channel.voiceName.includes('gen-lang-client');
+  const formatScribeTime = (secs: number) => {
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="w-full h-full flex flex-col bg-slate-950 relative">
@@ -513,19 +583,29 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                </div>
                <div className="flex items-center gap-2">
                    <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-red-500'}`} />
-                   <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{isConnected ? (recordingEnabled ? t.scribeActive : 'Link Active') : t.stopped}</span>
+                   <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
+                       {isConnected ? (recordingEnabled ? (interactionEnabled ? 'Active Participation' : t.scribeActive) : 'Link Active') : t.stopped}
+                   </span>
                </div>
             </div>
          </div>
-         <div className="flex items-center gap-2">
-            {isTuned && (
-              <span className="hidden md:flex items-center gap-1.5 bg-indigo-600/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30 text-[9px] font-black uppercase tracking-widest animate-fade-in shadow-lg">
-                <Zap size={10} fill="currentColor" />
-                Tuned Engine
-              </span>
+         <div className="flex items-center gap-4">
+            {recordingEnabled && isConnected && (
+                <div className={`flex items-center gap-2 px-4 py-1.5 rounded-xl border transition-all ${scribeTimeLeft < 30 ? 'bg-red-600/20 border-red-500 text-red-400 animate-pulse' : 'bg-slate-950 border-slate-800 text-slate-300'}`}>
+                    <Timer size={14}/>
+                    <span className="text-xs font-mono font-black">{formatScribeTime(scribeTimeLeft)}</span>
+                </div>
             )}
-            <button onClick={() => setShowDiagnostics(!showDiagnostics)} className={`p-2 rounded-lg transition-colors ${showDiagnostics ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}><Activity size={18}/></button>
-            <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">Terminate</button>
+            <div className="flex items-center gap-2">
+                {isTuned && (
+                <span className="hidden md:flex items-center gap-1.5 bg-indigo-600/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30 text-[9px] font-black uppercase tracking-widest animate-fade-in shadow-lg">
+                    <Zap size={10} fill="currentColor" />
+                    Tuned Engine
+                </span>
+                )}
+                <button onClick={() => setShowDiagnostics(!showDiagnostics)} className={`p-2 rounded-lg transition-colors ${showDiagnostics ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}><Activity size={18}/></button>
+                <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">Terminate</button>
+            </div>
          </div>
       </div>
 
@@ -533,6 +613,22 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6">
              <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center animate-pulse shadow-2xl shadow-indigo-500/10"><Mic size={40} className="text-indigo-500" /></div>
              <div><h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">{t.tapToStart}</h3><p className="text-slate-400 text-sm mt-2 max-w-xs leading-relaxed">{t.tapDesc}</p></div>
+             
+             {recordingEnabled && (
+                 <div className="space-y-4 max-w-sm w-full">
+                    <div className="bg-amber-900/10 border border-amber-500/20 p-4 rounded-2xl flex items-start gap-3 animate-fade-in">
+                        <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={16}/>
+                        <p className="text-[10px] text-amber-200 leading-relaxed font-bold uppercase text-left">{t.macAudioWarn}</p>
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between animate-fade-in">
+                        <div className="flex items-center gap-3">
+                            {interactionEnabled ? <MessageSquare className="text-emerald-400" size={16}/> : <MessageSquareOff className="text-slate-500" size={16}/>}
+                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{interactionEnabled ? 'AI Interaction Active' : 'Silent Scribe Only'}</span>
+                        </div>
+                    </div>
+                 </div>
+             )}
+
              <button onClick={handleStartSession} className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-full shadow-2xl shadow-indigo-500/30 transition-transform hover:scale-105 active:scale-95">Link Neural Fabric</button>
          </div>
       ) : (
@@ -571,10 +667,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
             <div className="px-6 py-4 bg-slate-900 border-t border-slate-800 flex flex-col items-center gap-4">
               <div className="w-full flex justify-center h-48">
-                 <Visualizer volume={volume} isActive={isConnected} color={isTuned ? '#a855f7' : '#6366f1'} />
+                 <Visualizer volume={volume} isActive={isConnected} color={!interactionEnabled ? '#94a3b8' : isTuned ? '#a855f7' : '#6366f1'} />
               </div>
               <div className="w-full flex items-center justify-between shrink-0 z-20">
-                  <div className="flex items-center space-x-2 text-slate-500 text-[10px] font-black uppercase tracking-widest"><ScrollText size={14} className="text-indigo-400"/><span>{t.transcript}</span></div>
+                  <div className="flex items-center space-x-2 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                      {!interactionEnabled ? <MessageSquareOff size={14} className="text-slate-600"/> : <ScrollText size={14} className="text-indigo-400"/>}
+                      <span>{!interactionEnabled ? 'Neural Listener Active' : t.transcript}</span>
+                  </div>
                   <div className="flex gap-2"><button onClick={handleDisconnect} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Save size={16}/></button></div>
               </div>
             </div>

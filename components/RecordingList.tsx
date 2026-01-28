@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { RecordingSession, Channel, TranscriptItem, UserProfile, ViewID } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap, Download, Share2, Square, CheckSquare, Pause, Search, Plus, RefreshCw, ChevronRight, FileVideo, Database } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap, Download, Share2, Square, CheckSquare, Pause, Search, Plus, RefreshCw, ChevronRight, FileVideo, Database, Timer, MessageSquareOff, MessageSquare } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getYouTubeEmbedUrl, uploadToYouTube, getYouTubeVideoUrl, deleteYouTubeVideo } from '../services/youtubeService';
 import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
@@ -20,7 +20,9 @@ interface RecordingListProps {
     bookingId?: string, 
     videoEnabled?: boolean, 
     cameraEnabled?: boolean,
-    activeSegment?: { index: number, lectureId: string }
+    activeSegment?: { index: number, lectureId: string },
+    recordingDuration?: number,
+    interactionEnabled?: boolean
   ) => void;
 }
 
@@ -57,6 +59,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const [meetingTitle, setMeetingTitle] = useState('');
   const [recordCamera, setRecordCamera] = useState(true);
   const [recordScreen, setRecordScreen] = useState(true);
+  const [recordingDuration, setRecordingDuration] = useState(180); 
+  const [interactionEnabled, setInteractionEnabled] = useState(false); // Default to FALSE for meeting notes
 
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
@@ -366,7 +370,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   };
 
   const handleDelete = async (rec: RecordingSession) => {
-    // Confirmation removed for seamless experience
     setDeletingId(rec.id);
     try {
         const token = getDriveToken();
@@ -391,8 +394,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    // Confirmation removed for seamless experience
-
     setIsBulkDeleting(true);
     const token = getDriveToken();
     try {
@@ -410,7 +411,17 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const handleStartQuickRecording = () => {
     const defaultChannel: Channel = HANDCRAFTED_CHANNELS[0]; 
     if (onStartLiveSession) {
-        onStartLiveSession(defaultChannel, meetingTitle || "Manual Meeting Scribe", true, undefined, recordScreen, recordCamera);
+        onStartLiveSession(
+            defaultChannel, 
+            meetingTitle || "Manual Meeting Scribe", 
+            true, 
+            undefined, 
+            recordScreen, 
+            recordCamera, 
+            undefined, 
+            recordingDuration,
+            interactionEnabled
+        );
     }
     setIsRecorderModalOpen(false);
   };
@@ -442,7 +453,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
               <span>Delete {selectedIds.size}</span>
             </button>
           )}
-          <button onClick={loadData} className="p-2 text-slate-400 hover:text-white transition-colors bg-slate-900 rounded-lg border border-slate-800">
+          <button onClick={loadData} className="p-2 text-slate-400 hover:text-white transition-colors bg-slate-950 rounded-lg border border-slate-800">
             <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
@@ -500,11 +511,20 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-4">
                           <div className="w-16 h-10 rounded-lg bg-slate-800 overflow-hidden relative shrink-0 border border-slate-700">
-                             {rec.channelImage ? (
-                               <img src={rec.channelImage} alt="" className="w-full h-full object-cover opacity-60" />
-                             ) : (
-                               <div className="w-full h-full flex items-center justify-center text-slate-700"><FileVideo size={20}/></div>
-                             )}
+                             {rec.channelImage && !rec.channelImage.includes('ui-avatars.com') ? (
+                               <img 
+                                src={rec.channelImage} 
+                                alt="" 
+                                className="w-full h-full object-cover opacity-60" 
+                                onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                }}
+                               />
+                             ) : null}
+                             <div className={`w-full h-full flex items-center justify-center text-slate-700 ${rec.channelImage && !rec.channelImage.includes('ui-avatars.com') ? 'hidden' : ''}`}>
+                                 <FileVideo size={20}/>
+                             </div>
                              <button 
                                 onClick={() => handlePlayback(rec)}
                                 disabled={resolvingId === rec.id}
@@ -612,6 +632,107 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
             </table>
           </div>
         </div>
+      )}
+
+      {/* Setup Modal for Scribe */}
+      {isRecorderModalOpen && (
+          <div className="fixed inset-0 z-[250] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
+              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden animate-fade-in-up">
+                  <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                          <div className="p-2 bg-red-600/10 rounded-xl text-red-500 border border-red-500/20"><Video size={20}/></div>
+                          <h3 className="text-lg font-black text-white italic uppercase tracking-widest">Neural Scribe Setup</h3>
+                      </div>
+                      <button onClick={() => setIsRecorderModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
+                  </div>
+                  <div className="p-10 space-y-8">
+                      <div className="bg-amber-900/10 border border-amber-500/30 p-6 rounded-3xl space-y-3 animate-fade-in shadow-xl">
+                          <div className="flex items-center gap-3 text-amber-500">
+                              <AlertCircle size={20} />
+                              <h4 className="text-sm font-black uppercase tracking-[0.2em]">Mac Audio Alert</h4>
+                          </div>
+                          <p className="text-xs text-slate-300 leading-relaxed font-bold uppercase">
+                              Mac Users: To capture audio from YouTube or other windows, you MUST check the <span className="text-amber-400">"Share system audio"</span> box in the browser's screen-selection dialog.
+                          </p>
+                      </div>
+
+                      <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Session Title</label>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. Q1 Architecture Review" 
+                            value={meetingTitle}
+                            onChange={e => setMeetingTitle(e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-4 text-white text-sm outline-none focus:ring-2 focus:ring-red-500 shadow-inner"
+                          />
+                      </div>
+                      
+                      <div className="space-y-4">
+                          <div className="flex justify-between items-center px-1">
+                              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Recording Limit</label>
+                              <span className="text-xs font-black text-indigo-400">{Math.floor(recordingDuration / 60)}m {recordingDuration % 60}s</span>
+                          </div>
+                          <input 
+                              type="range" min="30" max="600" step="30"
+                              value={recordingDuration}
+                              onChange={e => setRecordingDuration(parseInt(e.target.value))}
+                              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-red-500"
+                          />
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4">
+                           <button 
+                                onClick={() => setInteractionEnabled(!interactionEnabled)}
+                                className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${interactionEnabled ? 'bg-amber-600/10 border-amber-500 text-amber-300 shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                           >
+                               <div className="flex items-center gap-3">
+                                   {interactionEnabled ? <MessageSquare size={20}/> : <MessageSquareOff size={20}/>}
+                                   <div className="text-left">
+                                       <span className="text-xs font-bold uppercase tracking-widest block">AI Voice Interaction</span>
+                                       <span className="text-[8px] font-black uppercase opacity-60">{interactionEnabled ? 'Active Participation' : 'Listen-Only Mode'}</span>
+                                   </div>
+                               </div>
+                               <div className={`w-10 h-5 rounded-full relative transition-colors ${interactionEnabled ? 'bg-amber-500' : 'bg-slate-800'}`}>
+                                   <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${interactionEnabled ? 'right-1' : 'left-1'}`}></div>
+                               </div>
+                           </button>
+
+                           <button 
+                                onClick={() => setRecordScreen(!recordScreen)}
+                                className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${recordScreen ? 'bg-indigo-600/10 border-indigo-500 text-indigo-300 shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}
+                           >
+                               <div className="flex items-center gap-3">
+                                   <Monitor size={20}/>
+                                   <span className="text-xs font-bold uppercase tracking-widest">Screen Capture</span>
+                               </div>
+                               <div className={`w-10 h-5 rounded-full relative transition-colors ${recordScreen ? 'bg-indigo-500' : 'bg-slate-800'}`}>
+                                   <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${recordScreen ? 'right-1' : 'left-1'}`}></div>
+                               </div>
+                           </button>
+
+                           <button 
+                                onClick={() => setRecordCamera(!recordCamera)}
+                                className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${recordCamera ? 'bg-pink-600/10 border-pink-500 text-pink-300 shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}
+                           >
+                               <div className="flex items-center gap-3">
+                                   <Camera size={20}/>
+                                   <span className="text-xs font-bold uppercase tracking-widest">Camera Overlay</span>
+                               </div>
+                               <div className={`w-10 h-5 rounded-full relative transition-colors ${recordCamera ? 'bg-pink-500' : 'bg-slate-800'}`}>
+                                   <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${recordCamera ? 'right-1' : 'left-1'}`}></div>
+                               </div>
+                           </button>
+                      </div>
+
+                      <button 
+                        onClick={handleStartQuickRecording}
+                        className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3"
+                      >
+                          <Play size={20} fill="currentColor"/> Begin Neural Scribe
+                      </button>
+                  </div>
+              </div>
+          </div>
       )}
 
       {/* Playback Modal */}

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile, AgentMemory } from '../types';
 import { ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, RefreshCw, RefreshCcw, Wand2, Edit3, Save, ShieldCheck, ImageIcon, Lock, Cloud, BookText, Languages, X, AlertTriangle, Database, Terminal, SkipBack, SkipForward, QrCode, Activity } from 'lucide-react';
@@ -99,6 +98,8 @@ const UI_TEXT = {
     hardRegen: "从 AI 强制重新合成"
   }
 };
+
+export const CHINESE_FONT_STACK = "'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif";
 
 const PodcastDetail: React.FC<PodcastDetailProps> = ({ 
     channel, onBack, language, currentUser, onStartLiveSession, userProfile, onUpdateChannel, onEditChannel, isProMember
@@ -314,10 +315,10 @@ const PodcastDetail: React.FC<PodcastDetailProps> = ({
             }
         }
         
-        if (localSessionId !== playbackSessionRef.current) return;
-        
-        dispatchLog(`[Progression] ${t.nextLesson}`, "info");
-        nextLessonTimerRef.current = setTimeout(handleNextTopic, 1500);
+        if (localSessionId === playbackSessionRef.current) {
+            dispatchLog(`[Progression] ${t.nextLesson}`, "info");
+            nextLessonTimerRef.current = setTimeout(handleNextTopic, 1500);
+        }
 
     } catch (e) {
         console.error("Playback interruption", e);
@@ -592,8 +593,9 @@ const PodcastDetail: React.FC<PodcastDetailProps> = ({
           setExportStatus("Generating Front Cover...");
           const coverDiv = document.createElement('div');
           coverDiv.style.width = '800px'; coverDiv.style.padding = '80px'; coverDiv.style.position = 'fixed'; coverDiv.style.left = '-10000px';
+          coverDiv.setAttribute('lang', language);
           coverDiv.innerHTML = `
-              <div style="height: 1000px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; background: #ffffff; color: #020617; border: 20px solid #4338ca; position: relative;">
+              <div style="height: 1000px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; background: #ffffff; color: #020617; border: 20px solid #4338ca; position: relative; font-family: ${CHINESE_FONT_STACK};">
                   ${channel.imageUrl ? `<img src="${channel.imageUrl}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.08;" />` : ''}
                   <div style="position: relative; z-index: 10; padding: 60px;">
                       <p style="font-size: 14px; font-weight: 900; color: #4338ca; text-transform: uppercase; letter-spacing: 0.5em; margin-bottom: 20px;">Neural Prism Archive</p>
@@ -608,15 +610,15 @@ const PodcastDetail: React.FC<PodcastDetailProps> = ({
               </div>
           `;
           document.body.appendChild(coverDiv);
-          const coverCanvas = await html2canvas(coverDiv, { scale: 2 });
+          const coverCanvas = await html2canvas(coverDiv, { scale: 3, useCORS: true });
           pdf.addPage(); pageCount++; drawHeaderFooter(pageCount);
-          pdf.addImage(coverCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 60, 60, pageWidth - 120, (coverCanvas.height / 2) * ((pageWidth - 120) / 800));
+          pdf.addImage(coverCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 60, 60, pageWidth - 120, (coverCanvas.height / 3) * ((pageWidth - 120) / 800));
           document.body.removeChild(coverDiv);
 
           // 2. TEXT FLOW START
           let currentY = 80;
-          const LINE_HEIGHT = 16;
-          const MAX_LINES_PER_PAGE = 27; // Content-focused limit
+          const LINE_HEIGHT = 18;
+          const MAX_LINES_PER_PAGE = 26; 
           let currentLinesOnPage = 0;
 
           const resetPage = () => {
@@ -625,10 +627,9 @@ const PodcastDetail: React.FC<PodcastDetailProps> = ({
               drawHeaderFooter(pageCount);
               currentY = 80;
               currentLinesOnPage = 0;
-              // CRITICAL: Force reset to dark body text color after drawing light gray header/footer
               pdf.setFont('helvetica', 'normal');
               pdf.setFontSize(11);
-              pdf.setTextColor(30, 41, 59); // Dark slate body color
+              pdf.setTextColor(30, 41, 59);
           };
 
           for (let cIdx = 0; cIdx < chapters.length; cIdx++) {
@@ -637,13 +638,21 @@ const PodcastDetail: React.FC<PodcastDetailProps> = ({
               
               resetPage();
               
-              // Chapter Title
-              pdf.setFont('helvetica', 'bold');
-              pdf.setFontSize(32);
-              pdf.setTextColor(15, 23, 42);
-              const chTitleLines = pdf.splitTextToSize(chapter.title.toUpperCase(), pageWidth - 120);
-              pdf.text(chTitleLines, 60, currentY);
-              currentY += (chTitleLines.length * 35) + 20;
+              // Chapter Page logic via high-dpi capture
+              const chapterDiv = document.createElement('div');
+              chapterDiv.style.width = '800px'; chapterDiv.style.padding = '80px'; chapterDiv.style.position = 'fixed'; chapterDiv.style.left = '-10000px';
+              chapterDiv.setAttribute('lang', language);
+              chapterDiv.innerHTML = `
+                <div style="background-color: #ffffff; color: #0f172a; font-family: ${CHINESE_FONT_STACK}; min-height: 1000px; display: flex; flex-direction: column; justify-content: center;">
+                    <h1 style="font-size: 48px; font-weight: 900; color: #1e293b; margin-bottom: 20px; text-transform: uppercase;">${sanitizeText(chapter.title)}</h1>
+                    <div style="width: 100px; hieght: 8px; background: #4338ca;"></div>
+                    <p style="font-size: 14px; color: #64748b; margin-top: 20px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.2em;">Chapter Segment ${cIdx + 1}</p>
+                </div>
+              `;
+              document.body.appendChild(chapterDiv);
+              const chCanvas = await html2canvas(chapterDiv, { scale: 3, useCORS: true });
+              pdf.addImage(chCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pageWidth, pageHeight);
+              document.body.removeChild(chapterDiv);
 
               for (const subTopic of chapter.subTopics) {
                   setExportStatus(`Refracting: "${sanitizeText(subTopic.title)}"...`);
@@ -653,47 +662,26 @@ const PodcastDetail: React.FC<PodcastDetailProps> = ({
                   if (!lecture) lecture = await generateLectureScript(subTopic.title, channel.description, language, channel.id, channel.voiceName, force);
 
                   if (lecture) {
-                      // Subtopic Header
-                      currentY = addPageIfOverflow(currentY, 60);
-                      pdf.setFont('helvetica', 'bold');
-                      pdf.setFontSize(18);
-                      pdf.setTextColor(67, 56, 202);
-                      pdf.text(sanitizeText(lecture.topic), 60, currentY);
-                      currentY += 25;
-                      
-                      // Flow Section Text
-                      pdf.setFont('helvetica', 'normal');
-                      pdf.setFontSize(11);
-                      pdf.setTextColor(30, 41, 59);
-
-                      for (const section of lecture.sections) {
-                          const speakerLabel = `${section.speaker === 'Teacher' ? (lecture.professorName || 'Teacher') : (lecture.studentName || 'Student')}: `;
-                          const fullText = speakerLabel + section.text;
-                          const wrappedLines = pdf.splitTextToSize(fullText, pageWidth - 140);
-
-                          for (const line of wrappedLines) {
-                              if (currentLinesOnPage >= MAX_LINES_PER_PAGE || currentY > pageHeight - 80) {
-                                  resetPage();
-                              }
-                              
-                              if (line.startsWith(speakerLabel)) {
-                                  pdf.setFont('helvetica', 'bold');
-                                  pdf.setTextColor(30, 41, 59); // Ensure dark color reset for label
-                                  pdf.text(speakerLabel, 70, currentY);
-                                  pdf.setFont('helvetica', 'normal');
-                                  pdf.text(line.substring(speakerLabel.length), 70 + pdf.getTextWidth(speakerLabel), currentY);
-                              } else {
-                                  pdf.setFont('helvetica', 'normal');
-                                  pdf.setTextColor(30, 41, 59); // Ensure dark color reset for body
-                                  pdf.text(line, 70, currentY);
-                              }
-                              
-                              currentY += LINE_HEIGHT;
-                              currentLinesOnPage++;
-                          }
-                          currentY += 10; // Paragraph spacing
-                      }
-                      currentY += 20; // Section spacing
+                      // Subtopic page logic
+                      const subPageDiv = document.createElement('div');
+                      subPageDiv.style.width = '800px'; subPageDiv.style.padding = '80px'; subPageDiv.style.position = 'fixed'; subPageDiv.style.left = '-10000px';
+                      subPageDiv.setAttribute('lang', language);
+                      subPageDiv.innerHTML = `
+                        <div style="background-color: #ffffff; color: #0f172a; font-family: ${CHINESE_FONT_STACK}; min-height: 1131px; padding-top: 40px;">
+                            <h2 style="font-size: 28px; font-weight: 900; color: #4338ca; margin-bottom: 40px; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px;">${sanitizeText(lecture.topic)}</h2>
+                            ${lecture.sections.map(s => `
+                                <div style="margin-bottom: 25px;">
+                                    <span style="font-size: 10px; font-weight: 900; color: #6366f1; text-transform: uppercase; letter-spacing: 0.1em; display: block; margin-bottom: 5px;">${s.speaker === 'Teacher' ? (lecture.professorName || 'Teacher') : (lecture.studentName || 'Student')}</span>
+                                    <p style="font-size: 16px; line-height: 1.7; color: #334155; margin: 0;">${sanitizeText(s.text)}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                      `;
+                      document.body.appendChild(subPageDiv);
+                      const subCanvas = await html2canvas(subPageDiv, { scale: 3, useCORS: true });
+                      pdf.addPage(); pageCount++; drawHeaderFooter(pageCount);
+                      pdf.addImage(subCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pageWidth, pageHeight);
+                      document.body.removeChild(subPageDiv);
                   }
               }
           }
@@ -708,7 +696,7 @@ const PodcastDetail: React.FC<PodcastDetailProps> = ({
           if (onUpdateChannel) onUpdateChannel({ ...channel, fullBookUrl: storageUrl });
 
           pdf.save(`${sanitizedTitle.replace(/\s+/g, '_')}_Neural_Book.pdf`);
-          dispatchLog(`[Synthesis] Book finalized. Searchable text flow confirmed.`, 'success');
+          dispatchLog(`[Synthesis] Book finalized. Symbol-flow confirmed.`, 'success');
           setBookStatus('ready');
           setCachedBookUrl(storageUrl);
           window.open(storageUrl, '_blank');
@@ -958,7 +946,8 @@ const PodcastDetail: React.FC<PodcastDetailProps> = ({
                                         return (
                                             <div 
                                                 key={idx}
-                                                ref={el => sectionRefs.current[idx] = el}
+                                                // Fixed: Updated ref callback to be void returning to satisfy TypeScript Ref requirements
+                                                ref={el => { sectionRefs.current[idx] = el; }}
                                                 className={`transition-all duration-700 ease-in-out origin-left flex flex-col gap-4 ${
                                                     isCurrent 
                                                     ? 'opacity-100 scale-105' 

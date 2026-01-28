@@ -1,11 +1,10 @@
-
 import React, { useMemo } from 'react';
 import { 
   Terminal, Code, Video, LayoutGrid, FileText, Wallet, MessageSquare, 
   Briefcase, Truck, AppWindow, Book, PenTool, Rss, Gift, Rocket, BookOpen, 
   Activity, Scroll, GraduationCap, Cpu, Star, Coins, Zap, ShieldCheck,
   Globe, Users, Clock, Sparkles, ChevronRight, Crown, Lock, Radio,
-  Disc, Calendar, History, FolderOpen, BookText
+  Disc, Calendar, History, FolderOpen, BookText, FileUp
 } from 'lucide-react';
 import { ViewID, UserProfile } from '../types';
 
@@ -58,6 +57,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
       apps: [
         { id: 'directory', label: 'Knowledge Hub', sub: 'Podcast Stream', description: 'Interactive AI-guided learning sessions with real-time Q&A and screen-sharing support.', icon: Radio, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: false },
         { id: 'bible_study', label: 'Scripture', sub: 'Ancient Text', description: 'A sacred digital space for dual-language scripture study and cinematic AI visualizations.', icon: Scroll, color: 'text-amber-500', bg: 'bg-amber-950/40', restricted: false },
+        { id: 'scripture_ingest', label: 'Scripture Ingest', sub: 'Vault Loader', description: 'Neural parsing engine to ingest raw text into the bilingual community vault.', icon: FileUp, color: 'text-amber-400', bg: 'bg-amber-950/40', restricted: true },
         { id: 'book_studio', label: 'Author Studio', sub: 'Neural Books', description: 'Synthesize full-length technical books and manuals into high-fidelity PDF formats instantly.', icon: BookText, color: 'text-indigo-500', bg: 'bg-indigo-900/30', restricted: false }
       ]
     },
@@ -201,7 +201,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
         ))}
 
         <footer className="pt-12 text-center">
-            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Prism v5.6.5-SYN • Sovereign Activity Hub</p>
+            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Prism v5.8.0-SYN • Sovereign Activity Hub</p>
         </footer>
       </div>
     </div>

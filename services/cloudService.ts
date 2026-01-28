@@ -1,10 +1,12 @@
+
 import { 
   ref, 
   uploadBytes, 
   getDownloadURL, 
   getMetadata, 
   deleteObject, 
-  listAll 
+  listAll,
+  getBytes
 } from '@firebase/storage';
 import { 
   doc, 
@@ -151,26 +153,78 @@ export interface CloudFileEntry {
   isFolder: boolean;
 }
 
-export async function listUserBackups(subPath: string = ''): Promise<CloudFileEntry[]> {
-  if (!storage) return [];
+export async function listUserBackups(subPath: string = '', absolute: boolean = false): Promise<CloudFileEntry[]> {
+  if (!storage) {
+      console.error("[CloudService] Storage not initialized.");
+      return [];
+  }
   const uid = getUserId();
-  const path = subPath ? `${CLOUD_FOLDER}/${uid}/${subPath}` : `${CLOUD_FOLDER}/${uid}`;
+  const path = absolute ? subPath : (subPath ? `${CLOUD_FOLDER}/${uid}/${subPath}` : `${CLOUD_FOLDER}/${uid}`);
   const folderRef = ref(storage, path);
   
+  console.log(`[CloudService] Attempting to list path: "${path}" (absolute: ${absolute})`);
+
   try {
     const res = await listAll(folderRef);
-    const folders = res.prefixes.map(p => ({ name: p.name, fullPath: p.fullPath, size: 0, timeCreated: '', isFolder: true }));
+    const folders = res.prefixes.map(p => ({ 
+        name: p.name, 
+        fullPath: p.fullPath, 
+        size: 0, 
+        timeCreated: '', 
+        isFolder: true 
+    }));
+    
     const files = await Promise.all(res.items.map(async (itemRef) => {
       try {
         const meta = await getMetadata(itemRef);
-        return { name: itemRef.name, fullPath: itemRef.fullPath, size: meta.size, timeCreated: meta.timeCreated, contentType: meta.contentType, isFolder: false };
-      } catch (e) { return null; }
+        return { 
+            name: itemRef.name, 
+            fullPath: itemRef.fullPath, 
+            size: meta.size, 
+            timeCreated: meta.timeCreated, 
+            contentType: meta.contentType, 
+            isFolder: false 
+        };
+      } catch (e: any) { 
+          console.warn(`[CloudService] Metadata fetch failed for item: ${itemRef.fullPath}`, e.message);
+          return null; 
+      }
     }));
-    return [...folders, ...(files.filter(Boolean) as CloudFileEntry[])];
-  } catch (e) { return []; }
+    
+    const results = [...folders, ...(files.filter(Boolean) as CloudFileEntry[])];
+    console.log(`[CloudService] Successfully listed "${path}". Found ${results.length} total nodes.`);
+    return results;
+  } catch (e: any) { 
+      console.error(`[CloudService] CRITICAL: listAll failed for path: "${path}"`, e);
+      // Detailed error breakdown
+      if (e.code === 'storage/unauthorized') {
+          throw new Error(`Unauthorized (403): User does not have 'storage.objects.list' permission for path "${path}". Check Firebase Storage Rules.`);
+      }
+      if (e.code === 'storage/object-not-found') {
+          throw new Error(`Not Found (404): The path "${path}" does not exist in the bucket.`);
+      }
+      throw new Error(`Storage Error: ${e.message} (Path: ${path})`);
+  }
 }
 
 export async function deleteCloudFile(fullPath: string): Promise<void> {
   if (!storage) return;
   await deleteObject(ref(storage, fullPath));
+}
+
+/**
+ * Diagnostic helper to read raw text content from a storage path.
+ * Refracted v5: Optimized with TextDecoder and explicit 10MB limit for JSON corpus files.
+ */
+export async function getCloudFileContent(fullPath: string): Promise<string> {
+    if (!storage) throw new Error("Storage offline");
+    try {
+        const itemRef = ref(storage, fullPath);
+        // getBytes handles auth headers automatically.
+        const bytes = await getBytes(itemRef, 10 * 1024 * 1024); // 10MB limit for JSON files
+        return new TextDecoder().decode(bytes);
+    } catch (e: any) {
+        console.error(`[CloudService] Handshake failed for ${fullPath}:`, e.code, e.message);
+        throw e;
+    }
 }

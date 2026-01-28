@@ -14,8 +14,13 @@ service firebase.storage {
       );
     }
 
-    // PUBLIC SCRIPTURE AUDIO CACHE
-    match /bible_audio/{fileName} {
+    // PUBLIC SCRIPTURE CACHES (Recursive Matching)
+    match /bible_audio/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    match /bible_corpus/{allPaths=**} {
       allow read: if true;
       allow write: if isAuthenticated();
     }

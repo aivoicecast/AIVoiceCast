@@ -1,4 +1,3 @@
-
 import { initializeApp, getApps, getApp } from "@firebase/app";
 import type { FirebaseApp } from "@firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
@@ -73,7 +72,8 @@ if (authInstance) {
 
 export const auth = authInstance;
 export const db: Firestore | null = initDb();
-export const storage: FirebaseStorage | null = appInstance ? getStorage(appInstance) : null;
+// Explicitly define the storage bucket URL to prevent retry-limit issues
+export const storage: FirebaseStorage | null = appInstance ? getStorage(appInstance, firebaseKeys.storageBucket) : null;
 
 export const getAuthInstance = (): Auth | null => auth;
 export const getDb = (): Firestore | null => db;

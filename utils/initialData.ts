@@ -53,22 +53,22 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   },
   {
     id: OFFLINE_CHANNEL_ID,
-    title: 'Neural Prism Platform',
-    description: 'The self-documenting guide to the Neural Prism Platform. Learn how we refract AI super-intelligence into 20+ specialized tools: Code Studio, Card Workshop, Career Hub, and more.',
+    title: 'Neural Prism Platform v6.1',
+    description: 'The self-documenting guide to the Neural Prism v6.1 Platform. Learn about the new Sovereign Audio Protocol and how we achieve high-fidelity system audio capture on macOS.',
     author: 'Prism Architect',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on the metaphorical "Prism" that turns complex AI into user-friendly rainbow tools like Code Studio (Neural Simulation) and Card Workshop (HTML5 Canvas/PDF).',
-    likes: 9999,
+    systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on the v6.1 Sovereign Audio Protocol that ensures high-fidelity recording of system sounds and the AI agent\'s voice across different operating systems.',
+    likes: 12500,
     dislikes: 0,
     comments: [],
-    tags: ['Architecture', 'NeuralPrism', 'Accessibility', 'GenAI'],
+    tags: ['Architecture', 'v6.1', 'Audio', 'GenAI'],
     imageUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&q=80', 
-    welcomeMessage: "Welcome to Neural Prism. This platform refracts the power of Google Gemini 3 into a spectrum of accessible tools. We have evolved beyond a simple player into an Intelligence Hub—ready to help you create, learn, and grow.",
+    welcomeMessage: "Welcome to Neural Prism v6.1. We have stabilized the High-Fidelity Audio bus. You can now archive your sessions with full system audio. How can I help you navigate the spectrum today?",
     starterPrompts: [
-      "What is Neural Prism?",
-      "Explain the Virtual File System in Code Studio",
-      "Architecture of the new Rainbow Suite",
-      "How do AI Agents interact with the Neural Canvas?"
+      "What is new in v6.1?",
+      "How do I fix silent recordings on Mac?",
+      "Explain the Sovereign Audio Protocol",
+      "How does Scribe Mode capture System Sounds?"
     ],
     createdAt: INITIAL_DATE
   },

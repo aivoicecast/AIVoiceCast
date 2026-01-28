@@ -10,6 +10,7 @@ export interface LiveConnectionCallbacks {
   onTranscript: (text: string, isUser: boolean) => void;
   onToolCall?: (toolCall: any) => void;
   onTurnComplete?: () => void;
+  onAudioData?: (data: Uint8Array) => boolean; // Return false to suppress output
 }
 
 function getValidLiveVoice(voiceName: string): string {
@@ -19,7 +20,6 @@ function getValidLiveVoice(voiceName: string): string {
   if (name.includes('Default Gem')) return 'Zephyr';
   
   const validGemini = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
-  // Iterate to find partial match for long IDs
   for (const v of validGemini) {
       if (name.toLowerCase().includes(v.toLowerCase())) return v;
   }
@@ -120,6 +120,13 @@ export class GeminiLiveService {
                 const base64Audio = part.inlineData?.data;
                 if (base64Audio && this.outputAudioContext) {
                     try {
+                        const bytes = base64ToBytes(base64Audio);
+                        
+                        // Check if audio playback is suppressed by callback
+                        const shouldPlay = callbacks.onAudioData ? callbacks.onAudioData(bytes) : true;
+                        
+                        if (!shouldPlay) continue;
+
                         this.isPlayingResponse = true;
                         if (this.speakingTimer) clearTimeout(this.speakingTimer);
                         
@@ -127,7 +134,6 @@ export class GeminiLiveService {
                             await this.outputAudioContext.resume();
                         }
 
-                        const bytes = base64ToBytes(base64Audio);
                         this.nextStartTime = Math.max(this.nextStartTime, this.outputAudioContext.currentTime);
                         const audioBuffer = await decodeRawPcm(bytes, this.outputAudioContext, 24000, 1);
                         const source = this.outputAudioContext.createBufferSource();

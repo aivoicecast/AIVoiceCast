@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, SubscriptionTier, GlobalStats, Channel } from '../types';
 import { getGlobalStats, isUserAdmin, ADMIN_GROUP } from '../services/firestoreService';
-import { Sparkles, BarChart2, Plus, Wand2, Crown, Settings, Book, Users, LogIn, Terminal, Cloud, Globe, Mic, LayoutGrid, HardDrive, AlertCircle, Gift, CreditCard, Languages, MousePointer2, Rocket, Shield, LogOut, ShieldCheck, Lock } from 'lucide-react';
+import { Sparkles, BarChart2, Plus, Wand2, Crown, Settings, Book, Users, LogIn, Terminal, Cloud, Globe, Mic, LayoutGrid, HardDrive, AlertCircle, Gift, CreditCard, Languages, MousePointer2, Rocket, Shield, LogOut, ShieldCheck, Lock, Activity } from 'lucide-react';
 import { VOICES } from '../utils/initialData';
 import { signOut } from '../services/authService';
 
@@ -124,8 +124,17 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
                 <>
                     <div className="h-px bg-slate-800 my-2 mx-2" />
                     <button 
+                        onClick={() => { onNavigate('feedback_manager'); setIsUserMenuOpen(false); }} 
+                        className="w-full flex items-center space-x-3 px-3 py-2 text-xs font-black uppercase tracking-widest text-indigo-400 hover:bg-indigo-900/20 rounded-lg transition-all border border-indigo-900/30 group"
+                    >
+                        <div className="p-1.5 bg-indigo-900/30 rounded-md group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                            <Activity size={16}/>
+                        </div>
+                        <span>Feedback Vault</span>
+                    </button>
+                    <button 
                         onClick={() => { onNavigate('firestore_debug'); setIsUserMenuOpen(false); }} 
-                        className="w-full flex items-center space-x-3 px-3 py-3 text-xs font-black uppercase tracking-widest text-red-400 hover:bg-red-900/20 rounded-lg transition-all border border-red-900/30 group"
+                        className="w-full flex items-center space-x-3 px-3 py-2 text-xs font-black uppercase tracking-widest text-red-400 hover:bg-red-900/20 rounded-lg transition-all border border-red-900/30 group"
                     >
                         <div className="p-1.5 bg-red-900/30 rounded-md group-hover:bg-red-600 group-hover:text-white transition-colors">
                             <Terminal size={16}/>

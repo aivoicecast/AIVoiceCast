@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, ReaderTheme, UserAvailability } from '../types';
 // Fixed: Added missing Wallet and ShieldCheck icon to lucide-react imports
@@ -12,7 +11,8 @@ import { ensureFolder, uploadToDrive } from '../services/googleDriveService';
 
 interface SettingsModalProps {
   isOpen: boolean;
-  onBack: () => void;
+  // Fixed: Replaced onBack with onClose to align with usage in App.tsx
+  onClose: () => void;
   user: UserProfile;
   onUpdateProfile?: (updated: UserProfile) => void;
   onUpgradeClick?: () => void;
@@ -347,7 +347,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Headline</label><input type="text" value={headline} onChange={e => setHeadline(e.target.value)} placeholder="Senior Software Engineer..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/></div>
                             <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Company</label><input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder="Tech Corp" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/></div>
                         </div>
-                        <div>
+                        <div className="space-y-4">
                             <div className="flex justify-between items-center mb-2 px-1"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Resume Context</label><div className="flex gap-2"><button onClick={handleResumeUrlSelect} className="text-[10px] font-black text-indigo-400 flex items-center gap-1 hover:text-white transition-all"><Globe2 size={12}/> Link PDF</button><button onClick={() => resumeInputRef.current?.click()} className="text-[10px] font-black text-emerald-400 flex items-center gap-1 hover:text-white transition-all"><FileUp size={12}/> Upload</button></div></div>
                             <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} rows={5} placeholder="AI summary of your skills..." className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-slate-300 focus:ring-1 focus:ring-indigo-500 outline-none resize-none" />
                         </div>
