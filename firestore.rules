@@ -27,26 +27,17 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
-    // SCRIPTURE LEDGERS (Community Caches)
+    // SCRIPTURE LEDGERS
     // ----------------------------------------------------------------------
-    match /bible_corpus/{chapterId} {
+    match /bible_ledger/{chapterId} {
       allow read: if true; 
       allow create, update: if isAuthenticated(); 
       allow delete: if isAdmin();
     }
 
-    match /bible_audio/{audioId} {
+    match /bible_audio_ledger/{audioId} {
       allow read: if true; 
       allow create, update: if isAuthenticated(); 
-      allow delete: if isAdmin();
-    }
-
-    // ----------------------------------------------------------------------
-    // LECTURE CACHE (Community Content)
-    // ----------------------------------------------------------------------
-    match /lecture_cache/{cacheId} {
-      allow read: if true;
-      allow create, update: if isAuthenticated();
       allow delete: if isAdmin();
     }
 
@@ -56,22 +47,43 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated(); 
       allow create: if isOwner(userId);
+      // MIDDLEMAN FIX: Users can ONLY update their own balance.
+      // They never touch another user's balance directly.
       allow update: if isOwner(userId) || isAdmin(); 
     }
 
     // ----------------------------------------------------------------------
-    // COMMUNITY & APPS
+    // TRANSACTIONS & ESCROW
+    // ----------------------------------------------------------------------
+    match /invitations/{inviteId} { 
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      // Allow the recipient or sender to update status for the escrow flow
+      allow update: if isAuthenticated(); 
+    }
+    
+    match /receipts/{receiptId} { 
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated(); 
+    }
+
+    match /coin_transactions/{txId} { 
+      allow read: if isAuthenticated(); 
+      allow create: if isAuthenticated(); 
+    }
+
+    // ----------------------------------------------------------------------
+    // REMAINING COLLECTIONS
     // ----------------------------------------------------------------------
     match /groups/{groupId} {
       allow read, write: if isAuthenticated();
       match /messages/{msgId} { allow read, write: if isAuthenticated(); }
     }
-
     match /chat_channels/{channelId} {
       allow read, write: if isAuthenticated();
       match /messages/{msgId} { allow read, write: if isAuthenticated(); }
     }
-
     match /channels/{channelId} {
       allow read: if true; 
       allow create: if isAuthenticated();
@@ -80,23 +92,9 @@ service cloud.firestore {
       );
       allow delete: if isAdmin() || isOwner(resource.data.ownerId);
     }
-
-    match /channel_stats/{channelId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
-    }
-
-    match /discussions/{discussionId} {
-      allow read: if resource.data.visibility == 'public' || isOwner(resource.data.userId) || isAdmin();
-      allow write: if isAuthenticated();
-    }
-
-    match /mock_interviews/{interviewId} {
-      allow read: if resource.data.visibility == 'public' || isOwner(resource.data.userId) || isAdmin();
-      allow write: if isAuthenticated();
-    }
-
-    match /invitations/{inviteId} { allow read, write: if isAuthenticated(); }
+    match /channel_stats/{channelId} { allow read: if true; allow write: if isAuthenticated(); }
+    match /discussions/{discussionId} { allow read: if resource.data.visibility == 'public' || isOwner(resource.data.userId) || isAdmin(); allow write: if isAuthenticated(); }
+    match /mock_interviews/{interviewId} { allow read: if resource.data.visibility == 'public' || isOwner(resource.data.userId) || isAdmin(); allow write: if isAuthenticated(); }
     match /bookings/{bookingId} { allow read, write: if isAuthenticated(); }
     match /recordings/{recordingId} { allow read, write: if isAuthenticated(); }
     match /saved_words/{wordId} { allow read, write: if isAuthenticated(); }
@@ -104,7 +102,8 @@ service cloud.firestore {
     match /shipping/{labelId} { allow read, write: if isAuthenticated(); }
     match /icons/{iconId} { allow read, write: if isAuthenticated(); }
     match /cards/{cardId} { allow read, write: if isAuthenticated(); }
-    match /coin_transactions/{txId} { allow read, write: if isAuthenticated(); }
-    match /activity_logs/{logId} { allow create: if isAuthenticated(); allow read: if isAdmin(); }
+    match /tasks/{taskId} { allow read, write: if isAuthenticated(); }
+    match /notebooks/{notebookId} { allow read, write: if isAuthenticated(); }
+    match /feedback/{feedbackId} { allow read, write: if isAuthenticated(); }
   }
 }

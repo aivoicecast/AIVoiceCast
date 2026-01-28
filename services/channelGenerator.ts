@@ -1,43 +1,12 @@
 
 import { GoogleGenAI } from '@google/genai';
 import { Channel, Chapter } from '../types';
-import { incrementApiUsage, getUserProfile } from './firestoreService';
+import { incrementApiUsage, getUserProfile, deductCoins, AI_COSTS } from './firestoreService';
 import { auth } from './firebaseConfig';
 import { generateLectureScript } from './lectureGenerator';
 import { cacheLectureScript } from '../utils/db';
-import { OPENAI_API_KEY } from './private_keys';
 
 const VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
-
-async function getAIProvider(): Promise<'gemini' | 'openai'> {
-    let provider: 'gemini' | 'openai' = 'gemini';
-    if (auth.currentUser) {
-        try {
-            const profile = await getUserProfile(auth.currentUser.uid);
-            if (profile?.subscriptionTier === 'pro' && profile?.preferredAiProvider === 'openai') {
-                provider = 'openai';
-            }
-        } catch (e) { console.warn("Failed to check user profile for AI provider preference", e); }
-    }
-    return provider;
-}
-
-async function callOpenAI(systemPrompt: string, userPrompt: string, apiKey: string, model: string = 'gpt-4o'): Promise<string | null> {
-    try {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-                model: model,
-                messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
-                response_format: { type: "json_object" }
-            })
-        });
-        if (!response.ok) { console.error("OpenAI Error:", await response.json()); return null; }
-        const data = await response.json();
-        return data.choices[0]?.message?.content || null;
-    } catch (e) { console.error("OpenAI Fetch Error:", e); return null; }
-}
 
 export async function generateChannelFromPrompt(
   userPrompt: string, 
@@ -45,12 +14,6 @@ export async function generateChannelFromPrompt(
   language: 'en' | 'zh' = 'en'
 ): Promise<Channel | null> {
   try {
-    const provider = await getAIProvider();
-    const openaiKey = localStorage.getItem('openai_api_key') || OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
-
-    let activeProvider = provider;
-    if (provider === 'openai' && !openaiKey) activeProvider = 'gemini';
-
     const langInstruction = language === 'zh' 
       ? 'Output Language: Chinese.' 
       : 'Output Language: English.';
@@ -65,7 +28,7 @@ export async function generateChannelFromPrompt(
 
       Task: 
       1. RE-DEFINE the concept to be more specific and interesting.
-      2. Generate a professional Title, Description, and AI Host Instruction.
+      2. Generate a professional Title, Description, and AI Host Instruction using Gemini 3 Pro.
       3. Design a "Curriculum" with exactly 5-10 sub-topics.
       4. Each sub-topic should support a future conversational lecture.
       
@@ -82,23 +45,18 @@ export async function generateChannelFromPrompt(
       }
     `;
 
-    let text: string | null = null;
-
-    if (activeProvider === 'openai') {
-        text = await callOpenAI(systemPrompt, userRequest, openaiKey);
-    } else {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
-            contents: `${systemPrompt}\n\n${userRequest}`,
-            config: { 
-                responseMimeType: 'application/json'
-            }
-        });
-        text = response.text || null;
-    }
-
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: `${systemPrompt}\n\n${userRequest}`,
+        config: { 
+            responseMimeType: 'application/json'
+        }
+    });
+    
+    const text = response.text || null;
     if (!text) return null;
+    
     const parsed = JSON.parse(text);
     const channelId = crypto.randomUUID();
     if (auth.currentUser) incrementApiUsage(auth.currentUser.uid);
@@ -132,31 +90,60 @@ export async function generateChannelFromPrompt(
   } catch (error) { return null; }
 }
 
+export async function generateChannelCoverArt(title: string, description: string): Promise<string | null> {
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const prompt = `Generate a professional, high-quality, artistic podcast cover art for a series titled "${title}". 
+        Context: ${description}. 
+        Artistic Style: Modern, clean, 8k resolution, cinematic lighting, conceptual art. 
+        Requirements: No text, no words, centered composition, striking visual metaphor for the topic.`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: prompt,
+            config: {
+                imageConfig: {
+                    aspectRatio: "1:1"
+                }
+            }
+        });
+
+        if (response.candidates?.[0]?.content?.parts) {
+            for (const part of response.candidates[0].content.parts) {
+                if (part.inlineData) {
+                    if (auth.currentUser) {
+                        deductCoins(auth.currentUser.uid, AI_COSTS.IMAGE_GENERATION);
+                    }
+                    return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                }
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error("Failed to generate cover art:", error);
+        return null;
+    }
+}
+
 export async function modifyCurriculumWithAI(
   currentChapters: Chapter[],
   userPrompt: string,
   language: 'en' | 'zh' = 'en'
 ): Promise<Chapter[] | null> {
   try {
-    const provider = await getAIProvider();
-    const openaiKey = localStorage.getItem('openai_api_key') || OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
-    let activeProvider = provider;
-    if (provider === 'openai' && !openaiKey) activeProvider = 'gemini';
-    const systemPrompt = `You are a Curriculum Editor.`;
+    const systemPrompt = `You are a Curriculum Editor powered by Gemini 3.`;
     const userRequest = `User wants: ${userPrompt}. Current: ${JSON.stringify(currentChapters)}`;
-    let text: string | null = null;
-    if (activeProvider === 'openai') {
-        text = await callOpenAI(systemPrompt, userRequest, openaiKey);
-    } else {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
-            contents: `${systemPrompt}\n\n${userRequest}`,
-            config: { responseMimeType: 'application/json' }
-        });
-        text = response.text || null;
-    }
+    
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: `${systemPrompt}\n\n${userRequest}`,
+        config: { responseMimeType: 'application/json' }
+    });
+    
+    const text = response.text || null;
     if (!text) return null;
+    
     const parsed = JSON.parse(text);
     if (parsed?.chapters) {
         const timestamp = Date.now();
@@ -179,14 +166,13 @@ export async function generateChannelFromDocument(
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
     
-    const systemPrompt = `You are an expert Podcast Producer. Your task is to analyze the provided source and transform it into a structured, engaging podcast channel.`;
+    const systemPrompt = `You are an expert Podcast Producer powered by DeepMind's Gemini 3. Your task is to analyze the provided source and transform it into a structured, engaging podcast channel.`;
     
     const userRequest = `Create a Podcast Channel based on this source. Return ONLY a JSON object with: title, description, voiceName, systemInstruction, tags, and chapters (with subTopics).`;
 
     let parts: any[] = [{ text: `${systemPrompt}\n${langInstruction}\n\n${userRequest}` }];
 
     if (source.url) {
-        // NEW GEMINI API: Direct HTTPS URL ingestion
         parts.push({
             fileData: {
                 mimeType: source.url.endsWith('.pdf') ? 'application/pdf' : 'text/plain',

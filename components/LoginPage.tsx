@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2, Sparkles, BookOpen, Key, User, ShieldAlert, Lock } from 'lucide-react';
 import { signInWithGoogle, signInAsJudge, JUDGE_EMAIL } from '../services/authService';
@@ -32,10 +31,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
     setAuthError(null);
     try {
       await signInWithGoogle();
-      window.location.reload();
+      // App.tsx handles the state change via onAuthStateChanged
     } catch (e: any) {
       console.error(e);
       setIsLoading(false);
+      setAuthError(e.message || "Login failed");
     }
   };
 
@@ -44,14 +44,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
     setIsLoading(true);
     setAuthError(null);
     
-    console.log("[Auth] Attempting judge handshake...");
     const success = await signInAsJudge(judgeId, judgeKey);
-    if (success) {
-        window.location.reload();
-    } else {
+    if (!success) {
         setAuthError("Registry ID or Neural Key mismatch. Authentication denied.");
         setIsLoading(false);
     }
+    // Success will be caught by App.tsx effect
   };
 
   return (
@@ -112,6 +110,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
                         )}
                       </button>
 
+                      {authError && !showJudgeLogin && (
+                          <div className="p-3 bg-red-900/20 border border-red-900/50 rounded-xl flex items-center justify-center gap-2 text-red-400 text-[10px] font-bold uppercase">
+                              <ShieldAlert size={14}/> {authError}
+                          </div>
+                      )}
+
                       <button 
                         onClick={() => setShowJudgeLogin(true)}
                         className="w-full py-3 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-indigo-400 transition-colors flex items-center justify-center gap-2"
@@ -167,7 +171,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
                   </div>
                   
                   <button 
-                    onClick={() => setShowJudgeLogin(false)}
+                    onClick={() => { setShowJudgeLogin(false); setAuthError(null); }}
                     className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors"
                   >
                      Back to Sovereign Entry

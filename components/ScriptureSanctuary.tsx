@@ -332,9 +332,9 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                       window.speechSynthesis.speak(utterance);
                   });
               } else {
-                  // CRITICAL: Passing metadata so synthesizeSpeech can hit the Ledger!
+                  // CRITICAL: Fixed metadata key mapping to match TtsResult expectation
                   const resultEn = await synthesizeSpeech(verse.en, neuralPersona, ctx, ttsProvider, 'en', {
-                      book: selectedBook, chapter: selectedChapter, verse: verse.number
+                      channelId: selectedBook, topicId: selectedChapter, nodeId: `node_${selectedBook}_${selectedChapter}_${verse.number}_en`
                   });
                   setAudioBuffering(false);
                   if (resultEn.buffer && localSession === playbackSessionRef.current) {
@@ -376,9 +376,9 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                       window.speechSynthesis.speak(utterance);
                   });
               } else {
-                  // CRITICAL: Passing metadata for Chinese Ledger Sync!
+                  // CRITICAL: Fixed metadata key mapping to match TtsResult expectation
                   const resultZh = await synthesizeSpeech(verse.zh, 'Kore', ctx, ttsProvider, 'zh', {
-                      book: selectedBook, chapter: selectedChapter, verse: verse.number
+                      channelId: selectedBook, topicId: selectedChapter, nodeId: `node_${selectedBook}_${selectedChapter}_${verse.number}_zh`
                   });
                   setAudioBuffering(false);
                   if (resultZh.buffer && localSession === playbackSessionRef.current) {
@@ -583,7 +583,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                             
                             <div className="flex items-center gap-3">
                                 {dataSource === 'archive' && <div className="px-3 py-1.5 bg-emerald-900/20 text-emerald-400 text-[9px] font-black uppercase rounded-lg border border-emerald-500/20 flex items-center gap-1.5 shadow-lg"><Database size={12}/> Community Ledger</div>}
-                                {dataSource === 'neural' && <div className="px-3 py-1.5 bg-indigo-900/20 text-indigo-400 text-[9px] font-black uppercase rounded-lg border border-indigo-500/20 flex items-center gap-1.5 shadow-lg"><Zap size={12} fill="currentColor"/> Neural Synthesis</div>}
+                                {dataSource === 'neural' && <div className="px-3 py-1.5 bg-indigo-900/20 text-indigo-400 text-[9px] font-black uppercase rounded-lg border border-emerald-500/20 flex items-center gap-1.5 shadow-lg"><Zap size={12} fill="currentColor"/> Neural Synthesis</div>}
                                 <button onClick={() => handleRefractScripture(selectedBook, selectedChapter, true)} className="p-3 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 hover:text-white transition-all shadow-xl" title="Force Refraction"><RefreshCcw size={18}/></button>
                             </div>
                         </div>

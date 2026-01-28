@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { 
   ArrowLeft, Wallet, Save, Download, Sparkles, Loader2, User, Hash, QrCode, Mail, 
@@ -17,6 +18,45 @@ import { ensureFolder, uploadToDrive, makeFilePubliclyViewable, getDriveFileShar
 import { MarkdownView } from './MarkdownView';
 import { saveLocalAsset, getLocalAsset } from '../utils/db';
 import { FINANCE_LAB_MANUAL } from '../utils/financeContent';
+
+/**
+ * Compresses an image to stay under strict size limits (0.5MB target).
+ */
+const compressImageBase64 = (base64Str: string, maxDim: number = 1280, quality: number = 0.65): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+                if (width > maxDim) {
+                    height *= maxDim / width;
+                    width = maxDim;
+                }
+            } else {
+                if (height > maxDim) {
+                    width *= maxDim / height;
+                    height = maxDim;
+                }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return reject("Canvas failure");
+            
+            ctx.drawImage(img, 0, 0, width, height);
+            // Use JPEG for efficient compression
+            const compressed = canvas.toDataURL('image/jpeg', quality);
+            console.log(`[Compression] In: ${Math.round(base64Str.length / 1024)}KB | Out: ${Math.round(compressed.length / 1024)}KB`);
+            resolve(compressed);
+        };
+        img.onerror = () => reject("Image load failure");
+        img.src = base64Str;
+    });
+};
 
 const numberToWords = (num: number): string => {
   if (num === 0) return 'ZERO AND 00/100';
@@ -88,8 +128,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [isIssuing, setIsIssuing] = useState(false);
   const [isGeneratingArt, setIsGeneratingArt] = useState(false);
   const [isSynthesisActive, setIsSynthesisActive] = useState(false);
-  const [watermarkOpacity, setWatermarkOpacity] = useState(0.6); 
-  const [highContrastMode, setHighContrastMode] = useState(true);
+  const [watermarkOpacity, setWatermarkOpacity] = useState(0.12); 
+  const [highContrastMode, setHighContrastMode] = useState(false);
+  const [watermarkIntensity, setWatermarkIntensity] = useState<'subtle' | 'secure'>('subtle');
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [showSignPad, setShowSignPad] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -103,7 +144,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   const [qrLocalUrl, setQrLocalUrl] = useState<string | null>(null);
   const checkRef = useRef<HTMLDivElement>(null);
 
-  // Insurance Input Buffer
   const [newWindowStart, setNewWindowStart] = useState('');
   const [newWindowEnd, setNewWindowEnd] = useState('');
 
@@ -113,7 +153,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     if (!userSearch.trim()) return [];
     const q = userSearch.toLowerCase();
     return allUsers.filter(u => 
-        u.displayName.toLowerCase().includes(q) || 
+        (u.displayName || '').toLowerCase().includes(q) || 
         (u.email && u.email.toLowerCase().includes(q))
     ).slice(0, 5);
   }, [allUsers, userSearch]);
@@ -145,12 +185,10 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           setIsLoadingCheck(true);
           getCheckById(checkIdFromUrl).then(async (data) => {
               if (data) {
-                  // 1. Check Local Sovereign Cache
                   const localCachedSig = await getLocalAsset(`sig_${data.id}`);
                   if (localCachedSig) {
                       setConvertedAssets(prev => ({ ...prev, sig: localCachedSig }));
                   } else {
-                      // 2. Resolve Remote Signature for Canvas Handshake
                       const sigPath = data.signatureUrl || data.signature || '';
                       if (sigPath && sigPath.startsWith('http')) {
                           const sigB64 = await convertRemoteToDataUrl(sigPath);
@@ -175,7 +213,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           const initSignature = userProfile?.savedSignatureUrl || '';
           
           if (initSignature) {
-              setCheck(prev => ({ ...prev, signature: initSignature }));
+              setCheck(prev => ({ ...prev, signature: '', signatureUrl: initSignature }));
               convertRemoteToDataUrl(initSignature).then(b64 => {
                   if (b64) {
                       setConvertedAssets(prev => ({ ...prev, sig: b64 }));
@@ -228,17 +266,35 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       setIsGeneratingArt(true);
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const prompt = `ULTRA HIGH CONTRAST security pattern for a bank check. Use THICK "DEEP NAVY" and "DARK CHARCOAL" geometric meshes. Repeating large fractal patterns, ornate guilloche, very visible dark lines on pure white background. NO TEXT. Style: Professional, Bold, Verifiable.`;
+          
+          // Neural Stamp Refraction: Weave memo context into a small 1x1 design
+          const memoContext = check.memo || 'Secured Asset';
+          const prompt = `A small, circular professional security seal for a bank check. 
+          The design should center on a simplified graphic representing: "${memoContext}". 
+          Style: Minimalist vector lines, clean official stamp, elegant monochromatic light blue/gray. 
+          No text. Isolated on white background. Design should fit naturally in a 1-inch stamp area.`;
+          
           const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash-image',
               contents: prompt,
-              config: { imageConfig: { aspectRatio: "16:9" } }
+              config: { imageConfig: { aspectRatio: "1:1" } } // Force square for stamp
           });
+          
           if (response.candidates?.[0]?.content?.parts) {
             for (const part of response.candidates[0].content.parts) {
                 if (part.inlineData) {
-                    const b64 = `data:image/png;base64,${part.inlineData.data}`;
-                    setCheck(prev => ({ ...prev, watermarkUrl: b64 }));
+                    const rawB64 = `data:image/png;base64,${part.inlineData.data}`;
+                    
+                    // APPLY STRICT SIZE CONTROL (<0.1MB for 1x1 stamp)
+                    const b64 = await compressImageBase64(rawB64, 300, 0.5); 
+                    
+                    let storageUrl = b64;
+                    if (currentUser) {
+                        const blob = await (await fetch(b64)).blob();
+                        storageUrl = await uploadFileToStorage(`checks/${check.id}/seal_${Date.now()}.jpg`, blob);
+                    }
+
+                    setCheck(prev => ({ ...prev, watermarkUrl: storageUrl }));
                     setConvertedAssets(prev => ({ ...prev, wm: b64 }));
                     setIsSynthesisActive(true);
                     setTimeout(() => setIsSynthesisActive(false), 2000);
@@ -250,18 +306,30 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       } catch (e) { alert("Art synthesis failed."); } finally { setIsGeneratingArt(false); }
   };
 
-  const handleSaveSignature = async (sigB64: string) => {
-      setCheck(prev => ({ ...prev, signature: sigB64, signatureUrl: '' }));
+  const handleSaveSignature = async (rawSigB64: string) => {
+      // APPLY STRICT SIZE CONTROL
+      const sigB64 = await compressImageBase64(rawSigB64, 800, 0.5); 
       setConvertedAssets(prev => ({ ...prev, sig: sigB64 }));
-      saveLocalAsset(`sig_${check.id}`, sigB64);
       
-      // PERSIST VECTOR DATA TO PROFILE
-      if (currentUser && tempSigData) {
-          updateUserProfile(currentUser.uid, { 
-              // @ts-ignore
-              savedSignatureData: tempSigData 
-          }).catch(console.error);
+      let storageUrl = sigB64;
+      if (currentUser) {
+          try {
+              const blob = await (await fetch(sigB64)).blob();
+              storageUrl = await uploadFileToStorage(`checks/${check.id}/sig_${Date.now()}.jpg`, blob);
+              
+              if (tempSigData) {
+                  updateUserProfile(currentUser.uid, { 
+                      // @ts-ignore
+                      savedSignatureData: tempSigData 
+                  }).catch(console.error);
+              }
+          } catch(e) {
+              console.error("Signature upload failed", e);
+          }
       }
+
+      setCheck(prev => ({ ...prev, signature: '', signatureUrl: storageUrl }));
+      saveLocalAsset(`sig_${check.id}`, sigB64);
       
       setShowSignPad(false);
       setIsSynthesisActive(true);
@@ -269,29 +337,20 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
   };
 
   const handleUseProfileSignature = async () => {
-      // @ts-ignore - access the draw file JSON
-      const vectorData = userProfile?.savedSignatureData;
+      const vectorData = (userProfile as any)?.savedSignatureData;
       const profileSigUrl = userProfile?.savedSignatureUrl;
 
       if (!vectorData && !profileSigUrl) return;
 
       setIsSynthesisActive(true);
       try {
-          if (vectorData) {
-              setTempSigData(vectorData);
-          }
-          
+          if (vectorData) setTempSigData(vectorData);
           if (profileSigUrl) {
               const b64 = await convertRemoteToDataUrl(profileSigUrl);
               if (b64) {
-                  const isBase64 = b64.startsWith('data:');
                   setConvertedAssets(prev => ({ ...prev, sig: b64 }));
-                  setCheck(prev => ({ 
-                    ...prev, 
-                    signature: isBase64 ? b64 : '', 
-                    signatureUrl: isBase64 ? '' : b64 
-                  }));
-                  if (isBase64) await saveLocalAsset(`sig_${check.id}`, b64);
+                  setCheck(prev => ({ ...prev, signature: '', signatureUrl: profileSigUrl }));
+                  if (b64.startsWith('data:')) await saveLocalAsset(`sig_${check.id}`, b64);
               }
           }
       } catch(e: any) {
@@ -327,8 +386,10 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           try {
             const wmImg = await loadImage(convertedAssets.wm);
             ctx.save(); 
-            ctx.globalAlpha = watermarkOpacity * 0.4; 
-            ctx.drawImage(wmImg, 0, 0, canvas.width, canvas.height); 
+            ctx.globalAlpha = watermarkOpacity; 
+            // Draw as a centered security seal (approx 3x3 inches on a 6x3 canvas)
+            const sealSize = 400;
+            ctx.drawImage(wmImg, (canvas.width - sealSize) / 2 + 300, (canvas.height - sealSize) / 2, sealSize, sealSize); 
             ctx.restore();
           } catch(e) { console.warn("Watermark layer skipped", e); }
       }
@@ -359,7 +420,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       ctx.fillText("AUTHORIZED SIGNATURE", 1440, 720);
       ctx.beginPath(); ctx.moveTo(1170, 690); ctx.lineTo(1710, 690); ctx.stroke();
       
-      const sigToDraw = resolvedSig || convertedAssets.sig || check.signature || '';
+      const sigToDraw = resolvedSig || convertedAssets.sig || check.signatureUrl || '';
       if (sigToDraw) {
           try { 
               const sigImg = await loadImage(sigToDraw); 
@@ -382,7 +443,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         const internalLink = `${window.location.origin}${window.location.pathname}?view=check_viewer&id=${id}&mode=view`;
         
         const qrDataUrl = await convertRemoteToDataUrl(qrCodeUrl);
-        const signatureSource = convertedAssets.sig || check.signature || check.signatureUrl || userProfile?.savedSignatureUrl || '';
+        const signatureSource = convertedAssets.sig || check.signatureUrl || userProfile?.savedSignatureUrl || '';
         const resolvedSig = await convertRemoteToDataUrl(signatureSource);
         setQrLocalUrl(qrDataUrl);
 
@@ -391,34 +452,32 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             await saveLocalAsset(`sig_${id}`, resolvedSig);
         }
         
-        const assembledImageB64 = await assembleCheckCanvas(qrDataUrl, resolvedSig);
+        const rawAssembledB64 = await assembleCheckCanvas(qrDataUrl, resolvedSig);
+        const assembledImageB64 = await compressImageBase64(rawAssembledB64, 1800, 0.7);
+
         const finalizedCheck = { ...check, id, isVerified: true, ownerId: currentUser?.uid || 'guest' };
         
         if (currentUser) {
             try {
                 const rasterBlob = await (await fetch(assembledImageB64)).blob();
-                finalizedCheck.checkImageUrl = await uploadFileToStorage(`checks/${id}/assembled_raster.png`, rasterBlob);
+                finalizedCheck.checkImageUrl = await uploadFileToStorage(`checks/${id}/assembled_raster.jpg`, rasterBlob);
                 if (resolvedSig && resolvedSig.startsWith('data:')) {
                     const sigBlob = await (await fetch(resolvedSig)).blob();
-                    finalizedCheck.signatureUrl = await uploadFileToStorage(`checks/${id}/sig_${generateSecureId().substring(0,8)}.png`, sigBlob);
+                    finalizedCheck.signatureUrl = await uploadFileToStorage(`checks/${id}/sig_final_${generateSecureId().substring(0,8)}.jpg`, sigBlob);
                     finalizedCheck.signature = ''; 
-                } else if (finalizedCheck.signatureUrl) {
-                    finalizedCheck.signature = '';
                 }
             } catch (storageErr) {}
         }
 
         const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [600, 270] });
-        pdf.addImage(assembledImageB64, 'PNG', 0, 0, 600, 270);
+        pdf.addImage(assembledImageB64, 'JPEG', 0, 0, 600, 270);
         const pdfBlob = pdf.output('blob');
 
         const isJudge = isJudgeSession();
         if (isJudge) {
-            // JUDGE REDIRECTION: Use Firebase Storage instead of Google Drive
             const firebasePdfUrl = await uploadFileToStorage(`checks/${id}/Asset_${check.checkNumber}.pdf`, pdfBlob);
             finalizedCheck.drivePdfUrl = firebasePdfUrl;
         } else {
-            // STANDARD MEMBER: Use Google Drive
             try {
                 const token = getDriveToken() || await connectGoogleDrive();
                 if (token) {
@@ -453,7 +512,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     const newId = generateSecureId();
     const initSignature = userProfile?.savedSignatureUrl || '';
     if (initSignature) {
-        setCheck({ ...DEFAULT_CHECK, signature: initSignature, id: newId, senderName: userProfile?.displayName || 'Account Holder', checkNumber: (userProfile?.nextCheckNumber || 1001).toString(), senderAddress: userProfile?.senderAddress || '' });
+        setCheck({ ...DEFAULT_CHECK, id: newId, senderName: userProfile?.displayName || 'Account Holder', checkNumber: (userProfile?.nextCheckNumber || 1001).toString(), senderAddress: userProfile?.senderAddress || '', signature: '', signatureUrl: initSignature });
         convertRemoteToDataUrl(initSignature).then(b64 => { 
             if (b64) {
                 setConvertedAssets(prev => ({ ...prev, sig: b64 }));
@@ -472,7 +531,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
       const newId = generateSecureId();
       const currentNum = parseInt(check.checkNumber) || 0;
       const nextNum = (currentNum + 1).toString().padStart(check.checkNumber.length, '0');
-      const sigToKeep = check.signature || convertedAssets.sig || userProfile?.savedSignatureUrl || '';
+      const sigToKeep = check.signatureUrl || convertedAssets.sig || userProfile?.savedSignatureUrl || '';
 
       setCheck(prev => ({ 
         ...prev, 
@@ -480,8 +539,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
         checkNumber: nextNum, 
         isVerified: false, 
         drivePdfUrl: undefined, 
-        signature: sigToKeep, 
-        signatureUrl: '' 
+        signature: '', 
+        signatureUrl: sigToKeep 
       }));
       if (sigToKeep.startsWith('data:')) saveLocalAsset(`sig_${newId}`, sigToKeep);
       setShareLink(null);
@@ -523,8 +582,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
 
   if (isLoadingCheck) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={40} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Paging Asset Archive...</span></div>;
 
-  const currentSignatureDisplay = convertedAssets.sig || check.signatureUrl || check.signature || '';
-  const isSigResolved = currentSignatureDisplay?.startsWith('data:');
+  const currentSignatureDisplay = convertedAssets.sig || check.signatureUrl || '';
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative font-sans">
@@ -567,9 +625,9 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                   {filteredRecipients.length > 0 && (
                                       <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-700 rounded-xl mt-1 shadow-2xl z-20 overflow-hidden divide-y divide-slate-700">
                                           {filteredRecipients.map(r => (
-                                              <button key={r.uid} onClick={() => { setCheck({...check, payee: r.displayName}); setUserSearch(''); }} className="w-full text-left px-4 py-3 hover:bg-slate-700 flex items-center gap-3 transition-colors">
-                                                  <div className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">{r.displayName[0]}</div>
-                                                  <span className="text-xs text-white">@{r.displayName}</span>
+                                              <button key={r.uid} onClick={() => { setCheck({...check, payee: r.displayName || 'Anonymous'}); setUserSearch(''); }} className="w-full text-left px-4 py-3 hover:bg-slate-700 flex items-center gap-3 transition-colors">
+                                                  <div className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">{(r.displayName || 'U')[0]}</div>
+                                                  <span className="text-xs text-white">@{r.displayName || 'Anonymous'}</span>
                                               </button>
                                           ))}
                                       </div>
@@ -684,7 +742,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                                       <div className="w-2 h-2 rounded-full bg-amber-500"></div>
                                                       <div className="text-[9px]">
                                                           <p className="text-slate-300 font-bold uppercase">{new Date(win.start).toLocaleString()}</p>
-                                                          <p className="text-slate-500 uppercase">{new Date(win.end).toLocaleString()}</p>
+                                                          <p className="text-slate-500 uppercase">Ends: {new Date(win.end).toLocaleString()}</p>
                                                       </div>
                                                   </div>
                                                   <button onClick={() => handleRemoveWindow(idx)} className="p-1.5 text-slate-600 hover:text-red-400 transition-colors"><X size={14}/></button>
@@ -711,7 +769,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                       <div className="flex justify-between items-center px-1">
                           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Security Synthesis</label>
                           <button onClick={handleGenerateWatermark} disabled={isGeneratingArt} className="text-[9px] font-black text-pink-400 uppercase tracking-widest flex items-center gap-1 hover:text-white transition-all">
-                              {isGeneratingArt ? <Loader2 size={10} className="animate-spin"/> : <Sparkles size={10}/>} Art Watermark
+                              {isGeneratingArt ? <Loader2 size={10} className="animate-spin"/> : <Sparkles size={10}/>} Custom Security Seal
                           </button>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
@@ -720,13 +778,31 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                {isGeneratingArt ? (
                                    <div className="flex flex-col items-center gap-1 animate-pulse"><Loader2 size={12} className="animate-spin text-indigo-500" /><span className="text-[8px] font-black text-indigo-400 uppercase">Synthesizing...</span></div>
                                ) : convertedAssets.wm ? (
-                                   <div className="w-full h-full relative group/wm">
-                                      <img src={convertedAssets.wm} className="w-full h-full object-cover transition-transform group-hover/wm:scale-150" />
+                                   <div className="w-full h-full relative group/wm p-1">
+                                      <img src={convertedAssets.wm} className="w-full h-full object-contain transition-transform group-hover/wm:scale-150" />
                                       <button onClick={handleGenerateWatermark} className="absolute inset-0 bg-indigo-600/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"><RefreshCw size={14}/></button>
                                    </div>
-                               ) : (<div className="text-[8px] font-black text-slate-700 uppercase">No Pattern</div>)}
+                               ) : (<div className="text-[8px] font-black text-slate-700 uppercase">No Seal</div>)}
                           </div>
                       </div>
+                      {convertedAssets.wm && (
+                          <div className="space-y-3 px-1 animate-fade-in">
+                              <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-black text-slate-500 uppercase">Seal Intensity</label>
+                                <span className="text-[9px] font-mono text-indigo-400">{Math.round(watermarkOpacity * 100)}%</span>
+                              </div>
+                              <input 
+                                type="range" min="0.05" max="0.5" step="0.01" 
+                                value={watermarkOpacity} 
+                                onChange={e => setWatermarkOpacity(parseFloat(e.target.value))} 
+                                className="w-full h-1 bg-slate-800 appearance-none rounded-lg cursor-pointer accent-indigo-500"
+                              />
+                              <div className="flex gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                                  <button onClick={() => setWatermarkIntensity('subtle')} className={`flex-1 py-1 text-[8px] font-black uppercase rounded ${watermarkIntensity === 'subtle' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Subtle</button>
+                                  <button onClick={() => setWatermarkIntensity('secure')} className={`flex-1 py-1 text-[8px] font-black uppercase rounded ${watermarkIntensity === 'secure' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>Secure</button>
+                              </div>
+                          </div>
+                      )}
                   </div>
               </div>
           )}
@@ -734,11 +810,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
           <div className="flex-1 bg-slate-950 flex flex-col p-8 items-center justify-center overflow-y-auto scrollbar-hide relative">
               <div className="relative group perspective">
                 {check.isVerified && check.checkImageUrl ? (
-                    /* 
-                       BAKED IMAGE PRIORITY (Safari/Mobile Fix)
-                       When issued, we show the single synchronous PNG. 
-                       This guarantees all layers (Signature, Watermark, QR) are visible.
-                    */
                     <div 
                         style={{ transform: `scale(${zoom})`, width: '600px', height: '270px' }}
                         className="rounded-lg shadow-2xl overflow-hidden border border-slate-800 animate-fade-in relative group/check-img"
@@ -756,7 +827,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                         )}
                     </div>
                 ) : (
-                    /* INTERACTIVE DRAFT MODE */
                     <div 
                         ref={checkRef}
                         style={{ transform: `scale(${zoom})`, width: '600px', height: '270px' }} 
@@ -767,7 +837,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                 className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none transition-all duration-500" 
                                 style={{ opacity: watermarkOpacity, mixBlendMode: 'multiply', filter: highContrastMode ? 'contrast(180%)' : 'none' }}
                             >
-                                <img src={convertedAssets.wm} className="w-full h-full object-cover" />
+                                <img 
+                                    src={convertedAssets.wm} 
+                                    className="object-contain" 
+                                    style={{ width: '180px', height: '180px', opacity: 0.8, transform: 'translateX(100px)' }} 
+                                />
                             </div>
                         )}
                         {check.isInsured && (
@@ -794,8 +868,8 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                         <div className="relative z-10 mt-auto flex justify-between items-end pb-1"><div className="flex items-end gap-2"><span className="text-[8px] font-bold uppercase">Memo</span><div className="w-48 border-b border-black text-[10px] pb-0.5 px-1 truncate">{check.memo}</div></div>
                             <div onClick={() => !isReadOnly && setShowSignPad(true)} className="relative w-56 flex flex-col items-center group/sigzone">
                                 {currentSignatureDisplay && (
-                                    <div className="absolute -top-1 -right-2 z-30" title={isSigResolved ? "Asset Resolved Locally" : "Remote Link (Standard Browser Rendering)"}>
-                                        <div className={`w-2 h-2 rounded-full ${isSigResolved ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'}`}></div>
+                                    <div className="absolute -top-1 -right-2 z-30" title="Asset Resolved">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
                                     </div>
                                 )}
                                 
@@ -817,7 +891,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                     </div>
                 )}
 
-                {/* Insurance Validity Banner in Viewer Mode */}
                 {isReadOnly && check.isInsured && check.insurancePolicy && (
                     <div className="mt-8 w-full max-w-lg bg-amber-900/10 border border-amber-500/30 rounded-2xl p-6 shadow-2xl animate-fade-in-up">
                         <div className="flex items-center gap-3 mb-4">
@@ -833,25 +906,6 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                                 <p className="text-[10px] text-slate-500 uppercase font-black">Max Claim Cap</p>
                                 <p className="text-lg font-black text-indigo-400">{check.insurancePolicy.maxAmount} VC</p>
                             </div>
-                        </div>
-                        <div className="mt-6 space-y-2">
-                             <p className="text-[10px] text-slate-500 uppercase font-black px-1">Valid Temporal Windows</p>
-                             {check.insurancePolicy.validWindows.length === 0 ? (
-                                 <p className="text-xs text-slate-600 italic px-1">No time restrictions defined.</p>
-                             ) : (
-                                 check.insurancePolicy.validWindows.map((win, idx) => (
-                                     <div key={idx} className="bg-slate-900 border border-slate-800 p-3 rounded-xl flex items-center justify-between">
-                                         <div className="flex items-center gap-2">
-                                             <Clock size={12} className="text-amber-500"/>
-                                             <div className="text-[9px]">
-                                                 <p className="text-slate-300 font-bold uppercase">{new Date(win.start).toLocaleString()}</p>
-                                                 <p className="text-slate-500 uppercase">Ends: {new Date(win.end).toLocaleString()}</p>
-                                             </div>
-                                         </div>
-                                         <div className="text-[8px] font-black text-emerald-500 uppercase tracking-tighter">Verified</div>
-                                     </div>
-                                 ))
-                             )}
                         </div>
                     </div>
                 )}
@@ -873,7 +927,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                   </div>
                   <div className="p-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
                       <div className="flex flex-col gap-2">
-                        {userProfile?.savedSignatureUrl && <button onClick={handleUseProfileSignature} className="text-[10px] font-black text-indigo-600 uppercase flex items-center gap-1.5"><UserCheck size={14}/> Use Profile Sig</button>}
+                        {(userProfile as any)?.savedSignatureUrl && <button onClick={handleUseProfileSignature} className="text-[10px] font-black text-indigo-600 uppercase flex items-center gap-1.5"><UserCheck size={14}/> Use Profile Sig</button>}
                       </div>
                       <div className="flex gap-2"><button onClick={() => setShowSignPad(false)} className="px-6 py-2 text-sm font-bold text-slate-400">Cancel</button><button onClick={() => { const canvas = document.getElementById('whiteboard-canvas-core') as HTMLCanvasElement; if (canvas) handleSaveSignature(canvas.toDataURL()); }} className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg">Adopt</button></div>
                   </div>
@@ -897,7 +951,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-black text-indigo-400">${h.amount.toLocaleString()}</p>
-                      {h.isVerified && <span className="text-[8px] bg-emerald-900/30 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30 uppercase font-black">Verified</span>}
+                      {h.isVerified && <SecurityIcon size={14} className="text-emerald-500 inline ml-1"/>}
                     </div>
                   </div>
                 ))

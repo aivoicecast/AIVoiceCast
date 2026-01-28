@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History, Signature, UserPlus, QrCode as QrIcon, SendHorizonal } from 'lucide-react';
-import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim } from '../types';
-import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile, registerIdentity, claimOfflinePayment, DEFAULT_MONTHLY_GRANT } from '../services/firestoreService';
+import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History, Signature, UserPlus, QrCode as QrIcon, SendHorizonal, ShieldAlert, Fingerprint, Receipt } from 'lucide-react';
+import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim, DigitalReceipt } from '../types';
+import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile, registerIdentity, claimOfflinePayment, DEFAULT_MONTHLY_GRANT, issueReceipt, subscribeToReceipts, confirmReceipt, claimReceipt } from '../services/firestoreService';
 import { auth, db } from '../services/firebaseConfig';
 import { onAuthStateChanged } from '@firebase/auth';
 import { generateMemberIdentity, requestIdentityCertificate, verifyCertificateOffline, verifySignature, signPayment, AIVOICECAST_TRUST_PUBLIC_KEY } from '../utils/cryptoUtils';
@@ -18,6 +18,7 @@ interface CoinWalletProps {
 export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }) => {
   const [user, setUser] = useState<UserProfile | null>(propUser);
   const [transactions, setTransactions] = useState<CoinTransaction[]>([]);
+  const [receipts, setReceipts] = useState<DigitalReceipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
@@ -27,7 +28,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
   // Transfer States
   const [showSendModal, setShowSendModal] = useState(false);
-  const [transferType, setTransferType] = useState<'online' | 'offline'>('online');
+  const [transferType, setTransferType] = useState<'online' | 'offline' | 'request'>('online');
   const [transferAmount, setTransferAmount] = useState('');
   const [transferMemo, setTransferMemo] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
@@ -62,7 +63,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
               if (key) setPrivateKey(key);
           });
           loadTransactions();
-          getAllUsers().then(users => setAllUsers(users.filter(u => u.uid !== user.uid)));
+          const unsub = subscribeToReceipts(user.uid, setReceipts);
+          getAllUsers().then(users => setAllUsers(users.filter(u => u && u.uid !== user.uid)));
+          return () => unsub();
       }
   }, [user?.uid]);
 
@@ -97,7 +100,6 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
   const handleCreateIdentity = async () => {
       if (!user || isCreatingIdentity) return;
-      // Confirmation removed for seamless experience
       setIsCreatingIdentity(true);
       try {
           const { publicKey, privateKey } = await generateMemberIdentity();
@@ -132,12 +134,51 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
 
       setPaymentStep('processing');
       try {
-          await transferCoins(selectedRecipient.uid, selectedRecipient.displayName, amt, transferMemo);
+          // Changed to invitation-based flow as per user requirement
+          await transferCoins(selectedRecipient.uid, selectedRecipient.displayName || 'Recipient', selectedRecipient.email, amt, transferMemo);
           setPaymentStep('receipt');
           handleRefresh();
       } catch (e: any) {
           window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Transfer handshake failed: " + e.message, type: 'error' } }));
           setPaymentStep('input');
+      }
+  };
+
+  const handleIssueReceipt = async () => {
+      if (!user || !selectedRecipient || !transferAmount) return;
+      setPaymentStep('processing');
+      try {
+          await issueReceipt(selectedRecipient.uid, selectedRecipient.displayName || 'Sender', parseInt(transferAmount), transferMemo);
+          setPaymentStep('receipt');
+      } catch(e: any) {
+          alert("Failed to issue receipt.");
+          setPaymentStep('input');
+      }
+  };
+
+  const handleConfirmReceipt = async (id: string) => {
+      setIsTransferring(true);
+      try {
+          await confirmReceipt(id);
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Receipt confirmed. Receiver can now claim funds.", type: 'success' } }));
+          handleRefresh();
+      } catch(e: any) {
+          alert("Confirm failed: " + e.message);
+      } finally {
+          setIsTransferring(false);
+      }
+  };
+
+  const handleClaimReceipt = async (id: string) => {
+      setIsTransferring(true);
+      try {
+          await claimReceipt(id);
+          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Funds claimed successfully!", type: 'success' } }));
+          handleRefresh();
+      } catch(e: any) {
+          alert("Claim failed: " + e.message);
+      } finally {
+          setIsTransferring(false);
       }
   };
 
@@ -152,7 +193,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           const timestamp = Date.now();
           const paymentData = {
               senderId: user.uid,
-              senderName: user.displayName,
+              senderName: user.displayName || 'Sender',
               recipientId: 'any', // Anyone with the token can claim
               amount: amt,
               timestamp,
@@ -225,11 +266,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
       
       if (ledgerSearch.trim()) {
           const q = ledgerSearch.toLowerCase();
-          result = result.filter(tx => 
-              tx.fromName.toLowerCase().includes(q) || 
-              tx.toName.toLowerCase().includes(q) || 
-              (tx.memo && tx.memo.toLowerCase().includes(q))
-          );
+          result = result.filter(tx => {
+              const fromName = (tx.fromName || '').toLowerCase();
+              const toName = (tx.toName || '').toLowerCase();
+              const memo = (tx.memo || '').toLowerCase();
+              return fromName.includes(q) || toName.includes(q) || memo.includes(q);
+          });
       }
       return result;
   }, [transactions, ledgerSearch, ledgerFilter, user?.uid]);
@@ -237,15 +279,22 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
   const filteredRecipients = useMemo(() => {
       if (!userSearch.trim()) return [];
       const q = userSearch.toLowerCase();
-      return allUsers.filter(u => u.displayName.toLowerCase().includes(q) || (u.email && u.email.toLowerCase().includes(q))).slice(0, 5);
+      return allUsers.filter(u => {
+          if (!u) return false;
+          const name = (u.displayName || '').toLowerCase();
+          const email = (u.email || '').toLowerCase();
+          return name.includes(q) || email.includes(q);
+      }).slice(0, 5);
   }, [allUsers, userSearch]);
+
+  const initials = (name?: string) => (name || 'User').substring(0, 1).toUpperCase();
 
   return (
     <div className="h-full bg-slate-950 text-slate-100 flex flex-col overflow-hidden animate-fade-in">
       {/* Header */}
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
-              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
+              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>
               <h1 className="text-lg font-bold text-white flex items-center gap-2"><Wallet className="text-amber-500" /> Neural Wallet</h1>
           </div>
           <button onClick={handleRefresh} disabled={isRefreshing} className="p-2 text-slate-400 hover:text-white">
@@ -269,24 +318,75 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                       </div>
                       <div className="flex gap-3">
                           <button onClick={() => setShowTokenInput(true)} className="px-6 py-3 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-2xl text-xs font-black uppercase tracking-widest text-white transition-all active:scale-95">Receive</button>
-                          <button onClick={() => { setShowSendModal(true); setPaymentStep('input'); }} className="px-8 py-3 bg-white text-indigo-600 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl hover:scale-105 active:scale-95 transition-all">Send Coins</button>
+                          <button onClick={() => { setShowSendModal(true); setPaymentStep('input'); }} className="px-8 py-3 bg-white text-indigo-600 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl hover:scale-105 active:scale-95 transition-all">Action Hub</button>
                       </div>
                   </div>
               </div>
 
-              {/* Status Bar */}
-              {!user?.publicKey && (
-                  <div className="bg-amber-900/20 border border-amber-500/30 p-6 rounded-3xl flex flex-col md:flex-row items-center gap-6 animate-fade-in">
-                      <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-xl shadow-amber-900/30"><Shield size={24}/></div>
-                      <div className="flex-1 text-center md:text-left">
-                          <h3 className="font-bold text-white uppercase tracking-wider">Identity Unverified</h3>
-                          <p className="text-xs text-slate-400 mt-1">Register your cryptographic identity to enable peer-to-peer transfers and secure signing.</p>
+              {/* Digital Receipts Flow Section */}
+              {receipts.length > 0 && (
+                  <div className="space-y-4 animate-fade-in-up">
+                      <h2 className="text-xl font-bold text-white flex items-center gap-2"><Receipt className="text-indigo-400" size={20}/> Pending Receipts</h2>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {receipts.map(r => {
+                              const isSender = r.senderId === user?.uid;
+                              return (
+                                  <div key={r.id} className="bg-slate-900 border border-slate-800 p-5 rounded-[2rem] flex flex-col gap-4 shadow-xl">
+                                      <div className="flex justify-between items-start">
+                                          <div className="flex items-center gap-3">
+                                              <div className={`p-2 rounded-xl ${r.status === 'confirmed' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-indigo-900/30 text-indigo-400'}`}>
+                                                  <Receipt size={20}/>
+                                              </div>
+                                              <div>
+                                                  <p className="text-sm font-bold text-white uppercase tracking-tight">{isSender ? `Request from @${r.receiverName}` : `Request to @${r.senderName}`}</p>
+                                                  <p className="text-[10px] text-slate-500 font-black uppercase">{r.status}</p>
+                                              </div>
+                                          </div>
+                                          <p className="text-xl font-black text-indigo-400 tabular-nums">{r.amount} VC</p>
+                                      </div>
+                                      <p className="text-xs text-slate-400 italic">"{r.memo}"</p>
+                                      
+                                      <div className="flex gap-2">
+                                          {isSender && r.status === 'pending' && (
+                                              <button onClick={() => handleConfirmReceipt(r.id)} disabled={isTransferring} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Confirm Payment</button>
+                                          )}
+                                          {!isSender && r.status === 'confirmed' && (
+                                              <button onClick={() => handleClaimReceipt(r.id)} disabled={isTransferring} className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Claim Funds</button>
+                                          )}
+                                      </div>
+                                  </div>
+                              );
+                          })}
                       </div>
-                      <button onClick={handleCreateIdentity} disabled={isCreatingIdentity} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg">
-                          {isCreatingIdentity ? <Loader2 size={16} className="animate-spin" /> : 'Register Now'}
-                      </button>
                   </div>
               )}
+
+              {/* Identity Status Card */}
+              <div className={`rounded-[2rem] border p-8 flex flex-col md:flex-row items-center gap-8 shadow-xl transition-all duration-500 ${user?.publicKey ? 'bg-slate-900 border-slate-800' : 'bg-amber-900/10 border-amber-500/30'}`}>
+                  <div className={`p-4 rounded-3xl shadow-lg ${user?.publicKey ? 'bg-emerald-900/20 text-emerald-400' : 'bg-amber-500 text-white'}`}>
+                      {user?.publicKey ? <ShieldCheck size={32}/> : <Fingerprint size={32}/>}
+                  </div>
+                  <div className="flex-1 text-center md:text-left space-y-2">
+                      <div className="flex items-center justify-center md:justify-start gap-2">
+                        <h3 className="text-xl font-black uppercase tracking-tighter italic">{user?.publicKey ? 'Identity Verified' : 'Action Required: Initialize Identity'}</h3>
+                        {user?.publicKey && <div className="bg-emerald-500 w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>}
+                      </div>
+                      <p className="text-sm text-slate-400 leading-relaxed font-medium">
+                          {user?.publicKey 
+                            ? "Your sovereign cryptographic key is active. Peer-to-peer transfers and offline tokens are secured by your local private key."
+                            : "You must generate a cryptographic key pair to enable advanced ledger features. This process happens entirely on your device."}
+                      </p>
+                  </div>
+                  {!user?.publicKey && (
+                    <button 
+                        onClick={handleCreateIdentity} 
+                        disabled={isCreatingIdentity} 
+                        className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                    >
+                        {isCreatingIdentity ? <Loader2 size={18} className="animate-spin" /> : <><Sparkles size={18}/> <span>Register Identity</span></>}
+                    </button>
+                  )}
+              </div>
 
               {/* Transactions Ledger */}
               <div className="space-y-4">
@@ -330,10 +430,10 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                               </div>
                                               <div>
                                                   <h4 className="font-bold text-white text-sm">
-                                                      {isIncoming ? `From @${tx.fromName}` : `To @${tx.toName}`}
+                                                      {isIncoming ? `From @${tx.fromName || 'System'}` : `To @${tx.toName || 'System'}`}
                                                   </h4>
                                                   <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-0.5">
-                                                      {new Date(tx.timestamp).toLocaleDateString()} • {tx.type}
+                                                      {new Date(tx.timestamp).toLocaleDateString()} • {tx.type.replace('_', ' ')}
                                                   </p>
                                               </div>
                                           </div>
@@ -353,13 +453,13 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
           </div>
       </main>
 
-      {/* Send Modal */}
+      {/* Action Modal */}
       {showSendModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
               <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-fade-in-up">
                   <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
                       <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                        <SendHorizonal className="text-indigo-400" size={18}/> Send Sovereign Assets
+                        <SendHorizonal className="text-indigo-400" size={18}/> Financial Handshake Hub
                       </h3>
                       <button onClick={() => setShowSendModal(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
                   </div>
@@ -368,18 +468,19 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                       {paymentStep === 'input' && (
                           <div className="space-y-6">
                               <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-                                  <button onClick={() => setTransferType('online')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'online' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-50'}`}>Online Transfer</button>
-                                  <button onClick={() => setTransferType('offline')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'offline' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-50'}`}>Neural Token</button>
+                                  <button onClick={() => setTransferType('online')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'online' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-50'}`}>Send</button>
+                                  <button onClick={() => setTransferType('request')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'request' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-50'}`}>Request</button>
+                                  <button onClick={() => setTransferType('offline')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'offline' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-50'}`}>Token</button>
                               </div>
 
-                              {transferType === 'online' ? (
+                              {(transferType === 'online' || transferType === 'request') ? (
                                   <div className="space-y-4">
-                                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Recipient</label>
+                                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">{transferType === 'online' ? 'Recipient' : 'Sender'}</label>
                                       {selectedRecipient ? (
                                           <div className="flex items-center justify-between bg-indigo-900/20 border border-indigo-500/30 p-3 rounded-xl animate-fade-in">
                                               <div className="flex items-center gap-3">
-                                                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">{selectedRecipient.displayName[0]}</div>
-                                                  <span className="text-sm font-bold">@{selectedRecipient.displayName}</span>
+                                                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">{initials(selectedRecipient.displayName)}</div>
+                                                  <span className="text-sm font-bold">@{selectedRecipient.displayName || 'Anonymous'}</span>
                                               </div>
                                               <button onClick={() => setSelectedRecipient(null)} className="p-1 hover:bg-white/10 rounded-full text-slate-400"><X size={14}/></button>
                                           </div>
@@ -397,8 +498,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                                   <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-700 rounded-xl mt-1 shadow-2xl z-20 overflow-hidden divide-y divide-slate-700">
                                                       {filteredRecipients.map(r => (
                                                           <button key={r.uid} onClick={() => { setSelectedRecipient(r); setUserSearch(''); }} className="w-full text-left px-4 py-3 hover:bg-slate-700 flex items-center gap-3 transition-colors">
-                                                              <div className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">{r.displayName[0]}</div>
-                                                              <span className="text-xs text-white">@{r.displayName}</span>
+                                                              <div className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">{initials(r.displayName)}</div>
+                                                              <span className="text-xs text-white">@{r.displayName || 'Anonymous'}</span>
                                                           </button>
                                                       ))}
                                                   </div>
@@ -407,13 +508,27 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                       )}
                                   </div>
                               ) : (
-                                  <div className="p-4 bg-indigo-900/20 border border-indigo-500/20 rounded-2xl space-y-2">
-                                      <div className="flex items-center gap-2 text-indigo-300">
-                                          <Shield size={16}/>
-                                          <span className="text-xs font-bold uppercase">Sovereign Signing</span>
+                                  <div className="space-y-4 animate-fade-in">
+                                      <div className="p-4 bg-indigo-900/20 border border-indigo-500/20 rounded-2xl space-y-2">
+                                          <div className="flex items-center gap-2 text-indigo-300">
+                                              <Shield size={16}/>
+                                              <span className="text-xs font-bold uppercase">Sovereign Signing</span>
+                                          </div>
+                                          <p className="text-[10px] text-slate-400 leading-relaxed">This will generate an encrypted token using your local private key. Anyone with the token can claim the coins. Useful for gifting or offline exchange.</p>
                                       </div>
-                                      <p className="text-[10px] text-slate-400 leading-relaxed">This will generate an encrypted token using your local private key. Anyone with the token can claim the coins. Useful for gifting or offline exchange.</p>
-                                      {!privateKey && <p className="text-[10px] text-amber-500 font-bold">Register your identity first to sign tokens.</p>}
+                                      {!privateKey && (
+                                        <div className="bg-red-900/20 border border-red-500/30 p-4 rounded-xl flex flex-col items-center gap-3">
+                                            <ShieldAlert className="text-red-400" size={24}/>
+                                            <p className="text-[10px] text-red-200 font-bold uppercase text-center">Neural Identity Required</p>
+                                            <button 
+                                                onClick={handleCreateIdentity} 
+                                                disabled={isCreatingIdentity} 
+                                                className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all"
+                                            >
+                                                {isCreatingIdentity ? <Loader2 size={12} className="animate-spin mx-auto" /> : 'Register Identity Now'}
+                                            </button>
+                                        </div>
+                                      )}
                                   </div>
                               )}
 
@@ -444,12 +559,12 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                               </div>
 
                               <button 
-                                onClick={transferType === 'online' ? handleSendOnline : handleGenerateOfflineToken}
-                                disabled={isTransferring || !transferAmount || (transferType === 'online' && !selectedRecipient) || (transferType === 'offline' && !privateKey)}
+                                onClick={transferType === 'online' ? handleSendOnline : transferType === 'request' ? handleIssueReceipt : handleGenerateOfflineToken}
+                                disabled={isTransferring || !transferAmount || ((transferType === 'online' || transferType === 'request') && !selectedRecipient) || (transferType === 'offline' && !privateKey)}
                                 className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
                               >
-                                  {transferType === 'online' ? <Send size={18}/> : <Signature size={18}/>}
-                                  {transferType === 'online' ? 'Authorize Ledger Update' : 'Generate Signed Token'}
+                                  {transferType === 'online' ? <Send size={18}/> : transferType === 'request' ? <Receipt size={18}/> : <Signature size={18}/>}
+                                  {transferType === 'online' ? 'Dispatch Notification' : transferType === 'request' ? 'Issue Digital Receipt' : 'Generate Signed Token'}
                               </button>
                           </div>
                       )}
@@ -475,8 +590,8 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                       <Check size={32} strokeWidth={4}/>
                                   </div>
                                   <div>
-                                      <h4 className="text-2xl font-black text-white italic uppercase tracking-tighter">Transaction Verified</h4>
-                                      <p className="text-sm text-emerald-400 font-bold">-{transferAmount} VoiceCoins</p>
+                                      <h4 className="text-2xl font-black text-white italic uppercase tracking-tighter">Handshake Initiated</h4>
+                                      <p className="text-sm text-emerald-400 font-bold">{transferType === 'request' ? 'Receipt issued.' : 'Notification dispatched to recipient.'}</p>
                                   </div>
                               </div>
 
@@ -491,9 +606,9 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                   </div>
                               ) : (
                                   <div className="p-6 bg-slate-950 rounded-2xl border border-slate-800 space-y-3">
-                                      <div className="flex justify-between text-xs"><span className="text-slate-500">Recipient:</span><span className="text-white font-bold">@{selectedRecipient?.displayName}</span></div>
-                                      <div className="flex justify-between text-xs"><span className="text-slate-500">Network Fee:</span><span className="text-emerald-400 font-bold">0.00 VC</span></div>
-                                      <div className="flex justify-between text-xs border-t border-slate-800 pt-3"><span className="text-slate-500">Status:</span><span className="text-indigo-400 font-black uppercase tracking-widest">Broadcasted</span></div>
+                                      <div className="flex justify-between text-xs"><span className="text-slate-500">Target:</span><span className="text-white font-bold">@{selectedRecipient?.displayName || 'Anonymous'}</span></div>
+                                      <div className="flex justify-between text-xs"><span className="text-slate-500">Amount:</span><span className="text-emerald-400 font-bold">{transferAmount} VC</span></div>
+                                      <div className="flex justify-between text-xs border-t border-slate-800 pt-3"><span className="text-slate-500">Status:</span><span className="text-indigo-400 font-black uppercase tracking-widest">Pending Claim</span></div>
                                   </div>
                               )}
 
@@ -542,7 +657,7 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }
                                 <h4 className="text-xl font-bold text-white">Token Authenticated</h4>
                                 <p className="text-3xl font-black text-emerald-400 mt-2">+{verifiedToken.amount} VC</p>
                                 <div className="mt-4 pt-4 border-t border-emerald-500/20 text-left space-y-2">
-                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Source: <span className="text-white">@{verifiedToken.senderName}</span></p>
+                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Source: <span className="text-white">@{verifiedToken.senderName || 'Sender'}</span></p>
                                     <p className="text-[10px] text-slate-500 uppercase font-bold">Signed: <span className="text-white">{new Date(verifiedToken.timestamp).toLocaleString()}</span></p>
                                     {verifiedToken.memo && <p className="text-[10px] text-slate-500 uppercase font-bold">Memo: <span className="text-white italic">"{verifiedToken.memo}"</span></p>}
                                 </div>

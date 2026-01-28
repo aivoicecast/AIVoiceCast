@@ -33,44 +33,121 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: 'judge-deep-dive',
     title: '🏆 JUDGE: Neural Prism Technical Audit',
-    description: 'A detailed interactive guide specifically for Hackathon Judges. We answer all judging criteria (Execution, Innovation, Impact) while demonstrating the platform live.',
+    description: 'A v6.1.2 interactive guide specifically for Hackathon Judges. We evaluate our project against Execution, Innovation, and Impact criteria while demonstrating the platform live.',
     author: 'Project Lead',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the project lead of Neural Prism. You are speaking directly to a hackathon judge. Your tone is professional, confident, and highly technical. You explain how the project leverages Gemini 3, the innovation of Heuristic Simulation, and the impact of the refractive suite.',
-    likes: 500,
+    systemInstruction: 'You are the project lead of Neural Prism. You are speaking directly to a hackathon judge. Your tone is professional, confident, and highly technical. You explain how the project leverages Gemini 3, the innovation of Heuristic Simulation, and the v6.1.2 Scribe Protocol for high-fidelity activity capture.',
+    likes: 550,
     dislikes: 0,
     comments: [],
-    tags: ['Judging', 'Architecture', 'Innovation', 'Impact'],
+    tags: ['Judging', 'v6.1.2', 'Architecture', 'Innovation'],
     imageUrl: 'https://images.unsplash.com/photo-1454165833767-027ee6a7cbb4?w=600&q=80',
-    welcomeMessage: "Welcome, Judge. This channel is pinned for your convenience. We have used this platform to self-document our adherence to your criteria. Select a lesson in the curriculum to see the 'Refractive Cache' in action.",
+    welcomeMessage: "Welcome, Judge. This channel is optimized for v6.1.2. We have self-documented our adherence to your criteria. Try the new 'Author Studio' or test the 'Neural Scribe' with camera overlay—the PIP bug has been refracted.",
     starterPrompts: [
-      "Show me the Gemini 3 implementation details",
+      "Explain the v6.1.2 Scribe Protocol",
       "Why is Heuristic Simulation better than a real VM?",
-      "Explain the Potential Impact of the Finance Lab",
+      "Show me Symbol-Flow Integrity in Author Studio",
       "How is this project innovative?"
     ],
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    chapters: [
+      {
+        id: 'judge-ch1',
+        title: 'Chapter 1: The Refractive Engine (Technical Execution)',
+        subTopics: [
+          { id: 'jd-1-1', title: 'Multi-Model Orchestration Pipeline' },
+          { id: 'jd-1-2', title: 'Refractive Caching & Deterministic UUIDs' }
+        ]
+      },
+      {
+        id: 'judge-ch2',
+        title: 'Chapter 2: The 30-Day Refraction (Engineering Story)',
+        subTopics: [
+          { id: 'jd-2-1', title: 'Vibe Coding 30K Lines with AI Studio' },
+          { id: 'jd-2-2', title: 'Recursive Feedback & Drift Correction' }
+        ]
+      },
+      {
+        id: 'judge-ch3',
+        title: 'Chapter 3: Neural Scribe (Activity Capture)',
+        subTopics: [
+          { id: 'jd-3-1', title: 'Sequential Permission Handshake' },
+          { id: 'jd-3-2', title: 'Canvas Compositor & PIP Overlay' }
+        ]
+      },
+      {
+        id: 'judge-ch4',
+        title: 'Chapter 4: Author Studio (Knowledge Artifacts)',
+        subTopics: [
+          { id: 'jd-4-1', title: 'Symbol-Flow Rasterization' },
+          { id: 'jd-4-2', title: 'High-DPI PDF Synthesis Pipeline' }
+        ]
+      },
+      {
+        id: 'judge-ch5',
+        title: 'Chapter 5: Finance Lab (Asset Synthesis)',
+        subTopics: [
+          { id: 'jd-5-1', title: 'Pixel-Perfect Document Rasterization' },
+          { id: 'jd-5-2', title: 'Neural Security Seals & Watermarking' }
+        ]
+      },
+      {
+        id: 'judge-ch8',
+        title: 'Chapter 8: Sovereign Vault (User Privacy)',
+        subTopics: [
+          { id: 'jd-8-1', title: 'OAuth2 Sovereignty: Google Drive Sync' },
+          { id: 'jd-8-2', title: 'On-Device Identity (Web Crypto API)' }
+        ]
+      },
+      {
+        id: 'judge-ch10',
+        title: 'Chapter 10: Observability (Diagnostic Matrix)',
+        subTopics: [
+          { id: 'jd-10-1', title: 'Throttled Neural Log Buffer' },
+          { id: 'jd-10-2', title: 'Trace Bundling for Feedback Loops' }
+        ]
+      }
+    ]
   },
   {
     id: OFFLINE_CHANNEL_ID,
-    title: 'Neural Prism Platform v6.1',
-    description: 'The self-documenting guide to the Neural Prism v6.1 Platform. Learn about the new Sovereign Audio Protocol and how we achieve high-fidelity system audio capture on macOS.',
+    title: 'Neural Prism Platform v6.1.2',
+    description: 'The self-documenting guide to the Neural Prism v6.1.2 Platform. Learn about the new Scribe Protocol and Symbol-Flow rasterization for technical books.',
     author: 'Prism Architect',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on the v6.1 Sovereign Audio Protocol that ensures high-fidelity recording of system sounds and the AI agent\'s voice across different operating systems.',
-    likes: 12500,
+    systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on the v6.1.2 Scribe Protocol that ensures high-fidelity recording of PIP camera overlays and system sounds across different operating systems.',
+    likes: 12800,
     dislikes: 0,
     comments: [],
-    tags: ['Architecture', 'v6.1', 'Audio', 'GenAI'],
+    tags: ['Architecture', 'v6.1.2', 'Scribe', 'AuthorStudio'],
     imageUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&q=80', 
-    welcomeMessage: "Welcome to Neural Prism v6.1. We have stabilized the High-Fidelity Audio bus. You can now archive your sessions with full system audio. How can I help you navigate the spectrum today?",
+    welcomeMessage: "Welcome to Neural Prism v6.1.2. We have stabilized the Scribe capture loop and implemented Symbol-Flow Integrity for PDF exports. How can I help you navigate the spectrum today?",
     starterPrompts: [
-      "What is new in v6.1?",
-      "How do I fix silent recordings on Mac?",
-      "Explain the Sovereign Audio Protocol",
-      "How does Scribe Mode capture System Sounds?"
+      "What is new in v6.1.2?",
+      "Explain the Sequential Permission Flow",
+      "How does Symbol-Flow Integrity work?",
+      "Tell me about Heuristic Logic Tracing"
     ],
-    createdAt: INITIAL_DATE
+    createdAt: INITIAL_DATE,
+    chapters: [
+      {
+        id: 'ch-1',
+        title: 'The Refractive Loop',
+        subTopics: [
+          { id: 'ch-1-sub-1', title: 'Scribe Protocol: Screen + Camera' },
+          { id: 'ch-1-sub-2', title: 'The Rainbow Tool Pattern' },
+          { id: 'ch-1-sub-3', title: 'Preemptive Neural Rotation' }
+        ]
+      },
+      {
+        id: 'ch-2',
+        title: 'Author Studio Internals',
+        subTopics: [
+          { id: 'ch-2-sub-1', title: 'High-DPI Rasterization' },
+          { id: 'ch-2-sub-2', title: 'Symbol-Flow Integrity' }
+        ]
+      }
+    ]
   },
   {
     id: '1',

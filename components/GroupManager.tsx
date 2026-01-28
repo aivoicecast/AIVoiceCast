@@ -209,7 +209,9 @@ export const GroupManager: React.FC<GroupManagerProps> = ({ currentUser, userPro
 
   const recommendedGroups = useMemo(() => {
       if (!userProfile?.interests || userProfile.interests.length === 0) return [];
-      const interests = userProfile.interests.map(i => i.toLowerCase());
+      const interests = userProfile.interests
+        .filter(i => i !== null && i !== undefined)
+        .map(i => String(i).toLowerCase());
       return publicGroups.filter(g => 
           interests.some(interest => (g.name || '').toLowerCase().includes(interest))
       ).slice(0, 3);
@@ -388,7 +390,7 @@ export const GroupManager: React.FC<GroupManagerProps> = ({ currentUser, userPro
                                                 <div key={member.uid} className="flex items-center justify-between p-4 rounded-2xl bg-slate-900/40 border border-slate-800/50 hover:bg-slate-900 transition-all group/member">
                                                     <div className="flex items-center gap-4">
                                                         <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-black text-indigo-400 shadow-lg uppercase">{member.photoURL ? <img src={member.photoURL} alt={member.displayName} className="w-full h-full object-cover rounded-xl" /> : (member.displayName || 'U')[0]}</div>
-                                                        <div className="text-left"><div className="flex items-center gap-2"><p className="text-sm font-black text-slate-200 uppercase tracking-tight">@{member.displayName}</p>{member.uid === g.ownerId && <ShieldCheck size={14} className="text-indigo-400" />}</div><p className="text-[9px] text-slate-600 font-mono uppercase tracking-tighter">{uid && g.ownerId === uid ? member.email : `Ref: ${member.uid.substring(0,12)}`}</p></div>
+                                                        <div className="text-left"><div className="flex items-center gap-2"><p className="text-sm font-black text-slate-200 uppercase tracking-tight">@{member.displayName}</p>{member.uid === g.ownerId && <ShieldCheck size={14} className="text-indigo-400" />}</div><p className="text-[9px] text-slate-600 font-mono uppercase tracking-tighter">{uid && g.ownerId === uid ? (member.email || '') : `Ref: ${member.uid.substring(0,12)}`}</p></div>
                                                     </div>
                                                 </div>
                                             ))}

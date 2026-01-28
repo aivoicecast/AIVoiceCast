@@ -43,14 +43,15 @@ const THEME_CONFIG: Record<ReaderTheme, { container: string, prose: string, icon
 
 const LatexRenderer: React.FC<{ tex: string, theme: ReaderTheme }> = ({ tex, theme }) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const isDark = theme === 'slate' || theme === 'dark';
 
     useEffect(() => {
         if (containerRef.current && (window as any).katex) {
             try {
                 (window as any).katex.render(tex, containerRef.current, {
                     throwOnError: false,
-                    displayMode: true
+                    displayMode: true,
+                    trust: true,
+                    strict: false
                 });
             } catch (err) {
                 console.error("KaTeX error:", err);
@@ -59,12 +60,17 @@ const LatexRenderer: React.FC<{ tex: string, theme: ReaderTheme }> = ({ tex, the
     }, [tex]);
 
     return (
-        <div className={`my-6 p-6 rounded-xl border flex justify-center items-center overflow-x-auto shadow-inner ${
+        <div className={`my-8 p-8 rounded-3xl border flex flex-col justify-center items-center overflow-x-auto shadow-2xl relative group/math ${
             theme === 'light' ? 'bg-slate-50 border-slate-200' : 
             theme === 'sepia' ? 'bg-[#ebe3cf] border-[#dcd2ba]' : 
             'bg-slate-900/50 border-white/10'
         }`}>
-            <div ref={containerRef} className={`${theme === 'sepia' ? 'text-[#5b4636]' : theme === 'light' ? 'text-indigo-900' : 'text-indigo-300'} text-lg`}></div>
+            <div className="absolute top-4 left-6 flex items-center gap-2 opacity-30 group-hover/math:opacity-100 transition-opacity">
+                <Sigma size={12} className="text-indigo-500" />
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Neural Theorem</span>
+            </div>
+            <div ref={containerRef} className={`${theme === 'sepia' ? 'text-[#5b4636]' : theme === 'light' ? 'text-indigo-900' : 'text-indigo-300'} text-xl py-4`}></div>
+            <div className="absolute bottom-4 right-6 w-8 h-1 bg-indigo-500/20 rounded-full"></div>
         </div>
     );
 };
@@ -279,7 +285,7 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, initialThem
                 } else if (trimmed.startsWith('- ')) {
                     renderedElements.push(<li key={`${index}-${lineIdx}`} className="ml-4 list-disc my-3 pl-2 marker:text-indigo-500 text-base leading-relaxed">{formatInline(trimmed.substring(2))}</li>);
                 } else {
-                    renderedElements.push(<p key={`${index}-${lineIdx}`} className={`mb-5 leading-relaxed text-lg antialiased ${config.textColor}`}>{formatInline(line)}</p>);
+                    renderedElements.push(<p key={`${index}-${lineIdx}`} className={`mb-5 leading-relaxed text-lg antialiased ${THEME_CONFIG[theme].textColor}`}>{formatInline(line)}</p>);
                 }
             }
         });

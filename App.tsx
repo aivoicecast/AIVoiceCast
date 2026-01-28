@@ -338,13 +338,13 @@ const App: React.FC = () => {
 
   const handleDetailBack = useCallback(() => handleSetViewState('directory'), [handleSetViewState]);
 
-  const handleStartLiveSession = useCallback((channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string) => {
-    const isSpecialized = ['1', '2', 'default-gem'].includes(channel.id);
+  const handleStartLiveSession = useCallback((channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, recordScreen?: boolean, recordCamera?: boolean, activeSegment?: any, recordingDuration?: number, interactionEnabled?: boolean) => {
+    const isSpecialized = ['1', '2', 'default-gem', 'judge-deep-dive'].includes(channel.id);
     if (isSpecialized && !isProMember) {
         setIsPricingModalOpen(true);
         return;
     }
-    setLiveSessionParams({ channel, context, recordingEnabled, bookingId, returnTo: activeViewID });
+    setLiveSessionParams({ channel, context, recordingEnabled, bookingId, recordScreen, recordCamera, activeSegment, recordingDuration, interactionEnabled, returnTo: activeViewID });
     handleSetViewState('live_session');
   }, [activeViewID, handleSetViewState, isProMember]);
 
@@ -357,6 +357,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     addSystemLog("Sovereignty Protocols Active.", "info");
+    if (!auth) {
+        setAuthLoading(false);
+        return;
+    }
     const unsub = onAuthStateChanged(auth, async (u) => {
         if (u) {
             setCurrentUser(u);
@@ -365,6 +369,9 @@ const App: React.FC = () => {
             const { user, profile } = getSovereignSession();
             setCurrentUser(user);
             setUserProfile(profile);
+        } else {
+            setCurrentUser(null);
+            setUserProfile(null);
         }
         setAuthLoading(false);
     });
@@ -372,7 +379,8 @@ const App: React.FC = () => {
   }, [addSystemLog]);
 
   useEffect(() => {
-      if (!currentUser?.uid) return;
+      if (!currentUser?.uid || isJudgeSession()) return;
+      if (!db) return;
       const unsub = onSnapshot(doc(db, 'users', currentUser.uid), s => { 
           if(s.exists()) {
               const profile = s.data() as UserProfile;
@@ -472,13 +480,13 @@ const App: React.FC = () => {
         { id: 'chat', label: t.chat, icon: MessageSquare, action: () => handleSetViewState('chat'), color: 'text-blue-400', restricted: true },
         { id: 'mentorship', label: t.mentorship, icon: Users, action: () => handleSetViewState('mentorship'), color: 'text-emerald-400', restricted: true },
         { id: 'shipping_labels', label: t.shipping, icon: Truck, action: () => handleSetViewState('shipping_labels'), color: 'text-emerald-400', restricted: true },
-        { id: 'icon_generator', label: t.icons, icon: AppWindow, action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400', restricted: true },
+        { id: 'icon_generator', label: t.icons, icon: AppWindow, iconColor: 'text-cyan-400', action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400', restricted: true },
         { id: 'code_studio', label: t.code, icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400', restricted: true },
         { id: 'notebook_viewer', label: t.notebooks, icon: Book, action: () => handleSetViewState('notebook_viewer'), color: 'text-orange-300', restricted: true },
         { id: 'whiteboard', label: t.whiteboard, icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400', restricted: true },
     ];
     return { free: list.filter(a => !a.restricted), pro: list.filter(a => a.restricted) };
-  }, [t, handleSetViewState, handleStartLiveSession]);
+  }, [t, handleSetViewState, handleStartLiveSession, isProMember]);
 
   if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Spectrum...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} />;
@@ -514,6 +522,7 @@ const App: React.FC = () => {
               <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.location.assign(window.location.origin)} title="Reload Site"><BrandLogo size={32} /><h1 className="text-xl font-black italic uppercase tracking-tighter hidden sm:block group-hover:text-indigo-400 transition-colors">Neural Prism</h1></div>
            </div>
            <div className="flex items-center gap-3 sm:gap-4">
+              <Notifications />
               <button onClick={() => setShowConsole(!showConsole)} className={`p-2 transition-all rounded-lg ${showConsole ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title="Neural Diagnostics"><Bug size={18} className={!showConsole ? 'animate-pulse text-red-500' : ''} /></button>
               <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-white transition-colors" title="Reload Web App"><RefreshCcw size={18} /></button>
               {userProfile && (<button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex"><Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span></button>)}
@@ -527,7 +536,7 @@ const App: React.FC = () => {
                 {activeViewID === 'dashboard' && ( <Dashboard userProfile={userProfile} isProMember={isProMember} onNavigate={handleSetViewState} language={language} /> )}
                 {activeViewID === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice="Auto" currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={()=>{}} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} onOpenPricing={() => setIsPricingModalOpen(true)} language={language} /> )}
                 {activeViewID === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={handleDetailBack} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} onUpdateChannel={handleUpdateChannel} isProMember={isProMember} /> )}
-                {activeViewID === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} language={language} initialContext={liveSessionParams.context} recordingEnabled={liveSessionParams.recordingEnabled} lectureId={liveSessionParams.bookingId} /> )}
+                {activeViewID === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} language={language} initialContext={liveSessionParams.context} recordingEnabled={liveSessionParams.recordingEnabled} lectureId={liveSessionParams.bookingId} recordScreen={liveSessionParams.recordScreen} recordCamera={liveSessionParams.recordCamera} activeSegment={liveSessionParams.activeSegment} recordingDuration={liveSessionParams.recordingDuration} interactionEnabled={liveSessionParams.interactionEnabled} /> )}
                 {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} /></div> )}
                 {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} isProMember={isProMember}/> )}
                 {activeViewID === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('dashboard')} /> )}
@@ -568,8 +577,8 @@ const App: React.FC = () => {
                 <div className="h-96 overflow-hidden flex flex-col md:flex-row">
                     <div className="w-full md:w-80 border-r border-white/5 p-6 space-y-6 overflow-y-auto shrink-0 bg-black/60 scrollbar-hide">
                         <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
-                            <button onClick={() => setConsoleTab('trace')} className={`flex-1 py-1.5 text-[9px] font-black uppercase rounded-lg transition-all ${consoleTab === 'trace' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Trace</button>
-                            <button onClick={() => setConsoleTab('feedback')} className={`flex-1 py-1.5 text-[9px] font-black uppercase rounded-lg transition-all ${consoleTab === 'feedback' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Feedback</button>
+                            <button onClick={() => setConsoleTab('trace')} className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${consoleTab === 'trace' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Trace</button>
+                            <button onClick={() => setConsoleTab('feedback')} className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase rounded-lg transition-all ${consoleTab === 'feedback' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Feedback</button>
                         </div>
                         <div className="space-y-4">
                             <h4 className="text-[10px] font-black text-red-500 uppercase tracking-widest flex items-center gap-2"><Fingerprint size={12}/> Neural Fingerprint</h4>
@@ -604,7 +613,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v5.8.1-SYN</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.1.1-SYN</p></div>
             </div>
         </div>
 

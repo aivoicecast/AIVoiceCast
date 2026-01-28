@@ -167,7 +167,7 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
                     />
                 ) : (
                     <div className="w-24 h-24 rounded-full border-4 border-slate-900 bg-slate-800 flex items-center justify-center text-2xl font-black text-indigo-400">
-                        {(creatorProfile?.displayName || channel.author).substring(0, 1).toUpperCase()}
+                        {(creatorProfile?.displayName || channel.author || 'U').substring(0, 1).toUpperCase()}
                     </div>
                 )}
                 {isFollowing && (
@@ -182,7 +182,7 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
                 {!channel.ownerId && <span className="ml-1 text-[10px] text-indigo-400 bg-indigo-900/30 px-1 rounded border border-indigo-500/30 align-top">OFFICIAL</span>}
                 {isUserAdmin(creatorProfile) && <ShieldCheck size={16} className="inline ml-1 text-indigo-400" />}
             </h2>
-            <p className="text-sm text-slate-400">@{channel.author.toLowerCase().replace(/\s+/g, '_')}</p>
+            <p className="text-sm text-slate-400">@{ (channel.author || '').toLowerCase().replace(/\s+/g, '_')}</p>
 
             {/* Stats Row */}
             <div className="flex items-center gap-6 mt-4 text-sm">
@@ -276,7 +276,7 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
                                         />
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center bg-slate-900 font-black text-xs text-indigo-400">
-                                            {ch.title.substring(0, 1).toUpperCase()}
+                                            {(ch.title || 'P').substring(0, 1).toUpperCase()}
                                         </div>
                                     )}
                                     <div className="absolute bottom-1 right-1 flex items-center gap-1 text-[10px] text-white font-bold drop-shadow-md bg-black/40 px-1 rounded backdrop-blur-sm">
@@ -317,7 +317,7 @@ export const CreatorProfileModal: React.FC<CreatorProfileModalProps> = ({ isOpen
                                         <img src={ch.imageUrl} className="w-12 h-12 rounded-lg object-cover bg-slate-800" />
                                     ) : (
                                         <div className="w-12 h-12 rounded-lg bg-slate-900 flex items-center justify-center font-black text-indigo-400">
-                                            {ch.title.substring(0, 1).toUpperCase()}
+                                            {(ch.title || 'P').substring(0, 1).toUpperCase()}
                                         </div>
                                     )}
                                     <div className="flex-1 min-w-0">

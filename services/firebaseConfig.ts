@@ -46,7 +46,7 @@ const initDb = (): Firestore | null => {
         // CRITICAL FIX: Force long polling to bypass WebSocket timeout/blocks
         experimentalForceLongPolling: true,
         // Disable fetch streams for maximum compatibility
-        useFetchStreams: false
+        // Fixed: Removed 'useFetchStreams' as it is not a valid property in FirestoreSettings
     });
 
     // Simplify persistence for iframe environments which often block multi-tab logic

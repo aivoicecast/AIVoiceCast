@@ -2,6 +2,7 @@
 export type SubscriptionTier = 'free' | 'pro';
 export type ChannelVisibility = 'public' | 'private' | 'group';
 export type ReaderTheme = 'slate' | 'light' | 'dark' | 'sepia';
+export type BookStyle = 'brutalist' | 'academic' | 'minimal';
 
 export interface TranscriptItem {
   role: 'user' | 'ai';
@@ -278,6 +279,7 @@ export interface Invitation {
   fromUserId: string;
   fromName: string;
   toEmail: string;
+  toUserId?: string;
   groupId?: string;
   groupName?: string;
   status: 'pending' | 'accepted' | 'rejected';
@@ -285,6 +287,21 @@ export interface Invitation {
   type: 'group' | 'session' | 'coin';
   link?: string;
   amount?: number;
+  memo?: string;
+}
+
+export interface DigitalReceipt {
+    id: string;
+    senderId: string;
+    senderName: string;
+    receiverId: string;
+    receiverName: string;
+    amount: number;
+    memo: string;
+    status: 'pending' | 'confirmed' | 'claimed';
+    createdAt: number;
+    confirmedAt?: number;
+    claimedAt?: number;
 }
 
 export interface CodeProject {
@@ -504,7 +521,7 @@ export interface CoinTransaction {
   toId: string;
   toName: string;
   amount: number;
-  type: 'transfer' | 'offline' | 'grant' | 'payment';
+  type: 'transfer' | 'offline' | 'grant' | 'payment' | 'receipt_claim';
   memo?: string;
   timestamp: number;
   isVerified: boolean;

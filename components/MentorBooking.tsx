@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Channel, Booking, UserProfile, UserAvailability } from '../types';
 import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Loader2, Play, Users, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight, Coins, Check as CheckIcon, HeartHandshake, Edit3, Timer, Coffee, Sunrise, Sun, Sunset, Hash, Star, ShieldCheck, MoreHorizontal, Zap, Bot, ChevronLeft, RefreshCw } from 'lucide-react';
@@ -42,8 +43,6 @@ const SafeAvatar = ({ src, name, icon: Icon = User }: { src?: string, name: stri
     };
 
     const initials = (name || 'U').split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase();
-    
-    // Fix: Completed truncated isThirdParty call and restored full logic to resolve "Cannot find name isThird" error.
     const hasValidSrc = src && !isThirdParty(src);
 
     return (
@@ -57,7 +56,6 @@ const SafeAvatar = ({ src, name, icon: Icon = User }: { src?: string, name: stri
     );
 };
 
-// Fix: Added missing export for MentorBooking component to resolve import errors in App.tsx.
 export const MentorBooking: React.FC<MentorBookingProps> = ({ 
   currentUser, userProfile, channels, onStartLiveSession 
 }) => {
@@ -95,9 +93,9 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({
         if (!searchQuery.trim()) return mentors;
         const q = searchQuery.toLowerCase();
         return mentors.filter(m => 
-            m.displayName.toLowerCase().includes(q) || 
-            m.headline?.toLowerCase().includes(q) ||
-            m.interests?.some(i => i.toLowerCase().includes(q))
+            (m.displayName || '').toLowerCase().includes(q) || 
+            (m.headline || '').toLowerCase().includes(q) ||
+            (m.interests || []).some(i => (i || '').toLowerCase().includes(q))
         );
     }, [mentors, searchQuery]);
 
@@ -241,7 +239,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({
                                                 <div className="flex items-start justify-between mb-4">
                                                     <div className="flex items-center gap-4">
                                                         <div className="w-16 h-16 rounded-3xl bg-slate-800 border-2 border-slate-700 overflow-hidden shadow-lg group-hover:scale-105 transition-transform duration-500">
-                                                            {mentor.photoURL ? <img src={mentor.photoURL} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-2xl font-black text-indigo-400">{mentor.displayName[0]}</div>}
+                                                            {mentor.photoURL ? <img src={mentor.photoURL} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-2xl font-black text-indigo-400">{(mentor.displayName || 'U')[0]}</div>}
                                                         </div>
                                                         <div>
                                                             <h3 className="text-lg font-bold text-white group-hover:text-indigo-400 transition-colors">@{mentor.displayName}</h3>
@@ -277,10 +275,10 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({
                         <div className="max-w-2xl mx-auto space-y-10 animate-fade-in-up">
                             <div className="flex items-center gap-6">
                                 <div className="w-20 h-20 rounded-[2rem] bg-slate-900 border-2 border-indigo-500/30 overflow-hidden shadow-2xl">
-                                    {selectedMentor.photoURL ? <img src={selectedMentor.photoURL} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-3xl font-black text-indigo-400">{selectedMentor.displayName[0]}</div>}
+                                    {selectedMentor.photoURL ? <img src={selectedMentor.photoURL} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-3xl font-black text-indigo-400">{(selectedMentor.displayName || 'U')[0]}</div>}
                                 </div>
                                 <div>
-                                    <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Book with @{selectedMentor.displayName.split(' ')[0]}</h2>
+                                    <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Book with @{ (selectedMentor.displayName || '').split(' ')[0]}</h2>
                                     <p className="text-indigo-400 text-xs font-bold uppercase tracking-[0.3em] mt-2">Neural Handshake Protocol Active</p>
                                 </div>
                             </div>
@@ -321,7 +319,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({
                                         ) : (
                                             slots.map((slot, i) => (
                                                 <button 
-                                                    key={i}
+                                                    key={i} 
                                                     disabled={slot.isBusy || bookingInProgress}
                                                     onClick={() => handleBookSlot(slot)}
                                                     className={`py-4 rounded-2xl text-xs font-black tracking-tighter border transition-all active:scale-95 ${slot.isBusy ? 'bg-slate-950 border-slate-800 text-slate-800 cursor-not-allowed' : 'bg-slate-900 border-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white hover:border-indigo-400 shadow-md'}`}
@@ -354,7 +352,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({
                                         <div key={b.id} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 flex flex-col sm:flex-row items-center justify-between gap-8 hover:border-indigo-500/30 transition-all shadow-xl relative overflow-hidden group">
                                             <div className="flex items-center gap-6 flex-1 min-w-0">
                                                 <div className="w-16 h-16 rounded-[1.5rem] bg-slate-950 border border-slate-800 overflow-hidden shadow-lg shrink-0">
-                                                    {b.mentorImage ? <img src={b.mentorImage} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xl font-black text-indigo-400">{b.mentorName[0]}</div>}
+                                                    {b.mentorImage ? <img src={b.mentorImage} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xl font-black text-indigo-400">{(b.mentorName || 'M')[0]}</div>}
                                                 </div>
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-2 mb-1">

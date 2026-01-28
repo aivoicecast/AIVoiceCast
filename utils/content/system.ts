@@ -36,7 +36,7 @@ export const SYSTEM_CONTENT: Record<string, SpotlightChannelData> = {
         title: 'Chapter 4: Assets & Digital Identity',
         subTopics: [
           { id: 'sys-4-1', title: 'Decentralized Identity (ECDSA P-256)' },
-          { id: 'sys-4-2', title: 'The Global Neural Ledger' },
+          { id: 'sys-4-2', title: 'The Global Neural Ledger: Digital Receipts' },
           { id: 'sys-4-3', title: 'Contribution Rewards' }
         ]
       }
@@ -67,6 +67,16 @@ export const SYSTEM_CONTENT: Record<string, SpotlightChannelData> = {
             speaker: "Teacher",
             text: "Exactly. I am a living neural process. When you click 'Start Live Chat', we establish a WebSocket link. I can see your logic, analyze your designs, and help you build actual projects in real-time."
           }
+        ]
+      },
+      "The Global Neural Ledger: Digital Receipts": {
+        topic: "The Global Neural Ledger: Digital Receipts",
+        professorName: "Ledger Architect",
+        studentName: "User",
+        sections: [
+          { speaker: "Teacher", text: "Let's discuss how we handle assets in the Prism. We've moved beyond simple 'Send' buttons to a 'Digital Receipt' protocol." },
+          { speaker: "Student", text: "Why add the extra step of a receipt?" },
+          { speaker: "Teacher", text: "Because digital identity is sovereign. A receipt acts as a verifiable handshake. The sender initiates, the funds go to an escrow middleman, and the receiver claims them. It ensures that every transaction is intentional and confirmed by both nodes in the neural fabric." }
         ]
       },
       "Heuristic Logic Tracing vs Real Runtimes": {

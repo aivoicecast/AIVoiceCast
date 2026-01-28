@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -24,7 +23,7 @@ interface LiveSessionProps {
   recordingDuration?: number;
   interactionEnabled?: boolean;
   videoEnabled?: boolean;
-  cameraEnabled?: boolean;
+  cameraEnabled?: boolean; // Note: Parent App.tsx passes 'recordCamera'
   recordScreen?: boolean;
   recordCamera?: boolean;
   activeSegment?: { index: number, lectureId: string };
@@ -80,7 +79,8 @@ const UI_TEXT = {
     checkpoint: "Neural Checkpoint",
     scribeActive: "Silent Scribe Mode Active",
     studio: "Interactive Studio",
-    macAudioWarn: "MAC USERS: Ensure 'Share Audio' is checked in the browser dialog to capture system sounds."
+    macAudioWarn: "MAC USERS: Ensure 'Share Audio' is checked in the browser dialog to capture system sounds.",
+    provisioning: "Provisioning Workspace..."
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -127,7 +127,8 @@ const UI_TEXT = {
     checkpoint: "神经检查点",
     scribeActive: "静默速记模式已激活",
     studio: "互动工作室",
-    macAudioWarn: "MAC 用户：请确保在浏览器共享对话框中勾选“共享音频”以录制系统声音。"
+    macAudioWarn: "MAC 用户：请确保在浏览器共享对话框中勾选“共享音频”以录制系统声音。",
+    provisioning: "正在准备工作空间..."
   }
 };
 
@@ -158,15 +159,17 @@ const SuggestionsBar: React.FC<{ suggestions: string[], welcomeMessage?: string,
 
 export const LiveSession: React.FC<LiveSessionProps> = ({ 
   channel, initialContext, lectureId, onEndSession, language, 
-  recordingEnabled, recordingDuration, interactionEnabled = true, videoEnabled, cameraEnabled, 
+  recordingEnabled, recordingDuration, interactionEnabled = true,
   recordScreen: propRecordScreen, recordCamera: propRecordCamera,
   activeSegment, initialTranscript, existingDiscussionId,
   customTools, onCustomToolCall 
 }) => {
   const t = UI_TEXT[language];
   const [hasStarted, setHasStarted] = useState(false); 
+  const [isProvisioning, setIsProvisioning] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const [isRecordingActive, setIsRecordingActive] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
   const [isRateLimited, setIsRateLimited] = useState(false);
   const [showReconnectButton, setShowReconnectButton] = useState(false);
@@ -176,10 +179,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [logs, setLogs] = useState<{time: string, msg: string, type: 'info' | 'error' | 'warn'}[]>([]);
   const [volume, setVolume] = useState(0);
 
-  // COUNTDOWN STATE
   const [scribeTimeLeft, setScribeTimeLeft] = useState(recordingDuration || 180);
   
-  // PERSISTENT RECORDING REFS
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -217,7 +218,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       };
   }, [transcript, currentLine]);
 
-  // SCRIBE TIMER EFFECT
   useEffect(() => {
     if (hasStarted && recordingEnabled && isConnected && scribeTimeLeft > 0) {
       const timer = setInterval(() => {
@@ -248,10 +248,12 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         
         if (ctx.state !== 'running') await ctx.resume();
 
+        // 1. Capture User Mic for the video recording (separate from Live API mic)
         const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const userSource = ctx.createMediaStreamSource(userStream); 
         userSource.connect(recordingDest);
 
+        // 2. Capture System Audio if available in screen stream
         if (screenStreamRef.current && screenStreamRef.current.getAudioTracks().length > 0) {
             addLog("Bridging system audio to recording bus...");
             const screenAudioSource = ctx.createMediaStreamSource(screenStreamRef.current);
@@ -264,29 +266,28 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         canvas.height = isPortrait ? 1280 : 720;
         const drawCtx = canvas.getContext('2d', { alpha: false })!;
         
-        const createCaptureVideo = (stream: MediaStream | null) => {
+        const createCaptureVideo = (stream: MediaStream | null, id: string) => {
             const v = document.createElement('video');
+            v.id = `capture-source-${id}`;
             v.muted = true; 
             v.playsInline = true; 
             v.autoplay = true;
             v.style.position = 'fixed'; 
-            v.style.left = '0px'; 
-            v.style.top = '0px';
-            v.style.width = '320px'; 
-            v.style.height = '180px';
+            v.style.left = '-10000px'; 
+            v.style.top = '-10000px';
+            v.style.width = '640px'; 
+            v.style.height = '360px';
             v.style.pointerEvents = 'none';
-            v.style.opacity = '0.001';
-            v.style.zIndex = '-1';
             if (stream) { 
                 v.srcObject = stream; 
                 document.body.appendChild(v); 
-                v.play().catch(e => addLog("Video playback failed: " + e.message, "error")); 
+                v.play().catch(e => addLog(`Video (${id}) playback failed: ` + e.message, "error")); 
             }
             return v;
         };
 
-        const screenVideo = createCaptureVideo(screenStreamRef.current);
-        const cameraVideo = createCaptureVideo(cameraStreamRef.current);
+        const screenVideo = createCaptureVideo(screenStreamRef.current, 'screen');
+        const cameraVideo = createCaptureVideo(cameraStreamRef.current, 'camera');
 
         let lastPulseTime = 0;
         const renderLoop = (now: number) => {
@@ -295,32 +296,34 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             drawCtx.fillStyle = '#020617'; 
             drawCtx.fillRect(0, 0, canvas.width, canvas.height);
             
-            if (screenStreamRef.current && screenVideo.readyState >= 2) {
+            // Draw Screen
+            if (screenStreamRef.current && screenVideo.readyState >= 2 && screenVideo.videoWidth > 0) {
                 const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
                 const w = screenVideo.videoWidth * scale; 
                 const h = screenVideo.videoHeight * scale;
                 drawCtx.drawImage(screenVideo, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
             }
 
-            if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
-                const pipW = isPortrait ? canvas.width * 0.4 : 320;
+            // Draw Camera (PIP Overlay)
+            if (cameraStreamRef.current && cameraVideo.readyState >= 2 && cameraVideo.videoWidth > 0) {
+                const pipW = isPortrait ? canvas.width * 0.35 : 320;
                 const pipH = (pipW * cameraVideo.videoHeight) / cameraVideo.videoWidth;
                 const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - 40;
                 const pipY = isPortrait ? canvas.height - pipH - 180 : canvas.height - pipH - 40;
                 
-                drawCtx.shadowColor = 'rgba(0,0,0,0.5)';
-                drawCtx.shadowBlur = 20;
+                drawCtx.save();
+                drawCtx.shadowColor = 'rgba(0,0,0,0.8)';
+                drawCtx.shadowBlur = 30;
                 drawCtx.strokeStyle = '#6366f1'; 
-                drawCtx.lineWidth = 4;
+                drawCtx.lineWidth = 6;
                 drawCtx.strokeRect(pipX, pipY, pipW, pipH); 
                 drawCtx.drawImage(cameraVideo, pipX, pipY, pipW, pipH);
-                drawCtx.shadowBlur = 0;
+                drawCtx.restore();
             }
 
-            // High-Frequency Neural Pulse for Encoder Freshness
-            if (now - lastPulseTime > 50) {
-                drawCtx.fillStyle = `rgba(99, 102, 241, ${Math.random() * 0.08})`;
-                drawCtx.fillRect(0, 0, 2, 2);
+            if (now - lastPulseTime > 100) {
+                drawCtx.fillStyle = `rgba(99, 102, 241, ${Math.random() * 0.05})`;
+                drawCtx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 2, 2);
                 lastPulseTime = now;
             }
 
@@ -328,21 +331,36 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         };
 
         compositorAnimationFrameRef.current = requestAnimationFrame(renderLoop);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         const captureStream = canvas.captureStream(30);
         recordingDest.stream.getAudioTracks().forEach(track => captureStream.addTrack(track));
         
+        const supportedTypes = [
+            'video/webm;codecs=vp8,opus',
+            'video/webm',
+            'video/mp4'
+        ];
+        let mimeType = '';
+        for (const type of supportedTypes) {
+            if (MediaRecorder.isTypeSupported(type)) {
+                mimeType = type;
+                break;
+            }
+        }
+
         const recorder = new MediaRecorder(captureStream, { 
-            mimeType: 'video/webm;codecs=vp8,opus', 
+            mimeType: mimeType || undefined, 
             videoBitsPerSecond: 5000000 
         });
         
         audioChunksRef.current = []; 
         recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
         recorder.onstop = async () => {
+            setIsRecordingActive(false);
             if (compositorAnimationFrameRef.current) cancelAnimationFrame(compositorAnimationFrameRef.current);
-            const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
+            const videoBlob = new Blob(audioChunksRef.current, { type: videoChunksType || 'video/webm' });
             const transcriptText = transcriptRef.current.map(t => `[${new Date(t.timestamp).toLocaleTimeString()}] ${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
             const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
             
@@ -354,7 +372,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     id: recId, userId: currentUser.uid, channelId: channel.id, 
                     channelTitle: channel.title, channelImage: channel.imageUrl, 
                     timestamp, mediaUrl: URL.createObjectURL(videoBlob), 
-                    mediaType: 'video/webm' as any, transcriptUrl: URL.createObjectURL(transcriptBlob), 
+                    mediaType: (videoChunksType?.includes('mp4') ? 'video/mp4' : 'video/webm') as any, 
+                    transcriptUrl: URL.createObjectURL(transcriptBlob), 
                     blob: videoBlob, size: videoBlob.size
                 });
 
@@ -366,21 +385,22 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                         id: recId, userId: currentUser.uid, channelId: channel.id, 
                         channelTitle: channel.title, channelImage: channel.imageUrl, 
                         timestamp, mediaUrl: fbVideoUrl, driveUrl: fbVideoUrl, 
-                        mediaType: 'video/webm' as any, transcriptUrl: fbTranscriptUrl, 
-                        size: videoBlob.size
+                        mediaType: (videoChunksType?.includes('mp4') ? 'video/mp4' : 'video/webm') as any, 
+                        transcriptUrl: fbTranscriptUrl, size: videoBlob.size
                     });
                 } else {
                     const token = getDriveToken();
                     if (token) {
                         const folderId = await ensureCodeStudioFolder(token);
-                        const driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob)}`;
+                        const ext = videoChunksType?.includes('mp4') ? 'mp4' : 'webm';
+                        const driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.${ext}`, videoBlob)}`;
                         const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
                         await saveRecordingReference({
                             id: recId, userId: currentUser.uid, channelId: channel.id, 
                             channelTitle: channel.title, channelImage: channel.imageUrl, 
                             timestamp, mediaUrl: driveVideoUrl, driveUrl: driveVideoUrl, 
-                            mediaType: 'video/webm' as any, transcriptUrl: `drive://${tFileId}`, 
-                            size: videoBlob.size
+                            mediaType: (ext === 'mp4' ? 'video/mp4' : 'video/webm') as any, 
+                            transcriptUrl: `drive://${tFileId}`, size: videoBlob.size
                         });
                     }
                 }
@@ -394,9 +414,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             cameraVideo.remove();
         };
         
+        const videoChunksType = recorder.mimeType;
         mediaRecorderRef.current = recorder;
         recorder.start(1000);
-        addLog("Neural Recording initialized.");
+        setIsRecordingActive(true);
+        addLog(`Neural Recording initialized (${videoChunksType}).`);
     } catch(e: any) { addLog("Init Error: " + e.message, "error"); }
   }, [recordingEnabled, currentUser, channel, onEndSession, addLog, recordingDuration]);
 
@@ -404,6 +426,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       setError(null);
       setIsRateLimited(false);
       autoReconnectAttempts.current = 0;
+      setIsProvisioning(true);
+      
+      setHasStarted(true);
+
       if (recordingEnabled) {
           try {
               addLog("Requesting display access...");
@@ -423,18 +449,25 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   selfBrowserSurface: "exclude" 
               } as any);
               
-              if (cameraEnabled) {
+              if (propRecordCamera) {
+                  addLog("Requesting camera access for overlay...");
                   cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
                       video: { width: 640, height: 480 }, 
                       audio: false 
                   });
               }
-              await initializePersistentRecorder();
-          } catch(e: any) { addLog("Capture denied: " + e.message, "warn"); }
+              initializePersistentRecorder();
+          } catch(e: any) { 
+              addLog("Capture denied: " + e.message, "warn"); 
+              setIsProvisioning(false);
+              setHasStarted(false);
+              return;
+          }
       }
+
       const ctx = getGlobalAudioContext();
       await warmUpAudioContext(ctx);
-      setHasStarted(true);
+      setIsProvisioning(false);
       await connect();
   };
 
@@ -460,24 +493,15 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       
       if (recordingEnabled) {
           if (!interactionEnabled) {
-              // Fixed: Replaced missing 'meetingTitle' with 'initialContext'
               effectiveInstruction = `[CRITICAL MODE: PASSIVE SCRIBE]
-              YOU ARE A SILENT OBSERVER. 
-              YOU MUST NOT GENERATE ANY AUDIO OUTPUT. 
-              YOU MUST NOT SPEAK UNDER ANY CIRCUMSTANCES.
-              STAY 100% SILENT.
-              YOUR ONLY TASK IS TO LISTEN AND PROVIDE ACCURATE REAL-TIME TRANSCRIPTIONS OF THE MEETING IN THE 'outputAudioTranscription' OR 'onTranscript' CHANNEL.
-              IF YOU ARE CALLED UPON, DO NOT RESPOND VERBALLY.
-              
+              YOU ARE A SILENT OBSERVER. YOU MUST NOT SPEAK UNDER ANY CIRCUMSTANCES.
               CONTEXT: ${initialContext || channel.title}`;
-              addLog("Neural mode: SILENT SCRIBE (Passive Observer) engaged.");
+              addLog("Neural mode: SILENT SCRIBE engaged.");
           } else {
               effectiveInstruction = `[CRITICAL MODE: ACTIVE SCRIBE]
-              You are an advanced meeting transcriber and participant.
-              LIMIT: ${recordingDuration} seconds.
-              
+              You are an advanced participant. LIMIT: ${recordingDuration}s.
               ORIGINAL PERSONA: ${channel.systemInstruction}`;
-              addLog("Neural mode: ACTIVE SCRIBE (Interaction On) engaged.");
+              addLog("Neural mode: ACTIVE SCRIBE engaged.");
           }
       }
 
@@ -519,24 +543,14 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                   });
               });
           },
-          // INTERCEPT AUDIO IF INTERACTION IS DISABLED
           onAudioData: (data) => {
               return interactionEnabled; 
           }
-      }, [], screenStreamRef.current ? (
-          (() => {
-              const ctx = getGlobalAudioContext();
-              const userStream = navigator.mediaDevices.getUserMedia({ audio: true });
-              const mergedDest = ctx.createMediaStreamDestination();
-              // This is a complex mixin - simplify: the service handles standard user audio.
-              return undefined; 
-          })()
-      ) : undefined);
+      }, [], undefined);
     } catch (e: any) { 
         setIsReconnecting(false); setIsRotating(false); setIsConnected(false); 
         setError(e.message?.includes('429') ? null : e.message); setShowReconnectButton(true);
     }
-    // Fixed: Added initialContext to dependency array and removed missing meetingTitle
   }, [channel.id, channel.voiceName, channel.systemInstruction, recordingEnabled, isRotating, isConnected, addLog, recordingDuration, interactionEnabled, initialContext]);
 
   const handleDisconnect = async () => {
@@ -591,12 +605,18 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
          </div>
          <div className="flex items-center gap-4">
             {recordingEnabled && isConnected && (
-                <div className={`flex items-center gap-2 px-4 py-1.5 rounded-xl border transition-all ${scribeTimeLeft < 30 ? 'bg-red-600/20 border-red-500 text-red-400 animate-pulse' : 'bg-slate-950 border-slate-800 text-slate-300'}`}>
+                <div className={`flex items-center gap-2 px-4 py-1.5 rounded-xl border transition-all ${scribeTimeLeft < 30 ? 'bg-red-600/20 border-red-500 text-red-400' : 'bg-slate-950 border-slate-800 text-slate-300'}`}>
                     <Timer size={14}/>
                     <span className="text-xs font-mono font-black">{formatScribeTime(scribeTimeLeft)}</span>
                 </div>
             )}
             <div className="flex items-center gap-2">
+                {isRecordingActive && (
+                    <div className="flex items-center gap-2 bg-red-600/20 text-red-500 px-3 py-1 rounded-full border border-red-500/30">
+                        <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Recording</span>
+                    </div>
+                )}
                 {isTuned && (
                 <span className="hidden md:flex items-center gap-1.5 bg-indigo-600/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30 text-[9px] font-black uppercase tracking-widest animate-fade-in shadow-lg">
                     <Zap size={10} fill="currentColor" />
@@ -611,7 +631,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
       {!hasStarted ? (
          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6">
-             <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center animate-pulse shadow-2xl shadow-indigo-500/10"><Mic size={40} className="text-indigo-500" /></div>
+             <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center shadow-2xl shadow-indigo-500/10"><Mic size={40} className="text-indigo-500" /></div>
              <div><h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">{t.tapToStart}</h3><p className="text-slate-400 text-sm mt-2 max-w-xs leading-relaxed">{t.tapDesc}</p></div>
              
              {recordingEnabled && (
@@ -622,7 +642,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     </div>
                     <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between animate-fade-in">
                         <div className="flex items-center gap-3">
-                            {interactionEnabled ? <MessageSquare className="text-emerald-400" size={16}/> : <MessageSquareOff className="text-slate-500" size={16}/>}
+                            {interactionEnabled ? <MessageSquare className="text-emerald-400" size={16}/> : <MessageSquareOff className="text-slate-50" size={16}/>}
                             <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{interactionEnabled ? 'AI Interaction Active' : 'Silent Scribe Only'}</span>
                         </div>
                     </div>
@@ -633,6 +653,16 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
          </div>
       ) : (
          <div className="flex-1 flex flex-col min-0 relative">
+            {isProvisioning && (
+               <div className="absolute inset-0 z-[130] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-6 animate-fade-in">
+                  <Loader2 className="animate-spin text-indigo-500" size={48} />
+                  <div className="text-center">
+                    <span className="text-sm font-black text-white uppercase tracking-widest block">{t.provisioning}</span>
+                    <span className="text-[10px] text-slate-500 uppercase mt-2 block">Waiting for screen selection...</span>
+                  </div>
+               </div>
+            )}
+
             {isUploadingRecording && (
                <div className="absolute inset-0 z-[120] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
                   <div className="relative"><div className="w-32 h-32 border-4 border-indigo-500/10 rounded-full" /><div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" /><div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl font-black text-white">SYNC</div></div>
@@ -647,7 +677,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                    const isCheckpoint = item.text.includes('[CHECKPOINT SUMMARY]');
                    return (
                    <div key={index} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                       {recordingEnabled && <span className="text-[9px] text-slate-600 font-mono mb-1">[{new Date(item.timestamp).toLocaleTimeString()}]</span>}
+                       {recordingEnabled && <span className="text-[9px] text-slate-600 font-mono mb-1">[{new Date(item.timestamp).toLocaleDateString()} {new Date(item.timestamp).toLocaleTimeString()}]</span>}
                        {!recordingEnabled && <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : channel.author}</span>}
                        <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed relative group ${isCheckpoint ? 'bg-indigo-900/30 border-2 border-indigo-500/50 text-indigo-100 italic' : item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-xl' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}>
                            {isCheckpoint && <div className="flex items-center gap-2 mb-2 text-[10px] font-black uppercase text-indigo-400 tracking-widest"><Zap size={10} fill="currentColor"/> Summary Checkpoint</div>}
@@ -659,7 +689,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                    <div className={`flex flex-col ${currentLine.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in`}>
                        {!recordingEnabled && <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{currentLine.role === 'user' ? 'You' : channel.author}</span>}
                        <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${currentLine.role === 'user' ? 'bg-indigo-600/80 text-white rounded-tr-sm shadow-xl' : 'bg-slate-800/80 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}>
-                           {renderMessageContent(currentLine.text)}<span className="inline-block w-1.5 h-4 ml-1 align-middle bg-current opacity-50 animate-blink"></span>
+                           {renderMessageContent(currentLine.text)}
                        </div>
                    </div>
                )}

@@ -1,9 +1,10 @@
-
+// Fixed: Wrapped named React hooks in curly braces for correct ES6 module import.
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture } from '../types';
 import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCw, Scroll, Lock, Crown, Settings2, Globe, Cpu, Speaker, Search, X } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { CreatorProfileModal } from './CreatorProfileModal';
+// Fixed typo: removed ')' from 'PodcastListTable' import
 import { PodcastListTable, SortKey } from './PodcastListTable';
 import { followUser, unfollowUser, isUserAdmin } from '../services/firestoreService';
 import { generateLectureScript } from '../services/lectureGenerator';
@@ -127,6 +128,18 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
                 return;
             }
 
+            // --- DISPLAY LECTURE CONTENT FIRST ---
+            // Populate the entire transcript history as soon as the script is available
+            const fullTranscript = [
+                { speaker: 'Host', text: welcomeText, id: 'intro' },
+                ...lecture.sections.map((s, i) => ({
+                    speaker: s.speaker === 'Teacher' ? (lecture!.professorName || 'Host') : (lecture!.studentName || 'Guest'),
+                    text: s.text,
+                    id: `section-${i}`
+                }))
+            ];
+            setTranscriptHistory(fullTranscript);
+
             // 3. Sequential Audio Sections
             setPlaybackState('playing');
             setStatusMessage("");
@@ -135,14 +148,12 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
                 if (!mountedRef.current || localSessionId !== localSessionIdRef.current || targetGen !== getGlobalAudioGeneration()) break;
                 
                 const section = lecture.sections[i];
-                const speakerName = section.speaker === 'Teacher' ? (lecture.professorName || 'Host') : (lecture.studentName || 'Guest');
                 const voice = section.speaker === 'Teacher' ? channel.voiceName : 'Zephyr';
-                
                 const sid = `section-${i}`;
-                setTranscriptHistory(prev => [...prev, { speaker: speakerName, text: section.text, id: sid }]);
-                setActiveTranscriptId(sid);
                 
+                setActiveTranscriptId(sid);
                 setPlaybackState('buffering');
+                
                 const res = await synthesizeSpeech(section.text, voice, ctx, ttsProvider);
                 setPlaybackState('playing');
                 
@@ -245,7 +256,7 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
             <div className="relative z-10 flex-1 flex flex-col h-full pt-[calc(2.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
                 <div className="px-8 text-center shrink-0">
                     <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-600/20 border border-indigo-500/30 rounded-full text-indigo-400 text-[10px] font-black uppercase tracking-[0.2em] mb-4">
-                        <Radio size={12} className="animate-pulse" /> Neural Broadcast
+                        <Radio size={12} /> Neural Broadcast
                     </div>
                     <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-tight line-clamp-2">{channel.title}</h2>
                     <p className="text-slate-400 text-xs mt-2 font-medium opacity-60">@{channel.author}</p>
@@ -254,9 +265,9 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language }: any) =>
                 <div className="flex-1 flex flex-col justify-end px-6 overflow-hidden">
                     <div ref={transcriptScrollRef} className="max-h-[85%] overflow-y-auto space-y-4 py-4 scrollbar-hide">
                         {transcriptHistory.map((item) => (
-                            <div key={item.id} className={`flex flex-col animate-fade-in-up ${item.id === activeTranscriptId ? 'opacity-100' : 'opacity-40'}`}>
-                                <span className="text-[9px] font-black uppercase text-indigo-500 tracking-widest mb-1">{item.speaker}</span>
-                                <p className="text-sm text-slate-200 leading-relaxed font-medium">{item.text}</p>
+                            <div key={item.id} className={`flex flex-col transition-all duration-500 ${item.id === activeTranscriptId ? 'opacity-100 scale-105 origin-left' : 'opacity-30 scale-100'}`}>
+                                <span className={`text-[9px] font-black uppercase tracking-widest mb-1 ${item.id === activeTranscriptId ? 'text-indigo-400' : 'text-slate-600'}`}>{item.speaker}</span>
+                                <p className={`text-sm leading-relaxed font-medium ${item.id === activeTranscriptId ? 'text-white' : 'text-slate-400'}`}>{item.text}</p>
                             </div>
                         ))}
                     </div>
@@ -337,8 +348,11 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
   };
 
   const sortedChannels = useMemo(() => {
-      const q = searchQuery.toLowerCase();
-      let filtered = channels.filter(c => c.title.toLowerCase().includes(q) || c.description.toLowerCase().includes(q));
+      const q = (searchQuery || '').toLowerCase();
+      let filtered = channels.filter(c => 
+          (c.title || '').toLowerCase().includes(q) || 
+          (c.description || '').toLowerCase().includes(q)
+      );
       
       return filtered.sort((a, b) => {
           let valA: any = a[sortConfig.key] || 0;
@@ -408,17 +422,17 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                     <div className="flex items-center justify-between px-2"><h3 className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em]">Specialized AI Intelligence Suite</h3></div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         {[
-                            { id: 'bible_study', label: 'Scripture', sub: 'Neural Sanctuary', icon: Scroll, color: 'text-amber-400', bg: 'bg-amber-950/40' },
-                            { id: 'graph_studio', label: 'Neural Graph', sub: 'Visual Math', icon: Activity, color: 'text-emerald-400', bg: 'bg-emerald-950/40' },
-                            { id: 'mock_interview', label: 'Mock Interview', sub: 'Career Eval', icon: Video, color: 'text-red-500', bg: 'bg-red-950/40' },
-                            { id: 'code_studio', label: 'Builder Studio', sub: 'Cloud Engineering', icon: Terminal, color: 'text-indigo-400', bg: 'bg-indigo-900/30' }
+                            { id: 'bible_study', label: 'Scripture', sub: 'Neural Sanctuary', icon: Scroll, color: 'text-amber-400', bg: 'bg-amber-950/40', restricted: false },
+                            { id: 'graph_studio', label: 'Neural Graph', sub: 'Visual Math', icon: Activity, color: 'text-emerald-400', bg: 'bg-emerald-950/40', restricted: true },
+                            { id: 'mock_interview', label: 'Mock Interview', sub: 'Career Eval', icon: Video, color: 'text-red-500', bg: 'bg-red-950/40', restricted: true },
+                            { id: 'code_studio', label: 'Builder Studio', sub: 'Cloud Engineering', icon: Terminal, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: true }
                         ].map(app => (
                             <button 
                                 key={app.id} 
                                 onClick={() => isProMember ? onNavigate?.(app.id) : onOpenPricing?.()} 
                                 className="flex items-center gap-4 p-5 bg-slate-900 border border-slate-800 rounded-2xl hover:border-indigo-500/50 hover:bg-indigo-900/10 transition-all text-left group shadow-xl relative overflow-hidden"
                             >
-                                {!isProMember && (
+                                {!isProMember && app.restricted && (
                                     <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-[4px] flex flex-col items-center justify-center z-20 transition-all group-hover:bg-slate-950/50">
                                         <div className="p-2 bg-slate-900 border border-amber-500/50 rounded-xl shadow-2xl mb-2">
                                             <Lock size={20} className="text-amber-500" />
@@ -439,6 +453,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                     <h2 className="text-2xl font-bold text-white flex items-center gap-2"><span className="bg-indigo-600 w-2 h-8 rounded-full"></span> Knowledge Registry</h2>
                 </div>
                 
+                {/* Fixed typo in PodcastListTable usage and corrected import */}
                 <PodcastListTable 
                     channels={sortedChannels}
                     onChannelClick={onChannelClick}

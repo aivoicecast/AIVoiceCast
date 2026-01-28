@@ -1,12 +1,13 @@
 
 import { GoogleGenAI, Modality } from '@google/genai';
-import { base64ToBytes, decodeRawPcm, getGlobalAudioContext } from '../utils/audioUtils';
+import { base64ToBytes, decodeRawPcm, getGlobalAudioContext, hashString } from '../utils/audioUtils';
 import { getCachedAudioBuffer, cacheAudioBuffer } from '../utils/db';
 import { auth } from './firebaseConfig';
-import { deductCoins, AI_COSTS, saveAudioToLedger, getScriptureAudioUrl } from './firestoreService';
+import { deductCoins, AI_COSTS, saveAudioToLedger, getCloudAudioUrl } from './firestoreService';
+import { OPENAI_API_KEY } from './private_keys';
 
+export type TtsProvider = 'gemini' | 'google' | 'system' | 'openai';
 export type TtsErrorType = 'none' | 'quota' | 'daily_limit' | 'network' | 'unknown' | 'auth' | 'unsupported' | 'voice_not_found';
-export type TtsProvider = 'gemini' | 'google' | 'openai' | 'system';
 
 export interface TtsResult {
   buffer: AudioBuffer | null;
@@ -21,23 +22,28 @@ export interface TtsResult {
 const memoryCache = new Map<string, AudioBuffer>();
 const pendingRequests = new Map<string, Promise<TtsResult>>();
 
+function dispatchLog(text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') {
+    window.dispatchEvent(new CustomEvent('neural-log', { 
+        detail: { text: `[TTS] ${text}`, type } 
+    }));
+}
+
 function getValidVoiceName(voiceName: string, provider: TtsProvider, lang: 'en' | 'zh' = 'en'): string {
     const name = voiceName.toLowerCase();
     const isInterview = name.includes('0648937375') || name.includes('software interview');
     const isLinux = name.includes('0375218270') || name.includes('linux kernel');
     const isDefaultGem = name.includes('gem') || name.includes('default');
 
-    if (provider === 'openai') {
-        if (isInterview) return 'onyx';
-        if (isLinux) return 'alloy';
-        return 'nova';
-    } else if (provider === 'google') {
+    if (provider === 'google') {
         if (lang === 'zh') return 'cmn-CN-Wavenet-A'; 
         if (isInterview) return 'en-US-Wavenet-B';
         if (isLinux) return 'en-US-Wavenet-J';
         return 'en-US-Wavenet-D';
+    } else if (provider === 'openai') {
+        const validOpenAI = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
+        if (validOpenAI.includes(name)) return name;
+        return 'nova';
     } else {
-        // Gemini Native Voices
         if (isInterview) return 'Fenrir';
         if (isLinux) return 'Puck';
         if (isDefaultGem) return 'Zephyr';
@@ -67,46 +73,43 @@ async function synthesizeGemini(text: string, voice: string, lang: 'en' | 'zh' =
     }
 }
 
-async function synthesizeOpenAI(text: string, voice: string): Promise<{buffer: ArrayBuffer, mime: string}> {
-    const apiKey = localStorage.getItem('openai_api_key') || process.env.OPENAI_API_KEY || '';
-    if (!apiKey) throw new Error("OPENAI_KEY_MISSING");
-    
+async function synthesizeOpenAI(text: string, voice: string): Promise<ArrayBuffer> {
+    const apiKey = process.env.OPENAI_API_KEY || OPENAI_API_KEY;
     const targetVoice = getValidVoiceName(voice, 'openai');
     
-    const response = await fetch("https://api.openai.com/v1/audio/speech", {
-        method: "POST",
+    const response = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
         headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            model: "tts-1",
+            model: 'tts-1',
             input: text,
             voice: targetVoice
         })
     });
 
     if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`OPENAI_ERROR|${error.error?.message || response.status}`);
+        const err = await response.json().catch(() => ({}));
+        throw new Error(`OPENAI_ERROR|${response.status}|${err.error?.message || response.statusText}`);
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    return { buffer: arrayBuffer, mime: 'audio/mpeg' };
+    return await response.arrayBuffer();
 }
 
-/**
- * World-Class TTS Refraction Engine
- */
 export async function synthesizeSpeech(
   text: string, 
   voiceName: string, 
   audioContext: AudioContext,
   preferredProvider: TtsProvider = 'google',
   lang: 'en' | 'zh' = 'en',
-  metadata?: { book: string, chapter: string, verse: string }
+  metadata?: { channelId: string, topicId: string, nodeId?: string }
 ): Promise<TtsResult> {
   const cleanText = text.replace(/`/g, '').trim();
+  
+  // Deterministic ID for global Firestore lookup
+  const globalNodeId = metadata?.nodeId || await hashString(`${voiceName}:${lang}:${cleanText}`);
   const cacheKey = `${preferredProvider}:${voiceName}:${lang}:${cleanText}`;
   
   if (memoryCache.has(cacheKey)) return { buffer: memoryCache.get(cacheKey)!, errorType: 'none', provider: preferredProvider };
@@ -114,28 +117,31 @@ export async function synthesizeSpeech(
 
   const requestPromise = (async (): Promise<TtsResult> => {
     try {
-      // 1. Check Local Cache
+      // Tier 1: Client Edge Cache (IndexedDB)
       const localCached = await getCachedAudioBuffer(cacheKey);
       if (localCached) {
+        dispatchLog(`Local Edge Cache Hit. Sub-100ms latency mode active.`, 'success');
         const audioBuffer = await audioContext.decodeAudioData(localCached.slice(0)).catch(() => decodeRawPcm(new Uint8Array(localCached), audioContext, 24000, 1));
         memoryCache.set(cacheKey, audioBuffer);
         return { buffer: audioBuffer, rawBuffer: localCached, errorType: 'none', provider: preferredProvider };
       }
 
-      // 2. Check Global Ledger
-      if (metadata) {
-          const ledgerUrl = await getScriptureAudioUrl(metadata.book, metadata.chapter, metadata.verse, lang);
-          if (ledgerUrl) {
-              const response = await fetch(ledgerUrl);
-              const arrayBuffer = await response.arrayBuffer();
-              const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0)).catch(() => decodeRawPcm(new Uint8Array(arrayBuffer), audioContext, 24000, 1));
-              await cacheAudioBuffer(cacheKey, arrayBuffer);
-              memoryCache.set(cacheKey, audioBuffer);
-              return { buffer: audioBuffer, rawBuffer: arrayBuffer, errorType: 'none', provider: preferredProvider };
-          }
+      // Tier 2: Global Neural Ledger (Firestore)
+      const ledgerUrl = await getCloudAudioUrl(globalNodeId);
+      if (ledgerUrl) {
+          dispatchLog(`Global Ledger Hit. Resolving node from cloud storage...`, 'success');
+          const response = await fetch(ledgerUrl);
+          const arrayBuffer = await response.arrayBuffer();
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0)).catch(() => decodeRawPcm(new Uint8Array(arrayBuffer), audioContext, 24000, 1));
+          
+          // Hydrate local cache from ledger for next time
+          await cacheAudioBuffer(cacheKey, arrayBuffer);
+          memoryCache.set(cacheKey, audioBuffer);
+          return { buffer: audioBuffer, rawBuffer: arrayBuffer, errorType: 'none', provider: preferredProvider };
       }
 
-      // 3. Synthesis Phase
+      // Tier 3: Neural Synthesis (Gemini/Google/OpenAI)
+      dispatchLog(`Cache Miss. Initializing Fresh Synthesis via ${preferredProvider.toUpperCase()} API...`, 'warn');
       let rawBuffer: ArrayBuffer;
       let mimeType = 'audio/mpeg'; 
       
@@ -160,31 +166,29 @@ export async function synthesizeSpeech(
           const data = await response.json();
           rawBuffer = base64ToBytes(data.audioContent).buffer;
       } else if (preferredProvider === 'openai') {
-          const res = await synthesizeOpenAI(cleanText, voiceName);
-          rawBuffer = res.buffer;
-          mimeType = res.mime;
+          rawBuffer = await synthesizeOpenAI(cleanText, voiceName);
+          mimeType = 'audio/mpeg';
       } else {
-          // GEMINI PREVIEW PROVIDER
           const gemRes = await synthesizeGemini(cleanText, voiceName, lang);
           rawBuffer = gemRes.buffer;
           mimeType = gemRes.mime;
       }
 
-      // 4. Update Sovereign Ledger
+      // Push to Ledger & Cache for future zero-latency hits
       if (auth.currentUser) {
           deductCoins(auth.currentUser.uid, AI_COSTS.AUDIO_SYNTHESIS);
-          if (metadata) {
-              await saveAudioToLedger(metadata.book, metadata.chapter, metadata.verse, lang, new Uint8Array(rawBuffer), mimeType);
-          }
+          await saveAudioToLedger(globalNodeId, new Uint8Array(rawBuffer), mimeType);
       }
 
       await cacheAudioBuffer(cacheKey, rawBuffer);
       const audioBuffer = await audioContext.decodeAudioData(rawBuffer.slice(0)).catch(() => decodeRawPcm(new Uint8Array(rawBuffer), audioContext, 24000, 1));
 
       memoryCache.set(cacheKey, audioBuffer);
+      dispatchLog(`Synthesis finalized. Asset bound to local cache and global ledger.`, 'success');
       return { buffer: audioBuffer, rawBuffer, mime: mimeType, errorType: 'none', provider: preferredProvider };
     } catch (error: any) {
       console.error("TTS Fault:", error);
+      dispatchLog(`Synthesis interrupted: ${error.message}`, 'error');
       return { buffer: null, errorType: 'quota', errorMessage: error.message, provider: 'system' };
     } finally {
       pendingRequests.delete(cacheKey);

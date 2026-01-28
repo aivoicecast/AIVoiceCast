@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { getDebugCollectionDocs, seedDatabase, recalculateGlobalStats, cleanupDuplicateUsers, isUserAdmin, deleteFirestoreDoc, purgeFirestoreCollection, setUserSubscriptionTier, updateAllChannelDatesToToday, migrateVaultToLedger } from '../services/firestoreService';
 import { listUserBackups, deleteCloudFile, CloudFileEntry, getCloudFileContent } from '../services/cloudService';
-import { ArrowLeft, RefreshCw, Database, Table, Code, Search, UploadCloud, Users, ShieldCheck, Crown, Trash2, ShieldAlert, Loader2, Zap, Activity, CheckCircle, Copy, Check, X, Film, GraduationCap, AlertCircle, Info, Cloud, Speech, Settings, Calendar, ArrowRightLeft, Folder, FolderOpen, CornerLeftUp, FileJson, FileAudio, Eye, Layout, Monitor, HardDrive, Terminal, ExternalLink } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Database, Table, Code, Search, UploadCloud, Users, ShieldCheck, Crown, Trash2, ShieldAlert, Loader2, Zap, Activity, CheckCircle, Copy, Check, X, Film, GraduationCap, AlertCircle, Info, Cloud, Speech, Settings, Calendar, ArrowRightLeft, Folder, FolderOpen, CornerLeftUp, FileJson, FileAudio, Eye, Layout, Monitor, HardDrive, Terminal, ExternalLink, UserPlus, UserMinus } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { UserProfile } from '../types';
 import { GoogleGenAI } from "@google/genai";
@@ -103,6 +103,22 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
       setActiveCollection(name);
       setIsDbLoading(false);
     }
+  };
+
+  const handleSetUserTier = async (uid: string, currentTier: string) => {
+      const nextTier = currentTier === 'pro' ? 'free' : 'pro';
+      const label = nextTier === 'pro' ? 'Promote to Pro' : 'Demote to Free';
+      if (!confirm(`${label} user ${uid}?`)) return;
+
+      try {
+          await setUserSubscriptionTier(uid, nextTier);
+          setDbDocs(prev => prev.map(d => d.uid === uid ? { ...d, subscriptionTier: nextTier } : d));
+          window.dispatchEvent(new CustomEvent('neural-log', { 
+              detail: { text: `Member ${uid.substring(0,8)} refracted to ${nextTier.toUpperCase()} tier.`, type: 'success' } 
+          }));
+      } catch (e: any) {
+          alert("Tier update failed: " + e.message);
+      }
   };
 
   // --- STORAGE LOGIC ---
@@ -368,7 +384,22 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
                                                                 {doc[k] !== undefined ? String(doc[k]) : '-'}
                                                             </td>
                                                         ))}
-                                                        {isSuperAdmin && <td className="px-5 py-3 text-right"><button onClick={() => deleteFirestoreDoc(activeCollection!, doc.id)} className="p-2 text-red-400 hover:bg-red-900/30 rounded-lg"><Trash2 size={14}/></button></td>}
+                                                        {isSuperAdmin && (
+                                                            <td className="px-5 py-3 text-right">
+                                                                <div className="flex items-center justify-end gap-1">
+                                                                    {activeCollection === 'users' && (
+                                                                        <button 
+                                                                            onClick={() => handleSetUserTier(doc.uid || doc.id, doc.subscriptionTier)} 
+                                                                            className={`p-2 rounded-lg transition-colors ${doc.subscriptionTier === 'pro' ? 'text-amber-400 hover:bg-amber-900/30' : 'text-indigo-400 hover:bg-indigo-900/30'}`}
+                                                                            title={doc.subscriptionTier === 'pro' ? 'Demote to Free' : 'Promote to Pro'}
+                                                                        >
+                                                                            {doc.subscriptionTier === 'pro' ? <UserMinus size={14}/> : <UserPlus size={14}/>}
+                                                                        </button>
+                                                                    )}
+                                                                    <button onClick={() => deleteFirestoreDoc(activeCollection!, doc.id)} className="p-2 text-red-400 hover:bg-red-900/30 rounded-lg"><Trash2 size={14}/></button>
+                                                                </div>
+                                                            </td>
+                                                        )}
                                                     </tr>
                                                 ))}
                                             </tbody>

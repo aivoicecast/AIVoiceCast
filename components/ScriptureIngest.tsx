@@ -353,9 +353,9 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
                         while (attempts < 3) {
                             try {
                                 const res = await synthesizeSpeech(text, voice, ctx, prov, lang, { 
-                                    book: selectedBook, 
-                                    chapter: chStr, 
-                                    verse: v.number 
+                                    channelId: selectedBook, 
+                                    topicId: chStr, 
+                                    nodeId: `node_${selectedBook}_${chStr}_${v.number}_${lang}` 
                                 });
                                 if (res.buffer) return res;
                                 throw new Error("Null Buffer Result");
@@ -475,8 +475,8 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
       <div className="flex-1 flex overflow-hidden">
         <div className="w-80 border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0">
             <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex gap-1">
-                <button onClick={() => setActiveTestament('OT')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTestament === 'OT' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Old Testament</button>
-                <button onClick={() => setActiveTestament('NT')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTestament === 'NT' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>New Testament</button>
+                <button onClick={() => setActiveTestament('OT')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTestament === 'OT' ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:text-slate-100'}`}>Old Testament</button>
+                <button onClick={() => setActiveTestament('NT')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTestament === 'NT' ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:text-slate-100'}`}>New Testament</button>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-hide">
                 {(activeTestament === 'OT' ? OLD_TESTAMENT : NEW_TESTAMENT).map(b => (
@@ -561,8 +561,9 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
                                             </div>
                                             <div className="flex gap-2">
                                                 <div title="Synthesis Status" className={`w-2.5 h-2.5 rounded-full shadow-lg ${res.genStatus === 'success' ? 'bg-emerald-500 shadow-emerald-500/20' : res.genStatus === 'repairing' ? 'bg-amber-500 animate-pulse' : res.genStatus === 'skipped' ? 'bg-indigo-500' : res.genStatus === 'error' ? 'bg-red-500' : 'bg-slate-700 animate-pulse'}`}></div>
-                                                <div title="Audio Status" className={`w-2.5 h-2.5 rounded-full ${res.audioStatus === 'success' ? 'bg-emerald-500' : res.audioStatus === 'error' ? 'bg-red-500' : res.audioStatus === 'skipped' ? 'bg-slate-800' : 'bg-slate-700 animate-pulse'}`}></div>
-                                                <div title="Save Status" className={`w-2.5 h-2.5 rounded-full ${res.saveStatus === 'success' ? 'bg-emerald-500' : res.saveStatus === 'error' ? 'bg-red-500' : res.saveStatus === 'skipped' ? 'bg-slate-800' : 'bg-slate-700 animate-pulse'}`}></div>
+                                                {/* Fixed: audioStatus type comparison to exclude invalid provider strings */}
+                                                <div title="Audio Status" className={`w-2.5 h-2.5 rounded-full ${res.audioStatus === 'success' ? 'bg-emerald-500' : res.audioStatus === 'error' ? 'bg-red-500' : res.audioStatus === 'skipped' ? 'bg-slate-800' : res.audioStatus === 'processing' ? 'bg-slate-700 animate-pulse' : 'bg-slate-800'}`}></div>
+                                                <div title="Save Status" className={`w-2.5 h-2.5 rounded-full ${res.saveStatus === 'success' ? 'bg-emerald-500' : res.saveStatus === 'error' ? 'bg-red-500' : res.saveStatus === 'skipped' ? 'bg-slate-800' : res.saveStatus === 'processing' ? 'bg-slate-700 animate-pulse' : 'bg-slate-800'}`}></div>
                                             </div>
                                         </div>
                                     ))}
