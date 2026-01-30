@@ -203,7 +203,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
                     <BookText className="text-indigo-400" /> 
                     Author Studio
                 </h1>
-                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Protocol v6.2.0 • Symbol Integrity Engine</p>
+                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Protocol v6.6.0 • Symbol Integrity Engine</p>
               </div>
           </div>
           <div className="flex items-center gap-3">

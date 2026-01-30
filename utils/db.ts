@@ -365,8 +365,19 @@ export async function getAllDebugEntries(): Promise<DebugEntry[]> {
           const cursor = (event.target as IDBRequest).result;
           if (cursor) {
             let size = 0;
-            if (storeName === STORE_NAME) size = (cursor.value as ArrayBuffer).byteLength;
-            else size = JSON.stringify(cursor.value).length;
+            if (storeName === STORE_NAME) {
+              size = (cursor.value as ArrayBuffer).byteLength;
+            } else {
+              // SAFE SIZE CHECK: Stringify fallback for non-primitives
+              try {
+                  const val = cursor.value;
+                  if (typeof val === 'string') size = val.length;
+                  else if (val instanceof ArrayBuffer) size = val.byteLength;
+                  else size = String(val).length;
+              } catch (e) {
+                  size = 0;
+              }
+            }
             entries.push({ store: storeName, key: cursor.key as string, size: size });
             cursor.continue();
           } else { resolve(); }

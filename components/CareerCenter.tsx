@@ -2,7 +2,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Briefcase, Upload, Loader2, CheckCircle, Heart, Users, FileText, X, Rocket, Shield, Search, Plus, MapPin, Building, Globe, ExternalLink, RefreshCw, User, Star, ChevronRight, Mail, Share2, Link } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
-import { submitCareerApplication, uploadResumeToStorage, createJobPosting, getJobPostings, getAllCareerApplications, getJobPosting } from '../services/firestoreService';
+// Fixed: Used uploadFileToStorage instead of missing uploadResumeToStorage
+import { submitCareerApplication, uploadFileToStorage, createJobPosting, getJobPostings, getAllCareerApplications, getJobPosting } from '../services/firestoreService';
 import { CareerApplication, JobPosting } from '../types';
 import { ShareModal } from './ShareModal';
 
@@ -95,7 +96,8 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser,
     setIsLoading(true); setError(null);
 
     try {
-      const resumeUrl = await uploadResumeToStorage(currentUser.uid, resumeFile);
+      // Fixed: Using the correct storage path for uploadFileToStorage
+      const resumeUrl = await uploadFileToStorage(`resumes/${currentUser.uid}/${resumeFile.name}`, resumeFile);
       const application: CareerApplication = {
         userId: currentUser.uid,
         userName: currentUser.displayName || 'Anonymous',

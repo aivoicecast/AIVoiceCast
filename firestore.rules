@@ -27,18 +27,22 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
-    // SCRIPTURE LEDGERS
+    // NEURAL CACHE & LEDGERS (Shared Knowledge Plane)
     // ----------------------------------------------------------------------
-    match /bible_ledger/{chapterId} {
+    // Standardizing on recursive wildcards for shared cache to ensure chunks and metadata are always accessible
+    match /neural_audio_ledger/{allPaths=**} {
       allow read: if true; 
-      allow create, update: if isAuthenticated(); 
-      allow delete: if isAdmin();
+      allow write: if isAuthenticated(); 
     }
 
-    match /bible_audio_ledger/{audioId} {
+    match /lecture_cache/{allPaths=**} {
       allow read: if true; 
-      allow create, update: if isAuthenticated(); 
-      allow delete: if isAdmin();
+      allow write: if isAuthenticated(); 
+    }
+
+    match /bible_ledger/{allPaths=**} {
+      allow read: if true; 
+      allow write: if isAuthenticated(); 
     }
 
     // ----------------------------------------------------------------------
@@ -47,8 +51,6 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated(); 
       allow create: if isOwner(userId);
-      // MIDDLEMAN FIX: Users can ONLY update their own balance.
-      // They never touch another user's balance directly.
       allow update: if isOwner(userId) || isAdmin(); 
     }
 
@@ -57,15 +59,12 @@ service cloud.firestore {
     // ----------------------------------------------------------------------
     match /invitations/{inviteId} { 
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      // Allow the recipient or sender to update status for the escrow flow
-      allow update: if isAuthenticated(); 
+      allow create, update: if isAuthenticated();
     }
     
     match /receipts/{receiptId} { 
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated(); 
+      allow create, update: if isAuthenticated();
     }
 
     match /coin_transactions/{txId} { 
@@ -74,35 +73,48 @@ service cloud.firestore {
     }
 
     // ----------------------------------------------------------------------
-    // REMAINING COLLECTIONS
+    // COMMUNITY & CONTENT
     // ----------------------------------------------------------------------
-    match /groups/{groupId} {
-      allow read, write: if isAuthenticated();
-      match /messages/{msgId} { allow read, write: if isAuthenticated(); }
+    match /blogs/{blogId} {
+      allow read: if true;
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
     }
+
+    match /blog_posts/{postId} {
+      allow read: if true;
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /channels/{channelId} {
+      allow read: if true; 
+      allow create: if isAuthenticated();
+      allow update: if isAdmin() || (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments', 'appendix', 'likes', 'shares']));
+      allow delete: if isAdmin();
+    }
+
     match /chat_channels/{channelId} {
       allow read, write: if isAuthenticated();
       match /messages/{msgId} { allow read, write: if isAuthenticated(); }
     }
-    match /channels/{channelId} {
+    
+    match /discussions/{discussionId} { 
       allow read: if true; 
-      allow create: if isAuthenticated();
-      allow update: if isAdmin() || isOwner(resource.data.ownerId) || (
-        isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments', 'appendix'])
-      );
-      allow delete: if isAdmin() || isOwner(resource.data.ownerId);
+      allow write: if isAuthenticated(); 
     }
-    match /channel_stats/{channelId} { allow read: if true; allow write: if isAuthenticated(); }
-    match /discussions/{discussionId} { allow read: if resource.data.visibility == 'public' || isOwner(resource.data.userId) || isAdmin(); allow write: if isAuthenticated(); }
-    match /mock_interviews/{interviewId} { allow read: if resource.data.visibility == 'public' || isOwner(resource.data.userId) || isAdmin(); allow write: if isAuthenticated(); }
+    
+    match /mock_interviews/{interviewId} { 
+      allow read: if isAuthenticated(); 
+      allow write: if isAuthenticated(); 
+    }
+    
     match /bookings/{bookingId} { allow read, write: if isAuthenticated(); }
     match /recordings/{recordingId} { allow read, write: if isAuthenticated(); }
-    match /saved_words/{wordId} { allow read, write: if isAuthenticated(); }
     match /checks/{checkId} { allow read: if true; allow write: if isAuthenticated(); }
     match /shipping/{labelId} { allow read, write: if isAuthenticated(); }
     match /icons/{iconId} { allow read, write: if isAuthenticated(); }
     match /cards/{cardId} { allow read, write: if isAuthenticated(); }
-    match /tasks/{taskId} { allow read, write: if isAuthenticated(); }
     match /notebooks/{notebookId} { allow read, write: if isAuthenticated(); }
     match /feedback/{feedbackId} { allow read, write: if isAuthenticated(); }
   }

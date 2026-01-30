@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AgentMemory, TranscriptItem } from '../types';
 import { ArrowLeft, Sparkles, Wand2, Image as ImageIcon, Download, Share2, RefreshCw, Mic, MicOff, Gift, Loader2, ChevronRight, ChevronLeft, Upload, QrCode, X, Music, Play, Pause, Volume2, Camera, CloudUpload, Lock, Globe, Check, Edit, Package, ArrowDown, Type as TypeIcon, Minus, Plus, Edit3, Link, LayoutGrid, User, Calendar, MessageSquare, Bot, CheckCircle, Trash2 } from 'lucide-react';
@@ -373,7 +372,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                   for (const fc of toolCall.functionCalls) {
                       if (fc.name === 'update_card') {
                           setMemory(prev => ({ ...prev, ...fc.args }));
-                          service.sendToolResponse([{ id: fc.id, name: fc.name, response: { result: "Card data updated instantly." } }]);
+                          service.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "Card data updated instantly." } } });
                       }
                   }
               }

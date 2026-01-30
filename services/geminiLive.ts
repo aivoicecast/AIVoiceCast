@@ -15,6 +15,7 @@ export interface LiveConnectionCallbacks {
 
 function getValidLiveVoice(voiceName: string): string {
   const name = voiceName || '';
+  // Mapping specific personas to prebuilt voices supported by the Live API
   if (name.includes('Software Interview') || name.includes('0648937375')) return 'Fenrir';
   if (name.includes('Linux Kernel') || name.includes('0375218270')) return 'Puck';
   if (name.includes('Default Gem')) return 'Zephyr';
@@ -100,6 +101,9 @@ export class GeminiLiveService {
             this.startAudioInput(callbacks.onVolumeUpdate);
             this.startHeartbeat();
             callbacks.onOpen();
+            window.dispatchEvent(new CustomEvent('neural-log', { 
+                detail: { text: `[Live] Handshake verified with ${validVoice} persona.`, type: 'success' } 
+            }));
           },
           onmessage: async (message: LiveServerMessage) => {
             if (!this.isActive) return;

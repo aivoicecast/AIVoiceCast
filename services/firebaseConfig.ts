@@ -1,8 +1,9 @@
+
 import { initializeApp, getApps, getApp } from "@firebase/app";
 import type { FirebaseApp } from "@firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
 import type { Auth } from "@firebase/auth";
-import { initializeFirestore, enableIndexedDbPersistence } from "@firebase/firestore";
+import { initializeFirestore, getFirestore, enableIndexedDbPersistence } from "@firebase/firestore";
 import type { Firestore } from "@firebase/firestore";
 import { getStorage } from "@firebase/storage";
 import type { FirebaseStorage } from "@firebase/storage";
@@ -42,12 +43,21 @@ const appInstance = initializeFirebase();
 const initDb = (): Firestore | null => {
     if (!appInstance) return null;
     
-    const firestore = initializeFirestore(appInstance, {
-        // CRITICAL FIX: Force long polling to bypass WebSocket timeout/blocks
-        experimentalForceLongPolling: true,
-        // Disable fetch streams for maximum compatibility
-        // Fixed: Removed 'useFetchStreams' as it is not a valid property in FirestoreSettings
-    });
+    let firestore: Firestore;
+    try {
+        // Initialize with specialized settings for sandboxed environments
+        console.log("[Firestore] Initializing refractive data plane...");
+        // Fix for Error on line 50: Removed 'useFetchStreams' property as it is not part of the modular FirestoreSettings type.
+        // Also added explicit type assertion to resolve the FirebaseApp type mismatch in some environments.
+        firestore = initializeFirestore(appInstance as FirebaseApp, {
+            // CRITICAL FIX: Force long polling to bypass WebSocket 
+            // and streaming blocks/timeouts in sandboxed iframes.
+            experimentalForceLongPolling: true,
+        });
+    } catch (e) {
+        // Fallback to existing instance if already initialized
+        firestore = getFirestore(appInstance);
+    }
 
     // Simplify persistence for iframe environments which often block multi-tab logic
     enableIndexedDbPersistence(firestore).catch((err) => {

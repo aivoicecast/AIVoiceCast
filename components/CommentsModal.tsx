@@ -115,7 +115,8 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
             if (currentUser) {
                 try {
                     const path = `comments/${channel.id}/${Date.now()}_${file.name}`;
-                    url = await uploadCommentAttachment(file, path);
+                    // Fixed: Corrected the order of arguments to (path, file) as defined in firestoreService.ts
+                    url = await uploadCommentAttachment(path, file);
                 } catch(err) {
                     console.error("Upload failed", err);
                     continue; 

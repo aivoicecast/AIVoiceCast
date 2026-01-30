@@ -3,6 +3,7 @@ export type SubscriptionTier = 'free' | 'pro';
 export type ChannelVisibility = 'public' | 'private' | 'group';
 export type ReaderTheme = 'slate' | 'light' | 'dark' | 'sepia';
 export type BookStyle = 'brutalist' | 'academic' | 'minimal';
+export type TtsProvider = 'gemini' | 'google' | 'system' | 'openai';
 
 export interface TranscriptItem {
   role: 'user' | 'ai';
@@ -55,6 +56,7 @@ export interface UserProfile {
   apiUsageCount?: number;
   lastCoinGrantAt?: number;
   preferredAiProvider?: 'gemini' | 'openai';
+  preferredTtsProvider?: TtsProvider;
   followers?: string[];
   following?: string[];
   likedChannelIds?: string[];

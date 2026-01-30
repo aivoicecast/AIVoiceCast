@@ -1,17 +1,81 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { UserProfile, ReaderTheme, UserAvailability } from '../types';
-// Fixed: Added missing Wallet and ShieldCheck icon to lucide-react imports
-import { X, User, Shield, CreditCard, LogOut, CheckCircle, AlertTriangle, Bell, Lock, Database, Trash2, Edit2, Save, FileText, ExternalLink, Loader2, DollarSign, HelpCircle, ChevronDown, ChevronUp, ChevronRight, Github, Heart, Hash, Cpu, Sparkles, MapPin, PenTool, Hash as HashIcon, Globe, Zap, Crown, Linkedin, Upload, FileUp, FileCheck, Check, Link, Type, Sun, Moon, Coffee, Palette, Code2, Youtube, HardDrive, Calendar, Clock, Info, Globe2, Terminal, Languages, Key, Speaker, BookOpen, Fingerprint, Wallet, ShieldCheck } from 'lucide-react';
-import { logUserActivity, updateUserProfile, uploadFileToStorage } from '../services/firestoreService';
-import { signOut, getDriveToken, connectGoogleDrive } from '../services/authService';
-import { TOPIC_CATEGORIES } from '../utils/initialData';
-import { Whiteboard } from './Whiteboard';
 import { GoogleGenAI } from '@google/genai';
+import {
+    Activity,
+    AlertTriangle,
+    ArrowLeft,
+    BookOpen,
+    Calendar,
+    Check,
+    CheckCircle,
+    ChevronDown,
+    Clock,
+    Coffee,
+    Cpu,
+    Crown,
+    Edit2,
+    Edit3,
+    ExternalLink,
+    Feather,
+    FileCheck,
+    FileUp,
+    Fingerprint,
+    Github,
+    Globe,
+    Globe2,
+    Hash,
+    Hash as HashIcon,
+    Heart,
+    History,
+    Key,
+    Languages,
+    Link,
+    Loader2,
+    Lock,
+    LogOut,
+    MapPin,
+    Moon,
+    Palette,
+    PenTool,
+    Play,
+    Save,
+    Settings2,
+    Shield,
+    ShieldCheck,
+    ShieldQuestion,
+    Sparkles,
+    Speaker,
+    Sun,
+    Terminal,
+    Trash2,
+    Type,
+    Upload,
+    User,
+    UserCheck,
+    UserMinus,
+    UserPlus,
+    Volume2,
+    Wallet,
+    X,
+} from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { getDriveToken, signInWithGoogle, connectGoogleDrive, signOut } from '../services/authService';
 import { ensureFolder, uploadToDrive } from '../services/googleDriveService';
+import { deductCoins, logUserActivity, updateUserProfile, uploadFileToStorage, AI_COSTS } from '../services/firestoreService';
+import { runNeuralAudit } from '../services/tts';
+import { UserProfile, ReaderTheme, UserAvailability, TtsProvider } from '../types';
+import { getGlobalAudioContext, getSystemVoicesAsync, syncPrimeSpeech, warmUpAudioContext, SPEECH_REGISTRY } from '../utils/audioUtils';
+import { TOPIC_CATEGORIES } from '../utils/initialData';
+import { MarkdownView } from './MarkdownView';
+import { Whiteboard } from './Whiteboard';
+
+// Fixed: Added missing constants used in the component
+const MAX_TEST_LENGTH = 1000;
+const LANGUAGES = ['C++', 'Python', 'JavaScript', 'TypeScript', 'Java', 'Go', 'Rust', 'C#', 'Swift', 'Kotlin', 'PHP', 'Ruby', 'HTML', 'CSS', 'SQL'];
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 interface SettingsModalProps {
   isOpen: boolean;
-  // Fixed: Replaced onBack with onClose to align with usage in App.tsx
+  /* Fixed: Changed onBack to onClose to match component implementation and parent component props */
   onClose: () => void;
   user: UserProfile;
   onUpdateProfile?: (updated: UserProfile) => void;
@@ -19,17 +83,6 @@ interface SettingsModalProps {
   isSuperAdmin?: boolean;
   onNavigateAdmin?: () => void;
 }
-
-const THEME_OPTIONS: { id: ReaderTheme, label: string, icon: any, desc: string }[] = [
-    { id: 'slate', label: 'Slate', icon: Palette, desc: 'Classic Neural Prism dark' },
-    { id: 'light', label: 'Paper', icon: Sun, desc: 'Clean high-contrast light' },
-    { id: 'dark', label: 'Night', icon: Moon, desc: 'Deep black for reading' },
-    { id: 'sepia', label: 'Sepia', icon: Coffee, desc: 'Warm low-eye-strain' }
-];
-
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-const LANGUAGES = ['C++', 'Python', 'JavaScript', 'TypeScript', 'Rust', 'Go', 'Java', 'C#', 'Swift', 'PHP', 'HTML/CSS'];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
   isOpen, onClose, user, onUpdateProfile, onUpgradeClick, isSuperAdmin, onNavigateAdmin
@@ -40,6 +93,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [defaultRepo, setDefaultRepo] = useState(user.defaultRepoUrl || '');
   const [defaultLanguage, setDefaultLanguage] = useState(user.defaultLanguage || 'C++');
   const [aiProvider, setAiProvider] = useState<'gemini' | 'openai'>(user.preferredAiProvider || 'gemini');
+  const [ttsProvider, setTtsProvider] = useState<TtsProvider>(user.preferredTtsProvider || 'gemini');
   const [readerTheme, setReaderTheme] = useState<ReaderTheme>(user.preferredReaderTheme || 'slate');
   const [recordingTarget, setRecordingTarget] = useState<'youtube' | 'drive'>(user.preferredRecordingTarget || 'drive');
   const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
@@ -47,6 +101,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [preferredScriptureView, setPreferredScriptureView] = useState<'dual' | 'en' | 'zh'>(user.preferredScriptureView || 'dual');
   const [cloudTtsApiKey, setCloudTtsApiKey] = useState(user.cloudTtsApiKey || '');
   
+  // Audio Test State
+  const [isTestingVoice, setIsTestingVoice] = useState(false);
+  const [testText, setTestText] = useState(() => localStorage.getItem('last_audio_test_text') || 'Neural Prism audio handshake successful. 这是一个神经棱镜音频测试。');
+  const [testResult, setTestResult] = useState<{ status: 'idle' | 'success' | 'error' | 'syncing', msg: string, provider?: string }>({ status: 'idle', msg: '' });
+  const [testLogs, setTestLogs] = useState<string[]>([]);
+
   // Availability State
   const [availability, setAvailability] = useState<UserAvailability>(user.availability || {
       days: [1, 2, 3, 4, 5],
@@ -69,7 +129,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [signaturePreview, setSignaturePreview] = useState(user.savedSignatureUrl || '');
   const [nextCheckNumber, setNextCheckNumber] = useState(user.nextCheckNumber || 1001);
   const [showSignPad, setShowSignPad] = useState(false);
-  const [isUpdatingSignature, setIsUpdatingSignature] = useState(false);
   
   const currentTier = user.subscriptionTier || 'free';
   const isPaid = currentTier === 'pro';
@@ -78,6 +137,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       if (isOpen) {
           setSelectedInterests(user.interests || []);
           setAiProvider(user.preferredAiProvider || 'gemini');
+          setTtsProvider(user.preferredTtsProvider || 'gemini');
           setReaderTheme(user.preferredReaderTheme || 'slate');
           setRecordingTarget(user.preferredRecordingTarget || 'drive');
           setLanguagePreference(user.languagePreference || 'en');
@@ -96,14 +156,68 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setCloudTtsApiKey(user.cloudTtsApiKey || '');
           setResumeUploadStatus('idle');
           setResumeStatusMsg('');
+          setTestResult({ status: 'idle', msg: '' });
+          setTestLogs([]);
       }
   }, [isOpen, user]);
+
+  const addTestLog = (msg: string) => setTestLogs(prev => [...prev, msg].slice(-3));
+
+  const handleRunVoiceTest = async () => {
+      if (!testText.trim()) return;
+      
+      // SYNCHRONOUS PRIMING
+      syncPrimeSpeech();
+      localStorage.setItem('last_audio_test_text', testText);
+      
+      setIsTestingVoice(true);
+      setTestResult({ status: 'syncing', msg: 'Priming Hardware...', provider: ttsProvider });
+      
+      const ctx = getGlobalAudioContext();
+
+      try {
+          addTestLog("Resolving Audio Context...");
+          await warmUpAudioContext(ctx);
+          
+          // Determine logic: If user selected dual, we run their custom text in both engines
+          // This allows testing how the specific voices handle potential mixed text.
+          if (preferredScriptureView === 'dual' || preferredScriptureView === 'en') {
+              addTestLog(`Auditing English Logic (${ttsProvider})...`);
+              await runNeuralAudit(ttsProvider, testText, ctx, 'en', cloudTtsApiKey);
+              if (preferredScriptureView === 'dual') await new Promise(r => setTimeout(r, 1500)); 
+          }
+
+          if (localSessionIdRef.current === playbackSessionIdRef.current && (preferredScriptureView === 'dual' || preferredScriptureView === 'zh')) {
+              addTestLog(`Auditing Chinese Logic (${ttsProvider})...`);
+              await runNeuralAudit(ttsProvider, testText, ctx, 'zh', cloudTtsApiKey);
+          }
+          
+          setTestResult({ status: 'success', msg: `Spectrum Validated: ${ttsProvider.toUpperCase()} Online.`, provider: ttsProvider });
+          addTestLog("Neural handshake finalized.");
+
+      } catch (e: any) {
+          const errMsg = e.message || "Hardware link fault.";
+          setTestResult({ status: 'error', msg: `Audit Failed: ${errMsg}`, provider: ttsProvider });
+          addTestLog("Handshake Refused.");
+          
+          window.dispatchEvent(new CustomEvent('neural-log', { 
+              detail: { text: `[Audit Fault] ${ttsProvider.toUpperCase()}: ${errMsg}`, type: 'error' } 
+          }));
+      } finally {
+          setIsTestingVoice(false);
+      }
+  };
+
+  // For preventing state collision in async tests
+  const playbackSessionIdRef = useRef(0);
+  const localSessionIdRef = useRef(0);
 
   const handleResumeRefraction = async (source: { file?: File, url?: string }) => {
       setResumeUploadStatus('processing');
       setResumeStatusMsg('Neural Spectrum scanning source...');
       
       try {
+          // Fix: Initialization using exclusively process.env.API_KEY as per guidelines
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           let part: any;
 
@@ -167,12 +281,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleAdoptSignature = async () => {
-      // Fixed: Targeting the specific whiteboard canvas for extraction
       const canvas = document.getElementById('whiteboard-canvas-core') as HTMLCanvasElement;
       if (!canvas) return;
       
       const b64 = canvas.toDataURL('image/png', 1.0);
-      // Update local state immediately so user sees it "saved" in memory
       setSignaturePreview(b64);
       setShowSignPad(false);
   };
@@ -181,7 +293,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setIsSaving(true);
       try {
           let finalSigUrl = signaturePreview;
-          // If the preview is a data URL (newly adopted), upload it to storage
           if (signaturePreview && signaturePreview.startsWith('data:')) {
               const res = await fetch(signaturePreview);
               const blob = await res.blob();
@@ -194,6 +305,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               defaultLanguage,
               interests: selectedInterests,
               preferredAiProvider: aiProvider,
+              preferredTtsProvider: ttsProvider,
               preferredReaderTheme: readerTheme,
               preferredRecordingTarget: recordingTarget,
               languagePreference,
@@ -222,7 +334,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleLogout = async () => {
-    // Confirmation removed for seamless experience
     await signOut();
     onClose();
   };
@@ -271,7 +382,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <div className="flex-1 space-y-4 w-full">
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Display Name</label>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 px-1">Display Name</label>
                                 <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all shadow-inner" />
                             </div>
                             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-inner">
@@ -285,8 +396,97 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     <div className="space-y-4">
+                        <div className="flex justify-between items-end px-1">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Speaker size={16} className="text-indigo-400"/> Preferred Speech Engine</h4>
+                        </div>
+                        <div className="p-1.5 bg-slate-950 border border-slate-800 rounded-2xl grid grid-cols-4 gap-1 shadow-inner">
+                            <button onClick={() => setTtsProvider('gemini')} className={`py-2 rounded-xl text-[10px] font-black uppercase transition-all ${ttsProvider === 'gemini' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>Gemini</button>
+                            <button onClick={() => setTtsProvider('google')} className={`py-2 rounded-xl text-[10px] font-black uppercase transition-all ${ttsProvider === 'google' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>Cloud</button>
+                            <button onClick={() => setTtsProvider('openai')} className={`py-2 rounded-xl text-[10px] font-black uppercase transition-all ${ttsProvider === 'openai' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>OpenAI</button>
+                            <button onClick={() => setTtsProvider('system')} className={`py-2 rounded-xl text-[10px] font-black uppercase transition-all ${ttsProvider === 'system' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>Local</button>
+                        </div>
+
+                        {/* Neural Sound Check Enhanced */}
+                        <div className="bg-slate-950/50 border border-slate-800 rounded-[2rem] p-6 space-y-6 shadow-xl relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 p-12 bg-indigo-600/5 blur-[80px] rounded-full pointer-events-none"></div>
+                            
+                            <div className="flex items-center justify-between relative z-10">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-3 rounded-2xl ${isTestingVoice ? 'bg-indigo-600 text-white animate-pulse' : 'bg-slate-900 border border-slate-800 text-indigo-400 shadow-inner'}`}>
+                                        <Activity size={24} />
+                                    </div>
+                                    <div>
+                                        <h5 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">Neural Sound Check</h5>
+                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">Auditing {ttsProvider.toUpperCase()} Linkage</p>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={handleRunVoiceTest} 
+                                    disabled={isTestingVoice || !testText.trim()}
+                                    className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-30 ${isTestingVoice ? 'bg-indigo-600 text-white animate-pulse' : 'bg-white text-slate-900 hover:bg-indigo-50 shadow-indigo-900/20'}`}
+                                >
+                                    {isTestingVoice ? <Loader2 size={16} className="animate-spin"/> : <Sparkles size={16} fill="currentColor"/>}
+                                    Run Audit
+                                </button>
+                            </div>
+
+                            <div className="space-y-3 relative z-10">
+                                <div className="flex justify-between items-center px-1">
+                                    <label className="text-[10px] font-black text-slate-600 uppercase tracking-[0.3em]">Test Logic String</label>
+                                    <span className={`text-[10px] font-mono font-bold ${testText.length >= MAX_TEST_LENGTH ? 'text-red-500' : 'text-slate-500'}`}>
+                                        {testText.length}/{MAX_TEST_LENGTH}
+                                    </span>
+                                </div>
+                                <div className="relative">
+                                    <textarea 
+                                        value={testText}
+                                        onChange={e => setTestText(e.target.value.substring(0, MAX_TEST_LENGTH))}
+                                        placeholder="Enter custom text for mixed-language audit..."
+                                        rows={3}
+                                        className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 text-xs text-indigo-100 font-mono leading-relaxed outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none shadow-inner scrollbar-hide"
+                                    />
+                                    {testText.length >= MAX_TEST_LENGTH && (
+                                        <div className="absolute bottom-2 right-4 flex items-center gap-1.5 text-[9px] font-black text-red-500 uppercase animate-fade-in">
+                                            <AlertTriangle size={10}/> Maximum Handshake Length
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                                <div className="bg-black/60 rounded-2xl p-4 border border-slate-800 min-h-[100px] flex flex-col justify-center shadow-inner">
+                                    <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-2 border-b border-slate-800/50 pb-1">Telemetry Trace</p>
+                                    {testLogs.length === 0 ? (
+                                        <p className="text-[10px] text-slate-700 italic">Awaiting neural trigger...</p>
+                                    ) : (
+                                        <div className="space-y-1">
+                                            {testLogs.map((log, i) => (
+                                                <div key={i} className="flex items-start gap-2 text-[10px] font-mono text-indigo-400/90 animate-fade-in-up">
+                                                    <span className="text-indigo-600 font-bold shrink-0">#</span>
+                                                    <span className="break-words leading-tight">{log}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className={`rounded-2xl p-4 border transition-all flex flex-col justify-center items-center text-center gap-2 shadow-inner ${testResult.status === 'success' ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-400' : testResult.status === 'error' ? 'bg-red-950/20 border-red-500/30 text-red-400' : testResult.status === 'syncing' ? 'bg-indigo-900/10 border-indigo-500/30 text-indigo-400' : 'bg-slate-900 border-slate-800 text-slate-600'}`}>
+                                    {testResult.status === 'success' ? <CheckCircle size={24} className="animate-bounce" /> : testResult.status === 'error' ? <AlertTriangle size={24}/> : <Activity size={24}/>}
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-black uppercase tracking-tighter line-clamp-2">{testResult.msg || 'Spectrum Idle'}</p>
+                                        {testResult.status === 'error' && (
+                                            <div className="flex items-center justify-center gap-1 mt-1 opacity-60">
+                                                <ShieldQuestion size={12}/>
+                                                <span className="text-[8px] font-black uppercase">Handshake Failure</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
                         <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Globe size={16} className="text-indigo-400"/> Primary Language & Neural Voice</h4>
-                        <p className="text-[10px] text-slate-500 uppercase font-black px-1">This setting dictates the default spoken language and UI locale.</p>
                         <div className="p-1.5 bg-slate-950 border border-slate-800 rounded-2xl flex shadow-inner">
                             <button onClick={() => setLanguagePreference('en')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${languagePreference === 'en' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>English</button>
                             <button onClick={() => setLanguagePreference('zh')} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${languagePreference === 'zh' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>Chinese (中文)</button>
@@ -329,7 +529,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Primary Language / Stack</label>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 px-1">Primary Language / Stack</label>
                                 <select 
                                     value={defaultLanguage} 
                                     onChange={e => setDefaultLanguage(e.target.value)} 
@@ -339,17 +539,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Default Repository URL</label>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 px-1">Default Repository URL</label>
                                 <input type="text" value={defaultRepo} onChange={e => setDefaultRepo(e.target.value)} placeholder="https://github.com/owner/repo" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/>
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Headline</label><input type="text" value={headline} onChange={e => setHeadline(e.target.value)} placeholder="Senior Software Engineer..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/></div>
-                            <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Company</label><input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder="Tech Corp" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/></div>
+                            <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 px-1">Headline</label><input type="text" value={headline} onChange={e => setHeadline(e.target.value)} placeholder="Senior Software Engineer..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/></div>
+                            <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 px-1">Company</label><input type="text" value={company} onChange={e => setCompany(e.target.value)} placeholder="Tech Corp" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white text-sm focus:ring-1 focus:ring-indigo-500 outline-none"/></div>
                         </div>
                         <div className="space-y-4">
                             <div className="flex justify-between items-center mb-2 px-1"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Resume Context</label><div className="flex gap-2"><button onClick={handleResumeUrlSelect} className="text-[10px] font-black text-indigo-400 flex items-center gap-1 hover:text-white transition-all"><Globe2 size={12}/> Link PDF</button><button onClick={() => resumeInputRef.current?.click()} className="text-[10px] font-black text-emerald-400 flex items-center gap-1 hover:text-white transition-all"><FileUp size={12}/> Upload</button></div></div>
-                            <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} rows={5} placeholder="AI summary of your skills..." className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-slate-300 focus:ring-1 focus:ring-indigo-500 outline-none resize-none" />
+                            <textarea value={resumeText} onChange={e => setResumeText(e.target.value)} rows={5} placeholder="AI summary of your skills..." className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-slate-300 focus:ring-1 focus:ring-indigo-500 outline-none resize-none shadow-inner leading-relaxed" />
                         </div>
                     </div>
                 </div>
@@ -359,14 +559,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="space-y-8 animate-fade-in">
                     <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-center gap-3"><Calendar className="text-indigo-400" size={24}/><div><h3 className="text-sm font-bold text-white">Office Hours</h3><p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-0.5">Manage appointment requests</p></div></div>
                     <div className="space-y-6">
-                        <div className="flex items-center justify-between p-4 bg-slate-950 border border-slate-800 rounded-2xl"><div><p className="text-sm font-bold text-white">Accept Appointments</p></div><button onClick={() => setAvailability({...availability, enabled: !availability.enabled})} className={`w-12 h-6 rounded-full transition-all relative ${availability.enabled ? 'bg-indigo-600' : 'bg-slate-700'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${availability.enabled ? 'right-1' : 'left-1'}`}></div></button></div>
+                        <div className="flex items-center justify-between p-4 bg-slate-950 border border-slate-800 rounded-2xl shadow-inner"><div><p className="text-sm font-bold text-white">Accept Appointments</p></div><button onClick={() => setAvailability({...availability, enabled: !availability.enabled})} className={`w-12 h-6 rounded-full transition-all relative ${availability.enabled ? 'bg-indigo-600' : 'bg-slate-700'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${availability.enabled ? 'right-1' : 'left-1'}`}></div></button></div>
                         <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 px-1">Available Days</label><div className="flex gap-2">{DAYS.map((day, i) => (<button key={day} onClick={() => toggleDay(i)} className={`flex-1 py-3 rounded-xl border text-xs font-black transition-all ${availability.days.includes(i) ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{day.charAt(0)}</button>))}</div></div>
                     </div>
                 </div>
             )}
 
             {activeTab === 'interests' && (
-                <div className="space-y-6 animate-fade-in">{Object.keys(TOPIC_CATEGORIES).map(category => (<div key={category} className="bg-slate-800/30 border border-slate-800 rounded-2xl p-5"><h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-slate-800 pb-2"><HashIcon size={12} className="text-indigo-400" /> {category}</h4><div className="flex flex-wrap gap-2">{TOPIC_CATEGORIES[category].map(tag => (<button key={tag} onClick={() => toggleInterest(tag)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95 ${selectedInterests.includes(tag) ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-50'}`}>{tag}</button>))}</div></div>))}</div>
+                <div className="space-y-6 animate-fade-in">{Object.keys(TOPIC_CATEGORIES).map(category => (<div key={category} className="bg-slate-800/30 border border-slate-800 rounded-2xl p-5 shadow-xl"><h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-slate-800 pb-2"><HashIcon size={12} className="text-indigo-400" /> {category}</h4><div className="flex flex-wrap gap-2">{TOPIC_CATEGORIES[category].map(tag => (<button key={tag} onClick={() => toggleInterest(tag)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95 ${selectedInterests.includes(tag) ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-50'}`}>{tag}</button>))}</div></div>))}</div>
             )}
 
             {activeTab === 'banking' && (
@@ -377,13 +577,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <div className="space-y-6">
                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><MapPin size={12} className="text-indigo-400"/> Ledger Address</label>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-1 flex items-center gap-1"><MapPin size={12} className="text-indigo-400"/> Ledger Address</label>
                             <textarea value={senderAddress} onChange={(e) => setSenderAddress(e.target.value)} rows={3} placeholder="123 Neural Way, San Francisco, CA..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner"/>
                         </div>
                         
                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1"><Fingerprint size={12} className="text-emerald-400"/> Authorized Signature</label>
-                            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 flex flex-col items-center gap-4 relative group">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 px-1 flex items-center gap-1"><Fingerprint size={12} className="text-emerald-400"/> Authorized Signature</label>
+                            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 flex flex-col items-center gap-4 relative group shadow-inner">
                                 {signaturePreview ? (
                                     <div className="relative w-full max-w-xs flex flex-col items-center">
                                         <img 
@@ -416,12 +616,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
 
                         <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><Hash size={12} className="text-indigo-400"/> Next Asset Serial Number</label>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-1 flex items-center gap-1"><Hash size={12} className="text-indigo-400"/> Next Asset Serial Number</label>
                             <input 
                                 type="number" 
                                 value={nextCheckNumber} 
                                 onChange={(e) => setNextCheckNumber(parseInt(e.target.value) || 1001)} 
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white font-mono text-sm focus:ring-1 focus:ring-indigo-500 outline-none"
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white font-mono text-sm focus:ring-1 focus:ring-indigo-500 outline-none shadow-inner"
                             />
                         </div>
                     </div>
@@ -438,10 +638,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       {showSignPad && (
           <div className="fixed inset-0 z-[150] bg-slate-950/95 flex items-center justify-center p-6 animate-fade-in">
               <div className="w-full max-w-2xl bg-white rounded-3xl overflow-hidden shadow-2xl border-8 border-indigo-600">
-                  <div className="p-6 bg-indigo-600 flex justify-between items-center">
-                    <h3 className="text-white font-black uppercase tracking-widest flex items-center gap-2"><PenTool size={20}/> Member Signature Capture</h3>
-                    <button onClick={() => setShowSignPad(false)} className="text-white/60 hover:text-white transition-colors"><X size={24}/></button>
-                  </div>
+                  <div className="p-6 bg-indigo-600 flex justify-between items-center"><h3 className="text-white font-black uppercase tracking-widest flex items-center gap-2"><PenTool size={20}/> Member Signature Capture</h3><button onClick={() => setShowSignPad(false)} className="text-white/60 hover:text-white transition-colors"><X size={24}/></button></div>
                   <div className="h-64 bg-white relative">
                     <Whiteboard backgroundColor="#ffffff" initialColor="#000000" onChange={() => {}} onBack={() => setShowSignPad(false)}/>
                   </div>

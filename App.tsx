@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -50,14 +51,15 @@ import { BookStudio } from './components/BookStudio';
 import { FeedbackManager } from './components/FeedbackManager';
 
 import { auth, db } from './services/firebaseConfig';
-import { onAuthStateChanged } from '@firebase/auth';
-import { onSnapshot, doc } from '@firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import { onSnapshot, doc } from 'firebase/firestore';
 import { getUserChannels, saveUserChannel } from './utils/db';
 import { HANDCRAFTED_CHANNELS } from './utils/initialData';
 import { stopAllPlatformAudio } from './utils/audioUtils';
-import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, syncUserProfile, publishChannelToFirestore, isUserAdmin, updateUserProfile, saveUserFeedback } from './services/firestoreService';
+import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, syncUserProfile, publishChannelToFirestore, isUserAdmin, updateUserProfile, saveUserFeedback, uploadFileToStorage } from './services/firestoreService';
 import { getSovereignSession, isJudgeSession } from './services/authService';
 import { generateSecureId } from './utils/idUtils';
+import { generateChannelCoverArt } from './services/channelGenerator';
 
 interface ErrorBoundaryProps { children?: ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; error: Error | null; }
@@ -247,7 +249,6 @@ const App: React.FC = () => {
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
-  // --- STABILITY CORE: Throttled Neural Log Buffer ---
   const [showConsole, setShowConsole] = useState(false);
   const [consoleTab, setConsoleTab] = useState<'trace' | 'feedback'>('trace');
   const [isLogPaused, setIsLogPaused] = useState(false);
@@ -255,13 +256,11 @@ const App: React.FC = () => {
   const logBufferRef = useRef<SystemLogMsg[]>([]);
   const lastUpdateRef = useRef<number>(0);
 
-  // Feedback State
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackType, setFeedbackType] = useState<'bug' | 'feature' | 'general'>('general');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
 
-  // Log Batcher
   useEffect(() => {
     const interval = setInterval(() => {
         const now = Date.now();
@@ -278,9 +277,36 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [isLogPaused]);
 
-  const addSystemLog = useCallback((text: string, type: SystemLogMsg['type'] = 'info') => {
-      if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === text) return;
-      logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text, type });
+  const addSystemLog = useCallback((text: any, type: SystemLogMsg['type'] = 'info') => {
+      let cleanText = "";
+      try {
+          if (typeof text === 'string') {
+              cleanText = text;
+          } else if (text instanceof Error) {
+              cleanText = text.stack || text.message;
+          } else if (text !== null && typeof text === 'object') {
+              // ROBUST CIRCULAR HANDSHAKE: Track seen objects via WeakSet to prevent crash
+              const cache = new WeakSet();
+              cleanText = JSON.stringify(text, (key, value) => {
+                  if (typeof value === 'object' && value !== null) {
+                      if (cache.has(value)) return '[Circular Ref]';
+                      cache.add(value);
+                      // Skip heavy instance structures but log their presence
+                      if (Object.getPrototypeOf(value) !== Object.prototype && !Array.isArray(value)) {
+                          return `[Instance: ${value.constructor.name || 'Object'}]`;
+                      }
+                  }
+                  return value;
+              }, 2) || String(text);
+          } else {
+              cleanText = String(text);
+          }
+      } catch (e) { 
+          cleanText = "[Internal Log Serialization Blocked]"; 
+      }
+
+      if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText) return;
+      logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type });
   }, []);
 
   useEffect(() => {
@@ -384,7 +410,15 @@ const App: React.FC = () => {
       const unsub = onSnapshot(doc(db, 'users', currentUser.uid), s => { 
           if(s.exists()) {
               const profile = s.data() as UserProfile;
-              setUserProfile(prev => JSON.stringify(prev) === JSON.stringify(profile) ? prev : profile);
+              setUserProfile(prev => {
+                  if (!prev) return profile;
+                  if (prev.coinBalance !== profile.coinBalance || 
+                      prev.subscriptionTier !== profile.subscriptionTier ||
+                      prev.displayName !== profile.displayName) {
+                      return profile;
+                  }
+                  return prev;
+              });
               if (profile.languagePreference && profile.languagePreference !== language) {
                   setLanguage(profile.languagePreference);
               }
@@ -429,7 +463,6 @@ const App: React.FC = () => {
   const handleSendFeedback = async () => {
     if (!feedbackText.trim() || isSubmittingFeedback) return;
     setIsSubmittingFeedback(true);
-    
     try {
         const feedback: UserFeedback = {
             id: generateSecureId(),
@@ -438,24 +471,16 @@ const App: React.FC = () => {
             viewId: activeViewID,
             message: feedbackText,
             type: feedbackType,
-            logs: visibleLogs.slice(0, 20), // Bundle last 20 logs for AI studio debugging
+            logs: visibleLogs.slice(0, 20),
             timestamp: Date.now(),
             status: 'open'
         };
-
-        addSystemLog(`Packaging neural trace for ${feedbackType} report...`, "info");
         await saveUserFeedback(feedback);
-        addSystemLog(`Handshaking with AI Studio Feedback API...`, "success");
-        addSystemLog(`Self-Correction loop initiated. Refraction pending.`, "success");
-        
         setFeedbackText('');
         setFeedbackSuccess(true);
         setTimeout(() => setFeedbackSuccess(false), 5000);
-    } catch (e: any) {
-        addSystemLog(`Feedback sync failed: ${e.message}`, "error");
-    } finally {
-        setIsSubmittingFeedback(false);
-    }
+    } catch (e: any) { addSystemLog(`Feedback sync failed: ${e.message}`, "error"); } 
+    finally { setIsSubmittingFeedback(false); }
   };
 
   const showMagicCreator = activeViewID === 'directory' || activeViewID === 'podcast_detail';
@@ -480,13 +505,13 @@ const App: React.FC = () => {
         { id: 'chat', label: t.chat, icon: MessageSquare, action: () => handleSetViewState('chat'), color: 'text-blue-400', restricted: true },
         { id: 'mentorship', label: t.mentorship, icon: Users, action: () => handleSetViewState('mentorship'), color: 'text-emerald-400', restricted: true },
         { id: 'shipping_labels', label: t.shipping, icon: Truck, action: () => handleSetViewState('shipping_labels'), color: 'text-emerald-400', restricted: true },
-        { id: 'icon_generator', label: t.icons, icon: AppWindow, iconColor: 'text-cyan-400', action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400', restricted: true },
+        { id: 'icon_generator', label: t.icons, icon: AppWindow, action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400', restricted: true },
         { id: 'code_studio', label: t.code, icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400', restricted: true },
         { id: 'notebook_viewer', label: t.notebooks, icon: Book, action: () => handleSetViewState('notebook_viewer'), color: 'text-orange-300', restricted: true },
         { id: 'whiteboard', label: t.whiteboard, icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400', restricted: true },
     ];
     return { free: list.filter(a => !a.restricted), pro: list.filter(a => a.restricted) };
-  }, [t, handleSetViewState, handleStartLiveSession, isProMember]);
+  }, [t, handleSetViewState, handleStartLiveSession]);
 
   if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Spectrum...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} />;
@@ -511,7 +536,7 @@ const App: React.FC = () => {
                       )}
                       {isProMember && (
                           <>
-                            <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex justify-between items-center"><div className="flex items-center gap-2"><h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">{t.fullSpectrum}</h3><Sparkles size={12} className="text-indigo-400 animate-pulse" /></div><div className="flex items-center gap-1.5 bg-indigo-600 text-white px-2 py-0.5 rounded-full shadow-lg border border-indigo-400/50"><Crown size={10} fill="currentColor"/><span className="text-[8px] font-black uppercase">Refracted</span></div></div>
+                            <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex justify-between items-center"><div className="flex items-center gap-2"><h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">{t.fullSpectrum}</h3><Sparkles size={12} className="text-indigo-400" /></div><div className="flex items-center gap-1.5 bg-indigo-600 text-white px-2 py-0.5 rounded-full shadow-lg border border-indigo-400/50"><Crown size={10} fill="currentColor"/><span className="text-[8px] font-black uppercase">Refracted</span></div></div>
                             <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-1 max-h-[60vh] overflow-y-auto scrollbar-hide">{[...appsByTier.free, ...appsByTier.pro].map(app => (<button key={app.id} onClick={() => { app.action(); setIsAppsMenuOpen(false); }} className="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-600/10 transition-all group border border-transparent hover:border-indigo-500/10"><div className={`p-2 rounded-lg bg-slate-800 border border-slate-700 group-hover:border-indigo-500/30 transition-all`}><app.icon size={16} className={app.color}/></div><span className="text-xs font-bold text-slate-300 group-hover:text-white transition-colors">{app.label}</span></button>))}</div>
                           </>
                       )}
@@ -613,7 +638,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.1.1-SYN</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.6.0-SYN</p></div>
             </div>
         </div>
 

@@ -541,10 +541,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         const newIndex = filesRef.current.length - 1;
                         setActiveFileIndex(newIndex);
                         activeFileIndexRef.current = newIndex;
-                        service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: "File created and focused in workspace." } });
+                        service.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "File created and focused in workspace." } } });
                     } else if (fc.name === 'get_current_code') {
                         const active = filesRef.current[activeFileIndexRef.current];
-                        service.sendToolResponse({ id: fc.id, name: fc.name, response: { code: active?.content || "" } });
+                        service.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { code: active?.content || "" } } });
                     } else if (fc.name === 'update_active_file') {
                         const newContent = args.content || args.new_content || args.code;
                         if (newContent !== undefined) {
@@ -560,7 +560,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                 }
                             }
                         }
-                        service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: "File updated." } });
+                        service.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "File updated." } } });
                     }
                 }
             }
@@ -649,7 +649,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           ${finalCodeStr}`;
 
           const response = await ai.models.generateContent({ 
-            model: 'gemini-3-flash-preview', 
+            model: 'gemini-3-pro-preview', 
             contents: prompt, 
             config: { 
                 thinkingConfig: { thinkingBudget: 0 },
@@ -823,7 +823,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         </div>
                     </div>
                     <button onClick={handleStartInterview} disabled={isLoading} className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-900/40 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50">
-                        {isLoading ? <Loader2 className="animate-spin" size={24}/> : <Sparkles size={24}/>}
+                        {/* Fix: Removed duplicate size attribute */}
+                        {isLoading ? <Loader2 size={24} className="animate-spin" /> : <Sparkles size={24}/>}
                         Initialize Sovereign Session
                     </button>
                 </div>

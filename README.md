@@ -1,5 +1,5 @@
 
-# 🌈 Neural Prism Platform v6.5.0
+# 🌈 Neural Prism Platform v6.6.0
 
 **Refracting Super-Intelligence into Human Utility.**
 

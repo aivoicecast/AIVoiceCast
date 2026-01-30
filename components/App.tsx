@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -247,7 +248,6 @@ const App: React.FC = () => {
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
-  // --- STABILITY CORE: Throttled Neural Log Buffer ---
   const [showConsole, setShowConsole] = useState(false);
   const [consoleTab, setConsoleTab] = useState<'trace' | 'feedback'>('trace');
   const [isLogPaused, setIsLogPaused] = useState(false);
@@ -255,13 +255,11 @@ const App: React.FC = () => {
   const logBufferRef = useRef<SystemLogMsg[]>([]);
   const lastUpdateRef = useRef<number>(0);
 
-  // Feedback State
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackType, setFeedbackType] = useState<'bug' | 'feature' | 'general'>('general');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
 
-  // Log Batcher
   useEffect(() => {
     const interval = setInterval(() => {
         const now = Date.now();
@@ -278,9 +276,36 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [isLogPaused]);
 
-  const addSystemLog = useCallback((text: string, type: SystemLogMsg['type'] = 'info') => {
-      if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === text) return;
-      logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text, type });
+  const addSystemLog = useCallback((text: any, type: SystemLogMsg['type'] = 'info') => {
+      let cleanText = "";
+      try {
+          if (typeof text === 'string') {
+              cleanText = text;
+          } else if (text instanceof Error) {
+              cleanText = text.stack || text.message;
+          } else if (text !== null && typeof text === 'object') {
+              // ROBUST CIRCULAR HANDSHAKE: Track seen objects via WeakSet to prevent crash
+              const cache = new WeakSet();
+              cleanText = JSON.stringify(text, (key, value) => {
+                  if (typeof value === 'object' && value !== null) {
+                      if (cache.has(value)) return '[Circular Ref]';
+                      cache.add(value);
+                      // Skip heavy instance structures but log their presence
+                      if (Object.getPrototypeOf(value) !== Object.prototype && !Array.isArray(value)) {
+                          return `[Instance: ${value.constructor.name || 'Object'}]`;
+                      }
+                  }
+                  return value;
+              }, 2) || String(text);
+          } else {
+              cleanText = String(text);
+          }
+      } catch (e) { 
+          cleanText = "[Internal Log Serialization Blocked]"; 
+      }
+
+      if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText) return;
+      logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type });
   }, []);
 
   useEffect(() => {
@@ -384,7 +409,15 @@ const App: React.FC = () => {
       const unsub = onSnapshot(doc(db, 'users', currentUser.uid), s => { 
           if(s.exists()) {
               const profile = s.data() as UserProfile;
-              setUserProfile(prev => JSON.stringify(prev) === JSON.stringify(profile) ? prev : profile);
+              setUserProfile(prev => {
+                  if (!prev) return profile;
+                  if (prev.coinBalance !== profile.coinBalance || 
+                      prev.subscriptionTier !== profile.subscriptionTier ||
+                      prev.displayName !== profile.displayName) {
+                      return profile;
+                  }
+                  return prev;
+              });
               if (profile.languagePreference && profile.languagePreference !== language) {
                   setLanguage(profile.languagePreference);
               }
@@ -429,7 +462,6 @@ const App: React.FC = () => {
   const handleSendFeedback = async () => {
     if (!feedbackText.trim() || isSubmittingFeedback) return;
     setIsSubmittingFeedback(true);
-    
     try {
         const feedback: UserFeedback = {
             id: generateSecureId(),
@@ -438,24 +470,16 @@ const App: React.FC = () => {
             viewId: activeViewID,
             message: feedbackText,
             type: feedbackType,
-            logs: visibleLogs.slice(0, 20), // Bundle last 20 logs for AI studio debugging
+            logs: visibleLogs.slice(0, 20),
             timestamp: Date.now(),
             status: 'open'
         };
-
-        addSystemLog(`Packaging neural trace for ${feedbackType} report...`, "info");
         await saveUserFeedback(feedback);
-        addSystemLog(`Handshaking with AI Studio Feedback API...`, "success");
-        addSystemLog(`Self-Correction loop initiated. Refraction pending.`, "success");
-        
         setFeedbackText('');
         setFeedbackSuccess(true);
         setTimeout(() => setFeedbackSuccess(false), 5000);
-    } catch (e: any) {
-        addSystemLog(`Feedback sync failed: ${e.message}`, "error");
-    } finally {
-        setIsSubmittingFeedback(false);
-    }
+    } catch (e: any) { addSystemLog(`Feedback sync failed: ${e.message}`, "error"); } 
+    finally { setIsSubmittingFeedback(false); }
   };
 
   const showMagicCreator = activeViewID === 'directory' || activeViewID === 'podcast_detail';
@@ -480,13 +504,13 @@ const App: React.FC = () => {
         { id: 'chat', label: t.chat, icon: MessageSquare, action: () => handleSetViewState('chat'), color: 'text-blue-400', restricted: true },
         { id: 'mentorship', label: t.mentorship, icon: Users, action: () => handleSetViewState('mentorship'), color: 'text-emerald-400', restricted: true },
         { id: 'shipping_labels', label: t.shipping, icon: Truck, action: () => handleSetViewState('shipping_labels'), color: 'text-emerald-400', restricted: true },
-        { id: 'icon_generator', label: t.icons, icon: AppWindow, iconColor: 'text-cyan-400', action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400', restricted: true },
+        { id: 'icon_generator', label: t.icons, icon: AppWindow, action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400', restricted: true },
         { id: 'code_studio', label: t.code, icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400', restricted: true },
         { id: 'notebook_viewer', label: t.notebooks, icon: Book, action: () => handleSetViewState('notebook_viewer'), color: 'text-orange-300', restricted: true },
         { id: 'whiteboard', label: t.whiteboard, icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400', restricted: true },
     ];
     return { free: list.filter(a => !a.restricted), pro: list.filter(a => a.restricted) };
-  }, [t, handleSetViewState, handleStartLiveSession, isProMember]);
+  }, [t, handleSetViewState, handleStartLiveSession]);
 
   if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Spectrum...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} />;
@@ -523,7 +547,7 @@ const App: React.FC = () => {
            </div>
            <div className="flex items-center gap-3 sm:gap-4">
               <Notifications />
-              <button onClick={() => setShowConsole(!showConsole)} className={`p-2 transition-all rounded-lg ${showConsole ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title="Neural Diagnostics"><Bug size={18} className={!showConsole ? 'text-red-500' : ''} /></button>
+              <button onClick={() => setShowConsole(!showConsole)} className={`p-2 transition-all rounded-lg ${showConsole ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title="Neural Diagnostics"><Bug size={18} className={!showConsole ? 'animate-pulse text-red-500' : ''} /></button>
               <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-white transition-colors" title="Reload Web App"><RefreshCcw size={18} /></button>
               {userProfile && (<button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex"><Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span></button>)}
               {showMagicCreator && (<button onClick={() => isProMember ? setIsVoiceCreateOpen(true) : setIsPricingModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95">{!isProMember && <Lock size={12} className="mr-0.5 text-indigo-300"/>}<span>{t.magic}</span></button>)}

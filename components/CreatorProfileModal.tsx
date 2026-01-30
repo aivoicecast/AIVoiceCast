@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import { X, User, MessageSquare, Heart, Users, Check, Bell, Play, ShieldCheck } from 'lucide-react';
 import { Channel, UserProfile } from '../types';
-import { getUserProfile, followUser, unfollowUser, getUserProfileByEmail, getChannelsByIds, getCreatorChannels, isUserAdmin } from '../services/firestoreService';
+// Fixed: Removed unused getUserProfileByEmail
+import { getUserProfile, followUser, unfollowUser, getChannelsByIds, getCreatorChannels, isUserAdmin } from '../services/firestoreService';
 
 interface CreatorProfileModalProps {
   isOpen: boolean;

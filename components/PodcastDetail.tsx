@@ -1,29 +1,25 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Channel, GeneratedLecture, Chapter, SubTopic, Attachment, UserProfile, AgentMemory } from '../types';
+import { Channel, GeneratedLecture, Chapter, SubTopic, UserProfile, TtsProvider } from '../types';
 import { 
-  ArrowLeft, BookOpen, FileText, Download, Loader2, ChevronDown, ChevronRight, ChevronLeft, 
-  Check, Printer, FileDown, Info, Sparkles, Book, CloudDownload, Music, Package, 
-  FileAudio, Zap, Radio, CheckCircle, ListTodo, Share2, Play, Pause, Square, Volume2, 
-  RefreshCw, RefreshCcw, Wand2, Edit3, Save, ShieldCheck, ImageIcon, Lock, Cloud, 
-  BookText, Languages, X, AlertTriangle, Database, Terminal, SkipBack, SkipForward, 
-  QrCode, Activity, Image as ImageIconLucide, VolumeX, BookMarked, FileOutput, 
-  User, MessageSquare, Bookmark 
+  ArrowLeft, BookOpen, Loader2, ChevronDown, ChevronRight,
+  Sparkles, Play, Pause, Volume2, 
+  RefreshCw, X, AlertTriangle, PlayCircle, 
+  CheckCircle, Gauge, Speaker, Zap, BrainCircuit, SkipBack, SkipForward,
+  Database, Languages, FileDown, ShieldCheck, Printer, Bookmark, CloudDownload, CloudCheck, HardDrive, BookText, CloudUpload, Archive, FileText
 } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { generateChannelCoverArt } from '../services/channelGenerator';
-import { synthesizeSpeech } from '../services/tts';
-import { cacheLectureScript, getCachedLectureScript, getAudioKeys, getLocalAsset, saveLocalAsset } from '../utils/db';
-import { getGlobalAudioContext, registerAudioOwner, warmUpAudioContext, connectOutput } from '../utils/audioUtils';
+import { synthesizeSpeech, speakSystem } from '../services/tts';
+import { getCachedLectureScript, cacheLectureScript, saveLocalAsset } from '../utils/db';
+import { getGlobalAudioContext, registerAudioOwner, warmUpAudioContext, connectOutput, getSystemVoicesAsync, syncPrimeSpeech, SPEECH_REGISTRY } from '../utils/audioUtils';
 import { MarkdownView } from './MarkdownView';
-import { auth, db } from '../services/firebaseConfig';
-import { getCloudCachedLecture, uploadFileToStorage, isUserAdmin } from '../services/firestoreService';
+import { getCloudCachedLecture, saveCloudCachedLecture, updateUserProfile } from '../services/firestoreService';
+import { Visualizer } from './Visualizer';
+import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { generateSecureId } from '../utils/idUtils';
-import { Visualizer } from './Visualizer';
-import { collection, query, where, getDocs } from '@firebase/firestore';
-import { GoogleGenAI } from '@google/genai';
-import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
 
 export const CHINESE_FONT_STACK = '"Microsoft YaHei", "PingFang SC", "STHeiti", sans-serif';
 export const SERIF_FONT_STACK = 'Georgia, "Times New Roman", STSong, "SimSun", serif';
@@ -39,34 +35,33 @@ interface PodcastDetailProps {
   isProMember: boolean;
 }
 
-interface NodeStatus {
-    script: boolean;
-    audioCloud: boolean;
-    audioLocal: boolean;
-    isChecking: boolean;
-}
+type NodeStatus = 'local' | 'cloud' | 'none' | 'checking' | 'static';
 
 export const PodcastDetail: React.FC<PodcastDetailProps> = ({ 
   channel, onBack, onStartLiveSession, language, currentUser, userProfile, onUpdateChannel, isProMember 
 }) => {
-  const [isAuditing, setIsAuditing] = useState(false);
-  const [ledgerStatus, setLedgerStatus] = useState<Record<string, NodeStatus>>({});
-  const [isGeneratingArt, setIsGeneratingArt] = useState(false);
-  const [imageError, setImageError] = useState(false);
-  const [localArtPreview, setLocalArtPreview] = useState<string | null>(null);
-  const [activeReadingSubTopicId, setActiveReadingSubTopicId] = useState<string | null>(null);
+  const [activeSubTopicId, setActiveSubTopicId] = useState<string | null>(null);
   const [activeLecture, setActiveLecture] = useState<GeneratedLecture | null>(null);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(-1);
-  const [isReadingSequentially, setIsReadingSequentially] = useState(false);
-  const [bufferingSubTopicId, setBufferingSubTopicId] = useState<string | null>(null);
-  const [isGeneratingBook, setIsGeneratingBook] = useState(false);
-  const [bookProgress, setBookProgress] = useState("");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [isSyncingContent, setIsSyncingContent] = useState(false);
+  const [syncPhase, setSyncPhase] = useState<'registry' | 'vault' | 'neural'>('registry');
   const [playedSubTopicIds, setPlayedSubTopicIds] = useState<Set<string>>(new Set());
   const [liveVolume, setLiveVolume] = useState(0);
   
-  const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  const playbackSessionRef = useRef(0);
-  const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({});
+  const [currentProvider, setCurrentProvider] = useState<TtsProvider>(userProfile?.preferredTtsProvider || 'system');
+  const [showProviderMenu, setShowProviderMenu] = useState(false);
+
+  const [isBatchSynthesizing, setIsBatchSynthesizing] = useState(false);
+  const [isExportingBook, setIsExportingBook] = useState(false);
+  const [isExportingText, setIsExportingText] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
+
+  const dispatchLog = useCallback((msg: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
+      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: msg, type } }));
+  }, []);
 
   const chapters = useMemo(() => {
       if (channel.chapters && channel.chapters.length > 0) return channel.chapters;
@@ -77,412 +72,563 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
 
   const flatCurriculum = useMemo(() => chapters.flatMap(c => c.subTopics), [chapters]);
   
-  const t = { 
-      generateArt: language === 'zh' ? '重构封面艺术' : 'Refract Cover Art',
-      synthesizeBook: language === 'zh' ? '合成神经书籍' : 'Synthesize Book',
-      host: language === 'zh' ? '主持人' : 'Host'
+  const currentSubTopicIndex = useMemo(() => 
+    flatCurriculum.findIndex(s => s.id === activeSubTopicId), 
+  [flatCurriculum, activeSubTopicId]);
+
+  const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const playbackSessionRef = useRef(0);
+  const mountedRef = useRef(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  
+  const nextAudioBufferRef = useRef<Map<number, AudioBuffer>>(new Map());
+
+  const checkRegistryNode = async (sub: SubTopic): Promise<NodeStatus> => {
+    const spotlight = SPOTLIGHT_DATA[channel.id];
+    if (spotlight && spotlight.lectures[sub.title]) return 'static';
+
+    const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
+    const local = await getCachedLectureScript(cacheKey);
+    if (local) return 'local';
+    const cloud = await getCloudCachedLecture(channel.id, sub.id, language);
+    if (cloud) return 'cloud';
+    return 'none';
   };
 
-  const dispatchLog = (msg: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
-      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: msg, type } }));
-  };
+  const updateRegistryStatus = useCallback(async () => {
+    const statuses: Record<string, NodeStatus> = {};
+    for (const sub of flatCurriculum) {
+        statuses[sub.id] = await checkRegistryNode(sub);
+    }
+    setNodeStatuses(statuses);
+  }, [channel.id, flatCurriculum, language]);
 
-  const stopSequentialPlayback = useCallback(() => {
+  useEffect(() => {
+    mountedRef.current = true;
+    updateRegistryStatus();
+    return () => { mountedRef.current = false; stopAllAudio('Unmount'); };
+  }, [updateRegistryStatus]);
+
+  useEffect(() => {
+    if (activeLecture && currentSectionIndex >= 0) {
+        const target = sectionRefs.current[currentSectionIndex];
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [currentSectionIndex, activeLecture]);
+
+  const stopAllAudio = useCallback((context: string = 'User') => {
       playbackSessionRef.current++;
-      setIsReadingSequentially(false);
-      setActiveReadingSubTopicId(null);
-      setActiveLecture(null);
-      setCurrentSectionIndex(-1);
-      setBufferingSubTopicId(null);
+      setIsPlaying(false);
+      setIsBuffering(false);
       setLiveVolume(0);
       activeSourcesRef.current.forEach(s => { try { s.stop(); s.disconnect(); } catch(e) {} });
       activeSourcesRef.current.clear();
-      sectionRefs.current = {};
       if (window.speechSynthesis) window.speechSynthesis.cancel();
-  }, []);
+      SPEECH_REGISTRY.clear();
+      nextAudioBufferRef.current.clear();
+      dispatchLog(`[Playback] Stopped (Context: ${context}).`, 'info');
+  }, [dispatchLog]);
 
-  const handlePlaySubTopic = async (sub: SubTopic) => {
-    if (activeReadingSubTopicId === sub.id) {
-        stopSequentialPlayback();
-        return;
-    }
+  const handleSelectSubTopic = async (sub: SubTopic, shouldStop = true) => {
+      if (activeSubTopicId === sub.id) return activeLecture;
+      if (shouldStop) stopAllAudio('Switch Topic');
+      
+      setActiveSubTopicId(sub.id);
 
-    stopSequentialPlayback();
-    setActiveReadingSubTopicId(sub.id);
-    setBufferingSubTopicId(sub.id);
-    setIsReadingSequentially(true);
+      // --- CRITICAL BYPASS FOR STATIC CHANNELS (JUDGE DEEP DIVE) ---
+      const spotlight = SPOTLIGHT_DATA[channel.id];
+      if (spotlight && spotlight.lectures[sub.title]) {
+          const staticLecture = spotlight.lectures[sub.title];
+          dispatchLog(`[Static Registry] Loading source-defined manuscript for: ${sub.title}`, 'success');
+          setActiveLecture(staticLecture);
+          setIsSyncingContent(false);
+          setCurrentSectionIndex(-1);
+          return staticLecture;
+      }
 
-    const MY_TOKEN = `Sequential:${channel.id}:${sub.id}`;
-    const localSession = ++playbackSessionRef.current;
-    registerAudioOwner(MY_TOKEN, stopSequentialPlayback);
+      setIsSyncingContent(true);
+      setSyncPhase('registry');
+      setActiveLecture(null);
+      setCurrentSectionIndex(-1);
 
-    const ctx = getGlobalAudioContext();
-    await warmUpAudioContext(ctx);
-
-    try {
-        const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
-        let lecture = await getCachedLectureScript(cacheKey);
-        if (!lecture) {
-            lecture = await getCloudCachedLecture(channel.id, sub.id, language);
-            if (lecture) await cacheLectureScript(cacheKey, lecture);
-        }
-        if (!lecture) {
-            lecture = await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName);
-            if (lecture) await cacheLectureScript(cacheKey, lecture);
-        }
-
-        if (lecture && localSession === playbackSessionRef.current) {
-            setActiveLecture(lecture);
-            setBufferingSubTopicId(null);
-            for (let i = 0; i < lecture.sections.length; i++) {
-                if (localSession !== playbackSessionRef.current) break;
-                setCurrentSectionIndex(i); 
-                const section = lecture.sections[i];
-                const voice = section.speaker === 'Teacher' ? (channel.voiceName || 'Zephyr') : 'Puck';
-                const result = await synthesizeSpeech(section.text, voice, ctx, 'gemini', language, {
-                    channelId: channel.id, topicId: sub.id, nodeId: `node_${channel.id}_${sub.id}_${i}_${language}`
-                });
-                if (result.buffer && localSession === playbackSessionRef.current) {
-                    setLiveVolume(0.8);
-                    await new Promise<void>((resolve) => {
-                        const source = ctx.createBufferSource();
-                        source.buffer = result.buffer;
-                        connectOutput(source, ctx);
-                        activeSourcesRef.current.add(source);
-                        source.onended = () => { activeSourcesRef.current.delete(source); setLiveVolume(0); resolve(); };
-                        source.start(0);
-                    });
-                }
-                if (localSession !== playbackSessionRef.current) break;
-                await new Promise(r => setTimeout(r, 800));
-            }
-        }
-    } catch (e: any) { stopSequentialPlayback(); }
-  };
-
-  const generateChapterSummary = async (ch: Chapter): Promise<string> => {
       try {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const langText = language === 'zh' ? '使用简体中文输出。' : 'Output in English.';
-          const prompt = `Write a technical 2-sentence executive summary for a book chapter titled "${ch.title}". ${langText} Focus on the core architectural or logical takeaways.`;
-          const res = await ai.models.generateContent({
-              model: 'gemini-3-flash-preview',
-              contents: prompt,
-              config: { thinkingConfig: { thinkingBudget: 0 } }
-          });
-          return res.text || "Summary pending.";
-      } catch (e) { return "Summary unavailable."; }
+          const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
+          let lecture = await getCachedLectureScript(cacheKey);
+          if (!lecture) {
+              lecture = await getCloudCachedLecture(channel.id, sub.id, language);
+              if (!lecture) {
+                  setSyncPhase('neural');
+                  dispatchLog(`Script missing for ${sub.title}. Triggering Neural Synthesis...`, 'info');
+                  lecture = await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName);
+                  if (lecture) setSyncPhase('vault');
+              }
+              if (lecture) {
+                  await cacheLectureScript(cacheKey, lecture);
+                  updateRegistryStatus();
+              }
+          }
+          if (lecture && mountedRef.current) {
+              setActiveLecture(lecture);
+              return lecture;
+          }
+      } catch (e: any) {
+          dispatchLog(`[Vault Engine] Fault: ${e.message}`, 'error');
+      } finally {
+          setIsSyncingContent(false);
+      }
+      return null;
   };
 
-  const handleDownloadFullBook = async () => {
-      setIsGeneratingBook(true);
-      setBookProgress("Initializing Publishing Engine...");
+  const handleBatchSynthesize = async () => {
+      if (isBatchSynthesizing) return;
+      setIsBatchSynthesizing(true);
+      setBatchProgress({ current: 0, total: flatCurriculum.length });
       
       try {
-          const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: 'a4' });
-          const pageWidth = pdf.internal.pageSize.getWidth();
-          const pageHeight = pdf.internal.pageSize.getHeight();
-          const sessionHash = generateSecureId().substring(0, 12).toUpperCase();
-          const channelUrl = `${window.location.origin}?view=podcast_detail&channelId=${channel.id}`;
-          const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(channelUrl)}`;
-
-          const captureContainer = document.createElement('div');
-          captureContainer.style.width = '750px'; 
-          captureContainer.style.position = 'fixed';
-          captureContainer.style.left = '-10000px';
-          captureContainer.style.backgroundColor = '#ffffff';
-          document.body.appendChild(captureContainer);
-
-          const renderToPdf = async (html: string, addPageBefore = true) => {
-              if (addPageBefore) pdf.addPage();
-              captureContainer.innerHTML = html;
-              const canvas = await html2canvas(captureContainer, { scale: 2.2, useCORS: true, backgroundColor: '#ffffff', logging: false });
-              const imgData = canvas.toDataURL('image/jpeg', 0.85);
-              pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, (canvas.height * pageWidth) / canvas.width);
-          };
-
-          // --- 1. FRONT COVER ---
-          setBookProgress("Printing Front Cover...");
-          await renderToPdf(`
-            <div style="width: 750px; height: 1050px; background: #020617; color: white; padding: 120px 100px; font-family: ${CHINESE_FONT_STACK}; display: flex; flex-direction: column; justify-content: space-between; position: relative; border: 25px solid #0f172a;">
-                <div style="position: absolute; top: 0; right: 0; width: 400px; height: 400px; background: radial-gradient(circle, rgba(99, 102, 241, 0.2) 0%, transparent 70%);"></div>
-                <div>
-                    <p style="text-transform: uppercase; letter-spacing: 0.6em; font-size: 14px; font-weight: 900; color: #818cf8; margin-bottom: 25px;">Neural Prism Technical Publication</p>
-                    <h1 style="font-size: 64px; font-weight: 900; italic: true; margin: 0; line-height: 1.1; text-transform: uppercase; letter-spacing: -0.02em;">${channel.title}</h1>
-                    <div style="width: 120px; height: 10px; background: #6366f1; margin-top: 45px; border-radius: 5px;"></div>
-                </div>
-                <div style="display: flex; align-items: flex-end; justify-content: space-between;">
-                    <div>
-                        <p style="text-transform: uppercase; letter-spacing: 0.2em; font-size: 12px; color: #64748b; font-weight: 900; margin-bottom: 5px;">Compiled by Neural Host</p>
-                        <p style="font-size: 32px; font-weight: 900; margin: 0; color: #fff;">@${channel.author}</p>
-                    </div>
-                    <div style="text-align: right;">
-                        <p style="font-size: 10px; color: #475569; font-mono: true;">TRACE ID: ${sessionHash}</p>
-                    </div>
-                </div>
-            </div>
-          `, false);
-
-          // --- 2. TABLE OF CONTENTS ---
-          setBookProgress("Generating Index...");
-          await renderToPdf(`
-            <div style="width: 750px; height: 1050px; background: #ffffff; color: #0f172a; padding: 120px 100px; font-family: ${CHINESE_FONT_STACK};">
-                <h1 style="font-size: 42px; font-weight: 900; margin-bottom: 60px; text-transform: uppercase; border-bottom: 5px solid #020617; padding-bottom: 20px;">Refractive Index</h1>
-                <div style="display: flex; flex-direction: column; gap: 16px;">
-                    ${chapters.map((ch, idx) => `
-                        <div style="display: flex; justify-content: space-between; border-bottom: 1px dotted #cbd5e1; padding-bottom: 8px; align-items: baseline;">
-                            <span style="font-weight: 900; color: #1e293b; font-size: 18px;">Section 0${idx+1}: ${ch.title}</span>
-                            <span style="color: #64748b; font-size: 12px; font-weight: bold;">NODE ${idx+1}</span>
-                        </div>
-                    `).join('')}
-                </div>
-                <div style="margin-top: 100px; padding: 40px; background: #f8fafc; border-radius: 30px; border: 1px solid #e2e8f0; font-style: italic; color: #64748b; font-size: 14px; line-height: 1.6;">
-                    This manuscript represents a deterministic refraction of the "${channel.title}" learning path. Total sections: ${chapters.length}.
-                </div>
-            </div>
-          `);
-
-          // --- 3. CHAPTERS & CONTENT ---
-          for (let cIdx = 0; cIdx < chapters.length; cIdx++) {
-              const ch = chapters[cIdx];
-              setBookProgress(`Binding Node ${cIdx+1}...`);
+          for (let i = 0; i < flatCurriculum.length; i++) {
+              const sub = flatCurriculum[i];
               
-              const summary = await generateChapterSummary(ch);
+              // Skip static content in batch
+              const spotlight = SPOTLIGHT_DATA[channel.id];
+              if (spotlight && spotlight.lectures[sub.title]) {
+                  setBatchProgress({ current: i + 1, total: flatCurriculum.length });
+                  continue;
+              }
+
+              const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
               
-              // Chapter Cover
-              await renderToPdf(`
-                <div style="width: 750px; height: 1050px; background: #1e293b; color: white; padding: 80px 100px; font-family: ${CHINESE_FONT_STACK}; display: flex; flex-direction: column; justify-content: center; position: relative;">
-                    <div style="font-size: 200px; font-weight: 900; color: rgba(255,255,255,0.03); position: absolute; top: 80px; right: 100px;">0${cIdx+1}</div>
-                    <p style="font-size: 14px; font-weight: 900; color: #818cf8; text-transform: uppercase; letter-spacing: 0.6em; margin-bottom: 25px;">Registry Segment</p>
-                    <h1 style="font-size: 56px; font-weight: 900; text-transform: uppercase; margin: 0; line-height: 1.1;">${ch.title}</h1>
-                    <div style="width: 80px; height: 5px; background: #6366f1; margin-top: 45px; margin-bottom: 60px;"></div>
-                    <div style="max-width: 500px; font-size: 22px; color: #cbd5e1; line-height: 1.8; background: rgba(255,255,255,0.05); padding: 45px; border-radius: 32px; border: 1px solid rgba(255,255,255,0.1); italic: true; box-shadow: 0 30px 60px -12px rgba(0,0,0,0.3);">
-                        "${summary}"
-                    </div>
-                </div>
-              `);
-
-              // Body Content (Strict 36-line governance per page)
-              const maxLinesPerPage = 36;
-              let currentLines = 0;
-              let currentPageHtml = "";
-
-              for (const sub of ch.subTopics) {
-                  const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
-                  let lecture = await getCachedLectureScript(cacheKey) || await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName);
-                  
+              let lecture = await getCachedLectureScript(cacheKey);
+              if (!lecture) {
+                  lecture = await getCloudCachedLecture(channel.id, sub.id, language);
+                  if (!lecture) {
+                      dispatchLog(`Synthesizing Manuscript Segment ${i+1}/${flatCurriculum.length}: ${sub.title}`, 'info');
+                      lecture = await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName);
+                  }
                   if (lecture) {
-                      const subHeader = `<h2 style="font-size: 16px; font-weight: 900; color: #6366f1; margin-top: 40px; margin-bottom: 20px; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px;">${sub.title}</h2>`;
-                      
-                      // Check if new sub-topic needs fresh page
-                      if (currentLines > 28) {
-                          await renderToPdf(wrapContent(currentPageHtml, ch.title, sessionHash));
-                          currentPageHtml = subHeader;
-                          currentLines = 4;
-                      } else {
-                          currentPageHtml += subHeader;
-                          currentLines += 4;
-                      }
-
-                      for (const s of lecture.sections) {
-                          const isTeacher = s.speaker === 'Teacher';
-                          const speakerName = isTeacher ? (lecture.professorName || 'Host') : (lecture.studentName || 'Student');
-                          const textLines = Math.ceil(s.text.length / 95) + 1; // 95 chars per line approx at 12px
-                          
-                          if (currentLines + textLines > maxLinesPerPage) {
-                              await renderToPdf(wrapContent(currentPageHtml, ch.title, sessionHash));
-                              currentPageHtml = "";
-                              currentLines = 0;
-                          }
-
-                          currentPageHtml += `
-                            <div style="margin-bottom: 15px; font-family: ${SERIF_FONT_STACK}; font-size: 12px; line-height: 1.5; color: #334155;">
-                                <span style="font-weight: 900; color: ${isTeacher ? '#4338ca' : '#475569'}; text-transform: uppercase; margin-right: 8px;">${speakerName}:</span>
-                                <span>${s.text}</span>
-                            </div>
-                          `;
-                          currentLines += textLines + 1;
+                      await cacheLectureScript(cacheKey, lecture);
+                      if (currentUser) {
+                          await saveCloudCachedLecture(channel.id, sub.id, language, lecture);
                       }
                   }
               }
-              if (currentPageHtml) {
-                  await renderToPdf(wrapContent(currentPageHtml, ch.title, sessionHash));
-              }
+              setBatchProgress({ current: i + 1, total: flatCurriculum.length });
           }
-
-          // --- 4. BACK COVER WITH SCAN CODE ---
-          setBookProgress("Finalizing Publication...");
-          await renderToPdf(`
-            <div style="width: 750px; height: 1050px; background: #020617; color: white; padding: 120px 100px; font-family: ${CHINESE_FONT_STACK}; display: flex; flex-direction: column; justify-content: center; text-align: center; border: 25px solid #0f172a;">
-                <div style="margin-bottom: 80px;">
-                    <div style="width: 60px; height: 4px; background: #6366f1; margin: 0 auto 35px auto;"></div>
-                    <h2 style="font-size: 38px; font-weight: 900; letter-spacing: -0.02em; text-transform: uppercase; italic: true; margin-bottom: 25px;">Synthesized Intelligence</h2>
-                    <p style="color: #94a3b8; font-size: 20px; max-width: 550px; margin: 0 auto; line-height: 1.8;">
-                        This technical manuscript is a sovereign refraction of the "${channel.title}" activity ledger.
-                    </p>
-                </div>
-
-                <div style="background: white; padding: 40px; border-radius: 50px; width: fit-content; margin: 0 auto; box-shadow: 0 40px 100px -20px rgba(99, 102, 241, 0.4); border: 8px solid #6366f1;">
-                    <img src="${qrCodeUrl}" style="width: 250px; height: 250px;" />
-                    <p style="color: #020617; font-size: 12px; font-weight: 900; margin-top: 25px; text-transform: uppercase; letter-spacing: 0.25em;">Scan to Access Live Registry</p>
-                </div>
-
-                <div style="margin-top: 100px;">
-                    <p style="font-size: 13px; font-weight: 900; color: #6366f1; text-transform: uppercase; letter-spacing: 0.3em; margin-bottom: 12px;">NEURAL PRISM PUBLISHING</p>
-                    <p style="font-size: 10px; color: #475569; font-mono: true;">Verified via Protocol v6.1.2 // Ledger Node: ${generateSecureId().substring(0, 16)}</p>
-                </div>
-            </div>
-          `);
-
-          document.body.removeChild(captureContainer);
-          pdf.save(`${channel.title.replace(/\s+/g, '_')}_Neural_Manuscript.pdf`);
-          dispatchLog(`Manuscript Compiled. 36-line safety frame verified.`, 'success');
-      } catch (e: any) { dispatchLog(`Synthesis Failed: ${e.message}`, 'error'); } finally { setIsGeneratingBook(false); setBookProgress(""); }
+          dispatchLog(`Batch Refraction Complete for ${channel.title}. Chapter Vault fully populated.`, 'success');
+          updateRegistryStatus();
+      } catch (e: any) {
+          dispatchLog(`Batch failed: ${e.message}`, 'error');
+      } finally {
+          setIsBatchSynthesizing(false);
+      }
   };
 
-  const wrapContent = (html: string, chapterTitle: string, hash: string) => `
-    <div style="width: 750px; height: 1050px; background: #ffffff; color: #0f172a; padding: 80px 100px; font-family: ${CHINESE_FONT_STACK}; display: flex; flex-direction: column; position: relative;">
-        <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 40px;">
-            <span style="font-size: 10px; font-weight: 900; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.15em;">${chapterTitle}</span>
-            <span style="font-size: 10px; font-weight: 900; color: #cbd5e1;">NEURAL PRISM MANUSCRIPT</span>
-        </div>
-        <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start;">
-            ${html}
-        </div>
-        <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid #f1f5f9; text-align: center;">
-            <p style="font-size: 9px; color: #cbd5e1; font-weight: 900; letter-spacing: 0.4em; margin: 0;">BOUND BY NEURAL PRISM // TRACE: ${hash}</p>
-        </div>
-    </div>
-  `;
-
-  const handleGenerateArt = async () => {
-    setIsGeneratingArt(true);
+  const handleDownloadTextScript = async () => {
+    setIsExportingText(true);
+    dispatchLog("Collating Text Manuscript...", "info");
+    
     try {
-        const b64 = await generateChannelCoverArt(channel.title, channel.description);
-        if (b64) {
-            setLocalArtPreview(b64);
-            await saveLocalAsset(`cover_${channel.id}`, b64);
-            await onUpdateChannel({ ...channel, imageUrl: b64 });
+        let fullScript = `# ${channel.title}\n\n`;
+        fullScript += `> ${channel.description}\n\n`;
+        fullScript += `--- \n\n`;
+
+        for (let i = 0; i < flatCurriculum.length; i++) {
+            const sub = flatCurriculum[i];
+            const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
+            
+            // Check static registry first
+            let lecture = SPOTLIGHT_DATA[channel.id]?.lectures[sub.title];
+            if (!lecture) {
+                lecture = await getCachedLectureScript(cacheKey) || await getCloudCachedLecture(channel.id, sub.id, language);
+            }
+            
+            if (lecture) {
+                fullScript += `## SECTION ${i + 1}: ${sub.title}\n\n`;
+                lecture.sections.forEach(s => {
+                    const speakerName = s.speaker === 'Teacher' ? lecture.professorName : lecture.studentName;
+                    fullScript += `**${speakerName}**: ${s.text}\n\n`;
+                });
+                fullScript += `\n`;
+            }
         }
-    } finally { setIsGeneratingArt(false); }
+
+        const blob = new Blob([fullScript], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${channel.title.replace(/\s+/g, '_')}_Manuscript.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        dispatchLog("Text Manuscript Downloaded.", "success");
+    } catch (e: any) {
+        dispatchLog(`Export failed: ${e.message}`, 'error');
+    } finally {
+        setIsExportingText(false);
+    }
   };
 
-  if (activeLecture) {
-      return (
-          <div className="h-full flex flex-col bg-slate-950 animate-fade-in">
-              <header className="p-6 border-b border-white/5 bg-slate-900/50 flex items-center justify-between backdrop-blur-xl shrink-0 z-20">
-                  <div className="flex items-center gap-4">
-                      <button onClick={stopSequentialPlayback} className="p-2 hover:bg-white/10 rounded-xl text-slate-400"><ArrowLeft/></button>
-                      <h2 className="text-sm font-black text-white uppercase tracking-widest">{activeLecture.topic}</h2>
-                  </div>
-                  <div className="flex items-center gap-6">
-                      <div className="w-32 h-10 overflow-hidden rounded-full bg-slate-950/50 border border-white/5 flex items-center justify-center">
-                        <Visualizer volume={liveVolume} isActive={true} color="#818cf8"/>
-                      </div>
-                      <button onClick={stopSequentialPlayback} className="px-6 py-2 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Close Focus</button>
-                  </div>
-              </header>
-              <div className="flex-1 overflow-y-auto p-10 scrollbar-hide bg-slate-950">
-                  <div className="max-w-3xl mx-auto space-y-12 pb-[50vh]">
-                      {activeLecture.sections.map((section, idx) => {
-                          const isCurrent = idx === currentSectionIndex;
-                          const isTeacher = section.speaker === 'Teacher';
-                          return (
-                              <div key={idx} ref={el => { sectionRefs.current[idx] = el; }} className={`flex flex-col ${isTeacher ? 'items-start' : 'items-end'} transition-all duration-700 ${isCurrent ? 'opacity-100 scale-100' : 'opacity-40 scale-95'}`}>
-                                  <span className={`text-[10px] font-black uppercase tracking-widest mb-2 ${isTeacher ? 'text-indigo-400' : 'text-slate-50'}`}>{isTeacher ? activeLecture.professorName : activeLecture.studentName}</span>
-                                  <div className={`max-w-[85%] px-8 py-6 rounded-[2rem] text-xl leading-relaxed shadow-2xl relative transition-all duration-500 ${isCurrent ? 'ring-2 ring-indigo-500 bg-slate-900' : 'bg-slate-900/40'} ${isTeacher ? 'text-slate-100 rounded-tl-sm' : 'text-indigo-50 rounded-tr-sm'}`}>
-                                      <p className="whitespace-pre-wrap">{section.text}</p>
-                                  </div>
+  const handleGenerateBook = async () => {
+    setIsExportingBook(true);
+    dispatchLog("Initializing Book Synthesis Pipeline...", "info");
+    
+    try {
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: 'a4' });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const captureContainer = document.createElement('div');
+        captureContainer.style.width = '800px';
+        captureContainer.style.position = 'fixed';
+        captureContainer.style.left = '-10000px';
+        captureContainer.style.backgroundColor = '#ffffff';
+        document.body.appendChild(captureContainer);
+
+        captureContainer.innerHTML = `
+            <div style="height: 1131px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-family: ${SERIF_FONT_STACK}; padding: 100px; border: 20px solid #6366f1;">
+                <h1 style="font-size: 50px; margin-bottom: 20px; font-weight: 900; text-transform: uppercase;">${channel.title}</h1>
+                <h2 style="font-size: 20px; color: #4b5563; margin-bottom: 60px;">Neural Manuscript Refraction</h2>
+                <div style="width: 100px; height: 4px; background: #6366f1; margin-bottom: 60px;"></div>
+                <p style="font-size: 16px; line-height: 1.6; max-width: 600px;">${channel.description}</p>
+                <div style="margin-top: auto; font-size: 12px; font-weight: bold; color: #9ca3af;">GENERATED BY NEURAL PRISM v6.6.0</div>
+            </div>
+        `;
+        const coverCanvas = await html2canvas(captureContainer, { scale: 2 });
+        pdf.addImage(coverCanvas.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pageWidth, pageHeight);
+
+        for (let i = 0; i < flatCurriculum.length; i++) {
+            const sub = flatCurriculum[i];
+            const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
+            
+            let lecture = SPOTLIGHT_DATA[channel.id]?.lectures[sub.title];
+            if (!lecture) {
+                lecture = await getCachedLectureScript(cacheKey) || await getCloudCachedLecture(channel.id, sub.id, language);
+            }
+
+            if (lecture) {
+                dispatchLog(`Processing Book Section ${i+1}: ${sub.title}`, 'info');
+                pdf.addPage();
+                captureContainer.innerHTML = `
+                    <div style="padding: 80px; font-family: ${SERIF_FONT_STACK};">
+                        <div style="border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 30px; display: flex; justify-content: space-between;">
+                            <span style="font-size: 10px; font-weight: bold; color: #6366f1;">SECTION ${i + 1}</span>
+                            <span style="font-size: 10px; color: #9ca3af;">${channel.title}</span>
+                        </div>
+                        <h2 style="font-size: 28px; font-weight: 900; margin-bottom: 40px;">${sub.title}</h2>
+                        <div style="font-size: 14px; line-height: 1.8; color: #1f2937;">
+                            ${lecture.sections.map(s => `
+                                <div style="margin-bottom: 20px;">
+                                    <strong style="display: block; font-size: 10px; color: #6366f1; text-transform: uppercase; margin-bottom: 5px;">${s.speaker === 'Teacher' ? lecture.professorName : lecture.studentName}</strong>
+                                    <p>${s.text}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                const contentCanvas = await html2canvas(captureContainer, { scale: 2 });
+                pdf.addImage(contentCanvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, pageWidth, pageHeight);
+            }
+        }
+        pdf.save(`${channel.title.replace(/\s+/g, '_')}_Neural_Book.pdf`);
+        document.body.removeChild(captureContainer);
+        dispatchLog("Book Dispatched to Local Drive.", "success");
+    } catch (e: any) { dispatchLog(`Book failure: ${e.message}`, 'error'); } finally { setIsExportingBook(false); }
+  };
+
+  const handlePlayActiveLecture = async (startIndex = 0) => {
+    syncPrimeSpeech();
+    if (isPlaying) { 
+        stopAllAudio('User Stop'); 
+        return; 
+    }
+    
+    setIsPlaying(true);
+    const localSession = ++playbackSessionRef.current;
+    
+    registerAudioOwner(`GlobalPodcastStream`, () => {
+        if (playbackSessionRef.current === localSession) stopAllAudio('External Eviction');
+    });
+
+    try {
+        let currentIndex = currentSubTopicIndex < 0 ? 0 : currentSubTopicIndex;
+        let currentLecture = activeLecture;
+        
+        while (currentIndex < flatCurriculum.length && localSession === playbackSessionRef.current) {
+            if (!currentLecture) {
+                currentLecture = await handleSelectSubTopic(flatCurriculum[currentIndex], false);
+                if (!currentLecture) break;
+            }
+            
+            setPlayedSubTopicIds(prev => new Set(prev).add(flatCurriculum[currentIndex].id));
+            
+            for (let i = startIndex; i < currentLecture.sections.length; i++) {
+                if (localSession !== playbackSessionRef.current || !mountedRef.current) break;
+                
+                setCurrentSectionIndex(i);
+                const section = currentLecture.sections[i];
+                
+                // --- NEURAL PIPELINE: PRE-BUFFER NEXT SECTION ---
+                const nextIdx = i + 1;
+                if (nextIdx < currentLecture.sections.length && currentProvider !== 'system') {
+                    const nextSection = currentLecture.sections[nextIdx];
+                    const nextVoice = nextSection.speaker === 'Teacher' ? (channel.voiceName || 'Zephyr') : 'Puck';
+                    const ctx = getGlobalAudioContext();
+                    
+                    synthesizeSpeech(nextSection.text, nextVoice, ctx, currentProvider, language, {
+                        channelId: channel.id, topicId: flatCurriculum[currentIndex].id, 
+                        nodeId: `node_${channel.id}_${flatCurriculum[currentIndex].id}_${nextIdx}_${language}`
+                    }, userProfile?.cloudTtsApiKey).then(res => {
+                        if (res.buffer) nextAudioBufferRef.current.set(nextIdx, res.buffer);
+                    }).catch(() => {});
+                }
+
+                if (currentProvider === 'system') {
+                    setLiveVolume(0.8);
+                    await speakSystem(section.text, language);
+                    setLiveVolume(0);
+                } else {
+                    const ctx = getGlobalAudioContext();
+                    let audioBuffer = nextAudioBufferRef.current.get(i);
+                    
+                    if (!audioBuffer) {
+                        setIsBuffering(true);
+                        const voice = section.speaker === 'Teacher' ? (channel.voiceName || 'Zephyr') : 'Puck';
+                        const res = await synthesizeSpeech(section.text, voice, ctx, currentProvider, language, {
+                            channelId: channel.id, topicId: flatCurriculum[currentIndex].id, 
+                            nodeId: `node_${channel.id}_${flatCurriculum[currentIndex].id}_${i}_${language}`
+                        }, userProfile?.cloudTtsApiKey);
+                        audioBuffer = res.buffer || undefined;
+                        setIsBuffering(false);
+                    } else {
+                        nextAudioBufferRef.current.delete(i);
+                    }
+                    
+                    if (audioBuffer && localSession === playbackSessionRef.current) {
+                        setLiveVolume(0.8);
+                        await warmUpAudioContext(ctx);
+                        await new Promise<void>((resolve) => {
+                            const source = ctx.createBufferSource();
+                            source.buffer = audioBuffer!;
+                            connectOutput(source, ctx);
+                            activeSourcesRef.current.add(source);
+                            source.onended = () => { 
+                                activeSourcesRef.current.delete(source); 
+                                setLiveVolume(0); 
+                                resolve(); 
+                            };
+                            source.start(0);
+                        });
+                    }
+                }
+                
+                if (localSession !== playbackSessionRef.current) break;
+                await new Promise(r => setTimeout(r, 600));
+            }
+            
+            if (localSession === playbackSessionRef.current && mountedRef.current) {
+                currentIndex++; 
+                startIndex = 0; 
+                currentLecture = null; 
+                nextAudioBufferRef.current.clear();
+            } else {
+                break;
+            }
+        }
+        
+        if (localSession === playbackSessionRef.current) {
+            setIsPlaying(false);
+            dispatchLog(`[Session] Finished. Spectrum fully traversed.`, 'success');
+        }
+    } catch (e: any) { 
+        dispatchLog(`[Engine Fault] ${e.message}`, 'error'); 
+        stopAllAudio('Catch Error'); 
+    }
+  };
+
+  const handleNext = async () => {
+    if (currentSubTopicIndex < flatCurriculum.length - 1) {
+        const wasPlaying = isPlaying;
+        await handleSelectSubTopic(flatCurriculum[currentSubTopicIndex + 1]);
+        if (wasPlaying) handlePlayActiveLecture(0);
+    }
+  };
+
+  const handlePrev = async () => {
+    if (currentSubTopicIndex > 0) {
+        const wasPlaying = isPlaying;
+        await handleSelectSubTopic(flatCurriculum[currentSubTopicIndex - 1]);
+        if (wasPlaying) handlePlayActiveLecture(0);
+    }
+  };
+
+  const handleSwitchProvider = async (p: TtsProvider) => {
+      setCurrentProvider(p);
+      setShowProviderMenu(false);
+      if (currentUser) updateUserProfile(currentUser.uid, { preferredTtsProvider: p });
+  };
+
+  return (
+    <div className="h-full flex bg-slate-950 overflow-hidden font-sans relative">
+      <aside className="w-[340px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0">
+          <div className="p-6 border-b border-slate-800 bg-slate-950/40 space-y-6">
+              <div className="flex items-center justify-between">
+                  <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>
+                  <div className="relative">
+                      <button onClick={() => setShowProviderMenu(!showProviderMenu)} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-[9px] font-black uppercase tracking-widest text-indigo-400 hover:border-indigo-500 transition-all shadow-lg">
+                          <Speaker size={12}/>
+                          <span>{currentProvider}</span>
+                          <ChevronDown size={10} className={showProviderMenu ? 'rotate-180' : ''}/>
+                      </button>
+                      {showProviderMenu && (
+                          <>
+                              <div className="fixed inset-0 z-40" onClick={() => setShowProviderMenu(false)}></div>
+                              <div className="absolute top-full left-0 mt-1 w-32 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden py-1 animate-fade-in-up">
+                                  {(['gemini', 'google', 'openai', 'system'] as const).map(p => (
+                                      <button key={p} onClick={() => handleSwitchProvider(p)} className={`w-full text-left px-3 py-2 text-[9px] font-bold uppercase transition-colors ${currentProvider === p ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>{p}</button>
+                                  ))}
                               </div>
-                          );
-                      })}
+                          </>
+                      )}
+                  </div>
+              </div>
+              <div className="flex gap-4">
+                  <div className="relative group shrink-0">
+                      <img src={channel.imageUrl || "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200&q=80"} className="w-16 h-16 rounded-2xl object-cover shadow-xl border border-white/5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                      <h2 className="text-white font-black uppercase tracking-tighter italic text-xl leading-none truncate">{channel.title}</h2>
+                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Sovereign Registry</p>
                   </div>
               </div>
           </div>
-      );
-  }
+          <div className="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-6">
+              {chapters.map((ch, idx) => (
+                  <div key={ch.id} className="space-y-2">
+                      <h3 className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em] px-2">Sector 0{idx+1}: {ch.title}</h3>
+                      <div className="space-y-1">
+                          {ch.subTopics.map(sub => {
+                              const isSelected = activeSubTopicId === sub.id;
+                              const status = nodeStatuses[sub.id] || 'none';
+                              return (
+                                  <button key={sub.id} onClick={() => handleSelectSubTopic(sub)} className={`w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all border ${isSelected ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-slate-900/40 border-transparent text-slate-400 hover:bg-slate-800'}`}>
+                                      <div className="flex items-center gap-3 min-w-0">
+                                          {isSelected && isPlaying ? <Pause size={14} fill="currentColor"/> : isSelected ? <BookOpen size={14}/> : <div className="w-3.5 h-3.5 flex items-center justify-center opacity-40"><div className="w-1.5 h-1.5 rounded-full border border-current"></div></div>}
+                                          <span className="text-[11px] font-bold truncate tracking-tight">{sub.title}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                          {status === 'checking' ? <Loader2 size={12} className="animate-spin text-slate-600" /> : status === 'local' ? <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div> : status === 'cloud' ? <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.5)]"></div> : status === 'static' ? <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.5)]" title="Static Node"></div> : <div className="w-1.5 h-1.5 rounded-full bg-slate-700 opacity-20"></div>}
+                                      </div>
+                                  </button>
+                              );
+                          })}
+                      </div>
+                  </div>
+              ))}
+          </div>
+          <div className="p-4 border-t border-slate-800 bg-slate-950/40 space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                  <button onClick={handleBatchSynthesize} disabled={isBatchSynthesizing} className="py-3 bg-slate-800 hover:bg-indigo-600 text-slate-400 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2">
+                      {isBatchSynthesizing ? <Loader2 size={14} className="animate-spin" /> : <CloudUpload size={14}/>}
+                      {isBatchSynthesizing ? `Refracting ${batchProgress.current}` : 'Refract Vault'}
+                  </button>
+                  <button onClick={handleDownloadTextScript} disabled={isExportingText} className="py-3 bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2">
+                      {isExportingText ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14}/>}
+                      Export Text
+                  </button>
+                  <button onClick={handleGenerateBook} disabled={isExportingBook} className="col-span-2 py-3 bg-slate-800 hover:bg-emerald-600 text-slate-400 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2">
+                      {isExportingBook ? <Loader2 size={14} className="animate-spin" /> : <BookText size={14}/>}
+                      Synthesize Full PDF Book
+                  </button>
+              </div>
+              <button onClick={() => handlePlayActiveLecture(0)} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-900/40 transition-all active:scale-95 flex items-center justify-center gap-2">
+                  {isPlaying ? <Pause size={18} fill="currentColor"/> : <PlayCircle size={18}/>} 
+                  {isPlaying ? 'Pause Session' : 'Begin Activity'}
+              </button>
+          </div>
+      </aside>
 
-  return (
-    <div className="h-full flex flex-col bg-slate-950 p-10 overflow-y-auto scrollbar-hide">
-        <div className="max-w-4xl mx-auto w-full space-y-10">
-            <header className="flex items-center justify-between">
-                <button onClick={onBack} className="p-3 hover:bg-slate-900 rounded-2xl text-slate-400 transition-all"><ArrowLeft/></button>
-                <div className="flex gap-4">
-                    {isGeneratingBook ? (
-                        <div className="px-6 py-3 bg-indigo-950 border border-indigo-500/30 rounded-2xl flex items-center gap-3 shadow-xl">
-                            <Loader2 className="animate-spin text-indigo-400" size={16}/>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300">{bookProgress}</span>
+      <main className="flex-1 flex flex-col min-0 relative bg-slate-950">
+          {activeLecture ? (
+              <div className="h-full flex flex-col bg-slate-950 animate-fade-in pb-32">
+                  <header className="h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-8 backdrop-blur-xl shrink-0 z-20">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-600/10 rounded-lg"><BrainCircuit size={20} className="text-indigo-400" /></div>
+                        <div>
+                            <h2 className="text-sm font-black text-white uppercase tracking-widest">{activeLecture.topic}</h2>
+                            <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-[0.2em]">Node 0{currentSubTopicIndex + 1} • Socratic Refraction</p>
                         </div>
-                    ) : (
-                        <button onClick={handleDownloadFullBook} className="px-8 py-3 bg-slate-900 border border-slate-800 text-indigo-400 hover:border-indigo-500 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2">
-                            <FileOutput size={16}/> {t.synthesizeBook}
-                        </button>
-                    )}
-                    <button onClick={() => onStartLiveSession(channel)} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-indigo-900/40 transition-all active:scale-95 flex items-center gap-2">
-                        <Play size={16} fill="currentColor"/> Launch Studio
-                    </button>
-                </div>
-            </header>
-
-            <div className="flex flex-col md:flex-row gap-10">
-                <div className="relative group shrink-0">
-                    {!imageError && (localArtPreview || channel.imageUrl) ? (
-                        <img src={localArtPreview || channel.imageUrl} className="w-64 h-64 rounded-[3rem] object-cover shadow-2xl border-4 border-slate-900" onError={() => setImageError(true)} />
-                    ) : (
-                        <div className="w-64 h-64 rounded-[3rem] bg-slate-900 border-4 border-dashed border-slate-800 flex flex-col items-center justify-center text-slate-700 gap-4">
-                            <ImageIconLucide size={40} className="opacity-20" />
-                        </div>
-                    )}
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950/40 rounded-[3rem]">
-                        <button onClick={handleGenerateArt} disabled={isGeneratingArt} className="p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-2xl">
-                            {isGeneratingArt ? <Loader2 className="animate-spin" size={24}/> : <Sparkles size={24}/>}
-                        </button>
-                    </div>
-                </div>
-                <div className="flex-1 space-y-4">
-                    <h1 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">{channel.title}</h1>
-                    <p className="text-slate-400 text-lg font-medium leading-relaxed">{channel.description}</p>
-                    <div className="flex items-center gap-6 pt-4">
-                        <div className="flex flex-col"><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{t.host}</span><span className="text-sm font-bold text-indigo-400">{channel.voiceName}</span></div>
-                        <div className="w-px h-8 bg-slate-800"></div>
-                        <div className="flex flex-col"><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Chapters</span><span className="text-sm font-bold text-white">{chapters.length} Segments</span></div>
-                    </div>
-                </div>
-            </div>
-            
-            <div className="grid grid-cols-1 gap-4">
-                {chapters.map((ch, idx) => (
-                    <div key={ch.id} className="bg-slate-900/40 border border-slate-800/50 p-6 rounded-3xl">
-                        <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-4">Registry 0{idx+1}: {ch.title}</h3>
-                        <div className="space-y-2">
-                            {ch.subTopics.map(sub => {
-                                const isReading = activeReadingSubTopicId === sub.id;
-                                const isPlayed = playedSubTopicIds.has(sub.id);
-                                return (
-                                    <div key={sub.id} className="flex gap-2">
-                                        <div className={`flex-1 flex items-center gap-2 group ${isReading ? 'bg-indigo-600/20 border-indigo-500 rounded-2xl' : 'bg-slate-950/50 border border-transparent hover:bg-slate-800 rounded-2xl'} transition-all pr-4`}>
-                                            <button onClick={() => handlePlaySubTopic(sub)} className={`flex-1 text-left px-5 py-4 text-sm font-bold flex justify-between items-center ${isReading ? 'text-white' : 'text-slate-300'}`}>
-                                                <div className="flex items-center gap-4">
-                                                    <div className={`p-2 rounded-xl transition-all ${isReading ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-500'}`}>
-                                                        {isReading ? <Pause size={16} fill="currentColor"/> : <Play size={16} fill="currentColor"/>}
-                                                    </div>
-                                                    <span className="truncate">{sub.title}</span>
-                                                </div>
-                                                {isReading && <Visualizer volume={liveVolume} isActive={true} color="#818cf8"/>}
-                                                {isPlayed && !isReading && <CheckCircle size={14} className="text-emerald-500"/>}
-                                            </button>
-                                        </div>
-                                        <button onClick={() => onStartLiveSession(channel, `Q&A for: ${sub.title}`, true)} disabled={!isPlayed} className={`px-5 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${isPlayed ? 'bg-indigo-600/20 border-indigo-500 text-indigo-400 hover:bg-indigo-600 hover:text-white' : 'bg-slate-900 border-slate-800 text-slate-700 opacity-40'}`}>
-                                            {isPlayed ? <MessageSquare size={14}/> : <Lock size={14}/>}
-                                        </button>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
+                      </div>
+                      <button onClick={() => stopAllAudio('Header Close')} className="p-2 hover:bg-red-600/20 text-slate-500 hover:text-red-400 rounded-xl transition-all" title="Exit View"><X/></button>
+                  </header>
+                  <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-10 scrollbar-hide">
+                      <div className="max-w-3xl mx-auto space-y-16 pb-[30vh]">
+                          {activeLecture.sections.map((section, idx) => {
+                              const isCurrent = idx === currentSectionIndex;
+                              const isTeacher = section.speaker === 'Teacher';
+                              return (
+                                  <div key={idx} ref={el => { sectionRefs.current[idx] = el; }} className={`flex flex-col ${isTeacher ? 'items-start' : 'items-end'} transition-all duration-1000 ${currentSectionIndex === -1 || isCurrent ? 'opacity-100 scale-100' : 'opacity-20 scale-95 blur-[1px]'}`}>
+                                      <div className="flex items-center gap-2 mb-3 px-6"><span className={`text-[10px] font-black uppercase tracking-widest ${isTeacher ? 'text-indigo-400' : 'text-slate-400'}`}>{isTeacher ? activeLecture.professorName : activeLecture.studentName}</span>{isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping"></div>}</div>
+                                      <div className={`max-w-[90%] px-10 py-8 rounded-[3rem] text-2xl leading-relaxed shadow-2xl relative transition-all duration-700 ${isCurrent ? 'ring-2 ring-indigo-500/50 bg-slate-900 border border-indigo-500/20' : 'bg-slate-900/40'} ${isTeacher ? 'text-slate-100 rounded-tl-sm' : 'text-indigo-50 rounded-tr-sm'}`}><p className="whitespace-pre-wrap font-medium">{section.text}</p></div>
+                                  </div>
+                              );
+                          })}
+                      </div>
+                  </div>
+                  <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xl px-4 z-50">
+                      <div className="bg-slate-900/80 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-4 flex items-center justify-between shadow-2xl shadow-indigo-950/40">
+                          <div className="flex items-center gap-4">
+                              <button onClick={handlePrev} disabled={currentSubTopicIndex <= 0} className="p-3 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-all disabled:opacity-20"><SkipBack size={20}/></button>
+                              <button onClick={() => handlePlayActiveLecture(currentSectionIndex === -1 ? 0 : currentSectionIndex)} className="w-14 h-14 bg-white text-slate-950 rounded-full flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all">{isBuffering ? <Loader2 size={24} className="animate-spin" /> : isPlaying ? <Pause size={24} fill="currentColor"/> : <Play size={24} fill="currentColor" className="ml-1"/>}</button>
+                              <button onClick={handleNext} disabled={currentSubTopicIndex >= flatCurriculum.length - 1} className="p-3 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-all disabled:opacity-20"><SkipForward size={20}/></button>
+                          </div>
+                          <div className="flex-1 px-6 min-w-0 text-center">
+                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest truncate">{flatCurriculum[currentSubTopicIndex]?.title}</p>
+                                <div className="flex items-center gap-2 mt-1.5"><div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-700" style={{ width: `${((currentSectionIndex + 1) / (activeLecture?.sections.length || 1)) * 100}%` }}/></div><span className="text-[9px] font-mono text-slate-500">{currentSectionIndex + 1}/{activeLecture?.sections.length || 0}</span></div>
+                          </div>
+                          <div className="w-20 h-10 overflow-hidden rounded-full bg-slate-950/60 flex items-center justify-center shrink-0 ml-2"><Visualizer volume={isPlaying ? 0.6 : 0} isActive={isPlaying} color="#818cf8"/></div>
+                      </div>
+                  </div>
+              </div>
+          ) : isSyncingContent ? (
+              <div className="h-full flex flex-col items-center justify-center gap-8 bg-slate-950">
+                  <div className="relative">
+                      <div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div>
+                      <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        {syncPhase === 'vault' ? <Archive size={32} className="text-emerald-400 animate-bounce" /> : <Zap size={32} className="text-indigo-400 animate-pulse" />}
+                      </div>
+                  </div>
+                  <div className="text-center space-y-2">
+                    <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">
+                        {syncPhase === 'registry' ? 'Paging Registry' : syncPhase === 'vault' ? 'Securing Vault' : 'Neural Synthesis'}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">
+                        {syncPhase === 'registry' ? 'Handshaking Knowledge Database...' : syncPhase === 'vault' ? 'Writing JSON context to Cloud Storage...' : 'Refracting linguistic logic gates...'}
+                    </p>
+                  </div>
+              </div>
+          ) : (
+              <div className="h-full flex flex-col p-10 md:p-16 overflow-y-auto scrollbar-hide bg-slate-950">
+                  <div className="max-w-4xl mx-auto w-full space-y-12">
+                      <div className="space-y-6">
+                          <div className="flex items-center gap-3"><span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] px-1">Knowledge Node</span><div className="h-px bg-slate-800 flex-1"></div></div>
+                          <h1 className="text-4xl md:text-5xl font-black text-white italic tracking-tighter uppercase leading-none">{channel.title}</h1>
+                          <p className="text-slate-400 text-xl font-medium leading-relaxed max-w-3xl">{channel.description}</p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
+                          <button onClick={() => handlePlayActiveLecture(0)} className="bg-indigo-900/10 border border-indigo-500/20 p-8 rounded-[2.5rem] space-y-4 text-left group hover:bg-indigo-900/20 transition-all shadow-xl">
+                              <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest">Begin learning path</h4>
+                              <p className="text-white font-bold text-xl line-clamp-1">{flatCurriculum[0]?.title || "Resume Activity"}</p>
+                              <div className="text-[10px] font-black text-indigo-400 group-hover:text-white uppercase tracking-widest flex items-center gap-2 transition-colors">Launch Module <ChevronRight size={14}/></div>
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          )}
+      </main>
     </div>
   );
 };
+
+export default PodcastDetail;

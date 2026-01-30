@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { 
   Terminal, Code, Video, LayoutGrid, FileText, Wallet, MessageSquare, 
@@ -72,7 +73,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
     {
       title: t.financeSector,
       apps: [
-        { id: 'check_designer', label: 'Finance Lab', sub: 'Asset Refraction', description: 'Design high-fidelity banking documents with secure neural signatures and printable PDF output.', icon: Wallet, color: 'text-amber-400', bg: 'bg-amber-900/30', restricted: true },
+        { id: 'check_designer', label: 'Finance Lab', sub: 'Asset Refraction', description: 'Design high-fidelity banking documents with secure neural signatures and printable PDF output.', icon: Wallet, color: 'text-amber-400', bg: 'bg-amber-950/40', restricted: true },
         { id: 'shipping_labels', label: 'Logistics Lab', sub: 'Postal Protocol', description: 'Neural address parsing and professional thermal label generation for streamlined global shipping.', icon: Truck, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true },
         { id: 'coin_wallet', label: 'Wallet', sub: 'Neural Ledger', description: 'Manage your VoiceCoin assets and participate in cryptographically signed peer-to-peer transfers.', icon: Coins, color: 'text-amber-500', bg: 'bg-amber-950/40', restricted: true }
       ]
@@ -201,7 +202,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
         ))}
 
         <footer className="pt-12 text-center">
-            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Prism v5.8.0-SYN • Sovereign Activity Hub</p>
+            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Prism v6.6.0-SYN • Sovereign Activity Hub</p>
         </footer>
       </div>
     </div>

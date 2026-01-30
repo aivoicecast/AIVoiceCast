@@ -1,4 +1,3 @@
-
 import { Chapter, GeneratedLecture } from '../types';
 
 export const OFFLINE_CHANNEL_ID = 'neural-prism-platform-official';
@@ -10,7 +9,7 @@ export const OFFLINE_CURRICULUM: Chapter[] = [
     subTopics: [
       { id: 'ch-1-sub-1', title: 'From Player to Intelligence Hub' },
       { id: 'ch-1-sub-2', title: 'The Rainbow Tool Pattern' },
-      { id: 'ch-1-sub-3', title: 'Context-Aware Activities' }
+      { id: 'ch-1-sub-3', title: 'Triple-Layer Data Sovereignty' }
     ]
   },
   {
@@ -62,6 +61,16 @@ export const OFFLINE_LECTURES: Record<string, GeneratedLecture> = {
         text: "Yes, but we shifted from a simple list to a 'Refractive Interface'. The platform switches context between the Activity Hub, Builder Studio, and Finance Lab without friction, focusing on human context first."
       }
     ]
+  },
+  "Triple-Layer Data Sovereignty": {
+      topic: "Triple-Layer Data Sovereignty",
+      professorName: "Security Lead",
+      studentName: "Auditor",
+      sections: [
+          { speaker: "Teacher", text: "We manage data across three distinct tiers. Level 1 is the Firestore Control Plane for metadata. Level 2 is the Knowledge Vault in Firebase Storage for the raw JSON corpus." },
+          { speaker: "Student", text: "And Level 3?" },
+          { speaker: "Teacher", text: "Level 3 is the Local Data Plane in IndexedDB. We use this to cache neural audio fragments. This ensures that even if you're in a tunnel, your interactive sessions stay high-fidelity and zero-latency." }
+      ]
   },
   "Instant Book Synthesis": {
     topic: "Instant Book Synthesis",

@@ -3,8 +3,6 @@ import { GoogleGenAI } from '@google/genai';
 import { Channel, Chapter } from '../types';
 import { incrementApiUsage, getUserProfile, deductCoins, AI_COSTS } from './firestoreService';
 import { auth } from './firebaseConfig';
-import { generateLectureScript } from './lectureGenerator';
-import { cacheLectureScript } from '../utils/db';
 
 const VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
 
@@ -68,7 +66,7 @@ export async function generateChannelFromPrompt(
       author: currentUser?.displayName || 'Anonymous Creator',
       ownerId: currentUser?.uid,
       visibility: 'private',
-      voiceName: parsed.voiceName,
+      voiceName: parsed.voiceName || 'Zephyr',
       systemInstruction: parsed.systemInstruction,
       likes: 0,
       dislikes: 0,
@@ -111,9 +109,6 @@ export async function generateChannelCoverArt(title: string, description: string
         if (response.candidates?.[0]?.content?.parts) {
             for (const part of response.candidates[0].content.parts) {
                 if (part.inlineData) {
-                    if (auth.currentUser) {
-                        deductCoins(auth.currentUser.uid, AI_COSTS.IMAGE_GENERATION);
-                    }
                     return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
                 }
             }
@@ -131,19 +126,14 @@ export async function modifyCurriculumWithAI(
   language: 'en' | 'zh' = 'en'
 ): Promise<Chapter[] | null> {
   try {
-    const systemPrompt = `You are a Curriculum Editor powered by Gemini 3.`;
-    const userRequest = `User wants: ${userPrompt}. Current: ${JSON.stringify(currentChapters)}`;
-    
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
-        contents: `${systemPrompt}\n\n${userRequest}`,
+        contents: `User wants: ${userPrompt}. Current: ${JSON.stringify(currentChapters)}`,
         config: { responseMimeType: 'application/json' }
     });
-    
     const text = response.text || null;
     if (!text) return null;
-    
     const parsed = JSON.parse(text);
     if (parsed?.chapters) {
         const timestamp = Date.now();
@@ -165,36 +155,21 @@ export async function generateChannelFromDocument(
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
-    
     const systemPrompt = `You are an expert Podcast Producer powered by DeepMind's Gemini 3. Your task is to analyze the provided source and transform it into a structured, engaging podcast channel.`;
-    
     const userRequest = `Create a Podcast Channel based on this source. Return ONLY a JSON object with: title, description, voiceName, systemInstruction, tags, and chapters (with subTopics).`;
-
     let parts: any[] = [{ text: `${systemPrompt}\n${langInstruction}\n\n${userRequest}` }];
-
-    if (source.url) {
-        parts.push({
-            fileData: {
-                mimeType: source.url.endsWith('.pdf') ? 'application/pdf' : 'text/plain',
-                fileUri: source.url
-            }
-        });
-    } else if (source.text) {
-        parts.push({ text: `SOURCE TEXT:\n${source.text.substring(0, 100000)}` });
-    }
+    if (source.url) parts.push({ fileData: { mimeType: source.url.endsWith('.pdf') ? 'application/pdf' : 'text/plain', fileUri: source.url } });
+    else if (source.text) parts.push({ text: `SOURCE TEXT:\n${source.text.substring(0, 100000)}` });
 
     const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
         contents: { parts },
         config: { responseMimeType: 'application/json' }
     });
-
     const text = response.text;
     if (!text) return null;
-    
     const parsed = JSON.parse(text);
     const channelId = crypto.randomUUID();
-    
     return {
       id: channelId,
       title: parsed.title,
@@ -210,14 +185,8 @@ export async function generateChannelFromDocument(
       chapters: parsed.chapters?.map((ch: any, i: number) => ({ 
           id: `ch-${i}`, 
           title: ch.title, 
-          subTopics: ch.subTopics.map((s: any, j: number) => ({ 
-              id: `s-${i}-${j}`, 
-              title: s.title || s 
-          })) 
+          subTopics: ch.subTopics.map((s: any, j: number) => ({ id: `s-${i}-${j}`, title: s.title || s })) 
       })) || []
     };
-  } catch (error) { 
-      console.error("Neural Document Parse Failure:", error);
-      return null; 
-  }
+  } catch (error) { return null; }
 }

@@ -257,7 +257,8 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
     try {
         const veoAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const op = await veoAi.models.generateVideos({ model: 'veo-3.1-fast-generate-preview', prompt: 'Probe', config: { numberOfVideos: 1 } });
-        updateStep('veo', { status: 'success', details: `Handshake successful. Op: ${op.id}` });
+        // Fixed: Property 'id' does not exist on type 'GenerateVideosOperation'. Use 'name' instead.
+        updateStep('veo', { status: 'success', details: `Handshake successful. Op: ${op.name}` });
     } catch (e: any) {
         updateStep('veo', { status: 'failed', error: e.message });
     }

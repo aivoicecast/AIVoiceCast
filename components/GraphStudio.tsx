@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-// Added missing 'Plus' icon to the import list from lucide-react
 import { ArrowLeft, Play, Trash2, Loader2, Activity, Zap, Lock, Terminal, ShieldCheck, RefreshCw, Layers, BrainCircuit, Code, Info, ChevronRight, Share2, Download, Maximize2, Move, RotateCw, ZoomIn, ZoomOut, Sliders, Target, Crosshair, Plus } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 
@@ -78,7 +77,6 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack, isProMember })
     setIsCompiling(true);
     addLog(`Initializing ${mode.toUpperCase()} Compiler...`, "info");
     
-    // Initializing Gemini client as per guidelines using process.env.API_KEY
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const updated = [...equations];
 
@@ -249,7 +247,6 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack, isProMember })
       return () => cancelAnimationFrame(anim);
   }, [render]);
 
-  // --- Interaction Handlers ---
   const handleMouseDown = (e: React.MouseEvent) => {
     isDragging.current = true;
     lastMouse.current = { x: e.clientX, y: e.clientY };
@@ -276,8 +273,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack, isProMember })
   };
 
   return (
-    <div className="flex h-full bg-slate-950 text-slate-100 overflow-hidden font-mono">
-      {/* Sidebar - Math Terminal */}
+    <div className="flex h-full w-full bg-slate-950 text-slate-100 overflow-hidden font-mono">
       <div className="w-[350px] border-r border-slate-800 bg-slate-900/50 flex flex-col shrink-0">
         <div className="p-4 border-b border-slate-800 flex items-center gap-3 bg-slate-950/40">
             <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
@@ -339,88 +335,40 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack, isProMember })
               </div>
           </div>
 
-          {/* Terminal Diagnostic */}
           <div className="bg-slate-950 rounded-xl border border-slate-800 overflow-hidden shadow-inner">
-              <div className="px-3 py-1.5 bg-slate-900 border-b border-slate-800 flex items-center gap-2">
-                  <Terminal size={12} className="text-slate-500"/>
-                  <span className="text-[8px] font-black text-slate-500 uppercase">Refraction Log</span>
-              </div>
-              <div className="p-3 h-24 overflow-y-auto text-[9px] font-mono scrollbar-hide space-y-1">
-                  {logs.map((log, i) => (
-                      <div key={i} className="flex gap-2">
-                          <span className="opacity-30">{log.time}</span>
-                          <span className={log.type === 'error' ? 'text-red-400' : log.type === 'output' ? 'text-emerald-400' : 'text-slate-400'}>{log.msg}</span>
+              <div className="px-3 py-1.5 border-b border-slate-800 bg-slate-900 flex items-center gap-2"><Terminal size={12} className="text-red-400"/><span className="text-[9px] font-black uppercase text-slate-500">Trace Logs</span></div>
+              <div className="p-4 h-48 overflow-y-auto space-y-1.5 scrollbar-hide text-left">
+                  {logs.map((l, i) => (
+                      <div key={i} className={`text-[10px] flex gap-2 ${l.type === 'error' ? 'text-red-400' : l.type === 'input' ? 'text-indigo-400' : l.type === 'output' ? 'text-emerald-400' : 'text-slate-500'}`}>
+                          <span className="opacity-30">[{l.time}]</span>
+                          <span className="flex-1 break-words">{l.msg}</span>
                       </div>
                   ))}
-                  {logs.length === 0 && <p className="text-slate-700 italic">Core waiting for math input...</p>}
+                  {logs.length === 0 && <p className="text-[10px] text-slate-800 italic">Awaiting neural input...</p>}
               </div>
           </div>
         </div>
 
-        <div className="p-6 bg-slate-950 border-t border-slate-800">
-            <button 
-                onClick={refractMath}
-                disabled={isCompiling}
-                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
-            >
-                {isCompiling ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18}/>}
-                Execute Refraction
+        <div className="p-6 border-t border-slate-800 bg-slate-950/40">
+            <button onClick={refractMath} disabled={isCompiling} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-indigo-900/40 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50">
+                {isCompiling ? <Loader2 size={18} className="animate-spin"/> : <Zap size={18} fill="currentColor"/>}
+                Refract All
             </button>
         </div>
       </div>
 
-      {/* Preview Area */}
-      <div className="flex-1 relative flex flex-col bg-[#020617]">
-        <header className="h-14 border-b border-slate-800 bg-slate-900/30 flex items-center justify-between px-6 shrink-0 z-20 backdrop-blur-md">
-            <div className="flex items-center gap-4">
-                {mode === 'polar' ? <Target className="text-pink-400" size={18}/> : mode === '3d' ? <Activity className="text-purple-400" size={18}/> : <Crosshair className="text-indigo-400" size={18}/>}
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Neural Space (Real-Time)</span>
-            </div>
-            <div className="flex gap-2">
-                <button onClick={() => { setRotation({ x: 1.1, z: 0.5 }); setOffset({x:0, y:0}); setZoom(40); }} className="p-2 hover:bg-slate-800 rounded-lg text-slate-500" title="Reset View"><RefreshCw size={16}/></button>
-            </div>
-        </header>
-
-        <div 
-            ref={containerRef}
-            className={`flex-1 relative touch-none ${mode === '3d' ? 'cursor-move' : 'cursor-grab active:cursor-grabbing'}`}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onWheel={handleWheel}
-        >
-            <canvas 
-                ref={canvasRef} 
-                width={1200} 
-                height={800} 
-                className="w-full h-full block"
-            />
-
-            {/* Viewport UI Overlays */}
-            <div className="absolute top-8 right-8 flex flex-col gap-3">
-                <div className="p-4 bg-slate-900/60 backdrop-blur-xl border border-white/5 rounded-3xl shadow-2xl flex flex-col items-center gap-4 animate-fade-in">
-                    <button onClick={() => setZoom(z => Math.min(1000, z + 5))} className="p-2 hover:bg-white/10 rounded-xl transition-colors"><ZoomIn size={18}/></button>
-                    <div className="w-4 h-px bg-slate-800"></div>
-                    <button onClick={() => setZoom(z => Math.max(1, z - 5))} className="p-2 hover:bg-white/10 rounded-xl transition-colors"><ZoomOut size={18}/></button>
-                </div>
-            </div>
-
-            {/* Bottom HUD */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-6 p-4 bg-slate-900/80 backdrop-blur-2xl border border-indigo-500/20 rounded-[2rem] shadow-2xl animate-fade-in-up">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-indigo-600/20 rounded-xl flex items-center justify-center text-indigo-400"><BrainCircuit size={20}/></div>
-                    <div>
-                        <p className="text-[10px] font-black text-white uppercase tracking-widest">{mode.toUpperCase()} Matrix Active</p>
-                        <p className="text-[8px] text-slate-500 font-bold uppercase">Source: Gemini 3 Flash • Verified</p>
-                    </div>
-                </div>
-                <div className="w-px h-8 bg-slate-800"></div>
-                <div className="text-[9px] text-slate-400 font-medium">
-                    {mode === '3d' ? 'Drag to Rotate • Scroll to Zoom' : 'Drag to Pan • Scroll to Zoom'}
-                </div>
-            </div>
-        </div>
+      <div className="flex-1 relative cursor-crosshair group" onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} onWheel={handleWheel}>
+          <div className="absolute top-6 left-6 flex items-center gap-2 px-3 py-1.5 bg-slate-900/60 backdrop-blur-md rounded-full border border-white/5 z-20 text-[10px] font-bold text-slate-400 pointer-events-none uppercase tracking-widest">
+              <Activity size={12} className="text-emerald-500 animate-pulse"/> 
+              <span>Heuristic Frame Trace</span>
+          </div>
+          <canvas ref={canvasRef} width={window.innerWidth - 350} height={window.innerHeight} className="block w-full h-full" />
+          <div className="absolute bottom-6 right-6 flex flex-col gap-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => setZoom(prev => prev * 1.2)} className="p-3 bg-slate-900/80 backdrop-blur-md rounded-xl border border-white/5 hover:bg-indigo-600 text-white shadow-xl transition-all"><ZoomIn size={20}/></button>
+              <button onClick={() => setZoom(prev => prev / 1.2)} className="p-3 bg-slate-900/80 backdrop-blur-md rounded-xl border border-white/5 hover:bg-indigo-600 text-white shadow-xl transition-all"><ZoomOut size={20}/></button>
+              <div className="h-px bg-slate-800 my-1"></div>
+              <button onClick={() => setRotation({ x: 1.1, z: 0.5 })} className="p-3 bg-slate-900/80 backdrop-blur-md rounded-xl border border-white/5 hover:bg-indigo-600 text-white shadow-xl transition-all"><RefreshCw size={20}/></button>
+          </div>
       </div>
     </div>
   );

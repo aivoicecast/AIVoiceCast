@@ -1,7 +1,8 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power, Database, Timer, MessageSquareOff } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power, Database, Timer, MessageSquareOff, Image as ImageIconLucide, Palette, Upload } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, signInWithGoogle, isJudgeSession } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
@@ -12,6 +13,7 @@ import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '.
 import { FunctionDeclaration, Type } from '@google/genai';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext, stopAllPlatformAudio } from '../utils/audioUtils';
 import { Visualizer } from './Visualizer';
+import { resizeImage } from '../utils/imageUtils';
 
 interface LiveSessionProps {
   channel: Channel;
@@ -23,7 +25,7 @@ interface LiveSessionProps {
   recordingDuration?: number;
   interactionEnabled?: boolean;
   videoEnabled?: boolean;
-  cameraEnabled?: boolean; // Note: Parent App.tsx passes 'recordCamera'
+  cameraEnabled?: boolean; 
   recordScreen?: boolean;
   recordCamera?: boolean;
   activeSegment?: { index: number, lectureId: string };
@@ -33,102 +35,66 @@ interface LiveSessionProps {
   onCustomToolCall?: (name: string, args: any) => Promise<any>;
 }
 
+type PipBackground = 'blur' | 'indigo' | 'black';
+
 const UI_TEXT = {
   en: {
     welcomePrefix: "Try asking...",
     reconnecting: "Neural Link Recovery...",
     establishing: "Establishing neural link...",
-    holdMusic: "Playing hold music...",
     preparing: "Preparing agent environment...",
     transcript: "Live Transcript",
     copied: "Copied",
     listening: "Listening...",
     connecting: "Connecting to AI Agent...",
-    reconnect: "Manual Reconnect",
     you: "You",
     speaking: "Speaking...",
-    retry: "Retry Connection",
     live: "LIVE ON AIR",
-    saveToCourse: "Save as New Lesson",
-    appendToLecture: "Append to Current Lecture",
-    sharePublic: "Share Discussion Publicly",
     saving: "Saving...",
-    saveSuccess: "Saved!",
-    sharedSuccess: "Shared to Community!",
     tapToStart: "Start Neural Session",
     tapDesc: "Click to enable audio and microphone access.",
     recording: "REC",
     uploading: "Syncing Session to Cloud...",
     uploadComplete: "Upload Successful",
-    saveAndLink: "Save & Link to Segment",
     start: "Start Session",
-    saveSession: "Save Session",
-    localPreview: "Local Preview",
-    diagnostics: "Neural Diagnostics",
-    cloudWarn: "Drive/YouTube Access Missing: Local Only.",
-    signIn: "Sign In",
-    forceStart: "Bypassing Landing Screen: Auto-Initializing...",
-    linkRestored: "Neural Link Restored",
-    linkLost: "Neural Link Interrupted",
-    rateLimit: "Neural Cooling Engaged",
-    rateLimitDesc: "API quota exceeded. Please wait a few seconds before retrying.",
-    rotating: "Neural Rotation (15min Checkpoint)...",
-    forceRestart: "Neural Refresh (Fix Hang)",
-    stopLink: "Pause AI Link",
-    stopped: "AI Paused",
-    checkpoint: "Neural Checkpoint",
     scribeActive: "Silent Scribe Mode Active",
     studio: "Interactive Studio",
     macAudioWarn: "MAC USERS: Ensure 'Share Audio' is checked in the browser dialog to capture system sounds.",
-    provisioning: "Provisioning Workspace..."
+    provisioning: "Provisioning Workspace...",
+    waitingFrames: "Syncing Streams...",
+    finalizing: "Securing Neural Artifact...",
+    pipFrame: "PIP Frame Image",
+    bgStyle: "Video Backdrop",
+    uploadBtn: "Upload Image"
   },
   zh: {
     welcomePrefix: "试着问...",
     reconnecting: "正在恢复神经连接...",
     establishing: "建立神经连接...",
-    holdMusic: "播放等待音乐...",
     preparing: "准备智能体环境...",
     transcript: "实时字幕",
     copied: "已复制",
     listening: "正在聆听...",
     connecting: "连接到 AI 智能体...",
-    reconnect: "手动重连",
     you: "你",
     speaking: "正在说话...",
-    retry: "重试连接",
     live: "直播中",
-    saveToCourse: "保存为新课程",
-    appendToLecture: "追加到当前课程",
-    sharePublic: "分享到社区",
     saving: "保存中...",
-    saveSuccess: "已保存！",
-    sharedSuccess: "已分享到社区！",
     tapToStart: "启动神经会话",
     tapDesc: "点击以启用音频和麦克风权限。",
     recording: "录音中",
     uploading: "正在同步会话存档...",
     uploadComplete: "上传成功",
-    saveAndLink: "保存并链接到段落",
     start: "开始会话",
-    saveSession: "保存会话",
-    localPreview: "本地预览",
-    diagnostics: "神经诊断",
-    cloudWarn: "缺少 Drive/YouTube 权限：仅限本地。",
-    signIn: "登录",
-    forceStart: "跳过着陆页：自动初始化...",
-    linkRestored: "神经连接已恢复",
-    linkLost: "神经连接中断",
-    rateLimit: "神经冷却中",
-    rateLimitDesc: "API 配额已超出。请等待几秒钟后重试。",
-    rotating: "神经轮换 (15分钟检查点)...",
-    forceRestart: "神经刷新 (修复卡顿)",
-    stopLink: "暂停 AI 连接",
-    stopped: "AI 已暂停",
-    checkpoint: "神经检查点",
     scribeActive: "静默速记模式已激活",
     studio: "互动工作室",
     macAudioWarn: "MAC 用户：请确保在浏览器共享对话框中勾选“共享音频”以录制系统声音。",
-    provisioning: "正在准备工作空间..."
+    provisioning: "正在准备工作空间...",
+    waitingFrames: "同步音视频流...",
+    finalizing: "正在固化神经存档...",
+    pipFrame: "画中画背景图",
+    bgStyle: "视频背景样式",
+    uploadBtn: "上传图片"
   }
 };
 
@@ -167,31 +133,26 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const t = UI_TEXT[language];
   const [hasStarted, setHasStarted] = useState(false); 
   const [isProvisioning, setIsProvisioning] = useState(false);
+  const [isWaitingForFrames, setIsWaitingForFrames] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [isReconnecting, setIsReconnecting] = useState(false);
   const [isRecordingActive, setIsRecordingActive] = useState(false);
-  const [isRotating, setIsRotating] = useState(false);
-  const [isRateLimited, setIsRateLimited] = useState(false);
-  const [showReconnectButton, setShowReconnectButton] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [logs, setLogs] = useState<{time: string, msg: string, type: 'info' | 'error' | 'warn'}[]>([]);
   const [volume, setVolume] = useState(0);
 
   const [scribeTimeLeft, setScribeTimeLeft] = useState(recordingDuration || 180);
+  const [backdropStyle, setBackdropStyle] = useState<PipBackground>('blur');
+  const [customPipBgBase64, setCustomPipBgBase64] = useState<string | null>(null);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
-  const compositorAnimationFrameRef = useRef<number | null>(null);
+  const renderIntervalRef = useRef<any>(null);
   const mountedRef = useRef(true);
   const reconnectTimeoutRef = useRef<any>(null);
-  const rotationTimerRef = useRef<any>(null);
-  const checkpointTimerRef = useRef<any>(null);
-  const autoReconnectAttempts = useRef(0);
-  const maxAutoRetries = 8; 
+  const pipBgImageRef = useRef<HTMLImageElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [currentLine, setCurrentLine] = useState<TranscriptItem | null>(null);
@@ -200,9 +161,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [suggestions] = useState<string[]>(channel.starterPrompts?.slice(0, 4) || []);
   
   const addLog = useCallback((msg: string, type: 'info' | 'error' | 'warn' = 'info') => {
-      const time = new Date().toLocaleTimeString();
-      setLogs(prev => [{ time, msg, type }, ...prev].slice(0, 100));
       console.log(`[Neural Log] ${msg}`);
+      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: msg, type } }));
   }, []);
 
   useEffect(() => { 
@@ -211,10 +171,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       return () => { 
           mountedRef.current = false; 
-          if (rotationTimerRef.current) clearTimeout(rotationTimerRef.current);
-          if (checkpointTimerRef.current) clearInterval(checkpointTimerRef.current);
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-          if (compositorAnimationFrameRef.current) cancelAnimationFrame(compositorAnimationFrameRef.current);
+          if (renderIntervalRef.current) clearInterval(renderIntervalRef.current);
       };
   }, [transcript, currentLine]);
 
@@ -223,7 +181,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       const timer = setInterval(() => {
         setScribeTimeLeft(prev => {
           if (prev <= 1) {
-            addLog("Recording limit reached. Finalizing neural artifact...", "warn");
             handleDisconnect(); 
             return 0;
           }
@@ -237,230 +194,253 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
 
+  const handlePipBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const b64 = await resizeImage(e.target.files[0], 1024, 0.7);
+      setCustomPipBgBase64(b64);
+      const img = new Image();
+      img.src = b64;
+      pipBgImageRef.current = img;
+      addLog("PIP Portal backdrop verified.");
+    }
+  };
+
   const initializePersistentRecorder = useCallback(async () => {
     if (!recordingEnabled || !currentUser) return;
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') return;
 
     try {
-        addLog(`Initializing Scribe (Fidelity Loop Active)...`);
+        addLog(`Initializing Scribe Compositor Protocol...`);
+        setIsWaitingForFrames(true);
+
         const ctx = getGlobalAudioContext();
         const recordingDest = getGlobalMediaStreamDest();
         
         if (ctx.state !== 'running') await ctx.resume();
 
-        // 1. Capture User Mic for the video recording (separate from Live API mic)
+        // 1. Audio Setup
         const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const userSource = ctx.createMediaStreamSource(userStream); 
         userSource.connect(recordingDest);
 
-        // 2. Capture System Audio if available in screen stream
         if (screenStreamRef.current && screenStreamRef.current.getAudioTracks().length > 0) {
-            addLog("Bridging system audio to recording bus...");
             const screenAudioSource = ctx.createMediaStreamSource(screenStreamRef.current);
             screenAudioSource.connect(recordingDest);
         }
 
+        // 2. Compositor Setup - Standard 1080p Landscape for MacBook
         const canvas = document.createElement('canvas');
-        const isPortrait = window.innerHeight > window.innerWidth;
-        canvas.width = isPortrait ? 720 : 1280;
-        canvas.height = isPortrait ? 1280 : 720;
+        canvas.width = 1920; 
+        canvas.height = 1080;
         const drawCtx = canvas.getContext('2d', { alpha: false })!;
         
         const createCaptureVideo = (stream: MediaStream | null, id: string) => {
             const v = document.createElement('video');
-            v.id = `capture-source-${id}`;
-            v.muted = true; 
-            v.playsInline = true; 
-            v.autoplay = true;
-            v.style.position = 'fixed'; 
-            v.style.left = '-10000px'; 
-            v.style.top = '-10000px';
-            v.style.width = '640px'; 
-            v.style.height = '360px';
-            v.style.pointerEvents = 'none';
-            if (stream) { 
-                v.srcObject = stream; 
-                document.body.appendChild(v); 
-                v.play().catch(e => addLog(`Video (${id}) playback failed: ` + e.message, "error")); 
-            }
+            v.muted = true; v.playsInline = true; v.autoplay = true;
+            v.style.position = 'fixed'; v.style.left = '-10000px'; 
+            if (stream) { v.srcObject = stream; document.body.appendChild(v); v.play().catch(console.warn); }
             return v;
         };
 
         const screenVideo = createCaptureVideo(screenStreamRef.current, 'screen');
         const cameraVideo = createCaptureVideo(cameraStreamRef.current, 'camera');
 
-        let lastPulseTime = 0;
-        const renderLoop = (now: number) => {
+        // FRAME-FLOW HANDSHAKE (Fix for Frozen Video)
+        let ready = false;
+        const checkFlow = () => {
+            const screenOk = !screenStreamRef.current || (screenVideo.readyState >= 2 && screenVideo.currentTime > 0);
+            const cameraOk = !cameraStreamRef.current || (cameraVideo.readyState >= 2 && cameraVideo.currentTime > 0);
+            if (screenOk && cameraOk) {
+                ready = true;
+                setIsWaitingForFrames(false);
+                addLog("Frame flow verified. Recorder engaged.");
+            } else {
+                if (screenVideo.paused) screenVideo.play();
+                if (cameraVideo.paused) cameraVideo.play();
+                setTimeout(checkFlow, 100);
+            }
+        };
+        checkFlow();
+
+        // High-Stability Render Loop (Switch from requestAnimationFrame to setInterval)
+        // 30 FPS = ~33.3ms. setInterval is much more resistant to background throttling.
+        const renderLoop = () => {
             if (!mountedRef.current) return;
             
-            drawCtx.fillStyle = '#020617'; 
-            drawCtx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Draw Screen
-            if (screenStreamRef.current && screenVideo.readyState >= 2 && screenVideo.videoWidth > 0) {
-                const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
-                const w = screenVideo.videoWidth * scale; 
-                const h = screenVideo.videoHeight * scale;
-                drawCtx.drawImage(screenVideo, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+            // 1. Main Background Layer
+            if (backdropStyle === 'black') {
+                drawCtx.fillStyle = '#020617';
+                drawCtx.fillRect(0, 0, canvas.width, canvas.height);
+            } else if (backdropStyle === 'indigo') {
+                const grad = drawCtx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, canvas.width);
+                grad.addColorStop(0, '#1e1b4b'); grad.addColorStop(1, '#020617');
+                drawCtx.fillStyle = grad;
+                drawCtx.fillRect(0, 0, canvas.width, canvas.height);
+            } else {
+                drawCtx.fillStyle = '#020617';
+                drawCtx.fillRect(0, 0, canvas.width, canvas.height);
+                if (screenVideo.readyState >= 2) {
+                    drawCtx.save();
+                    drawCtx.filter = 'blur(60px) brightness(0.4)';
+                    drawCtx.drawImage(screenVideo, -100, -100, canvas.width + 200, canvas.height + 200);
+                    drawCtx.restore();
+                }
             }
 
-            // Draw Camera (PIP Overlay)
-            if (cameraStreamRef.current && cameraVideo.readyState >= 2 && cameraVideo.videoWidth > 0) {
-                const pipW = isPortrait ? canvas.width * 0.35 : 320;
-                const pipH = (pipW * cameraVideo.videoHeight) / cameraVideo.videoWidth;
-                const pipX = isPortrait ? (canvas.width - pipW) / 2 : canvas.width - pipW - 40;
-                const pipY = isPortrait ? canvas.height - pipH - 180 : canvas.height - pipH - 40;
-                
+            // 2. Primary Screen Layer (The Hero)
+            if (screenStreamRef.current && screenVideo.readyState >= 2) {
+                const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight) * 0.95;
+                const w = screenVideo.videoWidth * scale;
+                const h = screenVideo.videoHeight * scale;
                 drawCtx.save();
                 drawCtx.shadowColor = 'rgba(0,0,0,0.8)';
-                drawCtx.shadowBlur = 30;
-                drawCtx.strokeStyle = '#6366f1'; 
-                drawCtx.lineWidth = 6;
-                drawCtx.strokeRect(pipX, pipY, pipW, pipH); 
-                drawCtx.drawImage(cameraVideo, pipX, pipY, pipW, pipH);
+                drawCtx.shadowBlur = 40;
+                drawCtx.drawImage(screenVideo, (canvas.width - w)/2, (canvas.height - h)/2, w, h);
                 drawCtx.restore();
             }
 
-            if (now - lastPulseTime > 100) {
-                drawCtx.fillStyle = `rgba(99, 102, 241, ${Math.random() * 0.05})`;
-                drawCtx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, 2, 2);
-                lastPulseTime = now;
-            }
+            // 3. Circular PIP Portal Overlay
+            if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
+                const size = 440; // Diameter for 1080p
+                const margin = 60;
+                const px = canvas.width - size - margin;
+                const py = canvas.height - size - margin;
+                const centerX = px + size / 2;
+                const centerY = py + size / 2;
+                const radius = size / 2;
+                
+                drawCtx.save();
+                drawCtx.shadowColor = 'rgba(0,0,0,0.9)';
+                drawCtx.shadowBlur = 50;
+                drawCtx.beginPath();
+                drawCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                drawCtx.closePath();
+                drawCtx.clip();
 
-            compositorAnimationFrameRef.current = requestAnimationFrame(renderLoop);
+                if (pipBgImageRef.current) {
+                    const img = pipBgImageRef.current;
+                    const imgScale = Math.max(size / img.width, size / img.height);
+                    const iw = img.width * imgScale;
+                    const ih = img.height * imgScale;
+                    drawCtx.drawImage(img, centerX - iw / 2, centerY - ih / 2, iw, ih);
+                } else {
+                    drawCtx.fillStyle = '#1e1b4b';
+                    drawCtx.fillRect(px, py, size, size);
+                }
+
+                const camScale = Math.max(size / cameraVideo.videoWidth, size / cameraVideo.videoHeight);
+                const cw = cameraVideo.videoWidth * camScale;
+                const ch = cameraVideo.videoHeight * camScale;
+                drawCtx.drawImage(cameraVideo, centerX - cw / 2, centerY - ch / 2, cw, ch);
+                drawCtx.restore();
+
+                drawCtx.save();
+                drawCtx.beginPath();
+                drawCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                drawCtx.strokeStyle = '#6366f1';
+                drawCtx.lineWidth = 12;
+                drawCtx.stroke();
+                drawCtx.strokeStyle = '#ffffff';
+                drawCtx.lineWidth = 2;
+                drawCtx.stroke();
+                drawCtx.restore();
+            }
         };
 
-        compositorAnimationFrameRef.current = requestAnimationFrame(renderLoop);
-        
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Wait for handshake
+        while (!ready) { await new Promise(r => setTimeout(r, 100)); if (!mountedRef.current) return; }
+
+        renderIntervalRef.current = setInterval(renderLoop, 1000 / 30);
 
         const captureStream = canvas.captureStream(30);
-        recordingDest.stream.getAudioTracks().forEach(track => captureStream.addTrack(track));
+        recordingDest.stream.getAudioTracks().forEach(t => captureStream.addTrack(t));
         
-        const supportedTypes = [
-            'video/webm;codecs=vp8,opus',
-            'video/webm',
-            'video/mp4'
-        ];
-        let mimeType = '';
-        for (const type of supportedTypes) {
-            if (MediaRecorder.isTypeSupported(type)) {
-                mimeType = type;
-                break;
-            }
-        }
-
         const recorder = new MediaRecorder(captureStream, { 
-            mimeType: mimeType || undefined, 
-            videoBitsPerSecond: 5000000 
+            mimeType: 'video/webm;codecs=vp9,opus', 
+            videoBitsPerSecond: 8000000 
         });
-        
         audioChunksRef.current = []; 
         recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+        
         recorder.onstop = async () => {
             setIsRecordingActive(false);
-            if (compositorAnimationFrameRef.current) cancelAnimationFrame(compositorAnimationFrameRef.current);
-            const videoBlob = new Blob(audioChunksRef.current, { type: videoChunksType || 'video/webm' });
-            const transcriptText = transcriptRef.current.map(t => `[${new Date(t.timestamp).toLocaleTimeString()}] ${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
-            const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
+            setIsFinalizing(true);
+            if (renderIntervalRef.current) clearInterval(renderIntervalRef.current);
+            addLog("Finalizing neural artifact...");
             
-            setIsUploadingRecording(true);
+            const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
+            const timestamp = Date.now();
+            const recId = `session-${timestamp}`;
+            
             try {
-                const timestamp = Date.now();
-                const recId = `session-${timestamp}`;
                 await saveLocalRecording({
                     id: recId, userId: currentUser.uid, channelId: channel.id, 
                     channelTitle: channel.title, channelImage: channel.imageUrl, 
                     timestamp, mediaUrl: URL.createObjectURL(videoBlob), 
-                    mediaType: (videoChunksType?.includes('mp4') ? 'video/mp4' : 'video/webm') as any, 
-                    transcriptUrl: URL.createObjectURL(transcriptBlob), 
+                    mediaType: 'video/webm', transcriptUrl: '', 
                     blob: videoBlob, size: videoBlob.size
                 });
+                addLog("Artifact secured locally.");
 
-                const isJudge = isJudgeSession();
-                if (isJudge) {
-                    const fbVideoUrl = await uploadFileToStorage(`recordings/${currentUser.uid}/${recId}.webm`, videoBlob);
-                    const fbTranscriptUrl = await uploadFileToStorage(`recordings/${currentUser.uid}/${recId}_transcript.txt`, transcriptBlob);
+                setIsUploadingRecording(true);
+                const token = getDriveToken();
+                if (token) {
+                    const folderId = await ensureCodeStudioFolder(token);
+                    const driveId = await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob);
                     await saveRecordingReference({
                         id: recId, userId: currentUser.uid, channelId: channel.id, 
                         channelTitle: channel.title, channelImage: channel.imageUrl, 
-                        timestamp, mediaUrl: fbVideoUrl, driveUrl: fbVideoUrl, 
-                        mediaType: (videoChunksType?.includes('mp4') ? 'video/mp4' : 'video/webm') as any, 
-                        transcriptUrl: fbTranscriptUrl, size: videoBlob.size
+                        timestamp, mediaUrl: `drive://${driveId}`, driveUrl: `drive://${driveId}`, 
+                        mediaType: 'video/webm', transcriptUrl: '', size: videoBlob.size
                     });
-                } else {
-                    const token = getDriveToken();
-                    if (token) {
-                        const folderId = await ensureCodeStudioFolder(token);
-                        const ext = videoChunksType?.includes('mp4') ? 'mp4' : 'webm';
-                        const driveVideoUrl = `drive://${await uploadToDrive(token, folderId, `${recId}.${ext}`, videoBlob)}`;
-                        const tFileId = await uploadToDrive(token, folderId, `${recId}_transcript.txt`, transcriptBlob);
-                        await saveRecordingReference({
-                            id: recId, userId: currentUser.uid, channelId: channel.id, 
-                            channelTitle: channel.title, channelImage: channel.imageUrl, 
-                            timestamp, mediaUrl: driveVideoUrl, driveUrl: driveVideoUrl, 
-                            mediaType: (ext === 'mp4' ? 'video/mp4' : 'video/webm') as any, 
-                            transcriptUrl: `drive://${tFileId}`, size: videoBlob.size
-                        });
-                    }
+                    addLog("Archive synced to sovereign cloud.");
                 }
-            } catch(e: any) { addLog("Backup failed: " + e.message, "error"); } 
-            finally { setIsUploadingRecording(false); onEndSession(); }
-            
+            } catch (e: any) {
+                addLog("Save interruption: " + e.message, "error");
+            } finally {
+                setIsFinalizing(false);
+                setIsUploadingRecording(false);
+                onEndSession();
+            }
+
             userStream.getTracks().forEach(t => t.stop());
             if (screenStreamRef.current) screenStreamRef.current.getTracks().forEach(t => t.stop());
             if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
-            screenVideo.remove(); 
-            cameraVideo.remove();
+            screenVideo.remove(); cameraVideo.remove();
         };
         
-        const videoChunksType = recorder.mimeType;
         mediaRecorderRef.current = recorder;
         recorder.start(1000);
         setIsRecordingActive(true);
-        addLog(`Neural Recording initialized (${videoChunksType}).`);
-    } catch(e: any) { addLog("Init Error: " + e.message, "error"); }
-  }, [recordingEnabled, currentUser, channel, onEndSession, addLog, recordingDuration]);
+    } catch(e: any) { 
+        setIsWaitingForFrames(false);
+        addLog("Init failed: " + e.message, "error");
+    }
+  }, [recordingEnabled, currentUser, channel, onEndSession, addLog, backdropStyle]);
 
   const handleStartSession = async () => {
-      setError(null);
-      setIsRateLimited(false);
-      autoReconnectAttempts.current = 0;
       setIsProvisioning(true);
-      
       setHasStarted(true);
 
       if (recordingEnabled) {
           try {
-              addLog("Requesting display access...");
+              addLog("Requesting screen access...");
               screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
-                  video: { 
-                      cursor: "always",
-                      width: { ideal: 1920 },
-                      height: { ideal: 1080 }
-                  } as any, 
-                  audio: {
-                      echoCancellation: true,
-                      noiseSuppression: true,
-                      autoGainControl: true
-                  },
-                  // @ts-ignore
-                  systemAudio: "include",
-                  selfBrowserSurface: "exclude" 
+                  video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, 
+                  audio: true 
               } as any);
               
               if (propRecordCamera) {
-                  addLog("Requesting camera access for overlay...");
+                  addLog("Requesting camera access...");
                   cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
-                      video: { width: 640, height: 480 }, 
+                      video: { width: 1280, height: 720 }, 
                       audio: false 
                   });
               }
               initializePersistentRecorder();
           } catch(e: any) { 
-              addLog("Capture denied: " + e.message, "warn"); 
-              setIsProvisioning(false);
-              setHasStarted(false);
+              addLog("Permission denied.", "warn"); 
+              setHasStarted(false); setIsProvisioning(false);
               return;
           }
       }
@@ -471,161 +451,59 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       await connect();
   };
 
-  const connect = useCallback(async (isAutoRetry = false, isRotationSwap = false) => {
-    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-    if (rotationTimerRef.current) clearTimeout(rotationTimerRef.current);
-    if (checkpointTimerRef.current) clearInterval(checkpointTimerRef.current);
-    
-    if (isRotationSwap || isAutoRetry) {
-        setIsRotating(isRotationSwap); setIsReconnecting(!isRotationSwap);
-        if (serviceRef.current) await serviceRef.current.disconnect();
-        stopAllPlatformAudio("NeuralHandover");
-    } else {
-        setIsConnected(false); setIsReconnecting(false); setIsRotating(false); setShowReconnectButton(false);
-    }
-    
+  const connect = useCallback(async () => {
     const service = new GeminiLiveService();
     serviceRef.current = service;
-    
     try {
       await service.initializeAudio();
-      let effectiveInstruction = `[TIME]: ${new Date().toLocaleString()}.\n\n${channel.systemInstruction}`;
-      
-      if (recordingEnabled) {
-          if (!interactionEnabled) {
-              effectiveInstruction = `[CRITICAL MODE: PASSIVE SCRIBE]
-              YOU ARE A SILENT OBSERVER. YOU MUST NOT SPEAK UNDER ANY CIRCUMSTANCES.
-              CONTEXT: ${initialContext || channel.title}`;
-              addLog("Neural mode: SILENT SCRIBE engaged.");
-          } else {
-              effectiveInstruction = `[CRITICAL MODE: ACTIVE SCRIBE]
-              You are an advanced participant. LIMIT: ${recordingDuration}s.
-              ORIGINAL PERSONA: ${channel.systemInstruction}`;
-              addLog("Neural mode: ACTIVE SCRIBE engaged.");
-          }
-      }
-
-      await service.connect(channel.voiceName, effectiveInstruction, {
-          onOpen: () => { 
-              if (!mountedRef.current) return;
-              setIsConnected(true); setIsReconnecting(false); setIsRotating(false);
-          },
-          onClose: () => { 
-              if (!mountedRef.current) return;
-              setIsConnected(false);
-              if (!isRotating && autoReconnectAttempts.current < maxAutoRetries) {
-                  autoReconnectAttempts.current++;
-                  reconnectTimeoutRef.current = setTimeout(() => connect(true), 1000 + (autoReconnectAttempts.current * 1500));
-              } else if (!isRotating) { setIsReconnecting(false); setShowReconnectButton(true); }
-          },
-          onError: (err, code) => { 
-              setIsConnected(false); setIsReconnecting(false); setIsRotating(false);
-              if (code === 'RATE_LIMIT') setIsRateLimited(true);
-              else { setError(err); setShowReconnectButton(true); }
-          },
+      const instruction = `${channel.systemInstruction}\n[MODE]: SCRIBE ACTIVE`;
+      await service.connect(channel.voiceName, instruction, {
+          onOpen: () => setIsConnected(true),
+          onClose: () => setIsConnected(false),
+          onError: () => setIsConnected(false),
           onVolumeUpdate: (v) => setVolume(v),
           onTranscript: (text, isUser) => {
               const role = isUser ? 'user' : 'ai';
               const timestamp = Date.now();
-              const parts = text.split(/\n\n+/);
-              parts.forEach((part, idx) => {
-                  if (!part.trim()) return;
-                  setCurrentLine(prev => {
-                      if (prev && (idx > 0 || prev.role !== role)) {
-                          setTranscript(history => [...history, prev]);
-                          return { role, text: part, timestamp };
-                      }
-                      return { 
-                          role, 
-                          text: (prev ? prev.text : '') + (idx > 0 ? '\n\n' : '') + part, 
-                          timestamp: prev ? prev.timestamp : timestamp 
-                      };
-                  });
+              setCurrentLine(prev => {
+                  if (prev && prev.role !== role) {
+                      setTranscript(history => [...history, prev]);
+                      return { role, text, timestamp };
+                  }
+                  return { role, text: (prev ? prev.text : '') + text, timestamp: prev ? prev.timestamp : timestamp };
               });
-          },
-          onAudioData: (data) => {
-              return interactionEnabled; 
           }
-      }, [], undefined);
-    } catch (e: any) { 
-        setIsReconnecting(false); setIsRotating(false); setIsConnected(false); 
-        setError(e.message?.includes('429') ? null : e.message); setShowReconnectButton(true);
-    }
-  }, [channel.id, channel.voiceName, channel.systemInstruction, recordingEnabled, isRotating, isConnected, addLog, recordingDuration, interactionEnabled, initialContext]);
+      });
+    } catch (e: any) { addLog("Link error: " + e.message, "error"); }
+  }, [channel, addLog]);
 
   const handleDisconnect = async () => {
-      autoReconnectAttempts.current = maxAutoRetries; 
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop();
       else onEndSession();
       if (serviceRef.current) await serviceRef.current.disconnect();
-  };
-
-  const renderMessageContent = (text: string) => {
-    const parts = text.split(/```/);
-    return parts.map((part, index) => {
-      if (index % 2 === 1) {
-        return (
-          <div key={index} className="my-3 rounded-xl overflow-hidden border border-slate-700 bg-slate-950 shadow-lg animate-fade-in">
-             <pre className="p-4 text-sm font-mono text-indigo-100 overflow-x-auto whitespace-pre-wrap">{part}</pre>
-          </div>
-        );
-      }
-      return part.split(/\n\s*\n/).map((p, pi) => p.trim() ? <p key={`${index}-${pi}`} className="mb-3 last:mb-0 leading-relaxed">{p}</p> : null);
-    });
-  };
-
-  const isTuned = channel.voiceName.includes('gen-lang-client');
-  const formatScribeTime = (secs: number) => {
-      const m = Math.floor(secs / 60);
-      const s = secs % 60;
-      return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
   return (
     <div className="w-full h-full flex flex-col bg-slate-950 relative">
       <div className="p-4 flex items-center justify-between bg-slate-900 border-b border-slate-800 shrink-0 z-20">
          <div className="flex items-center space-x-3">
-            {!recordingEnabled && <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" alt={channel.title} />}
+            {!recordingEnabled && <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" alt="" />}
             <div>
+               <h2 className="text-sm font-bold text-white leading-tight">{channel.title}</h2>
                <div className="flex items-center gap-2">
-                   <h2 className="text-sm font-bold text-white leading-tight">
-                     {channel.title}
-                   </h2>
-                   <span className="text-[8px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full uppercase font-black tracking-widest border border-slate-700">
-                     {t.studio}
-                   </span>
-               </div>
-               <div className="flex items-center gap-2">
-                   <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-red-500'}`} />
-                   <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">
-                       {isConnected ? (recordingEnabled ? (interactionEnabled ? 'Active Participation' : t.scribeActive) : 'Link Active') : t.stopped}
-                   </span>
+                   <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                   <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">{isConnected ? 'Link Active' : 'Offline'}</span>
                </div>
             </div>
          </div>
          <div className="flex items-center gap-4">
-            {recordingEnabled && isConnected && (
-                <div className={`flex items-center gap-2 px-4 py-1.5 rounded-xl border transition-all ${scribeTimeLeft < 30 ? 'bg-red-600/20 border-red-500 text-red-400' : 'bg-slate-950 border-slate-800 text-slate-300'}`}>
-                    <Timer size={14}/>
-                    <span className="text-xs font-mono font-black">{formatScribeTime(scribeTimeLeft)}</span>
+            {isRecordingActive && (
+                <div className="flex items-center gap-2 bg-red-600/20 text-red-500 px-3 py-1 rounded-full border border-red-500/30 text-[10px] font-black uppercase tracking-widest animate-pulse">
+                    <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                    <span>Recording</span>
                 </div>
             )}
-            <div className="flex items-center gap-2">
-                {isRecordingActive && (
-                    <div className="flex items-center gap-2 bg-red-600/20 text-red-500 px-3 py-1 rounded-full border border-red-500/30">
-                        <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-                        <span className="text-[10px] font-black uppercase tracking-widest">Recording</span>
-                    </div>
-                )}
-                {isTuned && (
-                <span className="hidden md:flex items-center gap-1.5 bg-indigo-600/20 text-indigo-400 px-3 py-1 rounded-full border border-indigo-500/30 text-[9px] font-black uppercase tracking-widest animate-fade-in shadow-lg">
-                    <Zap size={10} fill="currentColor" />
-                    Tuned Engine
-                </span>
-                )}
-                <button onClick={() => setShowDiagnostics(!showDiagnostics)} className={`p-2 rounded-lg transition-colors ${showDiagnostics ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}><Activity size={18}/></button>
-                <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">Terminate</button>
-            </div>
+            <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">Terminate</button>
          </div>
       </div>
 
@@ -636,75 +514,81 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
              
              {recordingEnabled && (
                  <div className="space-y-4 max-w-sm w-full">
-                    <div className="bg-amber-900/10 border border-amber-500/20 p-4 rounded-2xl flex items-start gap-3 animate-fade-in">
+                    <div className="bg-amber-900/10 border border-amber-500/20 p-4 rounded-2xl flex items-start gap-3">
                         <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={16}/>
                         <p className="text-[10px] text-amber-200 leading-relaxed font-bold uppercase text-left">{t.macAudioWarn}</p>
                     </div>
-                    <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex items-center justify-between animate-fade-in">
-                        <div className="flex items-center gap-3">
-                            {interactionEnabled ? <MessageSquare className="text-emerald-400" size={16}/> : <MessageSquareOff className="text-slate-50" size={16}/>}
-                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{interactionEnabled ? 'AI Interaction Active' : 'Silent Scribe Only'}</span>
+
+                    <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-5 shadow-xl">
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2"><ImageIconLucide size={14} className="text-indigo-400"/><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{t.pipFrame}</span></div>
+                                <button onClick={() => fileInputRef.current?.click()} className="text-[9px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-1 hover:text-white transition-all"><Upload size={12}/> {t.uploadBtn}</button>
+                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePipBgUpload}/>
+                            </div>
+                            {customPipBgBase64 && (
+                                <div className="flex items-center gap-3 p-2 bg-slate-950 rounded-xl border border-indigo-500/30">
+                                    <img src={customPipBgBase64} className="w-10 h-10 rounded-lg object-cover" />
+                                    <span className="text-[9px] text-slate-500 uppercase font-black">Portal Backdrop Staged</span>
+                                    <button onClick={() => {setCustomPipBgBase64(null); pipBgImageRef.current = null;}} className="ml-auto p-1.5 text-slate-600 hover:text-red-400 transition-colors"><X size={14}/></button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="space-y-3 pt-2 border-t border-slate-800">
+                            <div className="flex items-center gap-2"><Palette size={14} className="text-indigo-400"/><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{t.bgStyle}</span></div>
+                            <div className="grid grid-cols-3 gap-2">
+                                {(['blur', 'indigo', 'black'] as PipBackground[]).map(bg => (
+                                    <button 
+                                        key={bg} onClick={() => setBackdropStyle(bg)}
+                                        className={`py-2 rounded-xl text-[9px] font-black uppercase transition-all border ${backdropStyle === bg ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                                    >
+                                        <span>{bg}</span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                  </div>
              )}
 
-             <button onClick={handleStartSession} className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-full shadow-2xl shadow-indigo-500/30 transition-transform hover:scale-105 active:scale-95">Link Neural Fabric</button>
+             <button onClick={handleStartSession} className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-full shadow-2xl shadow-indigo-900/40 transition-transform hover:scale-105 active:scale-95">Link Neural Fabric</button>
          </div>
       ) : (
          <div className="flex-1 flex flex-col min-0 relative">
-            {isProvisioning && (
+            {(isProvisioning || isWaitingForFrames || isFinalizing) && (
                <div className="absolute inset-0 z-[130] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-6 animate-fade-in">
                   <Loader2 className="animate-spin text-indigo-500" size={48} />
-                  <div className="text-center">
-                    <span className="text-sm font-black text-white uppercase tracking-widest block">{t.provisioning}</span>
-                    <span className="text-[10px] text-slate-500 uppercase mt-2 block">Waiting for screen selection...</span>
-                  </div>
+                  <span className="text-sm font-black text-white uppercase tracking-widest">{isFinalizing ? t.finalizing : isWaitingForFrames ? t.waitingFrames : t.provisioning}</span>
                </div>
             )}
-
-            {isUploadingRecording && (
-               <div className="absolute inset-0 z-[120] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
-                  <div className="relative"><div className="w-32 h-32 border-4 border-indigo-500/10 rounded-full" /><div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" /><div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl font-black text-white">SYNC</div></div>
-                  <div className="text-center"><span className="text-sm font-black text-white uppercase tracking-widest">{t.uploading}</span></div>
-               </div>
-            )}
-            
-            {!recordingEnabled && <div className="shrink-0 bg-slate-950"><SuggestionsBar suggestions={suggestions} welcomeMessage={channel.welcomeMessage} showWelcome={transcript.length === 0 && !currentLine && !initialContext} uiText={t} /></div>}
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
-               {transcript.map((item, index) => {
-                   const isCheckpoint = item.text.includes('[CHECKPOINT SUMMARY]');
-                   return (
+               {transcript.map((item, index) => (
                    <div key={index} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                       {recordingEnabled && <span className="text-[9px] text-slate-600 font-mono mb-1">[{new Date(item.timestamp).toLocaleDateString()} {new Date(item.timestamp).toLocaleTimeString()}]</span>}
-                       {!recordingEnabled && <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : channel.author}</span>}
-                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed relative group ${isCheckpoint ? 'bg-indigo-900/30 border-2 border-indigo-500/50 text-indigo-100 italic' : item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-xl' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}>
-                           {isCheckpoint && <div className="flex items-center gap-2 mb-2 text-[10px] font-black uppercase text-indigo-400 tracking-widest"><Zap size={10} fill="currentColor"/> Summary Checkpoint</div>}
-                           {renderMessageContent(item.text)}
+                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'You' : channel.author}</span>
+                       <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-xl' : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}>
+                           {item.text}
                        </div>
                    </div>
-               )})}
+               ))}
                {currentLine && (
                    <div className={`flex flex-col ${currentLine.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in`}>
-                       {!recordingEnabled && <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{currentLine.role === 'user' ? 'You' : channel.author}</span>}
+                       <span className={`text-[10px] uppercase font-bold tracking-wider mb-1 ${currentLine.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{currentLine.role === 'user' ? 'You' : channel.author}</span>
                        <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${currentLine.role === 'user' ? 'bg-indigo-600/80 text-white rounded-tr-sm shadow-xl' : 'bg-slate-800/80 text-slate-200 rounded-tl-sm border border-slate-700 shadow-md'}`}>
-                           {renderMessageContent(currentLine.text)}
+                           {currentLine.text}
                        </div>
                    </div>
                )}
             </div>
 
-            <div className="px-6 py-4 bg-slate-900 border-t border-slate-800 flex flex-col items-center gap-4">
-              <div className="w-full flex justify-center h-48">
-                 <Visualizer volume={volume} isActive={isConnected} color={!interactionEnabled ? '#94a3b8' : isTuned ? '#a855f7' : '#6366f1'} />
+            <div className="px-6 py-4 bg-slate-900 border-t border-slate-800 flex flex-col items-center gap-4 shrink-0">
+              <div className="w-full flex justify-center h-40">
+                 <Visualizer volume={volume} isActive={isConnected} color="#6366f1" />
               </div>
-              <div className="w-full flex items-center justify-between shrink-0 z-20">
-                  <div className="flex items-center space-x-2 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                      {!interactionEnabled ? <MessageSquareOff size={14} className="text-slate-600"/> : <ScrollText size={14} className="text-indigo-400"/>}
-                      <span>{!interactionEnabled ? 'Neural Listener Active' : t.transcript}</span>
-                  </div>
-                  <div className="flex gap-2"><button onClick={handleDisconnect} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"><Save size={16}/></button></div>
+              <div className="w-full flex items-center justify-between text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                  <div className="flex items-center space-x-2"><ScrollText size={14} className="text-indigo-400"/><span>{t.transcript}</span></div>
+                  {isUploadingRecording && <div className="flex items-center gap-2 text-indigo-300 animate-pulse"><Loader2 size={12} className="animate-spin"/> <span>Syncing Archive...</span></div>}
               </div>
             </div>
          </div>
