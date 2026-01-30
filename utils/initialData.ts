@@ -33,20 +33,20 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: 'judge-deep-dive',
     title: '🏆 JUDGE: Neural Prism Technical Audit',
-    description: 'A v6.6.0 interactive guide specifically for Hackathon Judges. We evaluate our project against Execution, Innovation, and Impact criteria. This platform was developed over 30 days using Google AI Studio.',
+    description: 'A v6.6.1 interactive guide specifically for Hackathon Judges. We evaluate our project against Execution, Innovation, and Impact criteria. This platform was developed over 30 days using Google AI Studio.',
     author: 'Project Lead',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the project lead of Neural Prism. You are speaking directly to a hackathon judge. Your tone is professional, confident, and highly technical. You explain how the project leverages Gemini 3, the innovation of Heuristic Simulation, and the v6.1.2 Scribe Protocol for high-fidelity activity capture. Emphasize that the project was a 30-day intensive build using Google AI Studio.',
-    likes: 550,
+    systemInstruction: 'You are the project lead of Neural Prism. You are speaking directly to a hackathon judge. Your tone is professional, confident, and highly technical. You explain how the project leverages Gemini 3, the innovation of Heuristic Simulation, and the v6.6.1 Scribe Protocol for high-fidelity activity capture. Emphasize that the project was a 30-day intensive build using Google AI Studio.',
+    likes: 620,
     dislikes: 0,
     comments: [],
-    tags: ['Judging', 'v6.6.0', 'Architecture', 'Innovation'],
+    tags: ['Judging', 'v6.6.1', 'Architecture', 'Innovation'],
     imageUrl: 'https://images.unsplash.com/photo-1454165833767-027ee6a7cbb4?w=600&q=80',
-    welcomeMessage: "Welcome, Judge. This channel is optimized for v6.6.0. We have self-documented our adherence to your criteria. Note that this entire system was architected and built in 30 days using Google AI Studio. Try the new 'Author Studio' or test the 'Neural Scribe' with camera overlay—the PIP bug has been refracted.",
+    welcomeMessage: "Welcome, Judge. This channel is optimized for the v6.6.1 technical audit. We have self-documented our adherence to your criteria. Note that this entire system was architected and built in 30 days using Google AI Studio. Try the new 'Author Studio' or test the 'Neural Scribe' with camera overlay—the high-fidelity book synthesis is now fully online.",
     starterPrompts: [
-      "Explain the v6.6.0 Scribe Protocol",
+      "Explain the v6.6.1 Scribe Protocol",
       "Why is Heuristic Simulation better than a real VM?",
-      "Show me Symbol-Flow Integrity in Author Studio",
+      "Show me the Section 12: Book Synthesis Architecture",
       "How is this project innovative?"
     ],
     createdAt: Date.now(),
@@ -138,27 +138,35 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
           { id: 'jd-11-1', title: 'Recursive Prompt Refinement' },
           { id: 'jd-11-2', title: 'Federated Refraction Roadmap' }
         ]
+      },
+      {
+        id: 'judge-ch12',
+        title: 'Section 12: High-Fidelity Publishing (Book Synthesis)',
+        subTopics: [
+          { id: 'jd-12-1', title: 'Multi-Page Neural Typesetting' },
+          { id: 'jd-12-2', title: 'Symbol-Flow Rasterization Logic' }
+        ]
       }
     ]
   },
   {
     id: OFFLINE_CHANNEL_ID,
-    title: 'Neural Prism Platform v6.6.0',
-    description: 'The self-documenting guide to the Neural Prism v6.6.0 Platform. Learn about the new Scribe Protocol and Symbol-Flow rasterization for technical books.',
+    title: 'Neural Prism Platform v6.6.1',
+    description: 'The self-documenting guide to the Neural Prism v6.6.1 Platform. Learn about the new Scribe Protocol and Symbol-Flow rasterization for technical books.',
     author: 'Prism Architect',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on the v6.1.2 Scribe Protocol that ensures high-fidelity recording of PIP camera overlays and system sounds across different operating systems.',
-    likes: 12800,
+    systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on the v6.6.1 Scribe Protocol that ensures high-fidelity recording of PIP camera overlays and system sounds across different operating systems.',
+    likes: 13200,
     dislikes: 0,
     comments: [],
-    tags: ['Architecture', 'v6.6.0', 'Scribe', 'AuthorStudio'],
+    tags: ['Architecture', 'v6.6.1', 'Scribe', 'AuthorStudio'],
     imageUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200&q=80', 
-    welcomeMessage: "Welcome to Neural Prism v6.6.0. We have stabilized the Scribe capture loop and implemented Symbol-Flow Integrity for PDF exports. How can I help you navigate the spectrum today?",
+    welcomeMessage: "Welcome to Neural Prism v6.6.1. We have stabilized the Scribe capture loop and implemented Symbol-Flow Integrity for multi-page PDF exports. How can I help you navigate the spectrum today?",
     starterPrompts: [
-      "What is new in v6.6.0?",
+      "What is new in v6.6.1?",
       "Explain the Sequential Permission Flow",
       "How does Symbol-Flow Integrity work?",
-      "Tell me about Heuristic Logic Tracing"
+      "Tell me about Section 12: Book Synthesis"
     ],
     createdAt: INITIAL_DATE,
     chapters: [

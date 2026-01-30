@@ -1,5 +1,5 @@
 
-# 🌈 Neural Prism Platform v6.6.0
+# 🌈 Neural Prism Platform v6.6.2
 
 **Refracting Super-Intelligence into Human Utility.**
 
@@ -16,7 +16,8 @@ We have created a **Pinned Technical Audit Channel** specifically for your revie
 3.  Listen to the new Chapter 4: **Mock Interview Studio (Innovation)**.
 4.  Open the **Author Studio** and read Section XIII of the Neural Book: **Judge Review: Site Architecture**.
 
-### Key Differentiators to Review:
+### Key Differentiators to Review (v6.6.2 Update):
+- **Deterministic Cache Mapping**: Resolving race conditions in lecture synthesis via SHA-256 content fingerprints.
 - **Heuristic Simulation**: We execute code using AI "imagination" instead of expensive server runtimes.
 - **Sovereign Vault**: 100% user data privacy via Google Drive integration.
 - **Trace Bundling**: Real-time observability that links user feedback to raw Gemini logs.

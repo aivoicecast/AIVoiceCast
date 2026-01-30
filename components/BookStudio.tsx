@@ -67,7 +67,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
     setSynthesisSteps([]);
     const addStep = (msg: string) => setSynthesisSteps(prev => [...prev, msg].slice(-4));
 
-    addStep("Initializing High-DPI Matrix...");
+    addStep("Initializing High-DPI Matrix v6.6.1...");
     setExportStatus("Initializing Multi-Page Slicing...");
     
     try {
@@ -203,7 +203,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
                     <BookText className="text-indigo-400" /> 
                     Author Studio
                 </h1>
-                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Protocol v6.6.0 • Symbol Integrity Engine</p>
+                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Protocol v6.6.1 • Symbol Integrity Engine</p>
               </div>
           </div>
           <div className="flex items-center gap-3">
@@ -346,7 +346,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
                           <span className="text-[10px] font-black text-indigo-300 uppercase tracking-widest">Typesetting Node</span>
                       </div>
                       <p className="text-sm font-black text-white italic tracking-tight">{NEURAL_PRISM_BOOK.pages[activePageIndex].title.substring(0, 20)}...</p>
-                      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-0.5">{activePageIndex + 1} OF {NEURAL_PRISM_BOOK.pages.length} SECTIONS</p>
+                      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">{activePageIndex + 1} OF {NEURAL_PRISM_BOOK.pages.length} SECTIONS</p>
                   </div>
 
                   <button 

@@ -1,3 +1,4 @@
+
 export interface BookPage {
   title: string;
   content: string;
@@ -15,7 +16,7 @@ export const NEURAL_PRISM_BOOK: BookData = {
   title: "The Neural Prism Platform",
   subtitle: "Refracting Super-Intelligence into Human Utility",
   author: "Prism Architect Team",
-  version: "v6.5.0-MASTER",
+  version: "v6.6.1-MASTER",
   pages: [
     {
       title: "I. The Refractive Philosophy",
@@ -377,7 +378,7 @@ The Neural Prism is the final bridge between superhuman AI capacity and daily hu
 We make complexity invisible and intelligence colorful. We believe AI should be an extension of the human soul—a spectrum of tools that empower you to build, learn, and grow every single day.
 
 ---
-**Neural Prism Platform v6.5.0**
+**Neural Prism Platform v6.6.1**
 *Refracted by Intelligence. Built for Humanity.*
       `
     }

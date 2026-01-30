@@ -3,14 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { GeneratedLecture, TranscriptItem } from '../types';
 import { getCloudCachedLecture, saveCloudCachedLecture, deductCoins, AI_COSTS, incrementApiUsage } from './firestoreService';
 import { auth } from './firebaseConfig';
-
-async function generateContentUid(topic: string, context: string, lang: string): Promise<string> {
-    const data = `${topic}|${context}|${lang}`;
-    const msgBuffer = new TextEncoder().encode(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
-}
+import { generateContentUid } from '../utils/idUtils';
 
 export async function generateLectureScript(
   topic: string, 

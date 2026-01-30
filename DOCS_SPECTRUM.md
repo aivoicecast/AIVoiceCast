@@ -1,5 +1,5 @@
 
-# 💎 Neural Prism: The Spectrum Manifest (v6.0.0)
+# 💎 Neural Prism: The Spectrum Manifest (v6.6.2)
 
 **Comprehensive Technical Documentation for the Rainbow Tool Suite.**
 
@@ -11,7 +11,7 @@ This platform refracts **Gemini 3.0** super-intelligence into domain-specific sk
 
 ### 1. Neural Diagnostic Console
 - **Tech:** Custom Event Bus + Throttled Log Buffer.
-- **Protocol:** \`neural-log\` dispatching.
+- **Protocol:** `neural-log` dispatching.
 - **Role:** Real-time observability of all Gemini handshakes. Decouples heavy logging from the UI render cycle to prevent lag during high-frequency activities.
 
 ### 2. Feedback Self-Enhancement Loop
@@ -25,6 +25,7 @@ This platform refracts **Gemini 3.0** super-intelligence into domain-specific sk
 ### 3. Knowledge Hub (Interactive Podcasts)
 - **Tech:** Gemini 3 Pro + Live API + IndexedDB Cache.
 - **Refraction:** Analyzes complex documents to generate a Socratic dialogue.
+- **v6.6.2 Update:** Deterministic hashing for content nodes eliminates script-missing race conditions.
 
 ### 4. Author Studio (Neural Books)
 - **Tech:** High-DPI Rasterization (html2canvas) + jsPDF.
@@ -56,4 +57,4 @@ This platform refracts **Gemini 3.0** super-intelligence into domain-specific sk
 - **Neural Rotation:** Silently refreshes AI links every 5 minutes to maintain "Always-on" interactions.
 - **Sovereign Bridge:** Real-time sync between local IndexedDB cache and the user's private Google Drive.
 
-*Refracted by Neural Prism v6.0.0*
+*Refracted by Neural Prism v6.6.2*

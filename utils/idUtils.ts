@@ -21,3 +21,15 @@ export function generateSecureId(): string {
     .replace(/=/g, '')
     .substring(0, 44);
 }
+
+/**
+ * Generates a content-derived UID for lectures based on topic, context, and language.
+ * Enables global sharing of synthesized artifacts while maintaining cache integrity.
+ */
+export async function generateContentUid(topic: string, context: string, lang: string): Promise<string> {
+    const data = `${topic}|${context}|${lang}`;
+    const msgBuffer = new TextEncoder().encode(data);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+}

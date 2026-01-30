@@ -1,3 +1,4 @@
+
 import { Blob as GeminiBlob } from '@google/genai';
 
 let mainAudioContext: AudioContext | null = null;
@@ -17,7 +18,6 @@ export function primeNeuralAudio() {
 
 /**
  * Generates a SHA-256 hash of a string.
- * This is used for generating unique cache keys for speech and logic nodes.
  */
 export async function hashString(str: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -70,17 +70,23 @@ export function connectOutput(source: AudioNode, ctx: AudioContext) {
 }
 
 /**
- * Strengthened Neural Handshake: Resilient context warming.
+ * Proactive Neural Handshake: Forces context out of suspended/interrupted states.
+ * CRITICAL for long-duration sessions (> 20 mins) where browsers might idle the context.
  */
 export async function warmUpAudioContext(ctx: AudioContext, attempts = 0): Promise<void> {
+    if (!ctx) return;
+    // Fix: Cast state to any to allow comparison with 'interrupted', which exists in some environments (like Safari) but not in standard TypeScript types.
     const state = ctx.state as any;
     if (state === 'suspended' || state === 'interrupted') {
         try {
             await ctx.resume();
-            if (ctx.state === 'running') return;
+            if (ctx.state === 'running') {
+                console.log("[Neural Core] Audio Plane Resumed Successfully.");
+                return;
+            }
         } catch (e) {
-            if (attempts < 3) {
-                await new Promise(r => setTimeout(r, 100));
+            if (attempts < 5) {
+                await new Promise(r => setTimeout(r, 200 * (attempts + 1)));
                 return warmUpAudioContext(ctx, attempts + 1);
             }
         }

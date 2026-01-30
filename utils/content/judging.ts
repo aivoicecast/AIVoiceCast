@@ -1,3 +1,4 @@
+
 import { SpotlightChannelData } from '../spotlightContent';
 
 export const JUDGING_CONTENT: Record<string, SpotlightChannelData> = {
@@ -72,7 +73,6 @@ export const JUDGING_CONTENT: Record<string, SpotlightChannelData> = {
         title: 'Section 09: The Global Ledger (VoiceCoin)',
         subTopics: [
           { id: 'jd-9-1', title: 'ECDSA Identity Handshake' },
-          // Fixed: Added missing colon after id property to resolve "Cannot find name 'id'" and type error for 'jd-9-2'.
           { id: 'jd-9-2', title: 'Digital Receipt Escrow Flow' }
         ]
       },
@@ -91,6 +91,14 @@ export const JUDGING_CONTENT: Record<string, SpotlightChannelData> = {
           { id: 'jd-11-1', title: 'Recursive Prompt Refinement' },
           { id: 'jd-11-2', title: 'Federated Refraction Roadmap' }
         ]
+      },
+      {
+        id: 'judge-ch12',
+        title: 'Section 12: High-Fidelity Publishing (Book Synthesis)',
+        subTopics: [
+          { id: 'jd-12-1', title: 'Multi-Page Neural Typesetting' },
+          { id: 'jd-12-2', title: 'Symbol-Flow Rasterization Logic' }
+        ]
       }
     ],
     lectures: {
@@ -99,9 +107,21 @@ export const JUDGING_CONTENT: Record<string, SpotlightChannelData> = {
         professorName: "Architect Gem",
         studentName: "Hackathon Judge",
         sections: [
-          { speaker: "Teacher", text: "Welcome, Judges. Our core execution model is defined in App.tsx and geminiLive.ts. We don't just 'call an API'; we orchestrate a multi-model pipeline." },
-          { speaker: "Student", text: "How do you split the work between the different Gemini versions?" },
-          { speaker: "Teacher", text: "We use Gemini 3 Pro for heavy reasoning, like generating the 10-chapter curriculums in curriculumGenerator.ts. For the real-time interactive studio, we utilize gemini-2.5-flash-native-audio to achieve sub-second voice latency. Finally, for the Builder Studio's terminal emulation, we hit Gemini 3 Flash with a zero-thinking budget for instant 'Heuristic Execution'." }
+          { speaker: "Teacher", text: "Welcome, Judges, to the v6.6.1 Technical Audit. Our core execution model is defined in App.tsx and geminiLive.ts. We don't just 'call an API'; we orchestrate a multi-model pipeline tailored for human activity." },
+          { speaker: "Student", text: "How has the orchestration evolved in the latest version?" },
+          { speaker: "Teacher", text: "We now have a dedicated 'Activity Circuit'. We use Gemini 3 Pro for high-dimensional reasoning like curriculum design, while gemini-2.5-flash-native-audio handles the low-latency WebSocket layer. The Builder Studio now features enhanced simulation accuracy, mentally tracing logic in C++ and Python with sub-second feedback loops." }
+        ]
+      },
+      "Multi-Page Neural Typesetting": {
+        topic: "Multi-Page Neural Typesetting",
+        professorName: "Publishing Lead",
+        studentName: "Engineering Judge",
+        sections: [
+          { speaker: "Teacher", text: "Section 12 covers our new Book Synthesis Engine. We've moved beyond simple text exports to professional multi-page manuscripts." },
+          { speaker: "Student", text: "What are the core technical constraints of this engine?" },
+          { speaker: "Teacher", text: "Governance and fidelity. We implement a strict '36-line safety frame' for every page to ensure consistent typesetting. The engine performs asynchronous Socratic dialogue generation for every node, then uses our Pixel-Perfect rasterization pipeline to bind the dialogues into an A4 PDF with AI-generated chapter summaries and scannable verification codes." },
+          { speaker: "Student", text: "So it's a full publishing house in the browser?" },
+          { speaker: "Teacher", text: "Exactly. It uses off-screen rendering nodes to capture the high-DPI state of each chapter, ensuring that math symbols and diagrams are preserved with 100% fidelity. It is the final stage of our 'Refraction' philosophy: from raw intelligence to a physical artifact." }
         ]
       },
       "Refractive Caching & Deterministic UUIDs": {
@@ -109,119 +129,9 @@ export const JUDGING_CONTENT: Record<string, SpotlightChannelData> = {
         professorName: "System Lead",
         studentName: "Technical Auditor",
         sections: [
-          { speaker: "Teacher", text: "Cost efficiency is key to viability. In audioUtils.ts and db.ts, we implemented a hash-based caching layer for neural audio fragments." },
-          { speaker: "Student", text: "So you don't re-synthesize common phrases?" },
-          { speaker: "Teacher", text: "Exactly. We use SHA-256 fingerprints of the text and voice name to create deterministic UUIDs. This allows the Scripture Sanctuary to play verses instantly from IndexedDB, saving thousands of tokens per session while providing a zero-latency experience." }
-        ]
-      },
-      "Vibe Coding 30K Lines with AI Studio": {
-        topic: "Vibe Coding 30K Lines with AI Studio",
-        professorName: "Lead Engineer",
-        studentName: "Engineering Judge",
-        sections: [
-          { speaker: "Teacher", text: "Node 2 is our story. This platform consists of approximately 30,000 lines of complex TypeScript, nearly all generated through high-frequency 'Vibe Coding' in Google AI Studio." },
-          { speaker: "Student", text: "How did you keep the code from turning into 'spaghetti' over 30 days?" },
-          { speaker: "Teacher", text: "Structure and Refraction. We maintained a rigid types.ts file and used the 'Project Story' (ProjectStory.tsx) as a living blueprint. We fed the model its own architectural decisions recursively, ensuring that new components like the CardWorkshop.tsx followed the same VFS and storage patterns as the older ones." }
-        ]
-      },
-      "Pixel-Perfect Assembly Pipeline": {
-        topic: "Pixel-Perfect Assembly Pipeline",
-        professorName: "Finance Architect",
-        studentName: "Judge Casey",
-        sections: [
-          { speaker: "Teacher", text: "In CheckDesigner.tsx, we found that standard HTML-to-PDF tools couldn't handle our security watermarks. So we built the Pixel-Perfect Assembly Pipeline." },
-          { speaker: "Student", text: "I see you're using a hidden 1800-pixel canvas?" },
-          { speaker: "Teacher", text: "Yes. The function assembleCheckCanvas() manually draws every layer—the neural seal, the scannable QR code, and the authorized signature—onto a high-DPI 2D context. This raster is then 'bound' into a PDF via jsPDF, ensuring forensic-level clarity for banking documents regardless of the user's browser rendering engine." }
-        ]
-      },
-      "Linguistic Entity Extraction": {
-        topic: "Linguistic Entity Extraction",
-        professorName: "Logistics Lead",
-        studentName: "Judge Riley",
-        sections: [
-          { speaker: "Teacher", text: "The ShippingLabelApp.tsx uses 'Neural Ingest'. It's a prime example of turning super-intelligence into a mundane utility." },
-          { speaker: "Student", text: "You just paste raw text from an email, right?" },
-          { speaker: "Teacher", text: "Correct. We use Gemini 3 Flash as a zero-shot parser. It extracts the name, street, city, and ZIP code into a structured JSON schema instantly. It removes the friction of manual entry, effectively refracting a 'messy' human input into a 'clean' logistics output for thermal printing." }
-        ]
-      },
-      "Geospatial Thermal Labeling": {
-        topic: "Geospatial Thermal Labeling",
-        professorName: "Logistics Architect",
-        studentName: "Judge Sam",
-        sections: [
-          { speaker: "Teacher", text: "Node 4 also handles the 'Physical Bridge'. When a label is generated, we don't just save a file; we calculate coordinates for thermal paper." },
-          { speaker: "Student", text: "Is that the barcode logic?" },
-          { speaker: "Teacher", text: "Yes. We use the barcodeapi.org link to generate standard 128-bit identifiers, which are then precisely positioned on the 4x6 inch raster. This ensures that every 'Neural Label' is geospatial-ready for global courier scans." }
-        ]
-      },
-      "Digital Twin Terminal Emulation": {
-        topic: "Digital Twin Terminal Emulation",
-        professorName: "Builder Lead",
-        studentName: "Technical Judge",
-        sections: [
-          { speaker: "Teacher", text: "Our most innovative feature is 'Heuristic Simulation' in CodeStudio.tsx. We execute code without a real server-side compiler." },
-          { speaker: "Student", text: "Wait, so there's no real Linux container running the code?" },
-          { speaker: "Teacher", text: "None. We instruct Gemini 3 Flash to act as a 'Digital Twin' of a terminal. It mentally traces the logic of the C++ or Python code and predicts the output. It is 100% secure, infrastructure-less, and faster than booting a real VM. This is the future of 'safe-sandbox' learning." }
-        ]
-      },
-      "Technical Interrogation Protocols": {
-        topic: "Technical Interrogation Protocols",
-        professorName: "Career Hub Lead",
-        studentName: "Judge Sam",
-        sections: [
-          { speaker: "Teacher", text: "MockInterview.tsx utilizes the Live API for multimodal evaluation. The AI interviewer persona is dynamic." },
-          { speaker: "Student", text: "How does the interviewer 'see' what the candidate is doing in the IDE?" },
-          { speaker: "Teacher", text: "Through the 'Neural Snapshot'. Every turn, the candidate's active code is bundled into the voice stream's text context. The AI interviewer doesn't just hear you; it evaluates your logic as it evolves on screen, providing real-time technical pressure identical to a Staff Engineer interview." }
-        ]
-      },
-      "Bilingual Node Archiving": {
-        topic: "Bilingual Node Archiving",
-        professorName: "Sanctuary Architect",
-        studentName: "Judge Lin",
-        sections: [
-          { speaker: "Teacher", text: "ScriptureSanctuary.tsx handles 'Sacred Data' using an Atomic Node structure. Every verse is an individual ledger entry." },
-          { speaker: "Student", text: "What is the benefit of breaking it down so small?" },
-          { speaker: "Teacher", text: "Granular verification. Each verse node is independently searchable and cached. By using the BIBLE_LEDGER_COLLECTION in Firestore, we enable high-speed bilingual synchronization during live discussions, allowing the AI 'Host' to have perfect context of ancient texts in both English and Chinese." }
-        ]
-      },
-      "Google Drive VFS Bridge": {
-        topic: "Google Drive VFS Bridge",
-        professorName: "Privacy Officer",
-        studentName: "Judge Alex",
-        sections: [
-          { speaker: "Teacher", text: "User privacy is baked into the storage.rules and googleDriveService.ts. We use a Sovereign Bridge model." },
-          { speaker: "Student", text: "So Neural Prism doesn't actually store my source code?" },
-          { speaker: "Teacher", text: "Never. We act as a refractive lens. We process the code for simulation, but the persistent artifact—whether it's a C++ file or a generated PDF—exists only in the user's sovereign Google Drive vault. This checks the 'Sovereignty' box by ensuring zero-retention of user IP on our servers." }
-        ]
-      },
-      "ECDSA Identity Handshake": {
-        topic: "ECDSA Identity Handshake",
-        professorName: "Ledger Architect",
-        studentName: "Security Auditor",
-        sections: [
-          { speaker: "Teacher", text: "VoiceCoin transactions in CoinWallet.tsx are secured via cryptoUtils.ts using the Web Crypto API." },
-          { speaker: "Student", text: "Do you use a central authority to sign payments?" },
-          { speaker: "Teacher", text: "No. We generate ECDSA P-256 key pairs locally in the user's browser. When you send coins, you sign the 'Digital Receipt' locally. We only verify the public signature on the Firestore ledger. It's a decentralized trust model that gives users full control over their neural assets." }
-        ]
-      },
-      "Throttled Neural Log Buffer": {
-        topic: "Throttled Neural Log Buffer",
-        professorName: "Observability Architect",
-        studentName: "Stability Judge",
-        sections: [
-          { speaker: "Teacher", text: "In App.tsx, we built a custom Diagnostic Console to track all AI handshakes without lagging the UI." },
-          { speaker: "Student", text: "I noticed the logs update smoothly even during rapid voice chat." },
-          { speaker: "Teacher", text: "That is the Throttled Log Buffer. We decouple the 'neural-log' events from the React render cycle, updating the visible trace every 800ms. This ensures developer-level observability (including raw JSON payloads) without sacrificing frame rates during high-intensity activities." }
-        ]
-      },
-      "Recursive Prompt Refinement": {
-        topic: "Recursive Prompt Refinement",
-        professorName: "Evolution Lead",
-        studentName: "Future Judge",
-        sections: [
-          { speaker: "Teacher", text: "Node 11 is about the future: our Self-Evolution Loop. We use FeedbackManager.tsx to refine the system itself." },
-          { speaker: "Student", text: "Does the system learn from its own mistakes?" },
-          { speaker: "Teacher", text: "Yes. When a user submits feedback, we perform 'Trace Bundling'—attaching the last 20 log entries (including model instructions and errors) to the report. This provides the context needed for us to perform recursive refinement of our system instructions in AI Studio, creating a platform that learns from every refraction." }
+          { speaker: "Teacher", text: "In v6.6.1, cost efficiency and latency are managed via our refined hash-based caching layer in audioUtils.ts and db.ts." },
+          { speaker: "Student", text: "Does this caching apply to the new Book Studio as well?" },
+          { speaker: "Teacher", text: "Yes. Every synthesized dialogue is stored in our 'Neural Vault'. If a member refracts a lesson once, it is stored as a deterministic node for all others to access. This creates an energy-efficient knowledge economy where common technical definitions are never generated twice." }
         ]
       }
     }

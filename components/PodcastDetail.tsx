@@ -6,7 +6,7 @@ import {
   Sparkles, Play, Pause, Volume2, 
   RefreshCw, X, AlertTriangle, PlayCircle, 
   CheckCircle, Gauge, Speaker, Zap, BrainCircuit, SkipBack, SkipForward,
-  Database, Languages, FileDown, ShieldCheck, Printer, Bookmark, CloudDownload, CloudCheck, HardDrive, BookText, CloudUpload, Archive, FileText
+  Database, Languages, FileDown, ShieldCheck, Printer, Bookmark, CloudDownload, CloudCheck, HardDrive, BookText, CloudUpload, Archive, FileText, FileOutput, QrCode
 } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { generateChannelCoverArt } from '../services/channelGenerator';
@@ -19,7 +19,8 @@ import { Visualizer } from './Visualizer';
 import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { generateSecureId } from '../utils/idUtils';
+import { generateSecureId, generateContentUid } from '../utils/idUtils';
+import { GoogleGenAI } from '@google/genai';
 
 export const CHINESE_FONT_STACK = '"Microsoft YaHei", "PingFang SC", "STHeiti", sans-serif';
 export const SERIF_FONT_STACK = 'Georgia, "Times New Roman", STSong, "SimSun", serif';
@@ -56,11 +57,12 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
 
   const [isBatchSynthesizing, setIsBatchSynthesizing] = useState(false);
   const [isExportingBook, setIsExportingBook] = useState(false);
+  const [bookProgress, setBookProgress] = useState("");
   const [isExportingText, setIsExportingText] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
 
-  const dispatchLog = useCallback((msg: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
-      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: msg, type } }));
+  const dispatchLog = useCallback((text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
+      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: text, type } }));
   }, []);
 
   const chapters = useMemo(() => {
@@ -91,8 +93,11 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
     const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
     const local = await getCachedLectureScript(cacheKey);
     if (local) return 'local';
-    const cloud = await getCloudCachedLecture(channel.id, sub.id, language);
+    
+    const contentUid = await generateContentUid(sub.title, channel.description, language);
+    const cloud = await getCloudCachedLecture(channel.id, contentUid, language);
     if (cloud) return 'cloud';
+    
     return 'none';
   };
 
@@ -131,16 +136,14 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   }, [dispatchLog]);
 
   const handleSelectSubTopic = async (sub: SubTopic, shouldStop = true) => {
-      if (activeSubTopicId === sub.id) return activeLecture;
+      if (activeSubTopicId === sub.id && activeLecture) return activeLecture;
       if (shouldStop) stopAllAudio('Switch Topic');
       
       setActiveSubTopicId(sub.id);
 
-      // --- CRITICAL BYPASS FOR STATIC CHANNELS (JUDGE DEEP DIVE) ---
       const spotlight = SPOTLIGHT_DATA[channel.id];
       if (spotlight && spotlight.lectures[sub.title]) {
           const staticLecture = spotlight.lectures[sub.title];
-          dispatchLog(`[Static Registry] Loading source-defined manuscript for: ${sub.title}`, 'success');
           setActiveLecture(staticLecture);
           setIsSyncingContent(false);
           setCurrentSectionIndex(-1);
@@ -155,29 +158,249 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       try {
           const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
           let lecture = await getCachedLectureScript(cacheKey);
+          
           if (!lecture) {
-              lecture = await getCloudCachedLecture(channel.id, sub.id, language);
+              const contentUid = await generateContentUid(sub.title, channel.description, language);
+              lecture = await getCloudCachedLecture(channel.id, contentUid, language);
+              
               if (!lecture) {
                   setSyncPhase('neural');
-                  dispatchLog(`Script missing for ${sub.title}. Triggering Neural Synthesis...`, 'info');
+                  dispatchLog(`Syncing node ${sub.title}...`, 'info');
                   lecture = await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName);
                   if (lecture) setSyncPhase('vault');
               }
+              
               if (lecture) {
                   await cacheLectureScript(cacheKey, lecture);
                   updateRegistryStatus();
               }
           }
+          
           if (lecture && mountedRef.current) {
               setActiveLecture(lecture);
               return lecture;
           }
       } catch (e: any) {
-          dispatchLog(`[Vault Engine] Fault: ${e.message}`, 'error');
+          dispatchLog(`Vault Error: ${e.message}`, 'error');
       } finally {
           setIsSyncingContent(false);
       }
       return null;
+  };
+
+  // --- PROFESSIONAL BOOK SYNTHESIS ENGINE ---
+  const generateChapterSummary = async (ch: Chapter): Promise<string> => {
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const langText = language === 'zh' ? '使用简体中文输出。' : 'Output in English.';
+        const prompt = `Write a technical 2-sentence executive summary for a book chapter titled "${ch.title}". ${langText} Focus on the core architectural takeaways. Maximum 50 words.`;
+        const res = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: { thinkingConfig: { thinkingBudget: 0 } }
+        });
+        return res.text || "Summary pending.";
+    } catch (e) { return "Summary unavailable."; }
+  };
+
+  const wrapContent = (html: string, chapterTitle: string, hash: string, pageNum: number) => `
+    <div style="width: 750px; height: 1050px; background: #ffffff; color: #0f172a; padding: 80px 100px; font-family: ${SERIF_FONT_STACK}; display: flex; flex-direction: column; position: relative;">
+        <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; margin-bottom: 40px;">
+            <span style="font-size: 10px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 0.2em;">${chapterTitle}</span>
+            <span style="font-size: 10px; font-weight: 900; color: #cbd5e1;">NEURAL PRISM MANUSCRIPT</span>
+        </div>
+        <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-start;">
+            ${html}
+        </div>
+        <div style="margin-top: auto; padding-top: 20px; border-top: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center;">
+            <p style="font-size: 8px; color: #cbd5e1; font-weight: 900; letter-spacing: 0.2em; margin: 0;">BOUND BY NEURAL PRISM // TRACE: ${hash}</p>
+            <p style="font-size: 10px; color: #64748b; font-weight: 900; margin: 0;">PAGE ${pageNum}</p>
+        </div>
+    </div>
+  `;
+
+  const handleGenerateBook = async () => {
+    setIsExportingBook(true);
+    setBookProgress("Initializing Publishing Engine...");
+    dispatchLog("Initializing Book Synthesis Pipeline...", "info");
+    
+    let pageCounter = 1;
+
+    try {
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: 'a4' });
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const sessionHash = generateSecureId().substring(0, 12).toUpperCase();
+        const channelUrl = `${window.location.origin}?view=podcast_detail&channelId=${channel.id}`;
+        const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(channelUrl)}`;
+
+        const captureContainer = document.createElement('div');
+        captureContainer.style.width = '750px'; 
+        captureContainer.style.position = 'fixed';
+        captureContainer.style.left = '-10000px';
+        captureContainer.style.backgroundColor = '#ffffff';
+        document.body.appendChild(captureContainer);
+
+        const renderToPdf = async (html: string, addPageBefore = true) => {
+            if (addPageBefore) {
+                pdf.addPage();
+                pageCounter++;
+            }
+            captureContainer.innerHTML = html;
+            const canvas = await html2canvas(captureContainer, { scale: 2.2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+            const imgData = canvas.toDataURL('image/jpeg', 0.85);
+            pdf.addImage(imgData, 'JPEG', 0, 0, pageWidth, (canvas.height * pageWidth) / canvas.width);
+        };
+
+        // --- 1. FRONT COVER ---
+        setBookProgress("Printing Front Cover...");
+        await renderToPdf(`
+          <div style="width: 750px; height: 1050px; background: #020617; color: white; padding: 120px 100px; font-family: ${SERIF_FONT_STACK}; display: flex; flex-direction: column; justify-content: space-between; position: relative; border: 25px solid #0f172a;">
+              <div style="position: absolute; top: 0; right: 0; width: 400px; height: 400px; background: radial-gradient(circle, rgba(99, 102, 241, 0.2) 0%, transparent 70%);"></div>
+              <div>
+                  <p style="text-transform: uppercase; letter-spacing: 0.6em; font-size: 14px; font-weight: 900; color: #818cf8; margin-bottom: 25px;">Neural Prism Technical Publication</p>
+                  <h1 style="font-size: 64px; font-weight: 900; italic: true; margin: 0; line-height: 1.1; text-transform: uppercase; letter-spacing: -0.02em;">${channel.title}</h1>
+                  <div style="width: 120px; height: 10px; background: #6366f1; margin-top: 45px; border-radius: 5px;"></div>
+              </div>
+              <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+                  <div>
+                      <p style="text-transform: uppercase; letter-spacing: 0.2em; font-size: 12px; color: #64748b; font-weight: 900; margin-bottom: 5px;">Compiled by Neural Host</p>
+                      <p style="font-size: 32px; font-weight: 900; margin: 0; color: #fff;">@${channel.author}</p>
+                  </div>
+                  <div style="text-align: right;">
+                      <p style="font-size: 10px; color: #475569; font-mono: true;">TRACE ID: ${sessionHash}</p>
+                  </div>
+              </div>
+          </div>
+        `, false);
+
+        // --- 2. TABLE OF CONTENTS ---
+        setBookProgress("Generating Index...");
+        await renderToPdf(`
+          <div style="width: 750px; height: 1050px; background: #ffffff; color: #0f172a; padding: 120px 100px; font-family: ${SERIF_FONT_STACK};">
+              <h1 style="font-size: 42px; font-weight: 900; margin-bottom: 60px; text-transform: uppercase; border-bottom: 5px solid #020617; padding-bottom: 20px;">Refractive Index</h1>
+              <div style="display: flex; flex-direction: column; gap: 16px;">
+                  ${chapters.map((ch, idx) => `
+                      <div style="display: flex; justify-content: space-between; border-bottom: 1px dotted #cbd5e1; padding-bottom: 8px; align-items: baseline;">
+                          <span style="font-weight: 900; color: #1e293b; font-size: 18px;">Section 0${idx+1}: ${ch.title}</span>
+                          <span style="color: #64748b; font-size: 12px; font-weight: bold;">NODE ${idx+1}</span>
+                      </div>
+                  `).join('')}
+              </div>
+              <div style="margin-top: 100px; padding: 40px; background: #f8fafc; border-radius: 30px; border: 1px solid #e2e8f0; font-style: italic; color: #64748b; font-size: 14px; line-height: 1.6;">
+                  This manuscript represents a deterministic refraction of the "${channel.title}" learning path. Total sections: ${chapters.length}.
+              </div>
+          </div>
+        `);
+
+        // --- 3. CHAPTERS & CONTENT ---
+        for (let cIdx = 0; cIdx < chapters.length; cIdx++) {
+            const ch = chapters[cIdx];
+            setBookProgress(`Binding Node ${cIdx+1}...`);
+            dispatchLog(`Processing Book Section ${cIdx+1}: ${ch.title}`, 'info');
+            
+            const summary = await generateChapterSummary(ch);
+            
+            // Chapter Cover
+            await renderToPdf(`
+              <div style="width: 750px; height: 1050px; background: #1e293b; color: white; padding: 80px 100px; font-family: ${SERIF_FONT_STACK}; display: flex; flex-direction: column; justify-content: center; position: relative;">
+                  <div style="font-size: 200px; font-weight: 900; color: rgba(255,255,255,0.03); position: absolute; top: 80px; right: 100px;">0${cIdx+1}</div>
+                  <p style="font-size: 14px; font-weight: 900; color: #818cf8; text-transform: uppercase; letter-spacing: 0.6em; margin-bottom: 25px;">Registry Segment</p>
+                  <h1 style="font-size: 56px; font-weight: 900; text-transform: uppercase; margin: 0; line-height: 1.1; max-width: 550px;">${ch.title}</h1>
+                  <div style="width: 80px; height: 5px; background: #6366f1; margin-top: 45px; margin-bottom: 60px;"></div>
+                  <div style="max-width: 550px; font-size: 20px; color: #cbd5e1; line-height: 1.8; background: rgba(255,255,255,0.05); padding: 45px; border-radius: 32px; border: 1px solid rgba(255,255,255,0.1); font-style: italic; box-shadow: 0 30px 60px -12px rgba(0,0,0,0.3); word-wrap: break-word;">
+                      "${summary}"
+                  </div>
+              </div>
+            `);
+
+            const maxLinesPerPage = 36;
+            let currentLines = 0;
+            let currentPageHtml = "";
+
+            for (const sub of ch.subTopics) {
+                const contentUid = await generateContentUid(sub.title, channel.description, language);
+                const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
+                
+                let lecture = SPOTLIGHT_DATA[channel.id]?.lectures[sub.title];
+                if (!lecture) {
+                    lecture = await getCachedLectureScript(cacheKey) || await getCloudCachedLecture(channel.id, contentUid, language);
+                }
+                if (!lecture) {
+                    lecture = await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName);
+                }
+                
+                if (lecture) {
+                    const subHeader = `<h2 style="font-size: 18px; font-weight: 900; color: #6366f1; margin-top: 40px; margin-bottom: 20px; text-transform: uppercase; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px;">${sub.title}</h2>`;
+                    
+                    if (currentLines > 28) {
+                        await renderToPdf(wrapContent(currentPageHtml, ch.title, sessionHash, pageCounter));
+                        currentPageHtml = subHeader;
+                        currentLines = 4;
+                    } else {
+                        currentPageHtml += subHeader;
+                        currentLines += 4;
+                    }
+
+                    for (const s of lecture.sections) {
+                        const isTeacher = s.speaker === 'Teacher';
+                        const speakerName = isTeacher ? (lecture.professorName || 'Host') : (lecture.studentName || 'Student');
+                        const textLines = Math.ceil(s.text.length / 90) + 1;
+                        
+                        if (currentLines + textLines > maxLinesPerPage) {
+                            await renderToPdf(wrapContent(currentPageHtml, ch.title, sessionHash, pageCounter));
+                            currentPageHtml = "";
+                            currentLines = 0;
+                        }
+
+                        currentPageHtml += `
+                          <div style="margin-bottom: 18px; font-family: ${SERIF_FONT_STACK}; font-size: 13px; line-height: 1.6; color: #334155;">
+                              <span style="font-weight: 900; color: ${isTeacher ? '#4338ca' : '#475569'}; text-transform: uppercase; margin-right: 8px; font-size: 11px;">${speakerName}:</span>
+                              <span>${s.text}</span>
+                          </div>
+                        `;
+                        currentLines += textLines + 1;
+                    }
+                }
+            }
+            if (currentPageHtml) {
+                await renderToPdf(wrapContent(currentPageHtml, ch.title, sessionHash, pageCounter));
+            }
+        }
+
+        // --- 4. BACK COVER WITH SCAN CODE ---
+        setBookProgress("Finalizing Publication...");
+        await renderToPdf(`
+          <div style="width: 750px; height: 1050px; background: #020617; color: white; padding: 120px 100px; font-family: ${SERIF_FONT_STACK}; display: flex; flex-direction: column; justify-content: center; text-align: center; border: 25px solid #0f172a;">
+              <div style="margin-bottom: 80px;">
+                  <div style="width: 60px; height: 4px; background: #6366f1; margin: 0 auto 35px auto;"></div>
+                  <h2 style="font-size: 38px; font-weight: 900; letter-spacing: -0.02em; text-transform: uppercase; italic: true; margin-bottom: 25px;">Synthesized Intelligence</h2>
+                  <p style="color: #94a3b8; font-size: 20px; max-width: 550px; margin: 0 auto; line-height: 1.8;">
+                      This technical manuscript is a sovereign refraction of the "${channel.title}" activity ledger.
+                  </p>
+              </div>
+
+              <div style="background: white; padding: 40px; border-radius: 50px; width: fit-content; margin: 0 auto; box-shadow: 0 40px 100px -20px rgba(99, 102, 241, 0.4); border: 8px solid #6366f1;">
+                  <img src="${qrCodeUrl}" style="width: 250px; height: 250px;" />
+                  <p style="color: #020617; font-size: 12px; font-weight: 900; margin-top: 25px; text-transform: uppercase; letter-spacing: 0.25em;">Scan to Access Live Registry</p>
+              </div>
+
+              <div style="margin-top: 100px;">
+                  <p style="font-size: 13px; font-weight: 900; color: #6366f1; text-transform: uppercase; letter-spacing: 0.3em; margin-bottom: 12px;">NEURAL PRISM PUBLISHING</p>
+                  <p style="font-size: 10px; color: #475569; font-mono: true;">Verified via Protocol v6.6.1 // Ledger Node: ${generateSecureId().substring(0, 16)}</p>
+              </div>
+          </div>
+        `);
+
+        document.body.removeChild(captureContainer);
+        pdf.save(`${channel.title.replace(/\s+/g, '_')}_Neural_Book.pdf`);
+        dispatchLog("Book Dispatched to Local Drive.", "success");
+    } catch (e: any) { 
+        dispatchLog(`Book failure: ${e.message}`, 'error'); 
+    } finally { 
+        setIsExportingBook(false); 
+        setBookProgress("");
+    }
   };
 
   const handleBatchSynthesize = async () => {
@@ -189,18 +412,18 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
           for (let i = 0; i < flatCurriculum.length; i++) {
               const sub = flatCurriculum[i];
               
-              // Skip static content in batch
               const spotlight = SPOTLIGHT_DATA[channel.id];
               if (spotlight && spotlight.lectures[sub.title]) {
                   setBatchProgress({ current: i + 1, total: flatCurriculum.length });
                   continue;
               }
 
+              const contentUid = await generateContentUid(sub.title, channel.description, language);
               const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
               
               let lecture = await getCachedLectureScript(cacheKey);
               if (!lecture) {
-                  lecture = await getCloudCachedLecture(channel.id, sub.id, language);
+                  lecture = await getCloudCachedLecture(channel.id, contentUid, language);
                   if (!lecture) {
                       dispatchLog(`Synthesizing Manuscript Segment ${i+1}/${flatCurriculum.length}: ${sub.title}`, 'info');
                       lecture = await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName);
@@ -208,13 +431,13 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                   if (lecture) {
                       await cacheLectureScript(cacheKey, lecture);
                       if (currentUser) {
-                          await saveCloudCachedLecture(channel.id, sub.id, language, lecture);
+                          await saveCloudCachedLecture(channel.id, contentUid, language, lecture);
                       }
                   }
               }
               setBatchProgress({ current: i + 1, total: flatCurriculum.length });
           }
-          dispatchLog(`Batch Refraction Complete for ${channel.title}. Chapter Vault fully populated.`, 'success');
+          dispatchLog(`Batch Refraction Complete.`, 'success');
           updateRegistryStatus();
       } catch (e: any) {
           dispatchLog(`Batch failed: ${e.message}`, 'error');
@@ -234,12 +457,12 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
 
         for (let i = 0; i < flatCurriculum.length; i++) {
             const sub = flatCurriculum[i];
+            const contentUid = await generateContentUid(sub.title, channel.description, language);
             const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
             
-            // Check static registry first
             let lecture = SPOTLIGHT_DATA[channel.id]?.lectures[sub.title];
             if (!lecture) {
-                lecture = await getCachedLectureScript(cacheKey) || await getCloudCachedLecture(channel.id, sub.id, language);
+                lecture = await getCachedLectureScript(cacheKey) || await getCloudCachedLecture(channel.id, contentUid, language);
             }
             
             if (lecture) {
@@ -270,72 +493,11 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
     }
   };
 
-  const handleGenerateBook = async () => {
-    setIsExportingBook(true);
-    dispatchLog("Initializing Book Synthesis Pipeline...", "info");
-    
-    try {
-        const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: 'a4' });
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const captureContainer = document.createElement('div');
-        captureContainer.style.width = '800px';
-        captureContainer.style.position = 'fixed';
-        captureContainer.style.left = '-10000px';
-        captureContainer.style.backgroundColor = '#ffffff';
-        document.body.appendChild(captureContainer);
-
-        captureContainer.innerHTML = `
-            <div style="height: 1131px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-family: ${SERIF_FONT_STACK}; padding: 100px; border: 20px solid #6366f1;">
-                <h1 style="font-size: 50px; margin-bottom: 20px; font-weight: 900; text-transform: uppercase;">${channel.title}</h1>
-                <h2 style="font-size: 20px; color: #4b5563; margin-bottom: 60px;">Neural Manuscript Refraction</h2>
-                <div style="width: 100px; height: 4px; background: #6366f1; margin-bottom: 60px;"></div>
-                <p style="font-size: 16px; line-height: 1.6; max-width: 600px;">${channel.description}</p>
-                <div style="margin-top: auto; font-size: 12px; font-weight: bold; color: #9ca3af;">GENERATED BY NEURAL PRISM v6.6.0</div>
-            </div>
-        `;
-        const coverCanvas = await html2canvas(captureContainer, { scale: 2 });
-        pdf.addImage(coverCanvas.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, pageWidth, pageHeight);
-
-        for (let i = 0; i < flatCurriculum.length; i++) {
-            const sub = flatCurriculum[i];
-            const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
-            
-            let lecture = SPOTLIGHT_DATA[channel.id]?.lectures[sub.title];
-            if (!lecture) {
-                lecture = await getCachedLectureScript(cacheKey) || await getCloudCachedLecture(channel.id, sub.id, language);
-            }
-
-            if (lecture) {
-                dispatchLog(`Processing Book Section ${i+1}: ${sub.title}`, 'info');
-                pdf.addPage();
-                captureContainer.innerHTML = `
-                    <div style="padding: 80px; font-family: ${SERIF_FONT_STACK};">
-                        <div style="border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; margin-bottom: 30px; display: flex; justify-content: space-between;">
-                            <span style="font-size: 10px; font-weight: bold; color: #6366f1;">SECTION ${i + 1}</span>
-                            <span style="font-size: 10px; color: #9ca3af;">${channel.title}</span>
-                        </div>
-                        <h2 style="font-size: 28px; font-weight: 900; margin-bottom: 40px;">${sub.title}</h2>
-                        <div style="font-size: 14px; line-height: 1.8; color: #1f2937;">
-                            ${lecture.sections.map(s => `
-                                <div style="margin-bottom: 20px;">
-                                    <strong style="display: block; font-size: 10px; color: #6366f1; text-transform: uppercase; margin-bottom: 5px;">${s.speaker === 'Teacher' ? lecture.professorName : lecture.studentName}</strong>
-                                    <p>${s.text}</p>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                `;
-                const contentCanvas = await html2canvas(captureContainer, { scale: 2 });
-                pdf.addImage(contentCanvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, pageWidth, pageHeight);
-            }
-        }
-        pdf.save(`${channel.title.replace(/\s+/g, '_')}_Neural_Book.pdf`);
-        document.body.removeChild(captureContainer);
-        dispatchLog("Book Dispatched to Local Drive.", "success");
-    } catch (e: any) { dispatchLog(`Book failure: ${e.message}`, 'error'); } finally { setIsExportingBook(false); }
-  };
-
+  /**
+   * Enhanced Playback Logic with Neural Heartbeat.
+   * This is designed to stay active past the 24-minute mark by aggressively
+   * warming the AudioContext before every single section.
+   */
   const handlePlayActiveLecture = async (startIndex = 0) => {
     syncPrimeSpeech();
     if (isPlaying) { 
@@ -353,6 +515,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
     try {
         let currentIndex = currentSubTopicIndex < 0 ? 0 : currentSubTopicIndex;
         let currentLecture = activeLecture;
+        const ctx = getGlobalAudioContext();
         
         while (currentIndex < flatCurriculum.length && localSession === playbackSessionRef.current) {
             if (!currentLecture) {
@@ -365,15 +528,17 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
             for (let i = startIndex; i < currentLecture.sections.length; i++) {
                 if (localSession !== playbackSessionRef.current || !mountedRef.current) break;
                 
+                // NEURAL HEARTBEAT: Proactively resume before every sentence.
+                // Browsers often idle the context if the "user interaction" was long ago.
+                await warmUpAudioContext(ctx);
+                
                 setCurrentSectionIndex(i);
                 const section = currentLecture.sections[i];
                 
-                // --- NEURAL PIPELINE: PRE-BUFFER NEXT SECTION ---
                 const nextIdx = i + 1;
                 if (nextIdx < currentLecture.sections.length && currentProvider !== 'system') {
                     const nextSection = currentLecture.sections[nextIdx];
                     const nextVoice = nextSection.speaker === 'Teacher' ? (channel.voiceName || 'Zephyr') : 'Puck';
-                    const ctx = getGlobalAudioContext();
                     
                     synthesizeSpeech(nextSection.text, nextVoice, ctx, currentProvider, language, {
                         channelId: channel.id, topicId: flatCurriculum[currentIndex].id, 
@@ -388,7 +553,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                     await speakSystem(section.text, language);
                     setLiveVolume(0);
                 } else {
-                    const ctx = getGlobalAudioContext();
                     let audioBuffer = nextAudioBufferRef.current.get(i);
                     
                     if (!audioBuffer) {
@@ -406,7 +570,9 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                     
                     if (audioBuffer && localSession === playbackSessionRef.current) {
                         setLiveVolume(0.8);
+                        // Final safety check on context state.
                         await warmUpAudioContext(ctx);
+                        
                         await new Promise<void>((resolve) => {
                             const source = ctx.createBufferSource();
                             source.buffer = audioBuffer!;
@@ -423,7 +589,8 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                 }
                 
                 if (localSession !== playbackSessionRef.current) break;
-                await new Promise(r => setTimeout(r, 600));
+                // Padding between sections for natural cadence.
+                await new Promise(r => setTimeout(r, 800));
             }
             
             if (localSession === playbackSessionRef.current && mountedRef.current) {
@@ -431,6 +598,8 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                 startIndex = 0; 
                 currentLecture = null; 
                 nextAudioBufferRef.current.clear();
+                // Pause for 1.5s between chapters to allow browser to breath.
+                await new Promise(r => setTimeout(r, 1500));
             } else {
                 break;
             }
@@ -438,7 +607,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
         
         if (localSession === playbackSessionRef.current) {
             setIsPlaying(false);
-            dispatchLog(`[Session] Finished. Spectrum fully traversed.`, 'success');
+            dispatchLog(`[Session] Traversing complete. Spectrum fully refracted.`, 'success');
         }
     } catch (e: any) { 
         dispatchLog(`[Engine Fault] ${e.message}`, 'error'); 
@@ -538,10 +707,10 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                   </button>
                   <button onClick={handleGenerateBook} disabled={isExportingBook} className="col-span-2 py-3 bg-slate-800 hover:bg-emerald-600 text-slate-400 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2">
                       {isExportingBook ? <Loader2 size={14} className="animate-spin" /> : <BookText size={14}/>}
-                      Synthesize Full PDF Book
+                      {isExportingBook ? bookProgress : 'Synthesize Full PDF Book'}
                   </button>
               </div>
-              <button onClick={() => handlePlayActiveLecture(0)} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-900/40 transition-all active:scale-95 flex items-center justify-center gap-2">
+              <button onClick={() => handlePlayActiveLecture(currentSectionIndex === -1 ? 0 : currentSectionIndex)} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-900/40 transition-all active:scale-95 flex items-center justify-center gap-2">
                   {isPlaying ? <Pause size={18} fill="currentColor"/> : <PlayCircle size={18}/>} 
                   {isPlaying ? 'Pause Session' : 'Begin Activity'}
               </button>
