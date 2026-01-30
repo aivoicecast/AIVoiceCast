@@ -1,3 +1,4 @@
+
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -54,21 +55,47 @@ export const AI_COSTS = {
 
 export const DEFAULT_MONTHLY_GRANT = 500;
 
+/**
+ * Robust sanitizer to clean data before Firestore writes.
+ * Proactively identifies and labels circular references to avoid SDK crashes.
+ */
 const sanitizeData = (data: any, seen = new WeakSet()): any => {
-    if (data === null || typeof data !== 'object') return data === undefined ? null : data;
-    if (seen.has(data)) return '[Circular Ref]';
+    // 1. Primitive handling
+    if (data === null || typeof data !== 'object') {
+        return data === undefined ? null : data;
+    }
+
+    // 2. Circular reference protection
+    if (seen.has(data)) {
+        return '[Circular Ref Truncated]';
+    }
+    
+    // 3. Special type handling
     if (data instanceof Date) return data.getTime();
     if (data instanceof Timestamp) return data.toMillis();
+    
+    // 4. Array handling
     if (Array.isArray(data)) {
         seen.add(data);
         return data.map(item => sanitizeData(item, seen));
     }
+
+    // 5. Non-plain object protection (SDK instances, DOM, etc)
     const isPlainObject = Object.getPrototypeOf(data) === Object.prototype;
-    if (!isPlainObject) return String(data);
+    if (!isPlainObject) {
+        // Safe string representation for internal types
+        if (data.constructor && data.constructor.name) {
+            return `[Instance: ${data.constructor.name}]`;
+        }
+        return String(data);
+    }
+
+    // 6. Plain object recursive sanitization
     seen.add(data);
     const result: any = {};
     for (const key in data) {
         if (Object.prototype.hasOwnProperty.call(data, key)) {
+            // Ignore internal SDK or private properties
             if (key.startsWith('_') || key === 'auth' || key === 'app') continue;
             result[key] = sanitizeData(data[key], seen);
         }
@@ -641,7 +668,7 @@ export async function saveCloudCachedLecture(channelId: string, contentUid: stri
     if (storage) {
         try {
             const path = `bible_corpus/${channelId}/${contentUid}.json`;
-            const blob = new Blob([JSON.stringify(lecture, null, 2)], { type: 'application/json' });
+            const blob = new Blob([JSON.stringify(sanitizeData(lecture), null, 2)], { type: 'application/json' });
             await uploadFileToStorage(path, blob);
         } catch (e) {
             console.warn("[Storage] Vault write missed, registry write succeeded.");
@@ -951,7 +978,7 @@ export async function updateCodeFile(projectId: string, file: CodeFile) {
 }
 
 /**
- * Broadcasts a member's cursor position in collaborative coding mode.
+ * Broadcasts a member's cursor position in positional coding mode.
  */
 export async function updateCursor(projectId: string, cursor: CursorPosition) {
     if (!db) return;
@@ -1221,7 +1248,7 @@ export async function getUserDMChannels(): Promise<ChatChannel[]> {
 export async function deleteMessage(channelId: string, msgId: string, collectionPath?: string) {
     if (!db) return;
     const path = collectionPath || `chat_channels/${channelId}/messages`;
-    await deleteDoc(doc(db, path, msgId));
+    await deleteDoc(doc(path, msgId));
 }
 
 // --- CAREER ---

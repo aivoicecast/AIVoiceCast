@@ -233,6 +233,30 @@ interface SystemLogMsg {
     type: 'info' | 'error' | 'success' | 'warn';
 }
 
+/**
+ * Robust JSON stringifier that proactively detects circular references
+ * to prevent thread crashes in the diagnostic console.
+ */
+function safeJsonStringify(obj: any, indent: number = 2): string {
+    const cache = new WeakSet();
+    return JSON.stringify(obj, (key, value) => {
+        if (typeof value === 'object' && value !== null) {
+            if (cache.has(value)) {
+                return '[Circular Ref Truncated]';
+            }
+            cache.add(value);
+            
+            // Further guard against complex engine/DOM instances
+            if (Object.getPrototypeOf(value) !== Object.prototype && !Array.isArray(value)) {
+                if (value.constructor) {
+                    return `[Instance: ${value.constructor.name || 'Object'}]`;
+                }
+            }
+        }
+        return value;
+    }, indent);
+}
+
 const App: React.FC = () => {
   const [language, setLanguage] = useState<'en' | 'zh'>('en');
   const t = UI_TEXT[language];
@@ -284,24 +308,12 @@ const App: React.FC = () => {
           } else if (text instanceof Error) {
               cleanText = text.stack || text.message;
           } else if (text !== null && typeof text === 'object') {
-              // ROBUST CIRCULAR HANDSHAKE: Track seen objects via WeakSet to prevent crash
-              const cache = new WeakSet();
-              cleanText = JSON.stringify(text, (key, value) => {
-                  if (typeof value === 'object' && value !== null) {
-                      if (cache.has(value)) return '[Circular Ref]';
-                      cache.add(value);
-                      // Skip heavy instance structures but log their presence
-                      if (Object.getPrototypeOf(value) !== Object.prototype && !Array.isArray(value)) {
-                          return `[Instance: ${value.constructor.name || 'Object'}]`;
-                      }
-                  }
-                  return value;
-              }, 2) || String(text);
+              cleanText = safeJsonStringify(text);
           } else {
               cleanText = String(text);
           }
       } catch (e) { 
-          cleanText = "[Internal Log Serialization Blocked]"; 
+          cleanText = "[Internal Log Serialization Error] - Circularity detected in unhandled object."; 
       }
 
       if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText) return;
@@ -637,7 +649,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.1.1-SYN</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.6.0-SYN</p></div>
             </div>
         </div>
 
