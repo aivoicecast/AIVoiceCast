@@ -1,6 +1,6 @@
 {
   "name": "Neural Prism Platform",
-  "description": "Neural Prism v6.6.2: Sovereign Intelligence Hub. Featuring Deterministic Cache Handshaking, High-Fidelity Audio Archiving, and Sovereign Storage.",
+  "description": "Neural Prism v6.6.5: Sovereign Intelligence Hub. Featuring stable Heartbeat v3 auto-play, 60-minute high-fidelity Scribe sessions, and Deterministic Cache Handshaking.",
   "requestFramePermissions": [
     "camera",
     "microphone",

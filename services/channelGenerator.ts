@@ -1,8 +1,8 @@
-
 import { GoogleGenAI } from '@google/genai';
 import { Channel, Chapter } from '../types';
 import { incrementApiUsage, getUserProfile, deductCoins, AI_COSTS } from './firestoreService';
 import { auth } from './firebaseConfig';
+import { GEMINI_API_KEY } from './private_keys';
 
 const VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
 
@@ -43,7 +43,8 @@ export async function generateChannelFromPrompt(
       }
     `;
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
         contents: `${systemPrompt}\n\n${userRequest}`,
@@ -90,7 +91,8 @@ export async function generateChannelFromPrompt(
 
 export async function generateChannelCoverArt(title: string, description: string): Promise<string | null> {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+        const ai = new GoogleGenAI({ apiKey });
         const prompt = `Generate a professional, high-quality, artistic podcast cover art for a series titled "${title}". 
         Context: ${description}. 
         Artistic Style: Modern, clean, 8k resolution, cinematic lighting, conceptual art. 
@@ -126,7 +128,8 @@ export async function modifyCurriculumWithAI(
   language: 'en' | 'zh' = 'en'
 ): Promise<Chapter[] | null> {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
         contents: `User wants: ${userPrompt}. Current: ${JSON.stringify(currentChapters)}`,
@@ -153,7 +156,8 @@ export async function generateChannelFromDocument(
   language: 'en' | 'zh' = 'en'
 ): Promise<Channel | null> {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+    const ai = new GoogleGenAI({ apiKey });
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
     const systemPrompt = `You are an expert Podcast Producer powered by DeepMind's Gemini 3. Your task is to analyze the provided source and transform it into a structured, engaging podcast channel.`;
     const userRequest = `Create a Podcast Channel based on this source. Return ONLY a JSON object with: title, description, voiceName, systemInstruction, tags, and chapters (with subTopics).`;

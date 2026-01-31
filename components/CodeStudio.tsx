@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem, TranscriptItem } from '../types';
 import { 
@@ -21,6 +20,7 @@ import { MarkdownView } from './MarkdownView';
 import { generateSecureId } from '../utils/idUtils';
 import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
 import Editor from '@monaco-editor/react';
+import { GEMINI_API_KEY } from '../services/private_keys';
 import { 
   ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, 
   File, Folder, Loader2, RefreshCw, Trash2, Edit2, FolderOpen, Send, Bot, Mic, MicOff, 
@@ -353,7 +353,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
     if (!activeFile) return;
     setIsMagicFixing(true);
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+        const ai = new GoogleGenAI({ apiKey });
         const systemPrompt = `You are a professional code refactoring and fixing tool.
         Your tasks:
         1. Fix any syntax errors in the provided code.
@@ -479,7 +480,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
     setIsSimulating(true);
     setTerminalOutput(null);
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+        const ai = new GoogleGenAI({ apiKey });
         const prompt = `ACT AS A DIGITAL TWIN TERMINAL. Execute the following code and provide the output/errors.\n\nCODE:\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\``;
         const response = await ai.models.generateContent({ 
             model: 'gemini-3-flash-preview', 
@@ -508,7 +510,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
     setIsChatThinking(true);
 
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+        const ai = new GoogleGenAI({ apiKey });
         const active = activeFileRef.current;
         const context = active ? `\n\nCURRENT FILE (${active.name}):\n\`\`\`${active.language}\n${active.content}\n\`\`\`` : '';
         

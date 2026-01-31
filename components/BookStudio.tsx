@@ -9,10 +9,12 @@ import {
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { NEURAL_PRISM_BOOK, BookPage } from '../utils/bookContent';
-import { MarkdownView } from './MarkdownView';
-import { CHINESE_FONT_STACK, SERIF_FONT_STACK } from './PodcastDetail';
+/* Fixed: Imported constants from the correct utility file instead of non-exporting component */
+import { CHINESE_FONT_STACK, SERIF_FONT_STACK } from '../utils/bookSynthesis';
 import { generateSecureId } from '../utils/idUtils';
 import { BookStyle } from '../types';
+// Fixed: Added missing import for MarkdownView to resolve compilation error on line 308
+import { MarkdownView } from './MarkdownView';
 
 interface BookStudioProps {
   onBack: () => void;
@@ -193,7 +195,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-50">
+      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
               <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors">
                   <ArrowLeft size={20} />

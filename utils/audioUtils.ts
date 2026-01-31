@@ -71,38 +71,41 @@ export function connectOutput(source: AudioNode, ctx: AudioContext) {
 
 /**
  * Proactive Neural Handshake: Forces context out of suspended/interrupted states.
- * CRITICAL for long-duration sessions (> 20 mins) where browsers might idle the context.
  */
 export async function warmUpAudioContext(ctx: AudioContext, attempts = 0): Promise<void> {
     if (!ctx) return;
-    // Fix: Cast state to any to allow comparison with 'interrupted', which exists in some environments (like Safari) but not in standard TypeScript types.
-    const state = ctx.state as any;
-    if (state === 'suspended' || state === 'interrupted') {
+    // Fix: cast state to string to allow 'interrupted' check (Safari/iOS) and avoid narrowing errors in TS
+    const currentState = ctx.state as string;
+    if (currentState === 'suspended' || currentState === 'interrupted') {
         try {
             await ctx.resume();
-            if (ctx.state === 'running') {
-                console.log("[Neural Core] Audio Plane Resumed Successfully.");
-                return;
-            }
+            // Fix: cast state to string again after resume to verify transition without narrowing comparison errors
+            if ((ctx.state as string) === 'running') return;
         } catch (e) {
-            if (attempts < 5) {
-                await new Promise(r => setTimeout(r, 200 * (attempts + 1)));
+            if (attempts < 3) {
+                await new Promise(r => setTimeout(r, 100));
                 return warmUpAudioContext(ctx, attempts + 1);
             }
         }
     }
 }
 
+/**
+ * Forces the browser's speech synthesis engine out of a deadlocked state.
+ */
 export function syncPrimeSpeech() {
     const ctx = getGlobalAudioContext();
     if (ctx.state === 'suspended') ctx.resume().catch(console.warn);
+    
     if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel();
+        window.speechSynthesis.pause();
         window.speechSynthesis.resume();
-        const wakeUp = new SpeechSynthesisUtterance(" ");
-        wakeUp.volume = 0.001;
+        const wakeUp = new SpeechSynthesisUtterance("");
+        wakeUp.volume = 0;
         wakeUp.rate = 10;
         window.speechSynthesis.speak(wakeUp);
+        window.speechSynthesis.resume();
     }
 }
 
@@ -126,7 +129,8 @@ export async function getSystemVoicesAsync(): Promise<SpeechSynthesisVoice[]> {
         setTimeout(() => {
             voices = window.speechSynthesis.getVoices();
             if (voices.length > 0) resolve(voices);
-        }, 500);
+            else resolve([]); 
+        }, 800);
     });
 }
 

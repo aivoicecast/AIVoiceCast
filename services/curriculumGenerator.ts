@@ -1,8 +1,8 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import { Chapter } from '../types';
 import { incrementApiUsage, deductCoins, AI_COSTS } from './firestoreService';
 import { auth } from './firebaseConfig';
+import { GEMINI_API_KEY } from './private_keys';
 
 /**
  * Generates a structured learning curriculum based on a podcast's title and description.
@@ -13,7 +13,8 @@ export async function generateCurriculum(
   language: 'en' | 'zh' = 'en'
 ): Promise<Chapter[] | null> {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+    const ai = new GoogleGenAI({ apiKey });
 
     const langInstruction = language === 'zh' 
       ? 'Output Language: Simplified Chinese (Mandarin). Use professional academic terminology.'

@@ -68,14 +68,12 @@ import { TOPIC_CATEGORIES } from '../utils/initialData';
 import { MarkdownView } from './MarkdownView';
 import { Whiteboard } from './Whiteboard';
 
-// Fixed: Added missing constants used in the component
 const MAX_TEST_LENGTH = 1000;
 const LANGUAGES = ['C++', 'Python', 'JavaScript', 'TypeScript', 'Java', 'Go', 'Rust', 'C#', 'Swift', 'Kotlin', 'PHP', 'Ruby', 'HTML', 'CSS', 'SQL'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 interface SettingsModalProps {
   isOpen: boolean;
-  /* Fixed: Changed onBack to onClose to match component implementation and parent component props */
   onClose: () => void;
   user: UserProfile;
   onUpdateProfile?: (updated: UserProfile) => void;
@@ -101,13 +99,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [preferredScriptureView, setPreferredScriptureView] = useState<'dual' | 'en' | 'zh'>(user.preferredScriptureView || 'dual');
   const [cloudTtsApiKey, setCloudTtsApiKey] = useState(user.cloudTtsApiKey || '');
   
-  // Audio Test State
   const [isTestingVoice, setIsTestingVoice] = useState(false);
   const [testText, setTestText] = useState(() => localStorage.getItem('last_audio_test_text') || 'Neural Prism audio handshake successful. 这是一个神经棱镜音频测试。');
   const [testResult, setTestResult] = useState<{ status: 'idle' | 'success' | 'error' | 'syncing', msg: string, provider?: string }>({ status: 'idle', msg: '' });
   const [testLogs, setTestLogs] = useState<string[]>([]);
 
-  // Availability State
   const [availability, setAvailability] = useState<UserAvailability>(user.availability || {
       days: [1, 2, 3, 4, 5],
       startHour: 9,
@@ -115,7 +111,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       enabled: true
   });
 
-  // LinkedIn Profile Simulation
   const [headline, setHeadline] = useState(user.headline || '');
   const [company, setCompany] = useState(user.company || '');
   const [linkedinUrl, setLinkedinUrl] = useState(user.linkedinUrl || '');
@@ -124,12 +119,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [resumeStatusMsg, setResumeStatusMsg] = useState('');
   const resumeInputRef = useRef<HTMLInputElement>(null);
 
-  // Banking Profile State
   const [senderAddress, setSenderAddress] = useState(user.senderAddress || '');
   const [signaturePreview, setSignaturePreview] = useState(user.savedSignatureUrl || '');
   const [nextCheckNumber, setNextCheckNumber] = useState(user.nextCheckNumber || 1001);
   const [showSignPad, setShowSignPad] = useState(false);
   
+  const playbackSessionIdRef = useRef(0);
   const currentTier = user.subscriptionTier || 'free';
   const isPaid = currentTier === 'pro';
 
@@ -161,63 +156,71 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
   }, [isOpen, user]);
 
-  const addTestLog = (msg: string) => setTestLogs(prev => [...prev, msg].slice(-3));
+  const addTestLog = (msg: string) => {
+    setTestLogs(prev => [...prev, msg].slice(-5));
+    window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `[Audit Trace] ${msg}`, type: 'info' } }));
+  };
 
   const handleRunVoiceTest = async () => {
       if (!testText.trim()) return;
       
-      // SYNCHRONOUS PRIMING
-      syncPrimeSpeech();
-      localStorage.setItem('last_audio_test_text', testText);
-      
+      const currentSession = ++playbackSessionIdRef.current;
       setIsTestingVoice(true);
       setTestResult({ status: 'syncing', msg: 'Priming Hardware...', provider: ttsProvider });
       
+      localStorage.setItem('last_audio_test_text', testText);
       const ctx = getGlobalAudioContext();
 
+      // SMARTER TEXT SEGMENTATION FOR DUAL-TRACK AUDIT
+      const englishParts = testText.match(/[a-zA-Z0-9\s.,!?'"]+/g)?.join(' ') || "Neural Prism.";
+      const chineseParts = testText.match(/[\u4e00-\u9fa5\s。，！？“”]+/g)?.join('') || "神经棱镜。";
+
       try {
-          addTestLog("Resolving Audio Context...");
+          addTestLog("Handshake Phase 1: Resolving Audio Context...");
           await warmUpAudioContext(ctx);
           
-          // Determine logic: If user selected dual, we run their custom text in both engines
-          // This allows testing how the specific voices handle potential mixed text.
+          if (currentSession !== playbackSessionIdRef.current) return;
+
+          // Perform EN audit
           if (preferredScriptureView === 'dual' || preferredScriptureView === 'en') {
-              addTestLog(`Auditing English Logic (${ttsProvider})...`);
-              await runNeuralAudit(ttsProvider, testText, ctx, 'en', cloudTtsApiKey);
-              if (preferredScriptureView === 'dual') await new Promise(r => setTimeout(r, 1500)); 
+              addTestLog(`Handshake Phase 2: Dispatching English Track to ${ttsProvider.toUpperCase()} engine...`);
+              await runNeuralAudit(ttsProvider, englishParts, ctx, 'en', cloudTtsApiKey);
+              
+              if (currentSession === playbackSessionIdRef.current && preferredScriptureView === 'dual') {
+                  addTestLog("Sync Pause: Transitioning language spectrum...");
+                  await new Promise(r => setTimeout(r, 600));
+              }
           }
 
-          if (localSessionIdRef.current === playbackSessionIdRef.current && (preferredScriptureView === 'dual' || preferredScriptureView === 'zh')) {
-              addTestLog(`Auditing Chinese Logic (${ttsProvider})...`);
-              await runNeuralAudit(ttsProvider, testText, ctx, 'zh', cloudTtsApiKey);
+          // Perform ZH audit
+          if (currentSession === playbackSessionIdRef.current && (preferredScriptureView === 'dual' || preferredScriptureView === 'zh')) {
+              addTestLog(`Handshake Phase 3: Dispatching Chinese Track to ${ttsProvider.toUpperCase()} engine...`);
+              // Gemini TTS handles Chinese well if we send ONLY the Chinese text to the ZH voice
+              await runNeuralAudit(ttsProvider, chineseParts, ctx, 'zh', cloudTtsApiKey);
           }
           
-          setTestResult({ status: 'success', msg: `Spectrum Validated: ${ttsProvider.toUpperCase()} Online.`, provider: ttsProvider });
-          addTestLog("Neural handshake finalized.");
-
+          if (currentSession === playbackSessionIdRef.current) {
+            setTestResult({ status: 'success', msg: `Spectrum Validated: ${ttsProvider.toUpperCase()} Online.`, provider: ttsProvider });
+            addTestLog("Handshake Phase 4: Finalized. Neural fabric secure.");
+          }
       } catch (e: any) {
           const errMsg = e.message || "Hardware link fault.";
           setTestResult({ status: 'error', msg: `Audit Failed: ${errMsg}`, provider: ttsProvider });
-          addTestLog("Handshake Refused.");
+          addTestLog(`HANDSHAKE REFUSED: ${errMsg}`);
           
           window.dispatchEvent(new CustomEvent('neural-log', { 
               detail: { text: `[Audit Fault] ${ttsProvider.toUpperCase()}: ${errMsg}`, type: 'error' } 
           }));
       } finally {
-          setIsTestingVoice(false);
+          if (currentSession === playbackSessionIdRef.current) setIsTestingVoice(false);
       }
   };
-
-  // For preventing state collision in async tests
-  const playbackSessionIdRef = useRef(0);
-  const localSessionIdRef = useRef(0);
 
   const handleResumeRefraction = async (source: { file?: File, url?: string }) => {
       setResumeUploadStatus('processing');
       setResumeStatusMsg('Neural Spectrum scanning source...');
       
       try {
-          // Fix: Initialization using exclusively process.env.API_KEY as per guidelines
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           let part: any;
 
@@ -406,7 +409,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <button onClick={() => setTtsProvider('system')} className={`py-2 rounded-xl text-[10px] font-black uppercase transition-all ${ttsProvider === 'system' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>Local</button>
                         </div>
 
-                        {/* Neural Sound Check Enhanced */}
                         <div className="bg-slate-950/50 border border-slate-800 rounded-[2rem] p-6 space-y-6 shadow-xl relative overflow-hidden group">
                             <div className="absolute top-0 right-0 p-12 bg-indigo-600/5 blur-[80px] rounded-full pointer-events-none"></div>
                             

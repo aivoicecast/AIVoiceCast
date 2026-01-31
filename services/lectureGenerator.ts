@@ -1,9 +1,9 @@
-
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedLecture, TranscriptItem } from '../types';
 import { getCloudCachedLecture, saveCloudCachedLecture, deductCoins, AI_COSTS, incrementApiUsage } from './firestoreService';
 import { auth } from './firebaseConfig';
 import { generateContentUid } from '../utils/idUtils';
+import { GEMINI_API_KEY } from './private_keys';
 
 export async function generateLectureScript(
   topic: string, 
@@ -27,8 +27,8 @@ export async function generateLectureScript(
       }
     }
 
-    // Fix: Using process.env.API_KEY directly as per guidelines
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+    const ai = new GoogleGenAI({ apiKey });
     
     // RESOLVE TUNED MODELS
     let modelName = 'gemini-3-pro-preview';
@@ -103,8 +103,8 @@ export async function summarizeDiscussionAsSection(
   language: 'en' | 'zh' = 'en'
 ): Promise<{ speaker: string; text: string } | null> {
   try {
-    // Fix: Using process.env.API_KEY directly as per guidelines
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+    const ai = new GoogleGenAI({ apiKey });
     const fullTranscript = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
     
@@ -128,8 +128,8 @@ export async function generateDesignDocFromTranscript(
   language: 'en' | 'zh' = 'en'
 ): Promise<string | null> {
   try {
-    // Fix: Using process.env.API_KEY directly as per guidelines
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+    const ai = new GoogleGenAI({ apiKey });
     const fullTranscript = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
     

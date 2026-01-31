@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -288,15 +287,16 @@ const App: React.FC = () => {
     const interval = setInterval(() => {
         const now = Date.now();
         if (isLogPaused || logBufferRef.current.length === 0) return;
-        if (now - lastUpdateRef.current < 800) return;
+        // Faster update interval for debugging (100ms instead of 800ms)
+        if (now - lastUpdateRef.current < 100) return;
 
         setVisibleLogs(prev => {
-            const combined = [...logBufferRef.current, ...prev].slice(0, 100);
+            const combined = [...logBufferRef.current, ...prev].slice(0, 300);
             logBufferRef.current = [];
             lastUpdateRef.current = now;
             return combined;
         });
-    }, 800);
+    }, 100);
     return () => clearInterval(interval);
   }, [isLogPaused]);
 
@@ -306,17 +306,16 @@ const App: React.FC = () => {
           if (typeof text === 'string') {
               cleanText = text;
           } else if (text instanceof Error) {
-              cleanText = text.stack || text.message;
+              cleanText = `ERROR: ${text.message}\nSTACK: ${text.stack || 'No stack trace available.'}`;
           } else if (text !== null && typeof text === 'object') {
               cleanText = safeJsonStringify(text);
           } else {
               cleanText = String(text);
           }
       } catch (e) { 
-          cleanText = "[Internal Log Serialization Error] - Circularity detected in unhandled object."; 
+          cleanText = "[Internal Log Serialization Error] - Complex object structure blocked."; 
       }
 
-      if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText) return;
       logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type });
   }, []);
 
@@ -393,7 +392,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Sovereignty Protocols v6.6.2 Active.", "info");
+    addSystemLog("Sovereignty Protocols v6.6.5 Active.", "info");
     if (!auth) {
         setAuthLoading(false);
         return;
@@ -524,7 +523,7 @@ const App: React.FC = () => {
     return { free: list.filter(a => !a.restricted), pro: list.filter(a => a.restricted) };
   }, [t, handleSetViewState, handleStartLiveSession]);
 
-  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing v6.6.2...</span></div>;
+  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing v6.6.5...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} />;
 
   return (
@@ -576,7 +575,7 @@ const App: React.FC = () => {
                 {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} /></div> )}
                 {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} isProMember={isProMember}/> )}
                 {activeViewID === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('dashboard')} /> )}
-                {activeViewID === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'blog' && ( <div className="h-full overflow-y-auto"><BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} /></div> )}
                 {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} /> )}
                 {activeViewID === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
                 {activeViewID === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice="Auto" t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={() => setIsCreateModalOpen(true)} /> )}
@@ -649,7 +648,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.6.2-SYN</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.6.5-SYN</p></div>
             </div>
         </div>
 

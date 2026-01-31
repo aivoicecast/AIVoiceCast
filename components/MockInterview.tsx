@@ -8,6 +8,7 @@ import { generateSecureId } from '../utils/idUtils';
 import { CodeStudio } from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
 import { Visualizer } from './Visualizer';
+import { GEMINI_API_KEY } from '../services/private_keys';
 import { 
   ArrowLeft, Video, Mic, Monitor, Play, Save, Loader2, Search, Trash2, CheckCircle, X, 
   Download, ShieldCheck, User, Users, Building, FileText, ChevronRight, Zap, SidebarOpen, 
@@ -634,7 +635,8 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       setIsLive(false);
 
       try {
-          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+          const ai = new GoogleGenAI({ apiKey });
           const fullTranscript = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
           const finalCodeStr = files.map(f => `FILE: ${f.name}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
           
@@ -823,7 +825,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         </div>
                     </div>
                     <button onClick={handleStartInterview} disabled={isLoading} className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-900/40 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50">
-                        {/* Fix: Removed duplicate size attribute */}
                         {isLoading ? <Loader2 size={24} className="animate-spin" /> : <Sparkles size={24}/>}
                         Initialize Sovereign Session
                     </button>

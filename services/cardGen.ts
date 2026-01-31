@@ -1,13 +1,14 @@
-
 import { GoogleGenAI, Modality } from '@google/genai';
 import { AgentMemory } from '../types';
 import { base64ToBytes, pcmToWavBlobUrl } from '../utils/audioUtils';
 import { deductCoins, AI_COSTS } from './firestoreService';
 import { auth } from './firebaseConfig';
+import { GEMINI_API_KEY } from './private_keys';
 
 export async function generateCardMessage(memory: AgentMemory, tone: string = 'warm'): Promise<string> {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+        const ai = new GoogleGenAI({ apiKey });
         
         let prompt = '';
         
@@ -78,7 +79,8 @@ export async function generateCardMessage(memory: AgentMemory, tone: string = 'w
 
 export async function generateSongLyrics(memory: AgentMemory): Promise<string> {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+        const ai = new GoogleGenAI({ apiKey });
         
         const defaultMsg = 'Wishing you a season filled with warmth, comfort, and good cheer.';
         const messageContext = memory.cardMessage && memory.cardMessage.trim() !== defaultMsg
@@ -123,7 +125,8 @@ export async function generateSongLyrics(memory: AgentMemory): Promise<string> {
 
 export async function generateCardAudio(text: string, voiceName: string = 'Kore'): Promise<string> {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+        const ai = new GoogleGenAI({ apiKey });
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-preview-tts',
             contents: [{ parts: [{ text }] }],
@@ -162,7 +165,8 @@ export async function generateCardImage(
     aspectRatio: '1:1' | '3:4' | '4:3' | '9:16' | '16:9' = '1:1'
 ): Promise<string> {
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+        const ai = new GoogleGenAI({ apiKey });
         
         const cardContentContext = `The card is for ${memory.occasion}. The main message is: "${memory.cardMessage}". The background context is: "${memory.context || ''}".`;
         const customContext = memory.customThemePrompt ? `Visual Theme Detail: ${memory.customThemePrompt}.` : '';

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -176,8 +175,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       };
   }, [transcript, currentLine]);
 
+  // STABLE TIMER PROTOCOL v2
   useEffect(() => {
-    if (hasStarted && recordingEnabled && isConnected && scribeTimeLeft > 0) {
+    // Timer should run as long as the recording is physically active, 
+    // regardless of transient AI connection blips.
+    if (hasStarted && recordingEnabled && isRecordingActive && scribeTimeLeft > 0) {
       const timer = setInterval(() => {
         setScribeTimeLeft(prev => {
           if (prev <= 1) {
@@ -189,7 +191,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [hasStarted, recordingEnabled, isConnected, scribeTimeLeft]);
+  }, [hasStarted, recordingEnabled, isRecordingActive, scribeTimeLeft]);
 
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
@@ -500,7 +502,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             {isRecordingActive && (
                 <div className="flex items-center gap-2 bg-red-600/20 text-red-500 px-3 py-1 rounded-full border border-red-500/30 text-[10px] font-black uppercase tracking-widest animate-pulse">
                     <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                    <span>Recording</span>
+                    <span>Recording ({Math.floor(scribeTimeLeft / 60)}:{(scribeTimeLeft % 60).toString().padStart(2, '0')})</span>
                 </div>
             )}
             <button onClick={handleDisconnect} className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg transition-colors">Terminate</button>

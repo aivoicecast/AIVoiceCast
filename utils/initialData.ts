@@ -33,27 +33,27 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: 'judge-deep-dive',
     title: '🏆 JUDGE: Neural Prism Technical Audit',
-    description: 'A v6.6.1 interactive guide specifically for Hackathon Judges. We evaluate our project against Execution, Innovation, and Impact criteria. This platform was developed over 30 days using Google AI Studio.',
+    description: 'A v6.6.5 professional guide for Hackathon Judges. This channel walkthrough covers our multi-model orchestration, heuristic simulation IDE, and pixel-perfect rasterization pipeline.',
     author: 'Project Lead',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the project lead of Neural Prism. You are speaking directly to a hackathon judge. Your tone is professional, confident, and highly technical. You explain how the project leverages Gemini 3, the innovation of Heuristic Simulation, and the v6.6.1 Scribe Protocol for high-fidelity activity capture. Emphasize that the project was a 30-day intensive build using Google AI Studio.',
+    systemInstruction: 'You are the project lead of Neural Prism. You are conducting a technical audit for a hackathon judge. DIVE DIRECTLY INTO TECHNICAL DETAILS. Do not say "Welcome" or "Today we will". Use terms like "Audit of...", "Examining...", "Proof of implementation...". Explain the 6 key themes: Foundations, Simulation, Scribe Capture, Sovereign Utility, Trust Ledger, and Synthesis. Emphasize that the project was a 30-day build using Google AI Studio.',
     likes: 620,
     dislikes: 0,
     comments: [],
-    tags: ['Judging', 'v6.6.1', 'Architecture', 'Innovation'],
+    tags: ['Judging', 'v6.6.5', 'Architecture', 'Innovation'],
     imageUrl: 'https://images.unsplash.com/photo-1454165833767-027ee6a7cbb4?w=600&q=80',
-    welcomeMessage: "Welcome, Judge. This channel is optimized for the v6.6.1 technical audit. We have self-documented our adherence to your criteria. Note that this entire system was architected and built in 30 days using Google AI Studio. Try the new 'Author Studio' or test the 'Neural Scribe' with camera overlay—the high-fidelity book synthesis is now fully online.",
+    welcomeMessage: "Technical Audit v6.6.5. This session will traverse the refractive architecture. Use Chapter 1 to examine model orchestration or Chapter 5 to verify the Symbol-Flow publishing engine. All logs are visible in the Diagnostic Console.",
     starterPrompts: [
-      "Explain the v6.6.1 Scribe Protocol",
-      "Why is Heuristic Simulation better than a real VM?",
-      "Show me the Section 12: Book Synthesis Architecture",
-      "How is this project innovative?"
+      "Audit the Refractive Architecture",
+      "Explain the Heuristic Simulation Logic",
+      "Show the Section 05: Symbol-Flow Publishing",
+      "Implementation of Scribe Protocol"
     ],
     createdAt: Date.now(),
     chapters: [
       {
         id: 'judge-ch1',
-        title: 'Section 01: The Refractive Engine (Technical Execution)',
+        title: 'Refractive Foundations',
         subTopics: [
           { id: 'jd-1-1', title: 'Multi-Model Orchestration Pipeline' },
           { id: 'jd-1-2', title: 'Refractive Caching & Deterministic UUIDs' }
@@ -61,109 +61,61 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
       },
       {
         id: 'judge-ch2',
-        title: 'Section 02: The 30-Day Refraction (Engineering Story)',
+        title: 'Heuristic Workspace Simulation',
         subTopics: [
-          { id: 'jd-2-1', title: 'Vibe Coding 30K Lines with AI Studio' },
-          { id: 'jd-2-2', title: 'Recursive Feedback & Drift Correction' }
+          { id: 'jd-2-1', title: 'Digital Twin Terminal Emulation' },
+          { id: 'jd-2-2', title: 'Socratic Logic Tracing' }
         ]
       },
       {
         id: 'judge-ch3',
-        title: 'Section 03: Finance Lab (Asset Synthesis)',
+        title: 'Scribe Protocol & Capture',
         subTopics: [
-          { id: 'jd-3-1', title: 'Pixel-Perfect Assembly Pipeline' },
-          { id: 'jd-3-2', title: 'Neural Signature Sovereignty' }
+          { id: 'jd-3-1', title: 'Canvas Compositor Logic' },
+          { id: 'jd-3-2', title: 'Sequential Permission Handshake' }
         ]
       },
       {
         id: 'judge-ch4',
-        title: 'Section 04: Logistics Lab (Neural Ingest)',
+        title: 'Sovereign Utility Labs',
         subTopics: [
-          { id: 'jd-4-1', title: 'Linguistic Entity Extraction' },
-          { id: 'jd-4-2', title: 'Geospatial Thermal Labeling' }
+          { id: 'jd-4-1', title: 'Pixel-Perfect Asset Synthesis' },
+          { id: 'jd-4-2', title: 'ECDSA Identity & Trust Ledger' }
         ]
       },
       {
         id: 'judge-ch5',
-        title: 'Section 05: Builder Studio (Heuristic Simulation)',
+        title: 'Synthesis & Publishing',
         subTopics: [
-          { id: 'jd-5-1', title: 'Digital Twin Terminal Emulation' },
-          { id: 'jd-5-2', title: 'Socratic Logic Tracing' }
+          { id: 'jd-5-1', title: 'Multi-Page Neural Typesetting' },
+          { id: 'jd-5-2', title: 'Symbol-Flow Rasterization' }
         ]
       },
       {
         id: 'judge-ch6',
-        title: 'Section 06: Career Hub (Multimodal Eval)',
+        title: 'The 30-Day Engineering Story',
         subTopics: [
-          { id: 'jd-6-1', title: 'Technical Interrogation Protocols' },
-          { id: 'jd-6-2', title: 'Sentiment & Performance Analysis' }
-        ]
-      },
-      {
-        id: 'judge-ch7',
-        title: 'Section 07: Scripture Sanctuary (Sacred Data)',
-        subTopics: [
-          { id: 'jd-7-1', title: 'Bilingual Node Archiving' },
-          { id: 'jd-7-2', title: 'Acoustic Archeology (Audio Nodes)' }
-        ]
-      },
-      {
-        id: 'judge-ch8',
-        title: 'Section 08: Sovereign Vault (User Privacy)',
-        subTopics: [
-          { id: 'jd-8-1', title: 'Google Drive VFS Bridge' },
-          { id: 'jd-8-2', title: 'Zero-Retention Logic Processing' }
-        ]
-      },
-      {
-        id: 'judge-ch9',
-        title: 'Section 09: The Global Ledger (VoiceCoin)',
-        subTopics: [
-          { id: 'jd-9-1', title: 'ECDSA Identity Handshake' },
-          { id: 'jd-9-2', title: 'Digital Receipt Escrow Flow' }
-        ]
-      },
-      {
-        id: 'judge-ch10',
-        title: 'Section 10: Observability (Diagnostic Matrix)',
-        subTopics: [
-          { id: 'jd-10-1', title: 'Throttled Neural Log Buffer' },
-          { id: 'jd-10-2', title: 'Trace Bundling for Feedback' }
-        ]
-      },
-      {
-        id: 'judge-ch11',
-        title: 'Section 11: Future (Self-Evolution Loop)',
-        subTopics: [
-          { id: 'jd-11-1', title: 'Recursive Prompt Refinement' },
-          { id: 'jd-11-2', title: 'Federated Refraction Roadmap' }
-        ]
-      },
-      {
-        id: 'judge-ch12',
-        title: 'Section 12: High-Fidelity Publishing (Book Synthesis)',
-        subTopics: [
-          { id: 'jd-12-1', title: 'Multi-Page Neural Typesetting' },
-          { id: 'jd-12-2', title: 'Symbol-Flow Rasterization Logic' }
+          { id: 'jd-6-1', title: 'Velocity: 30K Lines Orchestrated' },
+          { id: 'jd-6-2', title: 'Recursive Feedback & Drift Correction' }
         ]
       }
     ]
   },
   {
     id: OFFLINE_CHANNEL_ID,
-    title: 'Neural Prism Platform v6.6.1',
-    description: 'The self-documenting guide to the Neural Prism v6.6.1 Platform. Learn about the new Scribe Protocol and Symbol-Flow rasterization for technical books.',
+    title: 'Neural Prism Platform v6.6.5',
+    description: 'The self-documenting guide to the Neural Prism v6.6.5 Platform. Learn about the new Scribe Protocol and Symbol-Flow rasterization for technical books.',
     author: 'Prism Architect',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on the v6.6.1 Scribe Protocol that ensures high-fidelity recording of PIP camera overlays and system sounds across different operating systems.',
+    systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on the v6.6.5 Scribe Protocol that ensures high-fidelity recording of PIP camera overlays and system sounds across different operating systems.',
     likes: 13200,
     dislikes: 0,
     comments: [],
-    tags: ['Architecture', 'v6.6.1', 'Scribe', 'AuthorStudio'],
+    tags: ['Architecture', 'v6.6.5', 'Scribe', 'AuthorStudio'],
     imageUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200&q=80', 
-    welcomeMessage: "Welcome to Neural Prism v6.6.1. We have stabilized the Scribe capture loop and implemented Symbol-Flow Integrity for multi-page PDF exports. How can I help you navigate the spectrum today?",
+    welcomeMessage: "Welcome to Neural Prism v6.6.5. We have stabilized the Scribe capture loop and implemented Symbol-Flow Integrity for multi-page PDF exports. How can I help you navigate the spectrum today?",
     starterPrompts: [
-      "What is new in v6.6.1?",
+      "What is new in v6.6.5?",
       "Explain the Sequential Permission Flow",
       "How does Symbol-Flow Integrity work?",
       "Tell me about Section 12: Book Synthesis"

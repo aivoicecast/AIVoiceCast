@@ -1,6 +1,6 @@
-
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
+import { GEMINI_API_KEY } from './private_keys';
 
 export interface LiveConnectionCallbacks {
   onOpen: () => void;
@@ -62,7 +62,8 @@ export class GeminiLiveService {
       this.isActive = true;
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+      const ai = new GoogleGenAI({ apiKey });
       
       if (!this.inputAudioContext || this.inputAudioContext.state !== 'running') {
         await this.initializeAudio();

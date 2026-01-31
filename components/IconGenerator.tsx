@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Sparkles, Download, Loader2, AppWindow, RefreshCw, Layers, ShieldCheck, Key, Globe, Layout, Palette, Zap, Check, Upload, X, Edit3, Image as ImageIcon, Camera, AlertCircle, Share2, Link, Copy, Lock } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
@@ -9,6 +8,7 @@ import { getDriveToken, connectGoogleDrive } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { generateSecureId } from '../utils/idUtils';
 import { ShareModal } from './ShareModal';
+import { GEMINI_API_KEY } from '../services/private_keys';
 
 interface IconGeneratorProps {
   onBack: () => void;
@@ -66,7 +66,8 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
     if (!prompt.trim()) return;
     setIsGenerating(true); setError(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = process.env.API_KEY || GEMINI_API_KEY;
+      const ai = new GoogleGenAI({ apiKey });
       const styleInstruction = `Professional app icon design for: ${prompt}. ${selectedStyle.prompt}. Isolated, high quality, 8k resolution.`;
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-image-preview',
@@ -89,12 +90,12 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
-      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0">
+      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4"><button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400"><ArrowLeft size={20} /></button><h1 className="text-lg font-bold text-white flex items-center gap-2"><AppWindow className="text-cyan-400" /> Neural Icon Lab</h1></div>
           {generatedIcon && <button onClick={handleGenerate} disabled={isGenerating} className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold text-xs shadow-lg">{isGenerating ? 'Synthesizing...' : 'Re-Generate'}</button>}
       </header>
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-          <div className="w-full lg:w-[400px] border-r border-slate-800 bg-slate-900/30 p-8 space-y-8 overflow-y-auto">
+          <div className="w-full lg:w-[450px] border-r border-slate-800 bg-slate-900/30 p-8 space-y-8 overflow-y-auto">
               <div className="space-y-4"><label className="text-[10px] font-black text-slate-500 uppercase">Icon Concept</label><textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Describe your app..." className="w-full h-32 bg-slate-900 border border-slate-700 rounded-2xl p-4 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none leading-relaxed"/></div>
               <div className="space-y-4"><label className="text-[10px] font-black text-slate-500 uppercase">Design Style</label><div className="grid grid-cols-2 gap-3">{STYLE_PRESETS.map((style) => (<button key={style.name} onClick={() => setSelectedStyle(style)} className={`p-3 rounded-xl border text-left transition-all ${selectedStyle.name === style.name ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-800 border-slate-700 text-slate-400'}`}><span className="text-xs font-bold">{style.name}</span></button>))}</div></div>
               <button onClick={handleGenerate} disabled={isGenerating || !prompt.trim()} className="w-full py-4 bg-gradient-to-r from-cyan-600 to-indigo-600 text-white font-black uppercase rounded-2xl shadow-xl transition-all active:scale-[0.98]">{isGenerating ? <Loader2 size={20} className="animate-spin mx-auto"/> : 'Generate Icon'}</button>

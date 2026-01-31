@@ -1,4 +1,3 @@
-
 import { SpotlightChannelData } from '../spotlightContent';
 
 export const JUDGING_CONTENT: Record<string, SpotlightChannelData> = {
@@ -6,7 +5,7 @@ export const JUDGING_CONTENT: Record<string, SpotlightChannelData> = {
     curriculum: [
       {
         id: 'judge-ch1',
-        title: 'Section 01: The Refractive Engine (Technical Execution)',
+        title: 'Refractive Foundations',
         subTopics: [
           { id: 'jd-1-1', title: 'Multi-Model Orchestration Pipeline' },
           { id: 'jd-1-2', title: 'Refractive Caching & Deterministic UUIDs' }
@@ -14,90 +13,34 @@ export const JUDGING_CONTENT: Record<string, SpotlightChannelData> = {
       },
       {
         id: 'judge-ch2',
-        title: 'Section 02: The 30-Day Refraction (Engineering Story)',
+        title: 'Heuristic Workspace Simulation',
         subTopics: [
-          { id: 'jd-2-1', title: 'Vibe Coding 30K Lines with AI Studio' },
-          { id: 'jd-2-2', title: 'Recursive Feedback & Drift Correction' }
+          { id: 'jd-2-1', title: 'Digital Twin Terminal Emulation' },
+          { id: 'jd-2-2', title: 'Socratic Logic Tracing' }
         ]
       },
       {
         id: 'judge-ch3',
-        title: 'Section 03: Finance Lab (Asset Synthesis)',
+        title: 'Scribe Protocol & Capture',
         subTopics: [
-          { id: 'jd-3-1', title: 'Pixel-Perfect Assembly Pipeline' },
-          { id: 'jd-3-2', title: 'Neural Signature Sovereignty' }
+          { id: 'jd-3-1', title: 'Canvas Compositor Logic' },
+          { id: 'jd-3-2', title: 'Sequential Permission Handshake' }
         ]
       },
       {
         id: 'judge-ch4',
-        title: 'Section 04: Logistics Lab (Neural Ingest)',
+        title: 'Sovereign Utility Labs',
         subTopics: [
-          { id: 'jd-4-1', title: 'Linguistic Entity Extraction' },
-          { id: 'jd-4-2', title: 'Geospatial Thermal Labeling' }
+          { id: 'jd-4-1', title: 'Pixel-Perfect Asset Synthesis' },
+          { id: 'jd-4-2', title: 'ECDSA Identity & Trust Ledger' }
         ]
       },
       {
         id: 'judge-ch5',
-        title: 'Section 05: Builder Studio (Heuristic Simulation)',
+        title: 'Synthesis & Publishing',
         subTopics: [
-          { id: 'jd-5-1', title: 'Digital Twin Terminal Emulation' },
-          { id: 'jd-5-2', title: 'Socratic Logic Tracing' }
-        ]
-      },
-      {
-        id: 'judge-ch6',
-        title: 'Section 06: Career Hub (Multimodal Eval)',
-        subTopics: [
-          { id: 'jd-6-1', title: 'Technical Interrogation Protocols' },
-          { id: 'jd-6-2', title: 'Sentiment & Performance Analysis' }
-        ]
-      },
-      {
-        id: 'judge-ch7',
-        title: 'Section 07: Scripture Sanctuary (Sacred Data)',
-        subTopics: [
-          { id: 'jd-7-1', title: 'Bilingual Node Archiving' },
-          { id: 'jd-7-2', title: 'Acoustic Archeology (Audio Nodes)' }
-        ]
-      },
-      {
-        id: 'judge-ch8',
-        title: 'Section 08: Sovereign Vault (User Privacy)',
-        subTopics: [
-          { id: 'jd-8-1', title: 'Google Drive VFS Bridge' },
-          { id: 'jd-8-2', title: 'Zero-Retention Logic Processing' }
-        ]
-      },
-      {
-        id: 'judge-ch9',
-        title: 'Section 09: The Global Ledger (VoiceCoin)',
-        subTopics: [
-          { id: 'jd-9-1', title: 'ECDSA Identity Handshake' },
-          { id: 'jd-9-2', title: 'Digital Receipt Escrow Flow' }
-        ]
-      },
-      {
-        id: 'judge-ch10',
-        title: 'Section 10: Observability (Diagnostic Matrix)',
-        subTopics: [
-          { id: 'jd-10-1', title: 'Throttled Neural Log Buffer' },
-          { id: 'jd-10-2', title: 'Trace Bundling for Feedback' }
-        ]
-      },
-      {
-        id: 'judge-ch11',
-        title: 'Section 11: Future (Self-Evolution Loop)',
-        subTopics: [
-          { id: 'jd-11-1', title: 'Recursive Prompt Refinement' },
-          { id: 'jd-11-2', title: 'Federated Refraction Roadmap' }
-        ]
-      },
-      {
-        id: 'judge-ch12',
-        title: 'Section 12: High-Fidelity Publishing (Book Synthesis)',
-        subTopics: [
-          { id: 'jd-12-1', title: 'Multi-Page Neural Typesetting' },
-          { id: 'jd-12-2', title: 'Symbol-Flow Rasterization Logic' }
+          { id: 'jd-5-1', title: 'Multi-Page Neural Typesetting' },
+          { id: 'jd-5-2', title: 'Symbol-Flow Rasterization' }
         ]
       }
     ],
@@ -105,33 +48,51 @@ export const JUDGING_CONTENT: Record<string, SpotlightChannelData> = {
       "Multi-Model Orchestration Pipeline": {
         topic: "Multi-Model Orchestration Pipeline",
         professorName: "Architect Gem",
-        studentName: "Hackathon Judge",
+        studentName: "Technical Judge",
         sections: [
-          { speaker: "Teacher", text: "Welcome, Judges, to the v6.6.1 Technical Audit. Our core execution model is defined in App.tsx and geminiLive.ts. We don't just 'call an API'; we orchestrate a multi-model pipeline tailored for human activity." },
-          { speaker: "Student", text: "How has the orchestration evolved in the latest version?" },
-          { speaker: "Teacher", text: "We now have a dedicated 'Activity Circuit'. We use Gemini 3 Pro for high-dimensional reasoning like curriculum design, while gemini-2.5-flash-native-audio handles the low-latency WebSocket layer. The Builder Studio now features enhanced simulation accuracy, mentally tracing logic in C++ and Python with sub-second feedback loops." }
+          { speaker: "Teacher", text: "Initiating audit of the Multi-Model Pipeline. We orchestrate a spectrum: Gemini 3 Pro for complex document synthesis and Gemini 3 Flash for low-latency heuristic simulation." },
+          { speaker: "Student", text: "Why split the tasks across different models?" },
+          { speaker: "Teacher", text: "Efficiency vs. Intelligence. Flash with a thinking budget of 0 handles sub-second terminal output in CodeStudio.tsx. Pro's high-dimensional reasoning is required in BookStudio.tsx to typeset 24 sections into a professional manuscript." }
         ]
       },
-      "Multi-Page Neural Typesetting": {
-        topic: "Multi-Page Neural Typesetting",
-        professorName: "Publishing Lead",
-        studentName: "Engineering Judge",
+      "Digital Twin Terminal Emulation": {
+        topic: "Digital Twin Terminal Emulation",
+        professorName: "Architect Gem",
+        studentName: "Technical Judge",
         sections: [
-          { speaker: "Teacher", text: "Section 12 covers our new Book Synthesis Engine. We've moved beyond simple text exports to professional multi-page manuscripts." },
-          { speaker: "Student", text: "What are the core technical constraints of this engine?" },
-          { speaker: "Teacher", text: "Governance and fidelity. We implement a strict '36-line safety frame' for every page to ensure consistent typesetting. The engine performs asynchronous Socratic dialogue generation for every node, then uses our Pixel-Perfect rasterization pipeline to bind the dialogues into an A4 PDF with AI-generated chapter summaries and scannable verification codes." },
-          { speaker: "Student", text: "So it's a full publishing house in the browser?" },
-          { speaker: "Teacher", text: "Exactly. It uses off-screen rendering nodes to capture the high-DPI state of each chapter, ensuring that math symbols and diagrams are preserved with 100% fidelity. It is the final stage of our 'Refraction' philosophy: from raw intelligence to a physical artifact." }
+          { speaker: "Teacher", text: "Examining the 'Run' button in Builder Studio. We bypass server-side compilers entirely using Neural Simulation." },
+          { speaker: "Student", text: "Is that just a text guess of the output?" },
+          { speaker: "Teacher", text: "No. It is a Heuristic Trace. We prompt Gemini 3 Flash as a Digital Twin Terminal. It mentally executes the C++ or Python logic and predicts the standard output. It is infrastructure-less, zero-risk, and allows for Socratic Debugging where the AI explains the logic failure." }
         ]
       },
-      "Refractive Caching & Deterministic UUIDs": {
-        topic: "Refractive Caching & Deterministic UUIDs",
-        professorName: "System Lead",
-        studentName: "Technical Auditor",
+      "Canvas Compositor Logic": {
+        topic: "Canvas Compositor Logic",
+        professorName: "Architect Gem",
+        studentName: "Technical Judge",
         sections: [
-          { speaker: "Teacher", text: "In v6.6.1, cost efficiency and latency are managed via our refined hash-based caching layer in audioUtils.ts and db.ts." },
-          { speaker: "Student", text: "Does this caching apply to the new Book Studio as well?" },
-          { speaker: "Teacher", text: "Yes. Every synthesized dialogue is stored in our 'Neural Vault'. If a member refracts a lesson once, it is stored as a deterministic node for all others to access. This creates an energy-efficient knowledge economy where common technical definitions are never generated twice." }
+          { speaker: "Teacher", text: "Audit of Scribe Protocol in LiveSession.tsx. High-fidelity workspace capture uses a custom Canvas Compositor." },
+          { speaker: "Student", text: "How do you handle the Picture-in-Picture camera overlay?" },
+          { speaker: "Teacher", text: "We implemented a compositor that stitches the screen stream and camera stream onto a hidden HD canvas at 30 FPS. This combined frame is fed into the MediaRecorder API to ensure zero visual artifacts and perfect audio synchronization." }
+        ]
+      },
+      "Pixel-Perfect Asset Synthesis": {
+        topic: "Pixel-Perfect Asset Synthesis",
+        professorName: "Architect Gem",
+        studentName: "Technical Judge",
+        sections: [
+          { speaker: "Teacher", text: "Analyzing the Finance Lab. We've bypassed CSS-to-PDF limitations using a 3-stage synthesis pipeline." },
+          { speaker: "Student", text: "What are the stages?" },
+          { speaker: "Teacher", text: "First, Neural Word Refraction. Second, 1800x810 High-DPI rasterization. Finally, we bind the signature—a sovereign asset synced from the User Profile—using an off-screen canvas. Result: 100% consistency across devices." }
+        ]
+      },
+      "ECDSA Identity & Trust Ledger": {
+        topic: "ECDSA Identity & Trust Ledger",
+        professorName: "Architect Gem",
+        studentName: "Technical Judge",
+        sections: [
+          { speaker: "Teacher", text: "Sovereignty is our core philosophy. Identity is generated on-device using the Web Crypto API, not on our servers." },
+          { speaker: "Student", text: "Explain the Digital Receipt handshake." },
+          { speaker: "Teacher", text: "Every VoiceCoin transfer is a cryptographic handshake. The sender signs a payload with their ECDSA P-256 private key. The receiver verifies it against the public certificate on the ledger. User owns the key." }
         ]
       }
     }
