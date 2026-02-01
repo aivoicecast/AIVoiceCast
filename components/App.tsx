@@ -234,26 +234,30 @@ interface SystemLogMsg {
 
 /**
  * Robust JSON stringifier that proactively detects circular references
- * to prevent thread crashes in the diagnostic console.
+ * and non-serializable host objects to prevent thread crashes.
  */
 function safeJsonStringify(obj: any, indent: number = 2): string {
     const cache = new WeakSet();
-    return JSON.stringify(obj, (key, value) => {
-        if (typeof value === 'object' && value !== null) {
-            if (cache.has(value)) {
-                return '[Circular Ref Truncated]';
-            }
-            cache.add(value);
-            
-            // Further guard against complex engine/DOM instances
-            if (Object.getPrototypeOf(value) !== Object.prototype && !Array.isArray(value)) {
-                if (value.constructor) {
-                    return `[Instance: ${value.constructor.name || 'Object'}]`;
+    try {
+        return JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'object' && value !== null) {
+                if (cache.has(value)) {
+                    return '[Circular Ref Truncated]';
+                }
+                cache.add(value);
+                
+                // Aggressively guard against complex internal engine/DOM instances
+                const prototype = Object.getPrototypeOf(value);
+                if (prototype !== Object.prototype && prototype !== Array.prototype) {
+                    return `[Instance: ${value.constructor?.name || 'Object'}]`;
                 }
             }
-        }
-        return value;
-    }, indent);
+            return value;
+        }, indent);
+    } catch (err) {
+        // Fallback for extreme cases where minified code or host objects break standard stringify logic
+        return `[Unserializable Artifact: ${typeof obj}]`;
+    }
 }
 
 const App: React.FC = () => {

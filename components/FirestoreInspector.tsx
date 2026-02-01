@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { getDebugCollectionDocs, seedDatabase, recalculateGlobalStats, cleanupDuplicateUsers, isUserAdmin, deleteFirestoreDoc, purgeFirestoreCollection, setUserSubscriptionTier, updateAllChannelDatesToToday, migrateVaultToLedger } from '../services/firestoreService';
 import { listUserBackups, deleteCloudFile, CloudFileEntry, getCloudFileContent } from '../services/cloudService';
@@ -28,6 +27,29 @@ interface DiagnosticStep {
     error?: string;
     details?: string;
     advice?: string[];
+}
+
+/**
+ * Local Safe Stringifier for high-risk debug views.
+ */
+function safeStringify(obj: any): string {
+    const cache = new WeakSet();
+    try {
+        return JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'object' && value !== null) {
+                if (cache.has(value)) return '[Circular]';
+                cache.add(value);
+                // Handle non-plain objects (Firebase refs, etc)
+                const proto = Object.getPrototypeOf(value);
+                if (proto !== Object.prototype && proto !== Array.prototype) {
+                    return `[Instance: ${value.constructor?.name || 'Object'}]`;
+                }
+            }
+            return value;
+        }, 2);
+    } catch (e) {
+        return "[Unserializable Registry Content]";
+    }
 }
 
 export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, userProfile }) => {
@@ -160,7 +182,7 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
         if (isJson) {
             try {
                 const parsed = JSON.parse(content);
-                setPreviewContent(JSON.stringify(parsed, null, 2));
+                setPreviewContent(safeStringify(parsed));
             } catch (e) {
                 setPreviewContent(content);
             }
@@ -257,7 +279,6 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
     try {
         const veoAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const op = await veoAi.models.generateVideos({ model: 'veo-3.1-fast-generate-preview', prompt: 'Probe', config: { numberOfVideos: 1 } });
-        // Fixed: Property 'id' does not exist on type 'GenerateVideosOperation'. Use 'name' instead.
         updateStep('veo', { status: 'success', details: `Handshake successful. Op: ${op.name}` });
     } catch (e: any) {
         updateStep('veo', { status: 'failed', error: e.message });
@@ -370,7 +391,7 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
                                 ) : dbDocs.length === 0 ? (
                                     <div className="h-full flex flex-col items-center justify-center opacity-20"><Search size={64}/><p className="text-sm font-bold uppercase tracking-widest mt-4">Empty Node</p></div>
                                 ) : dbViewMode === 'json' ? (
-                                    <pre className="text-xs font-mono text-indigo-200 bg-slate-900 p-6 rounded-2xl overflow-auto border border-slate-800 max-w-full shadow-inner leading-relaxed">{JSON.stringify(dbDocs, null, 2)}</pre>
+                                    <pre className="text-xs font-mono text-indigo-200 bg-slate-900 p-6 rounded-2xl overflow-auto border border-slate-800 max-w-full shadow-inner leading-relaxed">{safeStringify(dbDocs)}</pre>
                                 ) : (
                                     <div className="overflow-x-auto border border-slate-800 rounded-2xl shadow-2xl bg-slate-900/20">
                                         <table className="w-full text-left text-[11px] text-slate-400 border-collapse">
@@ -595,7 +616,7 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
                             {step.error && <p className="mt-3 p-3 bg-red-900/40 rounded-xl border border-red-500/20 text-[11px] font-mono text-red-200">{step.error}</p>}
                         </div>
                     ))}
-                    <div className="flex gap-3 pt-4"><button onClick={() => { navigator.clipboard.writeText(JSON.stringify(diagnosticSteps, null, 2)); setCopyFeedback(true); setTimeout(() => setCopyFeedback(false), 2000); }} className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-slate-700">{copyFeedback ? <Check size={16} className="text-emerald-400"/> : <Copy size={16}/>} Copy Log</button><button onClick={() => setIsTestingGemini(false)} className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl transition-all">Dismiss</button></div>
+                    <div className="flex gap-3 pt-4"><button onClick={() => { navigator.clipboard.writeText(safeStringify(diagnosticSteps)); setCopyFeedback(true); setTimeout(() => setCopyFeedback(false), 2000); }} className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-slate-700">{copyFeedback ? <Check size={16} className="text-emerald-400"/> : <Copy size={16}/>} Copy Log</button><button onClick={() => setIsTestingGemini(false)} className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl transition-all">Dismiss</button></div>
                 </div>
                 <div className="p-4 bg-slate-950 border-t border-slate-800 text-center"><p className="text-[8px] text-slate-600 font-black uppercase tracking-[0.2em]">Neural Handshake Protocol v5.8.2-CONSOLE</p></div>
             </div>

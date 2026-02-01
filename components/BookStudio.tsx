@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo } from 'react';
 import { 
   ArrowLeft, BookText, Download, Loader2, BookOpen, 
