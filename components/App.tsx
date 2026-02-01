@@ -84,21 +84,45 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
+/**
+ * Robust safe stringification that avoids circular reference errors by manually walking
+ * and pruning non-plain instances before native serialization.
+ */
 function safeJsonStringify(obj: any, indent: number = 2): string {
-    const cache = new WeakSet();
-    try {
-        return JSON.stringify(obj, (key, value) => {
-            if (typeof value === 'object' && value !== null) {
-                if (cache.has(value)) return '[Circular Ref Truncated]';
-                cache.add(value);
-                const prototype = Object.getPrototypeOf(value);
-                if (prototype !== Object.prototype && prototype !== Array.prototype && prototype !== null) {
-                    return `[Instance: ${value.constructor?.name || 'UnknownInstance'}]`;
-                }
+    const seen = new WeakSet();
+    
+    const walk = (val: any): any => {
+        if (val === null || typeof val !== 'object') return val;
+        if (seen.has(val)) return '[Circular Ref Truncated]';
+        seen.add(val);
+        
+        // Prune non-plain objects (SDK instances, DOM, etc)
+        const prototype = Object.getPrototypeOf(val);
+        if (prototype !== Object.prototype && prototype !== Array.prototype && prototype !== null) {
+            return `[Instance: ${val.constructor?.name || 'Object'}]`;
+        }
+
+        if (Array.isArray(val)) {
+            return val.map(walk);
+        }
+
+        const result: any = {};
+        for (const key in val) {
+            if (Object.prototype.hasOwnProperty.call(val, key)) {
+                // Prune internal SDK properties
+                if (key.startsWith('_') || key.startsWith('$')) continue;
+                result[key] = walk(val[key]);
             }
-            return value;
-        }, indent);
-    } catch (err) { return `[Unserializable Artifact]`; }
+        }
+        return result;
+    };
+
+    try {
+        const sanitized = walk(obj);
+        return JSON.stringify(sanitized, null, indent);
+    } catch (err) {
+        return `[Unserializable Artifact]`;
+    }
 }
 
 const UI_TEXT = {

@@ -56,28 +56,45 @@ export const AI_COSTS = {
 };
 
 /**
- * Robust sanitizer to clean data before Firestore writes.
+ * Robust sanitizer that recursively prunes non-plain objects and circular references 
+ * to ensure Firestore-compatible data structures without native serialization pitfalls.
  */
 export const sanitizeData = (data: any, seen = new WeakSet()): any => {
+    // 1. Primitive handling
     if (data === null || typeof data !== 'object') return data === undefined ? null : data;
+    
+    // 2. Circular reference protection
     if (seen.has(data)) return '[Circular Ref Truncated]';
+    
+    // 3. Known serializable class handling
     if (data instanceof Date) return data.getTime();
     if (data instanceof Timestamp) return data.toMillis();
-    if (Array.isArray(data)) {
-        seen.add(data);
-        return data.map(item => sanitizeData(item, seen));
-    }
+    
+    // 4. Instance pruning (guard against Firestore/Auth internal objects)
     const proto = Object.getPrototypeOf(data);
-    if (proto !== Object.prototype && proto !== null) {
+    const isPlainObject = proto === Object.prototype || proto === null;
+    const isArray = Array.isArray(data);
+    
+    if (!isPlainObject && !isArray) {
         const constructorName = data.constructor?.name || 'UnknownInstance';
         return `[Instance: ${constructorName}]`;
     }
+
     seen.add(data);
+
+    // 5. Recursive collection handling
+    if (isArray) {
+        return data.map(item => sanitizeData(item, seen));
+    }
+
     const result: any = {};
     for (const key in data) {
         if (Object.prototype.hasOwnProperty.call(data, key)) {
+            // Prune internal metadata properties
             if (key.startsWith('_') || key.startsWith('$')) continue;
+            // Guard against common SDK circular keys
             if (key === 'auth' || key === 'app' || key === 'firestore' || key === 'storage') continue;
+            
             result[key] = sanitizeData(data[key], seen);
         }
     }
@@ -363,7 +380,7 @@ export async function getUserBookings(uid: string, email: string): Promise<Booki
     const q2 = query(collection(db, 'bookings'), where('mentorId', '==', uid));
     const q3 = query(collection(db, 'bookings'), where('invitedEmail', '==', email));
     const [s1, s2, s3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
-    const all = [...s1.docs, ...s2.docs, ...s3.docs].map(d => ({ ...d.data(), id: d.id } as Booking));
+    const all = [...s1.docs, ...s2.docs].map(d => ({ ...d.data(), id: d.id } as Booking));
     return Array.from(new Map(all.map(b => [b.id, b])).values());
 }
 

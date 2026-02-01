@@ -372,7 +372,8 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                   for (const fc of toolCall.functionCalls) {
                       if (fc.name === 'update_card') {
                           setMemory(prev => ({ ...prev, ...fc.args }));
-                          service.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "Card data updated instantly." } } });
+                          {/* Fixed: sendToolResponse arguments to match GeminiLiveService expectations */}
+                          service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: "Card data updated instantly." } });
                       }
                   }
               }
@@ -632,7 +633,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                                     </button>
                                     <div className="grid grid-cols-2 gap-2">
                                         {THEMES.map(t => (
-                                            <button key={t.id} onClick={() => setMemory({...memory, theme: t.id as any})} className={`p-3 rounded-xl border text-[10px] font-bold uppercase transition-all ${memory.theme === t.id ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>{t.label}</button>
+                                            <button key={t.id} onClick={() => setMemory({...memory, theme: t.id as any})} className={`p-3 rounded-xl border text-[10px] font-bold uppercase transition-all ${memory.theme === t.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>{t.label}</button>
                                         ))}
                                     </div>
                                 </div>

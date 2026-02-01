@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { getDebugCollectionDocs, seedDatabase, recalculateGlobalStats, cleanupDuplicateUsers, isUserAdmin, deleteFirestoreDoc, purgeFirestoreCollection, setUserSubscriptionTier, updateAllChannelDatesToToday, migrateVaultToLedger } from '../services/firestoreService';
 import { listUserBackups, deleteCloudFile, CloudFileEntry, getCloudFileContent } from '../services/cloudService';
@@ -30,24 +31,39 @@ interface DiagnosticStep {
 }
 
 /**
- * Local Safe Stringifier for high-risk debug views.
+ * Robust safe stringification that avoids circular reference errors by manually walking
+ * and pruning non-plain instances before native serialization.
  */
 function safeStringify(obj: any, indent = 2): string {
-    const cache = new WeakSet();
-    try {
-        return JSON.stringify(obj, (key, value) => {
-            if (typeof value === 'object' && value !== null) {
-                if (cache.has(value)) return '[Circular]';
-                cache.add(value);
-                
-                // Identify non-plain objects that cause native stringify to fail
-                const typeString = Object.prototype.toString.call(value);
-                if (typeString !== '[object Object]' && typeString !== '[object Array]') {
-                    return `[Instance: ${value.constructor?.name || 'Object'}]`;
-                }
+    const seen = new WeakSet();
+    
+    const walk = (val: any): any => {
+        if (val === null || typeof val !== 'object') return val;
+        if (seen.has(val)) return '[Circular]';
+        seen.add(val);
+        
+        // Prune non-plain objects (SDK instances, DOM, etc)
+        const prototype = Object.getPrototypeOf(val);
+        if (prototype !== Object.prototype && prototype !== Array.prototype && prototype !== null) {
+            return `[Instance: ${val.constructor?.name || 'Object'}]`;
+        }
+
+        if (Array.isArray(val)) {
+            return val.map(walk);
+        }
+
+        const result: any = {};
+        for (const key in val) {
+            if (Object.prototype.hasOwnProperty.call(val, key)) {
+                result[key] = walk(val[key]);
             }
-            return value;
-        }, indent);
+        }
+        return result;
+    };
+
+    try {
+        const sanitized = walk(obj);
+        return JSON.stringify(sanitized, null, indent);
     } catch (e) {
         return "[Unserializable Registry Content]";
     }
@@ -332,7 +348,7 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
          </div>
 
          <div className="flex gap-2">
-             <button onClick={handleMigrateVault} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-900/40 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+             <button onClick={handleMigrateVault} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-900/40 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-amber-500/30 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
                 <ArrowRightLeft size={14}/> Refract Vault
              </button>
              <button onClick={handleRunFullDiagnostics} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-900/40 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">

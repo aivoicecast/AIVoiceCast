@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Copy, Check, Image as ImageIcon, Loader2, Code as CodeIcon, ExternalLink, Sigma, Palette, Sun, Moon, Coffee } from 'lucide-react';
 import { encodePlantUML } from '../utils/plantuml';
@@ -19,8 +18,8 @@ const THEME_CONFIG: Record<ReaderTheme, { container: string, prose: string, icon
         textColor: 'text-slate-200'
     },
     light: { 
-        container: 'bg-white text-slate-900 border border-slate-200', 
-        prose: 'prose-slate', 
+        container: 'bg-transparent text-slate-900', 
+        prose: 'prose-slate prose-lg', 
         icon: Sun, 
         label: 'Paper',
         textColor: 'text-slate-900'
@@ -174,10 +173,18 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, initialThem
   };
 
   const formatInline = (text: string) => {
-    const parts = text.split(/(\*\*.*?\*\*|\$.*?\$)/g);
+    // Robust regex to capture bold, italic, code spans, and LaTeX
+    const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`|\$.*?\$)/g);
     return parts.map((p, i) => {
+        if (!p) return null;
         if (p.startsWith('**') && p.endsWith('**')) {
             return <strong key={i} className="font-black text-inherit opacity-100">{p.slice(2, -2)}</strong>;
+        }
+        if (p.startsWith('*') && p.endsWith('*')) {
+            return <em key={i} className="italic opacity-90">{p.slice(1, -1)}</em>;
+        }
+        if (p.startsWith('`') && p.endsWith('`')) {
+            return <code key={i} className={`px-1.5 py-0.5 rounded font-mono text-[0.9em] ${theme === 'light' ? 'bg-slate-100 text-indigo-600' : 'bg-white/10 text-indigo-300'}`}>{p.slice(1, -1)}</code>;
         }
         if (p.startsWith('$') && p.endsWith('$')) {
             const math = p.slice(1, -1);
