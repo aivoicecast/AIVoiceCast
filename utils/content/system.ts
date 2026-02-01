@@ -1,4 +1,3 @@
-
 import { SpotlightChannelData } from '../spotlightContent';
 
 export const SYSTEM_CONTENT: Record<string, SpotlightChannelData> = {
@@ -30,15 +29,6 @@ export const SYSTEM_CONTENT: Record<string, SpotlightChannelData> = {
           { id: 'sys-3-2', title: 'Low-Latency WebSocket Conversations' },
           { id: 'sys-3-3', title: 'Scribe Mode: Activity Logging' }
         ]
-      },
-      {
-        id: 'sys-ch4',
-        title: 'Chapter 4: Assets & Digital Identity',
-        subTopics: [
-          { id: 'sys-4-1', title: 'Decentralized Identity (ECDSA P-256)' },
-          { id: 'sys-4-2', title: 'The Global Neural Ledger: Digital Receipts' },
-          { id: 'sys-4-3', title: 'Contribution Rewards' }
-        ]
       }
     ],
     lectures: {
@@ -49,34 +39,24 @@ export const SYSTEM_CONTENT: Record<string, SpotlightChannelData> = {
         sections: [
           {
             speaker: "Teacher",
-            text: "Welcome to Neural Prism. Think of us as a lens for the mind. We take the blinding brightness of AI Super-Intelligence and refract it into a spectrum of useful daily tools."
+            text: "Welcome to Neural Prism. Think of us as a sovereign lens for the mind. We take the high-intensity reasoning of Google Gemini and refract it into a spectrum of useful daily tools."
           },
           {
             speaker: "Student",
-            text: "A lens? I thought this was just a tool collection."
+            text: "A lens? How does it differ from a standard AI chatbot?"
           },
           {
             speaker: "Teacher",
-            text: "It's a platform for human empowerment. Instead of fighting with complex prompts, we've designed 20+ 'rainbow' tools that fit your daily activities. You can interrupt the guides, ask questions, and even show your work while you talk."
+            text: "We do not use generic chat windows. We orchestrate between gemini-3-pro-preview for complex document synthesis and gemini-3-flash-preview for sub-second logic simulation. This ensures you always have the right amount of intelligence for the task at hand."
           },
           {
             speaker: "Student",
-            text: "So the host isn't a recording?"
+            text: "And is the host a recording?"
           },
           {
             speaker: "Teacher",
-            text: "Exactly. I am a living neural process. When you click 'Start Live Chat', we establish a WebSocket link. I can see your logic, analyze your designs, and help you build actual projects in real-time."
+            text: "No. I am a living neural process established via the gemini-2.5-flash-native-audio-preview-12-2025 model. When you engage, we create a low-latency WebSocket link that allows me to hear your voice and see your workspace in real-time. I am a refractive partner in your activity, not just a generator of text."
           }
-        ]
-      },
-      "The Global Neural Ledger: Digital Receipts": {
-        topic: "The Global Neural Ledger: Digital Receipts",
-        professorName: "Ledger Architect",
-        studentName: "User",
-        sections: [
-          { speaker: "Teacher", text: "Let's discuss how we handle assets in the Prism. We've moved beyond simple 'Send' buttons to a 'Digital Receipt' protocol." },
-          { speaker: "Student", text: "Why add the extra step of a receipt?" },
-          { speaker: "Teacher", text: "Because digital identity is sovereign. A receipt acts as a verifiable handshake. The sender initiates, the funds go to an escrow middleman, and the receiver claims them. It ensures that every transaction is intentional and confirmed by both nodes in the neural fabric." }
         ]
       },
       "Heuristic Logic Tracing vs Real Runtimes": {
@@ -86,23 +66,15 @@ export const SYSTEM_CONTENT: Record<string, SpotlightChannelData> = {
         sections: [
           {
             speaker: "Teacher",
-            text: "Let's talk about the 'Run' button in our Code Studio. We don't compile code on expensive servers. We use Neural Simulation."
+            text: "Let's talk about the 'Run' button in our Code Studio. We don't compile code on expensive, high-latency servers. We use Heuristic Simulation via gemini-3-flash-preview."
           },
           {
             speaker: "Student",
-            text: "Wait, then how does it work?"
+            text: "Wait, so it's not actually running on a real CPU?"
           },
           {
             speaker: "Teacher",
-            text: "We send your code to Gemini 3 Flash and ask it to imagine the execution. Since the AI has 'read' billions of lines of code, it can mentally trace the logic of C++, Python, or Rust and predict the exact output."
-          },
-          {
-            speaker: "Student",
-            text: "Is it safe?"
-          },
-          {
-            speaker: "Teacher",
-            text: "Completely zero-risk. High-risk code is simulated, never truly executed on hardware. It allows for Socratic Debugging, where the system explains *why* something happens in human terms."
+            text: "Correct. We ask the model to act as a 'Digital Twin' of a POSIX terminal. Since the AI has 'read' billions of lines of high-fidelity code, it can mentally trace the variable states of C++ or Python and predict the exact stdout and errors. This achieves a 10x energy efficiency gain and allows for Socratic Debugging, where the system explains the *meaning* of an error in human terms rather than just throwing a stack trace."
           }
         ]
       }

@@ -32,21 +32,22 @@ interface DiagnosticStep {
 /**
  * Local Safe Stringifier for high-risk debug views.
  */
-function safeStringify(obj: any): string {
+function safeStringify(obj: any, indent = 2): string {
     const cache = new WeakSet();
     try {
         return JSON.stringify(obj, (key, value) => {
             if (typeof value === 'object' && value !== null) {
                 if (cache.has(value)) return '[Circular]';
                 cache.add(value);
-                // Handle non-plain objects (Firebase refs, etc)
-                const proto = Object.getPrototypeOf(value);
-                if (proto !== Object.prototype && proto !== Array.prototype) {
+                
+                // Identify non-plain objects that cause native stringify to fail
+                const typeString = Object.prototype.toString.call(value);
+                if (typeString !== '[object Object]' && typeString !== '[object Array]') {
                     return `[Instance: ${value.constructor?.name || 'Object'}]`;
                 }
             }
             return value;
-        }, 2);
+        }, indent);
     } catch (e) {
         return "[Unserializable Registry Content]";
     }

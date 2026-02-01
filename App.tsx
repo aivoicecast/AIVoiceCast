@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -59,7 +58,6 @@ import { stopAllPlatformAudio } from './utils/audioUtils';
 import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, syncUserProfile, publishChannelToFirestore, isUserAdmin, updateUserProfile, saveUserFeedback, uploadFileToStorage } from './services/firestoreService';
 import { getSovereignSession, isJudgeSession } from './services/authService';
 import { generateSecureId } from './utils/idUtils';
-import { generateChannelCoverArt } from './services/channelGenerator';
 
 interface ErrorBoundaryProps { children?: ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; error: Error | null; }
@@ -83,6 +81,37 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     }
     return this.props.children;
   }
+}
+
+/**
+ * Enhanced Safe Stringifier with support for recursive pruning of minified SDK instances.
+ */
+function safeJsonStringify(obj: any, indent: number = 2): string {
+    const cache = new WeakSet();
+    try {
+        return JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'object' && value !== null) {
+                if (cache.has(value)) {
+                    return '[Circular Ref Truncated]';
+                }
+                cache.add(value);
+                
+                // Aggressively guard against complex internal engine/DOM instances
+                const prototype = Object.getPrototypeOf(value);
+                if (prototype !== Object.prototype && prototype !== Array.prototype) {
+                    const constructorName = value.constructor?.name || 'Object';
+                    // Prune large Firebase internal structures ('Y' and 'Ka' often seen in minified SDK traces)
+                    if (constructorName.length < 3 || constructorName.includes('Fire') || constructorName.includes('App')) {
+                        return `[Instance: ${constructorName}]`;
+                    }
+                    return `[Instance: ${constructorName}]`;
+                }
+            }
+            return value;
+        }, indent);
+    } catch (err) {
+        return `[Unserializable Artifact: ${typeof obj}]`;
+    }
 }
 
 const UI_TEXT = {
@@ -265,15 +294,15 @@ const App: React.FC = () => {
     const interval = setInterval(() => {
         const now = Date.now();
         if (isLogPaused || logBufferRef.current.length === 0) return;
-        if (now - lastUpdateRef.current < 800) return;
+        if (now - lastUpdateRef.current < 400) return;
 
         setVisibleLogs(prev => {
-            const combined = [...logBufferRef.current, ...prev].slice(0, 100);
+            const combined = [...logBufferRef.current, ...prev].slice(0, 150);
             logBufferRef.current = [];
             lastUpdateRef.current = now;
             return combined;
         });
-    }, 800);
+    }, 400);
     return () => clearInterval(interval);
   }, [isLogPaused]);
 
@@ -283,26 +312,14 @@ const App: React.FC = () => {
           if (typeof text === 'string') {
               cleanText = text;
           } else if (text instanceof Error) {
-              cleanText = text.stack || text.message;
+              cleanText = `ERROR: ${text.message}\nSTACK: ${text.stack || 'No stack.'}`;
           } else if (text !== null && typeof text === 'object') {
-              // ROBUST CIRCULAR HANDSHAKE: Track seen objects via WeakSet to prevent crash
-              const cache = new WeakSet();
-              cleanText = JSON.stringify(text, (key, value) => {
-                  if (typeof value === 'object' && value !== null) {
-                      if (cache.has(value)) return '[Circular Ref]';
-                      cache.add(value);
-                      // Skip heavy instance structures but log their presence
-                      if (Object.getPrototypeOf(value) !== Object.prototype && !Array.isArray(value)) {
-                          return `[Instance: ${value.constructor.name || 'Object'}]`;
-                      }
-                  }
-                  return value;
-              }, 2) || String(text);
+              cleanText = safeJsonStringify(text);
           } else {
               cleanText = String(text);
           }
       } catch (e) { 
-          cleanText = "[Internal Log Serialization Blocked]"; 
+          cleanText = "[Internal Log Serialization Blocked - Circular or Deep structure detected]"; 
       }
 
       if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText) return;
@@ -382,7 +399,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Sovereignty Protocols Active.", "info");
+    addSystemLog("Sovereignty Protocols v6.6.5-SYN Active.", "info");
     if (!auth) {
         setAuthLoading(false);
         return;
@@ -552,7 +569,7 @@ const App: React.FC = () => {
               <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-white transition-colors" title="Reload Web App"><RefreshCcw size={18} /></button>
               {userProfile && (<button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex"><Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span></button>)}
               {showMagicCreator && (<button onClick={() => isProMember ? setIsVoiceCreateOpen(true) : setIsPricingModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95">{!isProMember && <Lock size={12} className="mr-0.5 text-indigo-300"/>}<span>{t.magic}</span></button>)}
-              <div className="relative"><button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors"><img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}`} alt="Profile" className="w-full h-full object-cover" /></button><StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice="Auto" setGlobalVoice={()=>{}} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} onUpgradeClick={() => setIsPricingModalOpen(true)} setIsSyncModalOpen={()=>{}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => handleSetViewState('user_guide')} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => handleSetViewState('privacy')} t={t} language={language} setLanguage={handleUpdateLanguage} channels={allChannels} isSuperAdmin={isSuperAdmin} isProMember={isProMember} /></div>
+              <div className="relative"><button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors"><img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}`} alt="Profile" className="w-full h-full object-cover" /></button><StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice="Auto" setGlobalVoice={()=>{}} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} onNavigate={(v) => handleSetViewState(v as any)} onUpgradeClick={() => setIsPricingModalOpen(true)} setIsSyncModalOpen={()=>{}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => handleSetViewState('user_guide')} onOpenPrivacy={() => handleSetViewState('privacy')} t={t} language={language} setLanguage={handleUpdateLanguage} channels={allChannels} isSuperAdmin={isSuperAdmin} isProMember={isProMember} /></div>
            </div>
         </header>
 
@@ -638,7 +655,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.6.0-SYN</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.6.5-SYN</p></div>
             </div>
         </div>
 

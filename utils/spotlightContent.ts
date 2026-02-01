@@ -9,13 +9,14 @@ import { BST_CONTENT } from './content/bst';
 import { LIFESTYLE_CONTENT } from './content/lifestyle';
 import { SYSTEM_CONTENT } from './content/system';
 import { JUDGING_CONTENT } from './content/judging';
+import { TECHNICAL_AUDIT_CONTENT } from './bookContent/technical_audit';
 
 export interface SpotlightChannelData {
   curriculum: Chapter[];
   lectures: Record<string, GeneratedLecture>;
 }
 
-// Merge all content dictionaries
+// Merge all static content dictionaries into the sovereign lookup map
 export const SPOTLIGHT_DATA: Record<string, SpotlightChannelData> = {
   ...STARTUP_CONTENT,
   ...LINUX_CONTENT,
@@ -25,5 +26,6 @@ export const SPOTLIGHT_DATA: Record<string, SpotlightChannelData> = {
   ...BST_CONTENT,
   ...LIFESTYLE_CONTENT,
   ...SYSTEM_CONTENT,
-  ...JUDGING_CONTENT
+  ...JUDGING_CONTENT,
+  ...TECHNICAL_AUDIT_CONTENT
 };

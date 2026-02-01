@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, getGlobalAudioContext, hashString, syncPrimeSpeech, connectOutput, SPEECH_REGISTRY, getSystemVoicesAsync } from '../utils/audioUtils';
 import { getCachedAudioBuffer, cacheAudioBuffer } from '../utils/db';
@@ -47,9 +48,8 @@ function getValidVoiceName(voiceName: string, provider: TtsProvider, lang: 'en' 
 
 async function synthesizeGemini(text: string, voice: string, lang: 'en' | 'zh' = 'en'): Promise<{buffer: ArrayBuffer, mime: string}> {
     const targetVoice = getValidVoiceName(voice, 'gemini', lang);
-    // Use injected environment key as priority for Gemini SDK
-    const apiKey = process.env.API_KEY || GEMINI_API_KEY;
-    const ai = new GoogleGenAI({ apiKey });
+    // Fixed: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     let cleanText = text.replace(/[*_#`\[\]()<>|]/g, ' ').replace(/\s+/g, ' ').trim();
     const hasChinese = /[\u4e00-\u9fa5]/.test(cleanText);

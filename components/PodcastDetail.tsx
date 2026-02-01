@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Channel, GeneratedLecture, Chapter, SubTopic, UserProfile, TtsProvider } from '../types';
 import { 
@@ -5,11 +6,11 @@ import {
   Sparkles, Play, Pause, Volume2, 
   RefreshCw, X, AlertTriangle, PlayCircle, 
   CheckCircle, Gauge, Speaker, Zap, BrainCircuit, SkipBack, SkipForward,
-  Database, Languages, FileDown, ShieldCheck, Printer, Bookmark, CloudDownload, CloudCheck, HardDrive, BookText, CloudUpload, Archive, FileText, FileOutput, QrCode, Activity, Terminal
+  Database, Languages, FileDown, ShieldCheck, Printer, Bookmark, CloudDownload, CloudCheck, HardDrive, BookText, CloudUpload, Archive, FileText, FileOutput, QrCode, Activity, Terminal, Check, Trash2
 } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { synthesizeSpeech, speakSystem } from '../services/tts';
-import { getCachedLectureScript, cacheLectureScript } from '../utils/db';
+import { getCachedLectureScript, cacheLectureScript, deleteDebugEntry } from '../utils/db';
 import { getGlobalAudioContext, registerAudioOwner, warmUpAudioContext, connectOutput, syncPrimeSpeech, SPEECH_REGISTRY } from '../utils/audioUtils';
 import { getCloudCachedLecture, saveCloudCachedLecture, updateUserProfile } from '../services/firestoreService';
 import { Visualizer } from './Visualizer';
@@ -56,6 +57,13 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   const dispatchLog = useCallback((text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
       window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: text, type } }));
   }, []);
+
+  // Sync provider with user profile changes
+  useEffect(() => {
+    if (userProfile?.preferredTtsProvider) {
+        setCurrentProvider(userProfile.preferredTtsProvider);
+    }
+  }, [userProfile?.preferredTtsProvider]);
 
   const chapters = useMemo(() => {
       if (channel.chapters && channel.chapters.length > 0) return channel.chapters;
@@ -113,32 +121,66 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       dispatchLog(`[Playback] Stopped (${context}).`, 'info');
   }, [dispatchLog]);
 
-  const hydrateLectureLean = useCallback(async (sub: SubTopic): Promise<GeneratedLecture | null> => {
+  const hydrateLectureLean = useCallback(async (sub: SubTopic, force: boolean = false): Promise<GeneratedLecture | null> => {
       const spotlight = SPOTLIGHT_DATA[channel.id];
+      const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
+      
+      const BANNED_TERMS = /BERT|GPT-4o|Claude|Llama-3|Groq/i;
+      const containsBanned = (text: string) => BANNED_TERMS.test(text);
+
+      // 1. Force Eviction
+      if (force) {
+          dispatchLog(`[Security] Evicting node ${sub.id} from local/cloud cache for re-synthesis...`, 'warn');
+          await deleteDebugEntry('lecture_scripts', cacheKey);
+      }
+
+      // 2. Static Priority
       if (spotlight && spotlight.lectures[sub.title]) return spotlight.lectures[sub.title];
+      
       try {
-          const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
-          let lecture = await getCachedLectureScript(cacheKey);
+          // 3. Local Cache Verification
+          let lecture = force ? null : await getCachedLectureScript(cacheKey);
+          
+          if (lecture) {
+              const fullText = lecture.sections.map((s: any) => s.text).join(' ');
+              if (containsBanned(fullText)) {
+                  dispatchLog(`[Security] Stale artifact detected in local vault. Purging node ${sub.id}...`, 'warn');
+                  await deleteDebugEntry('lecture_scripts', cacheKey);
+                  lecture = null;
+              }
+          }
+
           if (!lecture) {
+              // 4. Cloud Handshake
               const contentUid = await generateContentUid(sub.title, channel.description, language);
-              lecture = await getCloudCachedLecture(channel.id, contentUid, language);
+              lecture = force ? null : await getCloudCachedLecture(channel.id, contentUid, language);
+              
+              if (lecture) {
+                  const fullText = lecture.sections.map((s: any) => s.text).join(' ');
+                  if (containsBanned(fullText)) {
+                      dispatchLog(`[Security] Stale artifact detected in cloud ledger. Forcing re-synthesis...`, 'warn');
+                      lecture = null;
+                  }
+              }
+
               if (!lecture) {
+                  // 5. Final Neural Refraction
                   lecture = await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName);
               }
               if (lecture) await cacheLectureScript(cacheKey, lecture);
           }
           return lecture;
       } catch (e) { return null; }
-  }, [channel.id, channel.description, channel.voiceName, language]);
+  }, [channel.id, channel.description, channel.voiceName, language, dispatchLog]);
 
-  const handleSelectSubTopic = async (sub: SubTopic, shouldStop = true) => {
-      if (activeSubTopicId === sub.id && activeLecture) return activeLecture;
+  const handleSelectSubTopic = async (sub: SubTopic, shouldStop = true, force: boolean = false) => {
+      if (!force && activeSubTopicId === sub.id && activeLecture) return activeLecture;
       if (shouldStop) stopAllAudio('Switch Topic');
       
       setActiveSubTopicId(sub.id);
       setIsSyncingContent(true);
       try {
-          const lecture = await hydrateLectureLean(sub);
+          const lecture = await hydrateLectureLean(sub, force);
           if (lecture && mountedRef.current) {
               setActiveLecture(lecture);
               setCurrentSectionIndex(-1);
@@ -147,6 +189,18 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
           }
       } finally { setIsSyncingContent(false); }
       return null;
+  };
+
+  const handlePurgeNode = async () => {
+      if (!activeSubTopicId) return;
+      const sub = flatCurriculum.find(s => s.id === activeSubTopicId);
+      if (!sub) return;
+      
+      if (confirm(`Permanently purge node "${sub.title}" from local/cloud ledger? This forces immediate neural re-synthesis.`)) {
+          stopAllAudio('Node Purge');
+          await handleSelectSubTopic(sub, true, true);
+          dispatchLog(`[Purge] Node ${sub.id} destroyed and refracted.`, 'success');
+      }
   };
 
   const handlePlayActiveLecture = async (startIndex = 0) => {
@@ -311,11 +365,30 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
           <div className="p-6 border-b border-slate-800 bg-slate-950/40 space-y-6">
               <div className="flex items-center justify-between">
                   <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>
-                  <button onClick={() => setShowProviderMenu(!showProviderMenu)} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-[9px] font-black uppercase text-indigo-400 hover:border-indigo-500 transition-all shadow-lg">
-                      <Speaker size={12}/>
-                      <span>{currentProvider}</span>
-                      <ChevronDown size={10}/>
-                  </button>
+                  <div className="relative">
+                    <button onClick={() => setShowProviderMenu(!showProviderMenu)} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-[9px] font-black uppercase text-indigo-400 hover:border-indigo-500 transition-all shadow-lg">
+                        <Speaker size={12}/>
+                        <span>{currentProvider}</span>
+                        <ChevronDown size={10}/>
+                    </button>
+                    {showProviderMenu && (
+                        <>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowProviderMenu(false)}></div>
+                            <div className="absolute top-full mt-2 right-0 w-48 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 p-2 animate-fade-in-up flex flex-col gap-1">
+                                {(['gemini', 'google', 'openai', 'system'] as TtsProvider[]).map(p => (
+                                    <button 
+                                        key={p} 
+                                        onClick={() => { setCurrentProvider(p); setShowProviderMenu(false); }}
+                                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${currentProvider === p ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+                                    >
+                                        <span>{p}</span>
+                                        {currentProvider === p && <Check size={12}/>}
+                                    </button>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                  </div>
               </div>
               <div className="flex gap-4">
                   <img src={channel.imageUrl || "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200&q=80"} className="w-16 h-16 rounded-2xl object-cover shadow-xl border border-white/5" />
@@ -334,7 +407,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                               const isSelected = activeSubTopicId === sub.id;
                               const status = nodeStatuses[sub.id] || 'none';
                               return (
-                                  <button key={sub.id} onClick={() => handleSelectSubTopic(sub)} className={`w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all border ${isSelected ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-slate-900/40 border-transparent text-slate-400 hover:bg-slate-800'}`}>
+                                  <button key={sub.id} onClick={() => handleSelectSubTopic(sub)} className={`w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all border ${isSelected ? 'bg-indigo-600 border-indigo-400 text-white shadow-xl' : 'bg-slate-900/40 border-transparent text-slate-400 hover:bg-slate-800'}`}>
                                       <div className="flex items-center gap-3 min-w-0">
                                           {isSelected && isPlaying ? <Pause size={14} fill="currentColor"/> : isSelected ? <BookOpen size={14}/> : <div className="w-1.5 h-1.5 rounded-full border border-current opacity-40"></div>}
                                           <span className="text-[11px] font-bold truncate tracking-tight">{sub.title}</span>
@@ -370,6 +443,16 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       </aside>
 
       <main className="flex-1 flex flex-col min-0 relative bg-slate-950">
+          {isSyncingContent && (
+               <div className="absolute inset-0 z-[100] bg-slate-950/60 backdrop-blur-md flex flex-col items-center justify-center gap-6 animate-fade-in">
+                  <div className="relative">
+                      <div className="w-16 h-16 border-4 border-indigo-500/10 rounded-full"></div>
+                      <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                  <span className="text-xs font-black text-indigo-400 uppercase tracking-[0.3em] animate-pulse">Syncing Knowledge Node...</span>
+               </div>
+          )}
+
           {activeLecture ? (
               <div className="h-full flex flex-col animate-fade-in pb-32">
                   <header className="h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-8 backdrop-blur-xl shrink-0 z-20">
@@ -380,7 +463,11 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                             <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-[0.2em]">Node 0${currentSubTopicIndex + 1} • Handshake Active</p>
                         </div>
                     </div>
-                    <button onClick={() => stopAllAudio('Close View')} className="p-2 hover:bg-red-600/20 text-slate-500 hover:text-red-400 rounded-xl transition-all"><X/></button>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => activeSubTopicId && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex], true, true)} className="p-2 hover:bg-indigo-600/20 text-slate-500 hover:text-indigo-400 rounded-xl transition-all" title="Force Node Refresh"><RefreshCw size={18}/></button>
+                        <button onClick={handlePurgeNode} className="p-2 hover:bg-red-600/20 text-slate-500 hover:text-red-400 rounded-xl transition-all" title="Purge Stale Cache"><Trash2 size={18}/></button>
+                        <button onClick={() => stopAllAudio('Close View')} className="p-2 hover:bg-red-600/20 text-slate-500 hover:text-red-400 rounded-xl transition-all"><X size={20}/></button>
+                    </div>
                   </header>
                   <div className="flex-1 overflow-y-auto p-10 scrollbar-hide">
                       <div className="max-w-3xl mx-auto space-y-16 pb-[30vh]">
@@ -422,9 +509,12 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                       <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">{channel.title}</h2>
                       <p className="text-slate-400 text-lg leading-relaxed">{channel.description}</p>
                   </div>
-                  <button onClick={() => handlePlayActiveLecture(0)} className="px-12 py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-3xl shadow-2xl flex items-center gap-3 transition-transform hover:scale-105 active:scale-95">
-                      <Zap size={20} fill="currentColor"/> Begin Audit
-                  </button>
+                  <div className="flex flex-col items-center gap-4">
+                      <p className="text-[10px] font-black text-slate-600 uppercase tracking-[0.4em]">Select a node from the sidebar to begin audit</p>
+                      <button onClick={() => handleSelectSubTopic(flatCurriculum[0])} className="px-12 py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-3xl shadow-2xl flex items-center gap-3 transition-transform hover:scale-105 active:scale-95">
+                          <Zap size={20} fill="currentColor"/> Initial Node Refraction
+                      </button>
+                  </div>
               </div>
           )}
       </main>

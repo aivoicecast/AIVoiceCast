@@ -17,7 +17,7 @@ import {
 import { db, storage, auth } from './firebaseConfig';
 import { 
   importFullDatabase, 
-  exportMetadataOnly, 
+  exportFullDatabase, 
   getAudioKeys, 
   getCachedAudioBuffer, 
   cacheAudioBuffer 
@@ -31,13 +31,18 @@ function getUserId() {
   return 'public';
 }
 
+/**
+ * Uploads local IndexedDB textual and audio data to the cloud vault.
+ * Fixed: Updated to use exportFullDatabase as the source of truth for the JSON corpus.
+ */
 export async function uploadToCloud(): Promise<{ count: number, size: number, time: number }> {
   if (!auth?.currentUser || !db || !storage) throw new Error("Cloud unavailable.");
 
   const startTime = Date.now();
   const uid = getUserId();
   
-  const metadataJson = await exportMetadataOnly();
+  // Refract local registry into a JSON string
+  const metadataJson = await exportFullDatabase();
   const metadataBlob = new Blob([metadataJson], { type: 'application/json' });
   const metaRef = ref(storage, `${CLOUD_FOLDER}/${uid}/metadata.json`);
   await uploadBytes(metaRef, metadataBlob);

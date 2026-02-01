@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
 import { GEMINI_API_KEY } from './private_keys';
@@ -62,8 +63,8 @@ export class GeminiLiveService {
       this.isActive = true;
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       
-      const apiKey = process.env.API_KEY || GEMINI_API_KEY;
-      const ai = new GoogleGenAI({ apiKey });
+      // Fixed: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       if (!this.inputAudioContext || this.inputAudioContext.state !== 'running') {
         await this.initializeAudio();
@@ -255,7 +256,7 @@ export class GeminiLiveService {
   }
 
   private stopAllSources() {
-    for (const source of this.sources) { try { source.stop(); source.disconnect(); } catch (e) {} }
+    for (const source of this.sources) { try { source.stop(); source.disconnect(); } catch(e) {} }
     this.sources.clear();
   }
 

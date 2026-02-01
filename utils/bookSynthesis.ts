@@ -43,6 +43,26 @@ const UI_TEXT = {
 };
 
 /**
+ * Robust math pre-processor for PDF HTML injection.
+ */
+const renderMathInHtml = (text: string) => {
+    if (!text) return '';
+    // Block Math
+    let html = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, tex) => {
+        try {
+            return `<div style="margin: 20px 0; text-align: center;">${(window as any).katex.renderToString(tex, { displayMode: true, throwOnError: false })}</div>`;
+        } catch (e) { return match; }
+    });
+    // Inline Math
+    html = html.replace(/\$([^\$\n]+?)\$/g, (match, tex) => {
+        try {
+            return (window as any).katex.renderToString(tex, { displayMode: false, throwOnError: false });
+        } catch (e) { return match; }
+    });
+    return html;
+};
+
+/**
  * Generates an executive summary for a chapter using Gemini 3 Flash.
  */
 async function generateChapterSummary(ch: Chapter, language: 'en' | 'zh'): Promise<string> {
@@ -180,10 +200,12 @@ export async function synthesizePodcastBook(
                             currentLines = 0;
                         }
 
+                        const cleanText = renderMathInHtml(s.text);
+
                         currentPageHtml += `
                           <div style="margin-bottom: 18px; font-family: ${fontStack}; font-size: 13px; line-height: 1.6; color: #334155;">
                               <span style="font-weight: 900; color: ${isTeacher ? '#4338ca' : '#475569'}; text-transform: uppercase; margin-right: 8px; font-size: 11px;">${speakerName}:</span>
-                              <span>${s.text}</span>
+                              <span>${cleanText}</span>
                           </div>
                         `;
                         currentLines += textLines + 1;

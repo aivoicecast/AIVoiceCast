@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -52,11 +53,11 @@ import { FeedbackManager } from './FeedbackManager';
 import { auth, db } from '../services/firebaseConfig';
 import { onAuthStateChanged } from '@firebase/auth';
 import { onSnapshot, doc } from '@firebase/firestore';
-import { getUserChannels, saveUserChannel } from '../utils/db';
+import { getUserChannels, saveUserChannel, purgeStaleLectures } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { stopAllPlatformAudio } from '../utils/audioUtils';
 import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, syncUserProfile, publishChannelToFirestore, isUserAdmin, updateUserProfile, saveUserFeedback } from '../services/firestoreService';
-import { getSovereignSession, isJudgeSession } from '../services/authService';
+import { getSovereignSession } from '../services/authService';
 import { generateSecureId } from '../utils/idUtils';
 
 interface ErrorBoundaryProps { children?: ReactNode; }
@@ -81,6 +82,23 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     }
     return this.props.children;
   }
+}
+
+function safeJsonStringify(obj: any, indent: number = 2): string {
+    const cache = new WeakSet();
+    try {
+        return JSON.stringify(obj, (key, value) => {
+            if (typeof value === 'object' && value !== null) {
+                if (cache.has(value)) return '[Circular Ref Truncated]';
+                cache.add(value);
+                const prototype = Object.getPrototypeOf(value);
+                if (prototype !== Object.prototype && prototype !== Array.prototype && prototype !== null) {
+                    return `[Instance: ${value.constructor?.name || 'UnknownInstance'}]`;
+                }
+            }
+            return value;
+        }, indent);
+    } catch (err) { return `[Unserializable Artifact]`; }
 }
 
 const UI_TEXT = {
@@ -117,21 +135,12 @@ const UI_TEXT = {
     fullSpectrum: "Full Neural Spectrum",
     verifiedMember: "Pro Member Verified",
     upgradeBtn: "Upgrade to Unlock 24 Apps",
-    interviewExp: "Software Interview",
-    kernelExp: "Linux Kernel Audit",
-    geminiExp: "Gemini Expert",
     dashboard: "Prism Home",
     systemLog: "System Log Trace (RAW)",
     diagnosticConsole: "Neural Diagnostics Console (PROBE ACTIVE)",
     awaitingActivity: "Awaiting neural activity...",
-    manifest: "Feature Integrity Manifest",
-    pause: "Pause",
-    resume: "Resume",
-    copyTop10: "Copy Top 10",
-    feedback: "Human Feedback",
     featureRequest: "Request Refraction",
     submitFeedback: "Dispatch to AI Studio",
-    feedbackPlaceholder: "Report a bug, suggest a feature, or request a new Neural Lab...",
     feedbackSuccess: "Feedback Refracted to AI Studio. Self-Enhancement in progress."
   },
   zh: {
@@ -167,21 +176,12 @@ const UI_TEXT = {
     fullSpectrum: "全神经光谱",
     verifiedMember: "Pro 会员已验证",
     upgradeBtn: "升级解锁 24 个应用",
-    interviewExp: "软件工程师面试",
-    kernelExp: "Linux 内核审计",
-    geminiExp: "Gemini 专家",
     dashboard: "棱镜主页",
     systemLog: "系统日志追踪 (RAW)",
     diagnosticConsole: "神经诊断控制台 (探测器活跃)",
     awaitingActivity: "等待神经 activity...",
-    manifest: "功能完整性清单",
-    pause: "暂停",
-    resume: "恢复",
-    copyTop10: "复制前10条",
-    feedback: "人类反馈",
     featureRequest: "请求重构",
     submitFeedback: "派遣至 AI 工作室",
-    feedbackPlaceholder: "报告错误、建议功能或请求新的神经实验室...",
     feedbackSuccess: "反馈已折射至 AI 工作室。自我提升进行中。"
   }
 };
@@ -232,34 +232,6 @@ interface SystemLogMsg {
     type: 'info' | 'error' | 'success' | 'warn';
 }
 
-/**
- * Robust JSON stringifier that proactively detects circular references
- * and non-serializable host objects to prevent thread crashes.
- */
-function safeJsonStringify(obj: any, indent: number = 2): string {
-    const cache = new WeakSet();
-    try {
-        return JSON.stringify(obj, (key, value) => {
-            if (typeof value === 'object' && value !== null) {
-                if (cache.has(value)) {
-                    return '[Circular Ref Truncated]';
-                }
-                cache.add(value);
-                
-                // Aggressively guard against complex internal engine/DOM instances
-                const prototype = Object.getPrototypeOf(value);
-                if (prototype !== Object.prototype && prototype !== Array.prototype) {
-                    return `[Instance: ${value.constructor?.name || 'Object'}]`;
-                }
-            }
-            return value;
-        }, indent);
-    } catch (err) {
-        // Fallback for extreme cases where minified code or host objects break standard stringify logic
-        return `[Unserializable Artifact: ${typeof obj}]`;
-    }
-}
-
 const App: React.FC = () => {
   const [language, setLanguage] = useState<'en' | 'zh'>('en');
   const t = UI_TEXT[language];
@@ -286,40 +258,33 @@ const App: React.FC = () => {
   const [feedbackType, setFeedbackType] = useState<'bug' | 'feature' | 'general'>('general');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
         const now = Date.now();
         if (isLogPaused || logBufferRef.current.length === 0) return;
-        // Faster update interval for debugging (100ms instead of 800ms)
-        if (now - lastUpdateRef.current < 100) return;
+        if (now - lastUpdateRef.current < 400) return;
 
         setVisibleLogs(prev => {
-            const combined = [...logBufferRef.current, ...prev].slice(0, 300);
+            const combined = [...logBufferRef.current, ...prev].slice(0, 150);
             logBufferRef.current = [];
             lastUpdateRef.current = now;
             return combined;
         });
-    }, 100);
+    }, 400);
     return () => clearInterval(interval);
   }, [isLogPaused]);
 
   const addSystemLog = useCallback((text: any, type: SystemLogMsg['type'] = 'info') => {
       let cleanText = "";
       try {
-          if (typeof text === 'string') {
-              cleanText = text;
-          } else if (text instanceof Error) {
-              cleanText = `ERROR: ${text.message}\nSTACK: ${text.stack || 'No stack trace available.'}`;
-          } else if (text !== null && typeof text === 'object') {
-              cleanText = safeJsonStringify(text);
-          } else {
-              cleanText = String(text);
-          }
-      } catch (e) { 
-          cleanText = "[Internal Log Serialization Error] - Complex object structure blocked."; 
-      }
-
+          if (typeof text === 'string') cleanText = text;
+          else if (text instanceof Error) cleanText = `ERROR: ${text.message}\nSTACK: ${text.stack || 'No stack.'}`;
+          else if (text !== null && typeof text === 'object') cleanText = safeJsonStringify(text);
+          else cleanText = String(text);
+      } catch (e) { cleanText = "[Internal Log Serialization Blocked]"; }
+      if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText) return;
       logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type });
   }, []);
 
@@ -352,7 +317,11 @@ const App: React.FC = () => {
 
   const isProMember = useMemo(() => {
     if (isSuperAdmin) return true;
-    return userProfile?.subscriptionTier === 'pro';
+    if (userProfile?.subscriptionTier === 'pro') return true;
+    if (userProfile?.createdAt) {
+      if (Date.now() - userProfile.createdAt < 30 * 24 * 60 * 60 * 1000) return true;
+    }
+    return false;
   }, [userProfile, isSuperAdmin]);
 
   const handleSetViewState = useCallback((target: ViewID, params: Record<string, string> = {}) => {
@@ -374,6 +343,22 @@ const App: React.FC = () => {
     window.history.pushState({}, '', url.toString());
   }, [activeViewID, isProMember]);
 
+  const handlePurge = async () => {
+      if (!confirm("Scanning local ledger for inaccurate model references. Proceed?")) return;
+      setIsPurging(true);
+      addSystemLog("Initiating Neural Cache Audit sweep...", "warn");
+      try {
+          const { purgedCount } = await purgeStaleLectures();
+          if (purgedCount > 0) {
+              addSystemLog(`[Security] Audit complete. Purged ${purgedCount} stale artifacts from local vault.`, "success");
+              setTimeout(() => window.location.reload(), 1500);
+          } else {
+              addSystemLog("Audit complete. Local cache is logically pure.", "success");
+          }
+      } catch (e: any) { addSystemLog(`Audit failed: ${e.message}`, "error"); }
+      finally { setIsPurging(false); }
+  };
+
   const [liveSessionParams, setLiveSessionParams] = useState<any>(null);
 
   const handleDetailBack = useCallback(() => handleSetViewState('directory'), [handleSetViewState]);
@@ -390,52 +375,33 @@ const App: React.FC = () => {
 
   const handleUpdateLanguage = useCallback(async (newLang: 'en' | 'zh') => {
       setLanguage(newLang);
-      if (currentUser && !isJudgeSession()) {
+      if (currentUser) {
           try { await updateUserProfile(currentUser.uid, { languagePreference: newLang }); } catch(e) {}
       }
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Sovereignty Protocols v6.6.5 Active.", "info");
-    if (!auth) {
-        setAuthLoading(false);
-        return;
-    }
+    addSystemLog("Sovereignty Protocols v6.8.5 Active.", "info");
+    if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
-        if (u) {
-            setCurrentUser(u);
-            syncUserProfile(u).catch(console.error);
-        } else if (isJudgeSession()) {
-            const { user, profile } = getSovereignSession();
-            setCurrentUser(user);
-            setUserProfile(profile);
-        } else {
-            setCurrentUser(null);
-            setUserProfile(null);
-        }
+        if (u) { setCurrentUser(u); syncUserProfile(u).catch(console.error); }
+        else { setCurrentUser(null); setUserProfile(null); }
         setAuthLoading(false);
     });
     return () => unsub();
   }, [addSystemLog]);
 
   useEffect(() => {
-      if (!currentUser?.uid || isJudgeSession()) return;
+      if (!currentUser?.uid) return;
       if (!db) return;
       const unsub = onSnapshot(doc(db, 'users', currentUser.uid), s => { 
           if(s.exists()) {
               const profile = s.data() as UserProfile;
               setUserProfile(prev => {
-                  if (!prev) return profile;
-                  if (prev.coinBalance !== profile.coinBalance || 
-                      prev.subscriptionTier !== profile.subscriptionTier ||
-                      prev.displayName !== profile.displayName) {
-                      return profile;
-                  }
+                  if (!prev || prev.coinBalance !== profile.coinBalance || prev.subscriptionTier !== profile.subscriptionTier) return profile;
                   return prev;
               });
-              if (profile.languagePreference && profile.languagePreference !== language) {
-                  setLanguage(profile.languagePreference);
-              }
+              if (profile.languagePreference && profile.languagePreference !== language) setLanguage(profile.languagePreference);
           }
       });
       return () => unsub();
@@ -469,10 +435,7 @@ const App: React.FC = () => {
       handleSetViewState('podcast_detail', { channelId: newChannel.id });
   };
 
-  const activeChannel = useMemo(() => 
-    allChannels.find(c => c.id === activeChannelId),
-    [allChannels, activeChannelId]
-  );
+  const activeChannel = useMemo(() => allChannels.find(c => c.id === activeChannelId), [allChannels, activeChannelId]);
 
   const handleSendFeedback = async () => {
     if (!feedbackText.trim() || isSubmittingFeedback) return;
@@ -497,42 +460,30 @@ const App: React.FC = () => {
     finally { setIsSubmittingFeedback(false); }
   };
 
-  const showMagicCreator = activeViewID === 'directory' || activeViewID === 'podcast_detail';
-
   const appsByTier = useMemo(() => {
     const list = [
-        { id: 'dashboard', label: t.dashboard, icon: LayoutGrid, action: () => handleSetViewState('dashboard'), color: 'text-indigo-400', restricted: false },
-        { id: 'directory', label: t.podcasts, icon: Podcast, action: () => handleSetViewState('directory'), color: 'text-indigo-400', restricted: false },
-        { id: 'bible_study', label: t.bible, icon: Scroll, action: () => handleSetViewState('bible_study'), color: 'text-amber-500', restricted: false },
-        { id: 'scripture_ingest', label: t.bibleIngest, icon: FileUp, action: () => handleSetViewState('scripture_ingest'), color: 'text-amber-400', restricted: true },
-        { id: 'mission', label: t.mission, icon: Rocket, action: () => handleSetViewState('mission'), color: 'text-orange-500', restricted: false },
-        { id: 'story', label: t.story, icon: BookOpen, action: () => handleSetViewState('story'), color: 'text-cyan-400', restricted: false },
-        { id: 'book_studio', label: t.bookStudio, icon: BookText, action: () => handleSetViewState('book_studio'), color: 'text-indigo-500', restricted: false },
-        { id: 'interview_expert', label: t.interviewExp, icon: GraduationCap, action: () => { const ch = HANDCRAFTED_CHANNELS.find(c => c.id === '1'); if (ch) handleStartLiveSession(ch); }, color: 'text-red-400', restricted: true },
-        { id: 'kernel_expert', label: t.kernelExp, icon: Cpu, action: () => { const ch = HANDCRAFTED_CHANNELS.find(c => c.id === '2'); if (ch) handleStartLiveSession(ch); }, color: 'text-indigo-400', restricted: true },
-        { id: 'gemini_expert', label: t.geminiExp, icon: Star, action: () => { const ch = HANDCRAFTED_CHANNELS.find(c => c.id === 'default-gem'); if (ch) handleStartLiveSession(ch); }, color: 'text-emerald-400', restricted: true },
-        { id: 'mock_interview', label: t.mockInterview, icon: Video, action: () => handleSetViewState('mock_interview'), color: 'text-red-500', restricted: true },
-        { id: 'graph_studio', label: t.graph, icon: Activity, action: () => handleSetViewState('graph_studio'), color: 'text-emerald-400', restricted: true },
-        { id: 'coin_wallet', label: t.wallet, icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400', restricted: true },
-        { id: 'docs', label: t.docs, icon: FileText, action: () => handleSetViewState('docs'), color: 'text-emerald-400', restricted: true },
-        { id: 'check_designer', label: t.checks, icon: Wallet, action: () => handleSetViewState('check_designer'), color: 'text-orange-400', restricted: true },
-        { id: 'chat', label: t.chat, icon: MessageSquare, action: () => handleSetViewState('chat'), color: 'text-blue-400', restricted: true },
-        { id: 'mentorship', label: t.mentorship, icon: Users, action: () => handleSetViewState('mentorship'), color: 'text-emerald-400', restricted: true },
-        { id: 'shipping_labels', label: t.shipping, icon: Truck, action: () => handleSetViewState('shipping_labels'), color: 'text-emerald-400', restricted: true },
-        { id: 'icon_generator', label: t.icons, icon: AppWindow, action: () => handleSetViewState('icon_generator'), color: 'text-cyan-400', restricted: true },
-        { id: 'code_studio', label: t.code, icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400', restricted: true },
-        { id: 'notebook_viewer', label: t.notebooks, icon: Book, action: () => handleSetViewState('notebook_viewer'), color: 'text-orange-300', restricted: true },
-        { id: 'whiteboard', label: t.whiteboard, icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400', restricted: true },
+        { id: 'dashboard', label: 'Home', icon: LayoutGrid, action: () => handleSetViewState('dashboard'), color: 'text-indigo-400', restricted: false },
+        { id: 'directory', label: 'Hub', icon: Podcast, action: () => handleSetViewState('directory'), color: 'text-indigo-400', restricted: false },
+        { id: 'bible_study', label: 'Scripture', icon: Scroll, action: () => handleSetViewState('bible_study'), color: 'text-amber-500', restricted: false },
+        { id: 'mission', label: 'Vision', icon: Rocket, action: () => handleSetViewState('mission'), color: 'text-orange-500', restricted: false },
+        { id: 'story', label: 'Story', icon: BookOpen, action: () => handleSetViewState('story'), color: 'text-cyan-400', restricted: false },
+        { id: 'book_studio', label: 'Author', icon: BookText, action: () => handleSetViewState('book_studio'), color: 'text-indigo-500', restricted: false },
+        { id: 'mock_interview', label: 'Career', icon: Video, action: () => handleSetViewState('mock_interview'), color: 'text-red-500', restricted: true },
+        { id: 'coin_wallet', label: 'Wallet', icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400', restricted: true },
+        { id: 'docs', label: 'Docs', icon: FileText, action: () => handleSetViewState('docs'), color: 'text-emerald-400', restricted: true },
+        { id: 'chat', label: 'Chat', icon: MessageSquare, action: () => handleSetViewState('chat'), color: 'text-blue-400', restricted: true },
+        { id: 'code_studio', label: 'Builder', icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400', restricted: true },
+        { id: 'whiteboard', label: 'Canvas', icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400', restricted: true },
     ];
     return { free: list.filter(a => !a.restricted), pro: list.filter(a => a.restricted) };
-  }, [t, handleSetViewState, handleStartLiveSession]);
+  }, [handleSetViewState]);
 
-  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing v6.6.5...</span></div>;
+  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Spectrum...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} />;
 
   return (
     <ErrorBoundary>
-      <div className="h-screen flex flex-col bg-slate-950 text-slate-50 overflow-hidden relative">
+      <div className="h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
         <header className="min-h-[4rem] pt-[env(safe-area-inset-top)] border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 shrink-0 z-50 backdrop-blur-xl">
            <div className="flex items-center gap-3">
               <div className="relative">
@@ -543,14 +494,14 @@ const App: React.FC = () => {
                     <div className="absolute left-0 top-full mt-3 w-80 md:w-[480px] bg-slate-900 border border-slate-700 rounded-[2.5rem] shadow-2xl overflow-hidden animate-fade-in-up z-[110] flex flex-col border-indigo-500/20">
                       {!isProMember && (
                           <>
-                            <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center"><h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{t.standardHub}</h3><span className="text-[9px] font-black bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">FREE</span></div>
+                            <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center"><h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Standard Hub</h3><span className="text-[9px] font-black bg-slate-800 text-slate-400 px-2 py-0.5 rounded border border-slate-700">FREE</span></div>
                             <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-1">{appsByTier.free.map(app => (<button key={app.id} onClick={() => { app.action(); setIsAppsMenuOpen(false); }} className="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-600/10 transition-all group"><div className="p-2 rounded-lg bg-slate-800 border border-slate-700 group-hover:border-indigo-500/30"><app.icon size={16} className={app.color}/></div><span className="text-xs font-bold text-slate-300 group-hover:text-white">{app.label}</span></button>))}</div>
-                            <div className="m-3 p-5 bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl shadow-xl relative overflow-hidden group/upgrade"><div className="absolute top-0 right-0 p-12 bg-white/10 blur-3xl rounded-full group-hover/upgrade:scale-110 transition-transform"></div><div className="relative z-10"><h4 className="text-white font-black uppercase italic tracking-tighter text-lg">{t.upgradeBtn}</h4><p className="text-indigo-100 text-[10px] mt-1 font-medium">Unlock Builder Studio, Interview Lab, and more.</p><button onClick={() => { setIsPricingModalOpen(true); setIsAppsMenuOpen(false); }} className="mt-4 w-full py-2 bg-white text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:scale-[1.02] transition-transform active:scale-95">Upgrade Now</button></div></div>
+                            <div className="m-3 p-5 bg-gradient-to-br from-indigo-600 to-purple-700 rounded-3xl shadow-xl relative overflow-hidden group/upgrade"><div className="absolute top-0 right-0 p-12 bg-white/10 blur-3xl rounded-full group-hover/upgrade:scale-110 transition-transform"></div><div className="relative z-10"><h4 className="text-white font-black uppercase italic tracking-tighter text-lg">{t.upgradeBtn}</h4><button onClick={() => { setIsPricingModalOpen(true); setIsAppsMenuOpen(false); }} className="mt-4 w-full py-2 bg-white text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg hover:scale-[1.02] transition-transform active:scale-95">Upgrade Now</button></div></div>
                           </>
                       )}
                       {isProMember && (
                           <>
-                            <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex justify-between items-center"><div className="flex items-center gap-2"><h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">{t.fullSpectrum}</h3><Sparkles size={12} className="text-indigo-400" /></div><div className="flex items-center gap-1.5 bg-indigo-600 text-white px-2 py-0.5 rounded-full shadow-lg border border-indigo-400/50"><Crown size={10} fill="currentColor"/><span className="text-[8px] font-black uppercase">Refracted</span></div></div>
+                            <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex justify-between items-center"><div className="flex items-center gap-2"><h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">Full Spectrum</h3><Sparkles size={12} className="text-indigo-400" /></div><div className="flex items-center gap-1.5 bg-indigo-600 text-white px-2 py-0.5 rounded-full shadow-lg border border-indigo-400/50"><Crown size={10} fill="currentColor"/><span className="text-[8px] font-black uppercase">Refracted</span></div></div>
                             <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-1 max-h-[60vh] overflow-y-auto scrollbar-hide">{[...appsByTier.free, ...appsByTier.pro].map(app => (<button key={app.id} onClick={() => { app.action(); setIsAppsMenuOpen(false); }} className="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-600/10 transition-all group border border-transparent hover:border-indigo-500/10"><div className={`p-2 rounded-lg bg-slate-800 border border-slate-700 group-hover:border-indigo-500/30 transition-all`}><app.icon size={16} className={app.color}/></div><span className="text-xs font-bold text-slate-300 group-hover:text-white transition-colors">{app.label}</span></button>))}</div>
                           </>
                       )}
@@ -565,8 +516,8 @@ const App: React.FC = () => {
               <button onClick={() => setShowConsole(!showConsole)} className={`p-2 transition-all rounded-lg ${showConsole ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title="Neural Diagnostics"><Bug size={18} className={!showConsole ? 'animate-pulse text-red-500' : ''} /></button>
               <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-white transition-colors" title="Reload Web App"><RefreshCcw size={18} /></button>
               {userProfile && (<button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex"><Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span></button>)}
-              {showMagicCreator && (<button onClick={() => isProMember ? setIsVoiceCreateOpen(true) : setIsPricingModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95">{!isProMember && <Lock size={12} className="mr-0.5 text-indigo-300"/>}<span>{t.magic}</span></button>)}
-              <div className="relative"><button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors"><img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}`} alt="Profile" className="w-full h-full object-cover" /></button><StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice="Auto" setGlobalVoice={()=>{}} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} onUpgradeClick={() => setIsPricingModalOpen(true)} setIsSyncModalOpen={()=>{}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => handleSetViewState('user_guide')} onNavigate={(v) => handleSetViewState(v as any)} onOpenPrivacy={() => handleSetViewState('privacy')} t={t} language={language} setLanguage={handleUpdateLanguage} channels={allChannels} isSuperAdmin={isSuperAdmin} isProMember={isProMember} /></div>
+              {activeChannel && (<button onClick={() => isProMember ? setIsVoiceCreateOpen(true) : setIsPricingModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95"><span>AI VoiceCast</span></button>)}
+              <div className="relative"><button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors"><img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}`} alt="Profile" className="w-full h-full object-cover" /></button><StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice="Auto" setGlobalVoice={()=>{}} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} onNavigate={(v) => handleSetViewState(v as any)} onUpgradeClick={() => setIsPricingModalOpen(true)} setIsSyncModalOpen={()=>{}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => handleSetViewState('user_guide')} onOpenPrivacy={() => handleSetViewState('privacy')} t={t} language={language} setLanguage={handleUpdateLanguage} channels={allChannels} isSuperAdmin={isSuperAdmin} isProMember={isProMember} /></div>
            </div>
         </header>
 
@@ -579,7 +530,7 @@ const App: React.FC = () => {
                 {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} /></div> )}
                 {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} isProMember={isProMember}/> )}
                 {activeViewID === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('dashboard')} /> )}
-                {activeViewID === 'blog' && ( <div className="h-full overflow-y-auto"><BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} /></div> )}
+                {activeViewID === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} /> )}
                 {activeViewID === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
                 {activeViewID === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice="Auto" t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={() => setIsCreateModalOpen(true)} /> )}
@@ -596,8 +547,6 @@ const App: React.FC = () => {
                 {activeViewID === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} isProMember={isProMember} /> )}
                 {activeViewID === 'graph_studio' && ( <GraphStudio onBack={() => handleSetViewState('dashboard')} isProMember={isProMember} /> )}
                 {activeViewID === 'story' && ( <ProjectStory onBack={() => handleSetViewState('dashboard')} /> )}
-                {activeViewID === 'privacy' && ( <PrivacyPolicy onBack={() => handleSetViewState('dashboard')} /> )}
-                {activeViewID === 'user_guide' && ( <UserManual onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'bible_study' && ( <ScriptureSanctuary onBack={() => handleSetViewState('dashboard')} language={language} isProMember={isProMember} /> )}
                 {activeViewID === 'scripture_ingest' && ( <ScriptureIngest onBack={() => handleSetViewState('bible_study')} /> )}
                 {activeViewID === 'groups' && ( <GroupManager currentUser={currentUser} userProfile={userProfile} /> )}
@@ -610,7 +559,7 @@ const App: React.FC = () => {
             <div className="bg-slate-950 border-t-2 border-red-500 shadow-[0_-20px_100px_-10px_rgba(239,68,68,0.4)] backdrop-blur-3xl">
                 <button onClick={() => setShowConsole(!showConsole)} className="w-full h-10 flex items-center justify-center gap-3 bg-slate-900 border-b border-slate-800 hover:bg-slate-800 transition-colors group">
                     <Bug size={14} className={showConsole ? 'text-red-400' : 'text-slate-50'} />
-                    <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 group-hover:text-white transition-colors">{t.diagnosticConsole}</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 group-hover:text-white transition-colors">Neural Diagnostics Console</span>
                     {showConsole ? <ChevronDown size={14} className="text-slate-500"/> : <ChevronUp size={14} className="text-slate-500"/>}
                 </button>
                 <div className="h-96 overflow-hidden flex flex-col md:flex-row">
@@ -627,32 +576,37 @@ const App: React.FC = () => {
                                 <div className="flex justify-between items-center py-1 border-b border-white/5"><span className="text-slate-500 uppercase">Clearance:</span><span className="text-indigo-400 font-bold uppercase">{userProfile?.subscriptionTier || 'LEVEL_0'}</span></div>
                             </div>
                         </div>
-                        <div className="pt-4 flex flex-col gap-2"><button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-2 bg-slate-800 text-slate-400 text-[9px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all shadow-lg active:scale-95">Clear Buffer</button></div>
+                        <div className="pt-4 flex flex-col gap-2">
+                            <button onClick={handlePurge} disabled={isPurging} className="w-full py-2 bg-red-950/20 text-red-400 text-[9px] font-black uppercase rounded-lg border border-red-900/30 hover:bg-red-600 hover:text-white transition-all shadow-lg active:scale-95">
+                                {isPurging ? <Loader2 size={12} className="animate-spin mx-auto"/> : 'Hard Purge Stale Artifacts'}
+                            </button>
+                            <button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-2 bg-slate-800 text-slate-400 text-[9px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all">Clear Buffer</button>
+                        </div>
                     </div>
                     <div className="flex-1 flex flex-col min-w-0 bg-black/80">
                         {consoleTab === 'trace' ? (
                             <>
                                 <div className="px-6 py-3 border-b border-white/5 flex items-center justify-between bg-slate-900/40">
                                     <div className="flex items-center gap-2"><Terminal size={14} className="text-red-400"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t.systemLog}</span></div>
-                                    <button onClick={() => setIsLogPaused(!isLogPaused)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${isLogPaused ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}>{isLogPaused ? <PlayIcon size={12}/> : <Pause size={12}/>}{isLogPaused ? t.resume : t.pause}</button>
+                                    <button onClick={() => setIsLogPaused(!isLogPaused)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${isLogPaused ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}>{isLogPaused ? <PlayIcon size={12}/> : <Pause size={12}/>}{isLogPaused ? 'Resume' : 'Pause'}</button>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-6 space-y-2 scrollbar-thin scrollbar-thumb-white/10 text-left">{visibleLogs.length === 0 && (<p className="text-slate-700 italic text-xs">{t.awaitingActivity}</p>)}{visibleLogs.map(log => (<div key={log.id} className={`flex gap-4 text-[11px] font-mono p-2 rounded ${log.type === 'error' ? 'bg-red-950/40 text-red-200 border border-red-500/30' : log.type === 'success' ? 'bg-emerald-950/20 text-emerald-400' : log.type === 'warn' ? 'bg-amber-950/20 text-amber-400' : 'text-slate-400'}`}><span className="opacity-40 shrink-0">[{log.time}]</span><span className="flex-1 whitespace-pre-wrap">{log.text}</span></div>))}</div>
                             </>
                         ) : (
                             <div className="flex-1 flex flex-col p-8 space-y-6 animate-fade-in">
-                                <div className="flex justify-between items-center"><h3 className="text-lg font-black text-white italic uppercase tracking-widest flex items-center gap-3"><MessageCircle className="text-indigo-400"/> {t.feedback}</h3>{feedbackSuccess && (<div className="flex items-center gap-2 text-emerald-400 text-[10px] font-black uppercase bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-500/30 animate-fade-in"><CheckCircle size={14}/> {t.feedbackSuccess}</div>)}</div>
+                                <div className="flex justify-between items-center"><h3 className="text-lg font-black text-white italic uppercase tracking-widest flex items-center gap-3"><MessageCircle className="text-indigo-400"/> Human Feedback</h3>{feedbackSuccess && (<div className="flex items-center gap-2 text-emerald-400 text-[10px] font-black uppercase bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-500/30 animate-fade-in"><CheckCircle size={14}/> {t.feedbackSuccess}</div>)}</div>
                                 <div className="grid grid-cols-3 gap-2">
                                     {(['general', 'bug', 'feature'] as const).map(type => (
                                         <button key={type} onClick={() => setFeedbackType(type)} className={`py-2 rounded-xl text-[10px] font-black uppercase border transition-all ${feedbackType === type ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-50'}`}>{type}</button>
                                     ))}
                                 </div>
-                                <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 rounded-[2rem] p-6 text-sm text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none shadow-inner leading-relaxed" placeholder={t.feedbackPlaceholder}/>
+                                <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 rounded-[2rem] p-6 text-sm text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none shadow-inner leading-relaxed" placeholder="Report a bug, suggest a feature, or request a new Neural Lab..."/>
                                 <div className="flex justify-between items-center gap-4"><div className="flex items-center gap-2 px-4 py-2 bg-slate-950 border border-slate-800 rounded-full text-[9px] font-black text-slate-500 uppercase"><Activity size={12} className="text-indigo-500"/> Trace Bundling Enabled</div><button onClick={handleSendFeedback} disabled={!feedbackText.trim() || isSubmittingFeedback} className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3">{isSubmittingFeedback ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}<span>{t.submitFeedback}</span></button></div>
                             </div>
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.6.5-SYN</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.8.5-SYN</p></div>
             </div>
         </div>
 

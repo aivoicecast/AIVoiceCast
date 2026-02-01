@@ -8,7 +8,6 @@ import { getDriveToken, connectGoogleDrive } from '../services/authService';
 import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
 import { generateSecureId } from '../utils/idUtils';
 import { ShareModal } from './ShareModal';
-import { GEMINI_API_KEY } from '../services/private_keys';
 
 interface IconGeneratorProps {
   onBack: () => void;
@@ -64,10 +63,16 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
+
+    // Fixed: Mandatory API key selection check for gemini-3-pro-image-preview
+    if (!(await (window as any).aistudio.hasSelectedApiKey())) {
+        await (window as any).aistudio.openSelectKey();
+    }
+
     setIsGenerating(true); setError(null);
     try {
-      const apiKey = process.env.API_KEY || GEMINI_API_KEY;
-      const ai = new GoogleGenAI({ apiKey });
+      // Fixed: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const styleInstruction = `Professional app icon design for: ${prompt}. ${selectedStyle.prompt}. Isolated, high quality, 8k resolution.`;
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-image-preview',
@@ -85,7 +90,13 @@ export const IconGenerator: React.FC<IconGeneratorProps> = ({ onBack, currentUse
           }
         }
       }
-    } catch (e: any) { setError(e.message || "Failed to generate."); } finally { setIsGenerating(false); }
+    } catch (e: any) { 
+        // Fixed: Handle reset of key selection state if entity not found
+        if (e.message?.includes("Requested entity was not found.")) {
+            await (window as any).aistudio.openSelectKey();
+        }
+        setError(e.message || "Failed to generate."); 
+    } finally { setIsGenerating(false); }
   };
 
   return (

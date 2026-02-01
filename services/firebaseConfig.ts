@@ -1,9 +1,8 @@
-
 import { initializeApp, getApps, getApp } from "@firebase/app";
 import type { FirebaseApp } from "@firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
 import type { Auth } from "@firebase/auth";
-import { initializeFirestore, getFirestore, enableIndexedDbPersistence } from "@firebase/firestore";
+import { initializeFirestore, getFirestore, enableIndexedDbPersistence, CACHE_SIZE_UNLIMITED } from "@firebase/firestore";
 import type { Firestore } from "@firebase/firestore";
 import { getStorage } from "@firebase/storage";
 import type { FirebaseStorage } from "@firebase/storage";
@@ -45,26 +44,31 @@ const initDb = (): Firestore | null => {
     
     let firestore: Firestore;
     try {
-        // Initialize with specialized settings for sandboxed environments
         console.log("[Firestore] Initializing refractive data plane...");
-        // Fix for Error on line 50: Removed 'useFetchStreams' property as it is not part of the modular FirestoreSettings type.
-        // Also added explicit type assertion to resolve the FirebaseApp type mismatch in some environments.
+        
+        // Use initializeFirestore to set specialized connectivity options
         firestore = initializeFirestore(appInstance as FirebaseApp, {
-            // CRITICAL FIX: Force long polling to bypass WebSocket 
-            // and streaming blocks/timeouts in sandboxed iframes.
+            // CRITICAL FIX: Force long polling to bypass WebSocket blocks 
+            // commonly found in sandboxed iframes and restricted networks.
             experimentalForceLongPolling: true,
+            // Explicitly define the host and SSL to prevent discovery timeouts
+            host: "firestore.googleapis.com",
+            ssl: true,
+            // Set a generous cache size for local-first reliability
+            cacheSizeBytes: CACHE_SIZE_UNLIMITED
         });
     } catch (e) {
-        // Fallback to existing instance if already initialized
+        // Fallback to existing instance if already initialized by a concurrent module
         firestore = getFirestore(appInstance);
     }
 
-    // Simplify persistence for iframe environments which often block multi-tab logic
+    // Enable persistence for offline resilience
+    // We wrap this in a silent handler as it often fails in private/incognito modes
     enableIndexedDbPersistence(firestore).catch((err) => {
         if (err.code === 'failed-precondition') {
-            console.warn("[Firestore] Persistence disabled: Multiple tabs detected.");
+            console.debug("[Firestore] Persistence: Multiple tabs open. Local cache active.");
         } else if (err.code === 'unimplemented') {
-            console.warn("[Firestore] Persistence disabled: Browser environment not supported.");
+            console.debug("[Firestore] Persistence: Browser environment lacks IndexedDB support.");
         }
     });
 

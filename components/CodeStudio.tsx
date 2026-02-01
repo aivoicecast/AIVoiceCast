@@ -20,7 +20,6 @@ import { MarkdownView } from './MarkdownView';
 import { generateSecureId } from '../utils/idUtils';
 import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
 import Editor from '@monaco-editor/react';
-import { GEMINI_API_KEY } from '../services/private_keys';
 import { 
   ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, 
   File, Folder, Loader2, RefreshCw, Trash2, Edit2, FolderOpen, Send, Bot, Mic, MicOff, 
@@ -353,8 +352,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
     if (!activeFile) return;
     setIsMagicFixing(true);
     try {
-        const apiKey = process.env.API_KEY || GEMINI_API_KEY;
-        const ai = new GoogleGenAI({ apiKey });
+        // Fixed: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const systemPrompt = `You are a professional code refactoring and fixing tool.
         Your tasks:
         1. Fix any syntax errors in the provided code.
@@ -480,8 +479,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
     setIsSimulating(true);
     setTerminalOutput(null);
     try {
-        const apiKey = process.env.API_KEY || GEMINI_API_KEY;
-        const ai = new GoogleGenAI({ apiKey });
+        // Fixed: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const prompt = `ACT AS A DIGITAL TWIN TERMINAL. Execute the following code and provide the output/errors.\n\nCODE:\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\``;
         const response = await ai.models.generateContent({ 
             model: 'gemini-3-flash-preview', 
@@ -501,7 +500,6 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
   };
 
   const handleChat = async (e?: React.FormEvent, customPrompt?: string) => {
-    e?.preventDefault();
     const userText = customPrompt || chatInput;
     if (!userText.trim() || isChatThinking) return;
 
@@ -510,8 +508,8 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
     setIsChatThinking(true);
 
     try {
-        const apiKey = process.env.API_KEY || GEMINI_API_KEY;
-        const ai = new GoogleGenAI({ apiKey });
+        // Fixed: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const active = activeFileRef.current;
         const context = active ? `\n\nCURRENT FILE (${active.name}):\n\`\`\`${active.language}\n${active.content}\n\`\`\`` : '';
         
@@ -1001,7 +999,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
       {/* Naming Modal */}
       {namingModal && (
           <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
-              <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-3xl p-8 shadow-2xl space-y-6 animate-fade-in-up">
+              <div className="w-full max-sm bg-slate-900 border border-slate-700 rounded-3xl p-8 shadow-2xl space-y-6 animate-fade-in-up">
                   <div className="flex justify-between items-center">
                       <h3 className="text-lg font-bold text-white uppercase tracking-tighter italic">Create New {namingModal.type}</h3>
                       <button onClick={() => setNamingModal(null)} className="text-slate-500 hover:text-white"><X/></button>
