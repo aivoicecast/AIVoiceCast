@@ -1,7 +1,7 @@
 import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-// Fix: App.tsx is at the root, not in components folder based on its internal relative imports
-import App from './App';
+// App.tsx is located in the components folder
+import App from './components/App';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

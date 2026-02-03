@@ -46,6 +46,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({});
   const [currentProvider, setCurrentProvider] = useState<TtsProvider>(userProfile?.preferredTtsProvider || 'system');
   const [showProviderMenu, setShowProviderMenu] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   // Export/Batch State
   const [isBatchSynthesizing, setIsBatchSynthesizing] = useState(false);
@@ -58,6 +59,11 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: text, type } }));
   }, []);
 
+  // Reset error when channel changes
+  useEffect(() => {
+    setImageError(false);
+  }, [channel.id]);
+
   // Sync provider with user profile changes
   useEffect(() => {
     if (userProfile?.preferredTtsProvider) {
@@ -66,9 +72,11 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   }, [userProfile?.preferredTtsProvider]);
 
   const chapters = useMemo(() => {
-      if (channel.chapters && channel.chapters.length > 0) return channel.chapters;
+      // PRIORITY: Spotlight data for system channels to prevent local cache from hiding new sectors
       const spotlight = SPOTLIGHT_DATA[channel.id];
       if (spotlight && spotlight.curriculum) return spotlight.curriculum;
+      
+      if (channel.chapters && channel.chapters.length > 0) return channel.chapters;
       return [];
   }, [channel.id, channel.chapters]);
 
@@ -118,24 +126,30 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       activeSourcesRef.current.forEach(s => { try { s.stop(); s.disconnect(); } catch(e) {} });
       activeSourcesRef.current.clear();
       if (window.speechSynthesis) window.speechSynthesis.cancel();
-      dispatchLog(`[Playback] Stopped (${context}).`, 'info');
-  }, [dispatchLog]);
+      
+      const activeTopic = activeSubTopicId ? flatCurriculum.find(s => s.id === activeSubTopicId)?.title : 'None';
+      dispatchLog(`[Playback] Stopped (Context: ${context} | Last Node: ${activeTopic})`, 'info');
+  }, [dispatchLog, activeSubTopicId, flatCurriculum]);
 
   const hydrateLectureLean = useCallback(async (sub: SubTopic, force: boolean = false): Promise<GeneratedLecture | null> => {
       const spotlight = SPOTLIGHT_DATA[channel.id];
       const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
       
-      const BANNED_TERMS = /BERT|GPT-4o|Claude|Llama-3|Groq/i;
+      // CONTENT-AWARE SECURITY SCAN: Purge nodes that contain outdated placeholder terms
+      const BANNED_TERMS = /BERT|GPT-4o|Claude|Llama-3|Groq|Placeholder Sector/i;
       const containsBanned = (text: string) => BANNED_TERMS.test(text);
 
-      // 1. Force Eviction
-      if (force) {
-          dispatchLog(`[Security] Evicting node ${sub.id} from local/cloud cache for re-synthesis...`, 'warn');
-          await deleteDebugEntry('lecture_scripts', cacheKey);
+      // 1. Static Priority (Directly from code/manifest)
+      if (spotlight && spotlight.lectures[sub.title]) {
+          dispatchLog(`[Registry] Hydrating "${sub.title}" from STATIC_MANIFEST.`, 'success');
+          return spotlight.lectures[sub.title];
       }
 
-      // 2. Static Priority
-      if (spotlight && spotlight.lectures[sub.title]) return spotlight.lectures[sub.title];
+      // 2. Force Eviction (Only for dynamic nodes)
+      if (force) {
+          dispatchLog(`[Security] Evicting node "${sub.title}" from local/cloud cache for re-synthesis...`, 'warn');
+          await deleteDebugEntry('lecture_scripts', cacheKey);
+      }
       
       try {
           // 3. Local Cache Verification
@@ -144,9 +158,11 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
           if (lecture) {
               const fullText = lecture.sections.map((s: any) => s.text).join(' ');
               if (containsBanned(fullText)) {
-                  dispatchLog(`[Security] Stale artifact detected in local vault. Purging node ${sub.id}...`, 'warn');
+                  dispatchLog(`[Security] Stale/Placeholder artifact detected in local vault for "${sub.title}". Purging...`, 'warn');
                   await deleteDebugEntry('lecture_scripts', cacheKey);
                   lecture = null;
+              } else {
+                  dispatchLog(`[Registry] Hydrating "${sub.title}" from LOCAL_VAULT. Key: ${cacheKey}`, 'success');
               }
           }
 
@@ -158,13 +174,16 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
               if (lecture) {
                   const fullText = lecture.sections.map((s: any) => s.text).join(' ');
                   if (containsBanned(fullText)) {
-                      dispatchLog(`[Security] Stale artifact detected in cloud ledger. Forcing re-synthesis...`, 'warn');
+                      dispatchLog(`[Security] Stale artifact detected in cloud ledger for "${sub.title}". Forcing re-synthesis...`, 'warn');
                       lecture = null;
+                  } else {
+                      dispatchLog(`[Registry] Hydrating "${sub.title}" from CLOUD_LEDGER. UID: ${contentUid}`, 'success');
                   }
               }
 
               if (!lecture) {
-                  // 5. Final Neural Refraction - Included channel's system instruction
+                  // 5. Final Neural Refraction
+                  dispatchLog(`[Neural Core] No cached artifact for "${sub.title}". Initiating live synthesis...`, 'info');
                   lecture = await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName, force, channel.systemInstruction);
               }
               if (lecture) await cacheLectureScript(cacheKey, lecture);
@@ -175,8 +194,11 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
 
   const handleSelectSubTopic = async (sub: SubTopic, shouldStop = true, force: boolean = false) => {
       if (!force && activeSubTopicId === sub.id && activeLecture) return activeLecture;
-      if (shouldStop) stopAllAudio('Switch Topic');
       
+      const prevTopic = activeSubTopicId ? flatCurriculum.find(s => s.id === activeSubTopicId)?.title : 'Start';
+      if (shouldStop) stopAllAudio(`Switch Topic: ${prevTopic} -> ${sub.title}`);
+      
+      dispatchLog(`[Registry] Selecting Node: ${sub.title} (ID: ${sub.id})`, 'info');
       setActiveSubTopicId(sub.id);
       setIsSyncingContent(true);
       try {
@@ -197,7 +219,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       if (!sub) return;
       
       if (confirm(`Permanently purge node "${sub.title}" from local/cloud ledger? This forces immediate neural re-synthesis.`)) {
-          stopAllAudio('Node Purge');
+          stopAllAudio(`Node Purge: ${sub.title}`);
           await handleSelectSubTopic(sub, true, true);
           dispatchLog(`[Purge] Node ${sub.id} destroyed and refracted.`, 'success');
       }
@@ -264,7 +286,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                             source.start(0);
                         });
                     } else if (localSession === playbackSessionRef.current) {
-                        dispatchLog(`[API Fault] Audio buffer missing. Advancing text.`, 'warn');
+                        dispatchLog(`[API Fault] Audio buffer missing for section ${i}. Advancing text.`, 'warn');
                         await new Promise(r => setTimeout(r, 2000));
                     }
                 }
@@ -369,6 +391,8 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   const handleNext = () => currentSubTopicIndex < flatCurriculum.length - 1 && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex + 1]);
   const handlePrev = () => currentSubTopicIndex > 0 && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex - 1]);
 
+  const activeNodeStatus = activeSubTopicId ? nodeStatuses[activeSubTopicId] : null;
+
   return (
     <div className="h-full flex bg-slate-950 overflow-hidden font-sans relative">
       <aside className="w-[340px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0">
@@ -401,7 +425,20 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                   </div>
               </div>
               <div className="flex gap-4">
-                  <img src={channel.imageUrl || "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200&q=80"} className="w-16 h-16 rounded-2xl object-cover shadow-xl border border-white/5" />
+                  <div className="w-16 h-16 shrink-0 relative">
+                    {!imageError && channel.imageUrl ? (
+                        <img 
+                            src={channel.imageUrl} 
+                            onError={() => setImageError(true)}
+                            className="w-full h-full rounded-2xl object-cover shadow-xl border border-white/5" 
+                            alt=""
+                        />
+                    ) : (
+                        <div className="w-full h-full rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-indigo-400 font-black text-xl shadow-xl">
+                            {channel.title.substring(0, 1).toUpperCase()}
+                        </div>
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                       <h2 className="text-white font-black uppercase tracking-tighter italic text-xl leading-none truncate">{channel.title}</h2>
                       <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Audit Registry</p>
@@ -474,8 +511,12 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button onClick={() => activeSubTopicId && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex], true, true)} className="p-2 hover:bg-indigo-600/20 text-slate-500 hover:text-indigo-400 rounded-xl transition-all" title="Force Node Refresh"><RefreshCw size={18}/></button>
-                        <button onClick={handlePurgeNode} className="p-2 hover:bg-red-600/20 text-slate-500 hover:text-red-400 rounded-xl transition-all" title="Purge Stale Cache"><Trash2 size={18}/></button>
+                        {activeNodeStatus !== 'static' && (
+                            <>
+                                <button onClick={() => activeSubTopicId && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex], true, true)} className="p-2 hover:bg-indigo-600/20 text-slate-500 hover:text-indigo-400 rounded-xl transition-all" title="Force Node Refresh"><RefreshCw size={18}/></button>
+                                <button onClick={handlePurgeNode} className="p-2 hover:bg-red-600/20 text-slate-500 hover:text-red-400 rounded-xl transition-all" title="Purge Stale Cache"><Trash2 size={18}/></button>
+                            </>
+                        )}
                         <button onClick={() => stopAllAudio('Close View')} className="p-2 hover:bg-red-600/20 text-slate-500 hover:text-red-400 rounded-xl transition-all"><X size={20}/></button>
                     </div>
                   </header>
@@ -487,7 +528,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                               return (
                                   <div key={idx} ref={el => { sectionRefs.current[idx] = el; }} className={`flex flex-col ${isTeacher ? 'items-start' : 'items-end'} transition-all duration-1000 ${currentSectionIndex === -1 || isCurrent ? 'opacity-100 scale-100' : 'opacity-20 scale-95 blur-[1px]'}`}>
                                       <div className="flex items-center gap-2 mb-3 px-6"><span className={`text-[10px] font-black uppercase tracking-widest ${isTeacher ? 'text-indigo-400' : 'text-slate-400'}`}>{isTeacher ? activeLecture.professorName : activeLecture.studentName}</span>{isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping"></div>}</div>
-                                      <div className={`max-w-[90%] px-10 py-8 rounded-[3rem] text-2xl leading-relaxed shadow-2xl relative transition-all duration-700 ${isCurrent ? 'ring-2 ring-indigo-500/50 bg-slate-900 border border-indigo-500/20' : 'bg-slate-900/40'} ${isTeacher ? 'text-slate-100 rounded-tl-sm' : 'text-indigo-50 rounded-tr-sm'}`}><p className="whitespace-pre-wrap font-medium">{section.text}</p></div>
+                                      <div className={`max-w-[90%] px-10 py-8 rounded-[3rem] text-2xl leading-relaxed shadow-2xl relative transition-all duration-700 ${isCurrent ? 'ring-2 ring-indigo-500/50 bg-slate-900 border border-indigo-500/20' : 'bg-slate-900/40'} ${isTeacher ? 'text-slate-100 rounded-tl-sm' : 'text-indigo-500 rounded-tr-sm font-bold bg-slate-800/20'}`}><p className="whitespace-pre-wrap font-medium">{section.text}</p></div>
                                   </div>
                               );
                           })}

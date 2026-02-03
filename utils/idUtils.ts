@@ -54,8 +54,7 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = n
     if (seen.has(val)) {
         return '[Circular Ref Truncated]';
     }
-    seen.add(val);
-
+    
     // 4. Specialized Type Normalization
     if (val instanceof Date) return val.toISOString();
     if (val instanceof Error) return { message: val.message, name: val.name };
@@ -63,10 +62,14 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = n
     if (ArrayBuffer.isView(val)) return `[TypedArray]`;
 
     // 5. Prototype Guard (Prune Instances/SDK Internals/DOM)
+    // Minified constructor names like 'Y' or 'Ka' usually indicate library internals.
     const proto = Object.getPrototypeOf(val);
     if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) {
         return `[Instance: ${val.constructor?.name || 'Unknown'}]`;
     }
+
+    // Register as seen for circular check
+    seen.add(val);
 
     // 6. Recursive Clone
     if (Array.isArray(val)) {
@@ -77,8 +80,10 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = n
     try {
         for (const key in val) {
             if (Object.prototype.hasOwnProperty.call(val, key)) {
-                // Filter dangerous or useless keys
-                if (key.startsWith('_') || ['auth', 'app', 'firestore', 'storage', 'parent', 'window', 'document'].includes(key.toLowerCase())) {
+                // Filter dangerous or useless keys that often contain circularity or large state
+                const lowerKey = key.toLowerCase();
+                if (key.startsWith('_') || 
+                    ['auth', 'app', 'firestore', 'storage', 'parent', 'window', 'document', 'navigator', 'location'].includes(lowerKey)) {
                     result[key] = `[Filtered property: ${key}]`;
                     continue;
                 }

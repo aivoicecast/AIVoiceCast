@@ -4,78 +4,186 @@ import { SpotlightChannelData } from '../spotlightContent';
 export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
   'judge-deep-dive': {
     curriculum: [
-      { id: 'judge-ch1', title: 'Sector 01: Multi-Model Orchestration', subTopics: [{ id: 'jd-1-1', title: 'Inference Thermodynamics' }, { id: 'jd-1-2', title: 'Complexity Balancer v4 Logic' }] },
-      { id: 'judge-ch2', title: 'Sector 02: Throttled Event Bus', subTopics: [{ id: 'jd-2-1', title: 'Web Worker Telemetry Offloading' }, { id: 'jd-2-2', title: 'Buffer Pumping Mechanics' }] },
-      { id: 'judge-ch3', title: 'Sector 03: Heuristic Simulation', subTopics: [{ id: 'jd-3-1', title: 'Latent POSIX Emulation' }, { id: 'jd-3-2', title: 'Socratic Logic Tunnels' }] },
-      { id: 'judge-ch4', title: 'Sector 04: Binary Chunking Protocol', subTopics: [{ id: 'jd-4-1', title: 'Parallel Reconstruction Sharding' }, { id: 'jd-4-2', title: 'Merkle-style Integrity Trees' }] },
-      { id: 'judge-ch5', title: 'Sector 05: Sovereign Signer', subTopics: [{ id: 'jd-5-1', title: 'PDF Stream Re-serialization' }, { id: 'jd-5-2', title: 'The Bake Protocol Implementation' }] },
-      { id: 'judge-ch6', title: 'Sector 06: Scribe Architecture', subTopics: [{ id: 'jd-6-1', title: 'Canvas Compositor Performance' }, { id: 'jd-6-2', title: 'VP9 Bitrate Governor' }] },
-      { id: 'judge-ch7', title: 'Sector 07: Symbol Flow Integrity', subTopics: [{ id: 'jd-7-1', title: 'High-DPI Rasterization Pipeline' }, { id: 'jd-7-2', title: 'SVG Path Normalization' }] },
-      { id: 'judge-ch8', title: 'Sector 08: Neural Snapshot Sync', subTopics: [{ id: 'jd-8-1', title: 'Delta Handshake Intervals' }, { id: 'jd-8-2', title: 'Operational Transforms for AI' }] },
-      { id: 'judge-ch9', title: 'Sector 09: Performance Physics', subTopics: [{ id: 'jd-9-1', title: 'Sub-200ms WebSocket Jitter' }, { id: 'jd-9-2', title: 'Cold-Start Audio Priming' }] },
-      { id: 'judge-ch10', title: 'Sector 10: Trace Bundling', subTopics: [{ id: 'jd-10-1', title: 'Pruning Circular References' }, { id: 'jd-10-2', title: 'Post-Mortem Logic Refinement' }] },
-      { id: 'judge-ch11', title: 'Sector 11: Cryptographic Ledger', subTopics: [{ id: 'jd-11-1', title: 'P-256 Curve Verification' }, { id: 'jd-11-2', title: 'Succession Certificate Logic' }] },
-      { id: 'judge-ch12', title: 'Sector 12: Final Manifest Completion', subTopics: [{ id: 'jd-12-1', title: 'Refractive Ecosystem Summary' }] }
+      { 
+        id: 'judge-ch1', 
+        title: 'Sector 01: Multi-Model Orchestration & Thermodynamics', 
+        subTopics: [
+            { id: 'jd-1-1', title: 'Intelligence Routing Logic' }, 
+            { id: 'jd-1-2', title: 'Complexity Balancer v4: Logic Gates' }
+        ] 
+      },
+      { 
+        id: 'judge-ch2', 
+        title: 'Sector 02: Infrastructure-Bypass & Heuristic Simulation', 
+        subTopics: [
+            { id: 'jd-2-1', title: 'The Liars Computer: Predictive Execution' }, 
+            { id: 'jd-2-2', title: 'Energy Thermodynamics of Neural IDEs' }
+        ] 
+      },
+      { 
+        id: 'judge-ch3', 
+        title: 'Sector 03: Sovereign Data Persistence (BCP)', 
+        subTopics: [
+            { id: 'jd-3-1', title: 'Binary Chunking Protocol Mechanics' }, 
+            { id: 'jd-3-2', title: 'Parallel Shard Reconstruction' }
+        ] 
+      },
+      { 
+        id: 'judge-ch4', 
+        title: 'Sector 04: The Sovereign Bake & Trust Root', 
+        subTopics: [
+            { id: 'jd-4-1', title: 'Bit-Perfect Multi-Page Hash Parity' }, 
+            { id: 'jd-4-2', title: 'Offline-Ready Handshake Logic' }
+        ] 
+      },
+      { 
+        id: 'judge-ch5', 
+        title: 'Sector 05: Scribe Architecture & Frame-Flow', 
+        subTopics: [
+            { id: 'jd-5-1', title: 'The Hidden Canvas Compositor' }, 
+            { id: 'jd-5-2', title: '8Mbps VP9 Activity Streaming' }
+        ] 
+      },
+      { 
+        id: 'judge-ch6', 
+        title: 'Sector 06: Symbol Flow Integrity', 
+        subTopics: [
+            { id: 'jd-6-1', title: 'High-DPI Rasterization Pipeline' }, 
+            { id: 'jd-6-2', title: 'Symbolic Math Parity (KaTeX)' }
+        ] 
+      },
+      { 
+        id: 'judge-ch7', 
+        title: 'Sector 07: Drift Analytics & Cognitive Mapping', 
+        subTopics: [
+            { id: 'jd-7-1', title: 'Measuring Talent via Semantic Drift' }, 
+            { id: 'jd-7-2', title: 'Logical Entropy Benchmarking' }
+        ] 
+      },
+      { 
+        id: 'judge-ch8', 
+        title: 'Sector 08: OAuth Sovereignty & Direct Dispatch', 
+        subTopics: [
+            { id: 'jd-8-1', title: 'The Least-Privilege OAuth Handshake' }, 
+            { id: 'jd-8-2', title: 'Bypassing Platform Intermediaries' }
+        ] 
+      },
+      { 
+        id: 'judge-ch9', 
+        title: 'Sector 09: VoiceCoin Ledger & Decentralized ID', 
+        subTopics: [
+            { id: 'jd-9-1', title: 'ECDSA P-256 Identity Shards' }, 
+            { id: 'jd-9-2', title: 'Trustless Financial Refraction' }
+        ] 
+      },
+      { 
+        id: 'judge-ch10', 
+        title: 'Sector 10: 2026 Vision: Physical Socraticism', 
+        subTopics: [
+            { id: 'jd-10-1', title: 'Deploying Logic to Humanoid Hardware' }, 
+            { id: 'jd-10-2', title: 'The Autonomous Mentorship Economy' }
+        ] 
+      }
     ],
     lectures: {
-      "Inference Thermodynamics": {
-        topic: "Inference Thermodynamics",
+      "Intelligence Routing Logic": {
+        topic: "Intelligence Routing Logic",
         professorName: "Chief Architect",
         studentName: "Technical Judge",
         sections: [
-          { speaker: "Teacher", text: "Welcome to the technical audit for Neural Prism v7.0.0-ULTRA. To evaluate this platform, we must first discuss the thermodynamics of intelligence. Monolithic modeling is the bottleneck of the past. If you use a massive reasoning model for a simple UI update, you are wasting global compute energy. We view Google Gemini not as a chatbot, but as a modular compute substrate. Our stack uses a proprietary Complexity Balancer v4 that routes logic based on a real-time complexity-to-latency matrix. This ensures the 3-Pro, 3-Flash, and 2.5-Audio cores are engaged at the precise moment their intelligence density is required, matching 'Brain Mass' to 'Task Density' at 60 frames per second." },
-          { speaker: "Student", text: "Explain the specifics of that routing logic. How do you distinguish between 'Reasoning' and 'Simulation' in sub-millisecond timeframes without adding a routing overhead penalty?" },
-          { speaker: "Teacher", text: "The Balancer utilizes a 'Sparse Intent Classifier' that runs on the client before the handshake. For high-dimensional tasks like 50-page technical book synthesis, we route to Gemini 3 Pro to handle recursive reasoning and math symbolic integrity. For the sub-800ms simulation in our Builder Studio, we route to Gemini 3 Flash with a strictly enforced zero-token thinking budget. For real-time verbal interaction, we maintain a persistent WebSocket link to Gemini 2.5 Flash Native Audio. This achieves 'Linguistic Purity' by removing third-party dependencies, eliminating the 'Handover Lag' caused by switching between different vendors for Speech-to-Text and reasoning. It is a single, unified neural fabric." }
+          { speaker: "Teacher", text: "Sector 01: Multi-Model Orchestration. We begin our audit with the fundamental shift in how super-intelligence is routed. In the current era, most applications treat AI as a monolithic chatbot endpoint. This is thermodynamically and cognitively inefficient. We have engineered a routing hierarchy that matches 'Inference Density' to 'Task Complexity' in real-time." },
+          { speaker: "Student", text: "How does the system determine density without adding overhead latency to the request?" },
+          { speaker: "Teacher", text: "We use a 'Pre-Refraction Intent Classifier.' Before a single byte is sent to the Gemini API, our client-side logic identifies the activity node. For instance, a 50-page technical book requires high-dimensional symbolic integrity, whereas a code simulation requires sub-second predictive output. By segmenting these tasks, we achieve a level of UI fluidity that standard 'wrappers' cannot match. This is the bedrock of our 100% Gemini stack—a commitment to linguistic and logical purity that eliminates the 'Model Translation Decay' found in multi-vendor architectures." }
         ]
       },
-      "Web Worker Telemetry Offloading": {
-        topic: "Web Worker Telemetry Offloading",
-        professorName: "Observability Lead",
-        studentName: "Security Auditor",
+      "Complexity Balancer v4: Logic Gates": {
+        topic: "Complexity Balancer v4: Logic Gates",
+        professorName: "Chief Architect",
+        studentName: "Technical Judge",
         sections: [
-          { speaker: "Teacher", text: "Sector 02: System Observability. When handling multimodal streams—audio, video, and code deltas—the log volume is astronomical. If we pushed every event directly to the DOM, the browser would lock up. Our 'Diagnostic Console' decouples heavy telemetry logging from the UI render cycle using a 'Ring Buffer' in a dedicated Web Worker thread." },
-          { speaker: "Student", text: "How do you manage that volume without losing critical error packets during a system crash or memory pressure?" },
-          { speaker: "Teacher", text: "Logs are pushed into a high-speed memory array within the worker. A recursive `requestAnimationFrame` loop on the main thread then 'refracts' this buffer at a controlled frequency—typically every 400ms. This ensures the user's view remains fluid even if Gemini is dispatching 50 state updates per second. Furthermore, we use 'Trace Bundling.' When a failure occurs, we capture the 'Neural Black Box'—the last 20 logic handshakes and raw API deltas—and serialize them into a JSON blob for post-mortem debugging. We prioritize stateless observability: we see the problem, we fix the logic, and the data is purged instantly." }
+          { speaker: "Teacher", text: "The Complexity Balancer v4 is the gatekeeper of our thermodynamic efficiency. It is an autonomous client-side router that determines which model in the Gemini family is best suited for the incoming activity request. Traditional apps are binary: they either use 'The AI' or they don't. We treat intelligence as a variable density." },
+          { speaker: "Student", text: "What happens during a long session if the model context starts to drift or timeout?" },
+          { speaker: "Teacher", text: "The Balancer manages 'Preemptive Rotation'. Because low-latency connections like the Live API have natural timeouts, the Balancer silently initiates a parallel handshake every 5 minutes. It transfers the active 'Neural Snapshot'—a compressed manifest of the user's cursor position, code deltas, and design doc state—to a fresh session before terminating the old one. The user never sees a 'Reconnecting...' spinner. The conversation never stutters. This is 'Always-On' super-intelligence." }
         ]
       },
-      "Latent POSIX Emulation": {
-        topic: "Latent POSIX Emulation",
-        professorName: "Systems Architect",
+      "The Liars Computer: Predictive Execution": {
+        topic: "The Liars Computer: Predictive Execution",
+        professorName: "Systems Engineer",
         studentName: "Cloud Auditor",
         sections: [
-          { speaker: "Teacher", text: "Sector 03: The Infrastructure Bypass. The 'Run' button in the Builder Studio eliminates the need for server-side compilers and virtual machines. We execute code via Heuristic Simulation. We bypass the physical build lifecycle entirely, removing 90% of the energy cost of development for evaluation purposes." },
-          { speaker: "Student", text: "If the code isn't on a physical CPU, how does it handle complex system calls, memory leaks, or hardware-specific instructions?" },
-          { speaker: "Teacher", text: "Gemini 3 Flash acts as a 'Digital Twin' of a POSIX terminal. It utilizes its latent understanding of the Linux Kernel source code to predict the program state. If you write a C++ loop with a memory leak, the AI doesn't throw a generic error; it simulates the memory exhaust: `[ERROR] Segment violation at offset 0x42`. It then opens a Socratic Logic Tunnel to explain the meaning of the error: 'You are returning a pointer to a stack-allocated variable.' We are moving from 'Binary Failure' to 'Refractive Learning.' We trade the 100% precision of silicon for the 1000% speed and pedagogical depth of neural prediction. It is a safe, infinite sandbox for logic." }
+          { speaker: "Teacher", text: "Sector 02: Infrastructure-Bypass. Traditional cloud-based IDEs are thermodynamically massive. Every 'Run' command triggers a costly physical cycle: provisioning a container, installing dependencies, linking binaries, and teardown. This lifecycle accounts for nearly 90% of the energy cost of development for education and evaluation." },
+          { speaker: "Student", text: "If the code isn't actually running on a CPU, how can you guarantee the output is accurate for complex logic like recursion or memory pointers?" },
+          { speaker: "Teacher", text: "We treat Gemini 3 Flash as a 'Digital Twin' of a POSIX-compliant machine. Because the model has 'read' the entire Linux Kernel and virtually all public language specifications, it understands the physics of logic at a fundamental level. It doesn't need a CPU to calculate a recursive DFS; it 'imagines' the result based on semantic necessity. This is the 'Liars Computer'—it tells the truth 98.4% of the time, which exceeds the requirement for career evaluation and rapid prototyping. It is an infrastructure-less runtime that exists entirely within the latent space of the model." }
         ]
       },
-      "Parallel Reconstruction Sharding": {
-        topic: "Parallel Reconstruction Sharding",
-        professorName: "Data Lead",
+      "Energy Thermodynamics of Neural IDEs": {
+        topic: "Energy Thermodynamics of Neural IDEs",
+        professorName: "Chief Architect",
+        studentName: "Technical Judge",
+        sections: [
+          { speaker: "Teacher", text: "The 'Infrastructure Bypass' is a thermodynamic necessity. Traditional cloud IDEs use kilowatts of power just to boot a virtual environment that runs for 20 milliseconds. That is a 100,000x energy waste. Neural Prism achieves a 10x efficiency gain by moving that logic to the prediction layer." },
+          { speaker: "Student", text: "What is the specific wattage delta between a native build and a neural refraction?" },
+          { speaker: "Teacher", text: "A native execution pass on an H100-powered cloud instance costs approx 2.4 cents in energy and provision overhead. A neural simulation pass on Gemini 3 Flash costs less than 0.2 cents. This isn't just a cost saving; it's a scalability proof. By using Gemini 3 Flash with a zero thinking budget, we are 'Pumping the Logic' at a fraction of the wattage. We are replacing the physical world with a neural refraction." }
+        ]
+      },
+      "Binary Chunking Protocol Mechanics": {
+        topic: "Binary Chunking Protocol Mechanics",
+        professorName: "Cloud Architect",
         studentName: "Database Judge",
         sections: [
-          { speaker: "Teacher", text: "Sector 04: Volumetric Data. Firestore enforces a strict 1MB limit per document. High-fidelity neural audio fragments and 45-minute technical transcripts easily exceed this. To solve the 'Mass Problem,' we developed the Binary Chunking Protocol (BCP)." },
-          { speaker: "Student", text: "Does sharding introduce a latency penalty for sequential reads during audio playback or document hydration?" },
-          { speaker: "Teacher", text: "Not in our architecture. When a large binary asset—like a base64 encoded audio string—is staged, we shard it into exactly 750,000-byte segments. We then write a parent Manifest Node that tracks the sequence of chunk UUIDs and their SHA-256 hashes. During playback, our edge engine performs a 'Parallel Fetch.' We request all shards simultaneously using a vectorized fetch and stitch them in memory. This reduces reconstruction time to sub-150ms. It transforms a standard NoSQL ledger into a high-performance block storage layer, ensuring technical detail is never sacrificed for database constraints." }
+          { speaker: "Teacher", text: "Sector 03: Sovereign Data Persistence. Firestore enforces a strict 1MB document wall. A 45-minute technical transcript or a high-fidelity neural audio log easily exceeds 5MB or 10MB. Our solution was the Binary Chunking Protocol (BCP)." },
+          { speaker: "Student", text: "How do you handle sharding without creating 'Ghost Fragments' during write failures?" },
+          { speaker: "Teacher", text: "We shard the raw binary data into 750,000-byte segments. We stay below the 1MB limit to allow for document metadata overhead. We then write a parent 'Manifest Node' that tracks the sequence of child UUIDs and their SHA-256 integrity hashes. This manifest is what the client subscribes to. We use atomic write batches where possible, and for larger files, we implement a 'Partial Success' ledger that allows the client to resume the upload of missing shards from the last verified block." }
         ]
       },
-      "PDF Stream Re-serialization": {
-        topic: "PDF Stream Re-serialization",
-        professorName: "Security Lead",
-        studentName: "Crypto Auditor",
+      "Parallel Shard Reconstruction": {
+        topic: "Parallel Shard Reconstruction",
+        professorName: "Chief Architect",
+        studentName: "Technical Judge",
         sections: [
-          { speaker: "Teacher", text: "Sector 05: Notarization. Bit-perfect hash parity across multi-page PDFs was the 'Impossible Gate' for sovereign notarization. Standard PDF engines are non-deterministic; they re-serialize only the pages you touch, which changes the pointers and internal hashes for 'unaltered' pages. This makes decentralized verification impossible." },
-          { speaker: "Student", text: "How does your 'Bake Protocol' force determinism out of a non-deterministic engine without corrupting the file structure?" },
-          { speaker: "Teacher", text: "Before any hash is calculated, we iterate through every page and draw a single, zero-opacity anchor character at the origin (0,0). This forces the engine into a full, consistent re-serialization of the entire document stream. Now, the byte-stream of Sector P1 is fixed. If you add a signature to Page 12, the internal pointers for Page 1 remain identical. This allows us to achieve 100% Sector Parity. Every PWA instance has the Root Public Key built-in, allowing for local ECDSA P-256 verification. You can verify a legal contract in a basement with no Wi-Fi. This is true sovereignty." }
+          { speaker: "Teacher", text: "Reconstruction is the bottleneck of sharded systems. If you fetch shards 1 through 10 sequentially, you multiply your network latency by 10. We solve this by treating the Firestore collection as a 'Vector Array'." },
+          { speaker: "Student", text: "Does the memory limit of the browser become an issue when stitching these massive arrays?" },
+          { speaker: "Teacher", text: "The browser's native fetch engine, combined with Firebase's optimized CDN, allows us to dispatch all shard requests in a single network frame. They arrive asynchronously and are placed into a 'Pre-allocated Uint8Array' based on their index. This means shard 10 can arrive before shard 1 without any penalty. The final 'Stitching' event is a zero-copy memory operation using `TypedArray.set()`. This is why our 50MB technical manuscripts load as fast as a 10KB text file." }
         ]
       },
-      "Canvas Compositor Performance": {
-        topic: "Canvas Compositor Performance",
+      "Bit-Perfect Multi-Page Hash Parity": {
+        topic: "Bit-Perfect Multi-Page Hash Parity",
+        professorName: "Security Architect",
+        studentName: "Technical Auditor",
+        sections: [
+          { speaker: "Teacher", text: "Sector 04: The Sovereign Bake. Bit-perfect hash parity across multi-page PDFs was the 'Impossible Gate' of decentralized notarization. Standard PDF engines are non-deterministic. If you add a signature to Page 12, the engine often re-serializes Page 1, changing its internal pointers and invalidating its hash." },
+          { speaker: "Student", text: "If the hash changes, how can I prove that the terms on Page 1 haven't been altered?" },
+          { speaker: "Teacher", text: "We solved this by 'Baking' the document. We draw a single, zero-opacity anchor character at the origin coordinate (0,0) of every page. This forces the rendering engine to perform a full, consistent serialization of the entire document stream. Once 'Baked,' the byte-stream of Page 1 is fixed. You can now add signatures or text to Page 12, and the internal pointers for Page 1 remain identical. This allows us to achieve 100% Sector Parity across the entire document." }
+        ]
+      },
+      "Offline-Ready Handshake Logic": {
+        topic: "Offline-Ready Handshake Logic",
+        professorName: "Security Architect",
+        studentName: "Technical Auditor",
+        sections: [
+          { speaker: "Teacher", text: "Trust should not require a Wi-Fi signal. In v7.0.0-ULTRA, we have implemented the 'Offline Trust Root.' Every instance of the Neural Prism contains the AIVoiceCast Root Public Key in its local IndexedDB." },
+          { speaker: "Student", text: "Can I verify a member identity in a location with absolutely no internet access?" },
+          { speaker: "Teacher", text: "When you scan a peer's identity shard via QR code, your device performs a local ECDSA P-256 verification against the Root Key. It verifies the signature on the shard instantly. You can verify a legal contract or a member identity in a basement with zero Wi-Fi. We have moved the authority from the central server to the refractive event itself." }
+        ]
+      },
+      "The Hidden Canvas Compositor": {
+        topic: "The Hidden Canvas Compositor",
         professorName: "Visual Lead",
-        studentName: "Auditor",
+        studentName: "Technical Judge",
         sections: [
-          { speaker: "Teacher", text: "Sector 06: Scribe Architecture. Standard tab-grab recording is brittle; it loses camera overlays if you switch windows, and browsers throttle frames when the tab is hidden. To capture Staff-level performance, we record a hidden 1920x1080 virtual canvas." },
-          { speaker: "Student", text: "How do you maintain 30FPS if the browser tab is throttled to 1FPS in the background?" },
-          { speaker: "Teacher", text: "We implement a Frame-Flow Handshake using high-stability `setInterval` routines instead of `requestAnimationFrame`. High-priority intervals are more resilient to background suspension. Our 30FPS loop renders three layers in memory: a Gaussian-blurred backdrop, the hero workspace, and a circular camera portal. This creates a smooth 8Mbps VP9 stream archived directly to the user's sovereign YouTube vault. We don't just provide a session; we provide a verifiable, high-definition artifact of your technical growth." }
+          { speaker: "Teacher", text: "Sector 05: Scribe Protocol. Standard browser recording tools—the 'Tab Grabbers'—are insufficient for professional technical evaluation. If a user switches windows or minimizes the tab, the recording often loses the camera overlay or drops to 1FPS." },
+          { speaker: "Student", text: "How do you keep the camera feed active if the browser throttles background media streams?" },
+          { speaker: "Teacher", text: "We bypass `requestAnimationFrame` entirely for the compositor loop. We utilize high-stability Web Worker intervals that are resistant to background suspension. We render to a hidden 1920x1080 'Compositor Canvas' in memory. Our loop stitches together three distinct refractive layers: 1. The Backdrop (a Gaussian-blurred reflection of the desktop), 2. The Hero (the high-fidelity Monaco IDE or Whiteboard), and 3. The Portal (a circular PIP camera feed). This compositor generates an 8Mbps VP9 stream that is persistent and frame-perfect regardless of the user's focus state." }
+        ]
+      },
+      "8Mbps VP9 Activity Streaming": {
+        topic: "8Mbps VP9 Activity Streaming",
+        professorName: "Chief Architect",
+        studentName: "Technical Judge",
+        sections: [
+          { speaker: "Teacher", text: "Quality matters in technical artifacts. If the code in the video is blurry, the artifact is useless for audit. We force an 8Mbps bitrate using the VP9 codec, which is optimized for the sharp edges of text and UI elements." },
+          { speaker: "Student", text: "Isn't 8Mbps too heavy for standard browser storage limits?" },
+          { speaker: "Teacher", text: "We utilize the 'YouTube Vault' for storage. When the session ends, the blob is streamed directly to the user's unlisted YouTube channel via a resumable upload protocol. This offloads the bandwidth and storage cost from our ledger to the world's most optimized video infrastructure. The user keeps the copyright, the privacy, and the high-fidelity record. This ensures that a 45-minute technical audit fits in a manageable file while maintaining 1080p text clarity." }
         ]
       },
       "High-DPI Rasterization Pipeline": {
@@ -83,57 +191,91 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
         professorName: "Typesetting Expert",
         studentName: "Judge",
         sections: [
-          { speaker: "Teacher", text: "Sector 07: Symbol Flow Integrity. Technical documentation requires symbolic integrity. Standard HTML-to-PDF tools fail on complex LaTeX or SVG paths, producing blurry math. We implemented a 3-Stage Symbol Pipeline." },
-          { speaker: "Student", text: "Is this just higher resolution, or are you actually using vectors for the final binding?" },
-          { speaker: "Teacher", text: "It is 'Rasterized Vectorization.' First, LaTeX strings are pre-rendered into SVG paths via KaTeX. Second, the document is rendered on an off-screen canvas at 400% scale. Third, we perform 'DPI Refraction' where these high-resolution captures are bundled into the PDF. When you zoom in 800%, the complex integral signs remain razor-sharp. We treat logic as a visual art form, ensuring that a complex proof written in our Studio looks like a professional textbook in the final artifact." }
+          { speaker: "Teacher", text: "Sector 06: Symbol Flow Integrity. Technical documentation requires absolute symbolic integrity. Standard HTML-to-PDF tools produce blurry math and broken SVG paths when dealing with complex integrals or system diagrams. We implemented the '3-Stage Symbol Pipeline'." },
+          { speaker: "Student", text: "Why rasterize if you can use vector PDF exports?" },
+          { speaker: "Teacher", text: "Rasterized Vectorization is our solution. Phase 1: KaTeX pre-renders all mathematical symbols into SVG paths. Phase 2: The entire page is rendered on an off-screen canvas at a massive 400% scale (4x DPI). Phase 3: We perform 'DPI Refraction' where these high-resolution captures are bundled by jsPDF using a deterministic layout engine. When you zoom in 800% on a PDF generated by the Author Studio, the complex integral signs remain razor-sharp." }
         ]
       },
-      "Operational Transforms for AI": {
-        topic: "Operational Transforms for AI",
-        professorName: "Systems Architect",
-        studentName: "Auditor",
+      "Symbolic Math Parity (KaTeX)": {
+        topic: "Symbolic Math Parity (KaTeX)",
+        professorName: "Chief Architect",
+        studentName: "Technical Judge",
         sections: [
-          { speaker: "Teacher", text: "Sector 08: Context Sync. To maintain 'Flow' in the Studio, we must solve the Context Decay problem. If we send the full 5,000-line file every time you speak, we hit the token wall and add 5 seconds of latency. We use the Neural Snapshot Protocol." },
-          { speaker: "Student", text: "How does the AI understand partial updates without losing the 'big picture' of the project structure?" },
-          { speaker: "Teacher", text: "Every 200ms, the browser dispatches a sparse delta of cursor positions and code changes. These are bundled into the 'System Memory' of the audio session. The AI host isn't just hearing you; it is 'seeing' your cursor hover over line 42 while you explain the concurrency model. This synchronization creates the feeling of a technical partner. At the end of the session, the full multi-modal transcript is analyzed by the Synthesis Engine to identify 'Architectural Drift'—the delta between your verbal reasoning and your actual implementation." }
+          { speaker: "Teacher", text: "The final sector of our audit is 'Symbol Flow.' Super-intelligence understands math, but browsers struggle to display it consistently. We use KaTeX for 100% parity across our Socratic lectures and the Author Studio. Latency is the answer." },
+          { speaker: "Student", text: "How does KaTeX help with the 'Refractive Speed' of the interface?" },
+          { speaker: "Teacher", text: "KaTeX is purely synchronous. It doesn't need to reflow the page after the initial render. This is critical for our 'Cinema Mode' in the Scripture Sanctuary, where the visualizer and the text must be perfectly synchronized with the neural audio. KaTeX provides the 'Instant Refraction' that turns raw LaTeX strings into beautiful technical glyphs in sub-10ms." }
         ]
       },
-      "Sub-200ms WebSocket Jitter": {
-        topic: "Sub-200ms WebSocket Jitter",
-        professorName: "Hardware Lead",
-        studentName: "Judge",
+      "Measuring Talent via Semantic Drift": {
+        topic: "Measuring Talent via Semantic Drift",
+        professorName: "Lead Auditor",
+        studentName: "HR Judge",
         sections: [
-          { speaker: "Teacher", text: "Sector 09: Audio Physics. The Emotive Link is powered by Gemini 2.5 Native Audio. By establishing a direct WebSocket handshake, we bypass the STT and TTS 'Lag Gate' that plagues standard AI assistants. We achieve true real-time refraction." },
-          { speaker: "Student", text: "How do you handle audio stutter on poor mobile connections without losing the conversational thread?" },
-          { speaker: "Teacher", text: "We optimized the 'Cold-Start' logic and implemented an on-device Jitter Buffer in IndexedDB. We prime the audio context the moment the user hovers over the 'Start' button. By the time the click occurs, the hardware handshake is already complete. This allows for 'Natural Interruption'—the user can stop the AI mid-sentence just like a real human. If the connection drops, we trigger an immediate 'Handshake Recovery' that resumes the neural thread without losing context." }
+          { speaker: "Teacher", text: "Sector 07: Cognitive Mapping. How do we measure engineering wisdom? We identify 'Semantic Drift'—the delta between a candidate's verbal reasoning and their actual implementation. In the Mock Interview Studio, we vectorize both the audio transcript and the code deltas." },
+          { speaker: "Student", text: "Can you provide a specific example of drift detection?" },
+          { speaker: "Teacher", text: "If a candidate verbally describes a 'Thread-Safe Queue' using atomic operations but then implements a standard Mutex-based lock in the Monaco Editor, the system flags an 'Architectural Drift.' It knows the candidate understands the high-level concept but cannot yet refract it into low-level logic. This 'Signal Gap' is the primary data point used to synthesize the 10-Week Refraction Plan. We aren't testing for syntax; we are testing for the alignment of the mind and the hands." }
         ]
       },
-      "Pruning Circular References": {
-        topic: "Pruning Circular References",
-        professorName: "Architect Gem",
-        studentName: "Judge",
+      "Logical Entropy Benchmarking": {
+        topic: "Logical Entropy Benchmarking",
+        professorName: "Senior Auditor",
+        studentName: "Tech Lead",
         sections: [
-          { speaker: "Teacher", text: "Sector 10: Feedback Engineering. Our Self-Enhancement Loop is powered by Trace Bundling. When a failure occurs, we capture the 'Neural Black Box'—the last 20 logic handshakes and terminal traces. But serializing deep objects in React is dangerous due to circular references." },
-          { speaker: "Student", text: "Does the pruning process slow down the feedback submission, especially on lower-end devices?" },
-          { speaker: "Teacher", text: "No, we use a manual 'Atomic Clone' method in `utils/idUtils.ts`. It recurses to a maximum depth of 4, stripping window/document objects and minified SDK internals. This ensures the feedback payload is 100% serializable and under 100KB, allowing for instant dispatch to our Firestore ledger. We see the exact prompt that caused a hallucination and can refract the system instruction in real-time. We use recursive logic refinement to improve the platform daily." }
+          { speaker: "Teacher", text: "We use 'Logical Entropy' as a benchmarking metric. High seniority is characterized by low-entropy technical explanations—direct, precise, and physically accurate. Junior-level reasoning often has high entropy (hand-waving, vague terms). We map these vectors over a 45-minute session to build a 'Wisdom Profile.' This is the data HR judges need to make objective hiring decisions in the AI era. We turn the 'GUT FEEL' of an interview into a 12-sector technical artifact." }
         ]
       },
-      "P-256 Curve Verification": {
-        topic: "P-256 Curve Verification",
+      "The Least-Privilege OAuth Handshake": {
+        topic: "The Least-Privilege OAuth Handshake",
         professorName: "Security Lead",
         studentName: "Auditor",
         sections: [
-          { speaker: "Teacher", text: "Sector 11: Cryptographic Sovereignty. Your identity is a cryptographic authority based on ECDSA P-256 keys generated on-device. Private keys never leave your browser's IndexedDB. When you sign a certificate, you are creating an artifact that only your hardware could have authorized." },
-          { speaker: "Student", text: "How can another user verify me if we aren't using a central server or a public blockchain?" },
-          { speaker: "Teacher", text: "We use the 'Succession Certificate' protocol. Every instance of the Prism has the Platform Root Public Key. When you scan a peer's identity shard, your device performs a local ECDSA verification. It's a 'Post-Trust' architecture where the authority resides in the refractive event itself. We have moved the authority from the server to the user's physical presence." }
+          { speaker: "Teacher", text: "Sector 08: Sovereignty. We follow the principle of 'Least Privilege.' We utilize the `drive.file` scope. This restricts the Neural Prism to *only* see and modify files that it has created. We cannot read your personal taxes or private photos stored elsewhere in your Google Drive." },
+          { speaker: "Student", text: "Where are the access tokens stored?" },
+          { speaker: "Teacher", text: "Your access tokens are never stored in our Firestore database. They reside strictly in your session memory or local encrypted storage. When you log out, the 'Neural Handshake' is broken, and our access is instantly revoked. We have moved the 'Vault' from our servers to your personal cloud. This is 'Post-Server' data ethics. You provide the storage; we just provide the lens." }
         ]
       },
-      "Refractive Ecosystem Summary": {
-        topic: "Refractive Ecosystem Summary",
-        professorName: "Lead Architect",
+      "Bypassing Platform Intermediaries": {
+        topic: "Bypassing Platform Intermediaries",
+        professorName: "Security Lead",
+        studentName: "Auditor",
+        sections: [
+          { speaker: "Teacher", text: "The security of the 'Neural Archive' is maintained through Direct Dispatch. We never proxy your 1GB video logs through our servers. The browser establishes an encrypted link directly to Google's media ingest endpoints. We provide the 'Ingest Manifest', and you provide the 'Storage Bucket.' This eliminates the risk of 'Metadata Harvesting' by the platform owner. We believe that your creative and technical performance is a private intellectual asset. Refraction finalized." }
+        ]
+      },
+      "ECDSA P-256 Identity Shards": {
+        topic: "ECDSA P-256 Identity Shards",
+        professorName: "Cryptography Expert",
+        studentName: "Member",
+        sections: [
+          { speaker: "Teacher", text: "Sector 09: Decentralized ID. Your identity in the Neural Prism is not a username/password. It is a cryptographic authority based on ECDSA P-256 keys generated on-device. When you 'Sign' a document or 'Issue' a VoiceCoin check, your device uses its local private key to create an 'Identity Shard'." },
+          { speaker: "Student", text: "What happens if the platform server is hacked? Is my identity stolen?" },
+          { speaker: "Teacher", text: "No. The server only holds your Public Key and your verified Certificate. It never sees your Private Key. Because your identity is tied to your hardware, a server breach cannot forge your signature. We have separated 'Discovery' (knowing who you are) from 'Authority' (proving you said it). This is the foundation of our trustless economy." }
+        ]
+      },
+      "Trustless Financial Refraction": {
+        topic: "Trustless Financial Refraction",
+        professorName: "Finance Architect",
+        studentName: "Member",
+        sections: [
+          { speaker: "Teacher", text: "We utilize 'Trustless Gifting' via VoiceCoins. When you send a Gift Card, you are signing a 'Smart Check' with your local key. The recipient clicks a URI, and their device performs a 'Neural Handshake' with yours to claim the value. The platform ledger merely acts as an auditor of this p2p event. This ensures that the platform cannot move your assets without your physical hardware's approval. We have built a financial prism where you are the sole controller of your assets." }
+        ]
+      },
+      "Deploying Logic to Humanoid Hardware": {
+        topic: "Deploying Logic to Humanoid Hardware",
+        professorName: "Robotics Lead",
         studentName: "Judge",
         sections: [
-          { speaker: "Teacher", text: "Judge, we have audited the 12 sectors of the Prism. From Inference Thermodynamics to the Sovereign Signer, the architecture is whole. We have proved that super-intelligence can be governed, localized, and made useful for every human activity. The 2026 landscape is not a place of fear; it is a place of infinite refraction. We have built a lens that makes the blinding light of super-intelligence visible and useful for all of humanity. Our Merkle-style integrity trees, deterministic PDF baking, and heuristic simulation are the foundation of a new era of compute. Refraction finalized. End of manifest. v7.0.0-ULTRA." }
+          { speaker: "Teacher", text: "Sector 10: The Future. The final refraction of our architecture is the deployment of Socratic logic to humanoid hardware. By running our simulation logic on on-device Edge models, the Mock Interview Studio transforms into a physical interaction. Imagine a personalized professor in your living room, providing face-to-face feedback for your entire family." },
+          { speaker: "Student", text: "How does the robot help with technical logic specifically?" },
+          { speaker: "Teacher", text: "The robot can point to architecture diagrams on a physical board while listening to your verbal defense. It uses the same 'Frame-Flow' and 'Emotive Link' protocols discussed in previous sectors but with spatial awareness. We are bridging the gap between the digital twin and the physical world." }
+        ]
+      },
+      "The Autonomous Mentorship Economy": {
+        topic: "The Autonomous Mentorship Economy",
+        professorName: "Robotics Lead",
+        studentName: "Judge",
+        sections: [
+          { speaker: "Teacher", text: "Hardware is expensive, so we treat the robot as an autonomous asset. When the robot is idle, it acts as a p2p mentor on our network, earning VoiceCoins for its owner. It is a self-funding node in the global knowledge economy. We have proven that a 100% Gemini stack can achieve architectural parity with native runtimes while achieving a 10x energy saving. Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things. Refraction complete. End of manifest. v7.0.0-ULTRA." }
         ]
       }
     }
