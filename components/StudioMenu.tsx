@@ -36,7 +36,7 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
   isUserMenuOpen, setIsUserMenuOpen, userProfile, setUserProfile, currentUser,
   setIsCreateModalOpen, setIsVoiceCreateOpen, onUpgradeClick, setIsSettingsModalOpen, onOpenUserGuide, onNavigate, onOpenPrivacy,
   className, channels = [],
-  language, setLanguage, isSuperAdmin: propSuperAdmin, isProMember
+  language, setLanguage, isSuperAdmin: propSuperAdmin, isProMember, t
 }) => {
   const [globalStats, setGlobalStats] = useState<GlobalStats>({ totalLogins: 0, uniqueUsers: 0 });
   
@@ -91,15 +91,37 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
                <div className="p-1.5 bg-amber-500 text-white rounded-md shadow-lg"><Crown size={14} fill="currentColor"/></div><span className="font-bold text-amber-200">Upgrade Membership</span>
             </button>
             
-            {isProMember && (
+            {isProMember ? (
+                <>
+                    <button 
+                        onClick={() => { setIsVoiceCreateOpen(true); setIsUserMenuOpen(false); }} 
+                        className="w-full flex items-center justify-between px-3 py-2 text-sm text-white hover:bg-indigo-600/20 rounded-lg group transition-colors"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="p-1.5 bg-indigo-900/50 text-indigo-400 rounded-md group-hover:bg-indigo-600 group-hover:text-white transition-colors"><Wand2 size={16}/></div>
+                            <span className="font-bold text-indigo-300">{t.magic}</span>
+                        </div>
+                    </button>
+                    <button 
+                        onClick={() => { setIsCreateModalOpen(true); setIsUserMenuOpen(false); }} 
+                        className="w-full flex items-center justify-between px-3 py-2 text-sm text-white hover:bg-slate-800 rounded-lg group"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="p-1.5 bg-slate-800 text-slate-400 rounded-md"><Plus size={16}/></div>
+                            <span className="font-medium">Manual Create</span>
+                        </div>
+                    </button>
+                </>
+            ) : (
                 <button 
-                    onClick={() => { setIsCreateModalOpen(true); setIsUserMenuOpen(false); }} 
-                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-white hover:bg-slate-800 rounded-lg group"
+                    onClick={() => { onUpgradeClick(); setIsUserMenuOpen(false); }} 
+                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-slate-500 hover:bg-slate-800 rounded-lg group"
                 >
                     <div className="flex items-center gap-3">
-                        <div className="p-1.5 bg-indigo-900/50 text-indigo-400 rounded-md"><Plus size={16}/></div>
+                        <div className="p-1.5 bg-slate-800 text-slate-600 rounded-md"><Lock size={16}/></div>
                         <span className="font-medium">Create Podcast</span>
                     </div>
+                    <span className="text-[8px] font-black text-amber-500 uppercase">PRO</span>
                 </button>
             )}
 

@@ -11,12 +11,12 @@ export async function generateLectureScript(
   language: 'en' | 'zh' = 'en',
   channelId?: string,
   voiceName?: string,
-  force: boolean = false
+  force: boolean = false,
+  customSystemInstruction?: string
 ): Promise<GeneratedLecture | null> {
   try {
     const contentUid = await generateContentUid(topic, channelContext, language);
     
-    // 1. Handshake with Knowledge Database (Skip if force is true)
     if (!force) {
       const cached = await getCloudCachedLecture(channelId || 'global', contentUid, language);
       if (cached) {
@@ -42,22 +42,25 @@ export async function generateLectureScript(
 
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
     
-    // Hardened System Instruction to prevent model hallucinations about non-Gemini stacks
+    // Inject the specific channel persona if provided
+    const personaInstruction = customSystemInstruction ? `\n\nPERSONA CONTEXT:\n${customSystemInstruction}` : "";
+
     const systemInstruction = `
         You are an expert educator on the Neural Prism Platform. 
         ${langInstruction}
+        ${personaInstruction}
         
         CRITICAL ARCHITECTURAL TRUTH:
         The Neural Prism is 100% powered by Google Gemini. 
         NEVER mention BERT, GPT, Claude, Llama, or Groq. 
         If asked about the AI stack, explain that we use Gemini 3 Pro for reasoning and Gemini 3 Flash for simulation.
         
-        Format your response as a standard JSON lecture object.
+        Format your response as a standard JSON lecture object. Ensure the content for the specific topic "${topic}" is unique, deep, and follows the persona provided.
     `;
     
     const userPrompt = `
       Topic: "${topic}"
-      Context: "${channelContext}"
+      Channel Context: "${channelContext}"
       
       Generate a conversational JSON lecture:
       {

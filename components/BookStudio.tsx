@@ -1,10 +1,9 @@
-
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { 
   ArrowLeft, BookText, Download, Loader2, BookOpen, 
   ChevronLeft, ChevronRight, FileDown, ShieldCheck, 
   Sparkles, CheckCircle, RefreshCw, Layers, Printer, X, Barcode, QrCode,
-  Palette, Type, AlignLeft, Hash, Fingerprint, Activity, Terminal, Shield, Check, Library, Search, Filter, Grid, Book, Clock, Zap, Upload, Cloud, Save, Trash2
+  Palette, Type, AlignLeft, Hash, Fingerprint, Activity, Terminal, Shield, Check, Library, Search, Filter, Grid, Book, Clock, Zap, Upload, Cloud, Save, Trash2, Image as ImageIcon
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -13,8 +12,9 @@ import { CHINESE_FONT_STACK, SERIF_FONT_STACK } from '../utils/bookSynthesis';
 import { generateSecureId } from '../utils/idUtils';
 import { BookStyle } from '../types';
 import { MarkdownView } from './MarkdownView';
-import { saveCustomBook, getCustomBooks, deleteCustomBook, isUserAdmin } from '../services/firestoreService';
+import { saveCustomBook, getCustomBooks, deleteCustomBook, isUserAdmin, getSystemBookMetadata, saveSystemBookMetadata } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
+import { GoogleGenAI } from "@google/genai";
 
 interface BookStudioProps {
   onBack: () => void;
@@ -81,6 +81,7 @@ const processMarkdownForPdf = (text: string, currentStyle: BookStyle) => {
 export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
   const [viewState, setViewState] = useState<'shelf' | 'studio'>('shelf');
   const [customBooks, setCustomBooks] = useState<BookData[]>([]);
+  const [systemBooksState, setSystemBooksState] = useState<BookData[]>(SYSTEM_BOOKS);
   const [activeBook, setActiveBook] = useState<BookData | null>(null);
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
@@ -89,20 +90,17 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<BookCategory | 'All'>('All');
   const [synthesisSteps, setSynthesisSteps] = useState<string[]>([]);
+  const [generatingCovers, setGeneratingCovers] = useState<Set<string>>(new Set());
+  const [isHydrating, setIsHydrating] = useState(true);
   
+  // Local processing lock to prevent multi-trigger in SAME render session
+  const processingRef = useRef<Set<string>>(new Set());
+  const localImageCache = useRef<Map<string, string>>(new Map());
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentUser = auth?.currentUser;
 
-  const loadBooks = async () => {
-    const custom = await getCustomBooks();
-    setCustomBooks(custom);
-  };
-
-  useEffect(() => {
-    loadBooks();
-  }, []);
-
-  const allBooks = useMemo(() => [...SYSTEM_BOOKS, ...customBooks], [customBooks]);
+  const allBooks = useMemo(() => [...systemBooksState, ...customBooks], [systemBooksState, customBooks]);
 
   const categories = useMemo(() => {
     const set = new Set<BookCategory>();
@@ -128,6 +126,180 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
       setSynthesisSteps([]);
   };
 
+  /**
+   * Internal generator with strict "exactly once per session" logic.
+   */
+  const generateCoverInternal = useCallback(async (book: BookData) => {
+    // 1. Check local session processing lock (active memory)
+    if (processingRef.current.has(book.id)) return null;
+    
+    // 2. Check SessionStorage to see if we already tried and failed this session (e.g. quota)
+    // This satisfies the "retry one time on page load only" requirement.
+    if (sessionStorage.getItem(`cover_attempted_${book.id}`)) {
+        window.dispatchEvent(new CustomEvent('neural-log', { 
+            detail: { text: `Synthesis skipped for ${book.title}: Already attempted this session.`, type: 'info' } 
+        }));
+        return null;
+    }
+    
+    // 3. Double check memory cache
+    if (localImageCache.current.has(book.id)) return localImageCache.current.get(book.id);
+
+    // 4. Mark as processing IMMEDIATELY
+    processingRef.current.add(book.id);
+    setGeneratingCovers(prev => new Set(prev).add(book.id));
+
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const prompt = `Professional, high-quality, artistic book cover art for a technical volume titled "${book.title}". 
+        Subtitle: "${book.subtitle}". 
+        Artistic Style: Modern, clean, conceptual, 8k resolution, cinematic lighting. 
+        Requirements: NO TEXT, no words, centered composition, striking visual metaphor for the topic. 
+        Category: ${book.category}.`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: prompt,
+            config: {
+                imageConfig: {
+                    aspectRatio: "3:4"
+                }
+            }
+        });
+
+        if (response.candidates?.[0]?.content?.parts) {
+            for (const part of response.candidates[0].content.parts) {
+                if (part.inlineData) {
+                    const base64 = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                    
+                    // Update session memory cache
+                    localImageCache.current.set(book.id, base64);
+                    
+                    // Update LocalStorage for permanent cache
+                    try {
+                        localStorage.setItem(`cover_hotcache_${book.id}`, base64);
+                    } catch (e) {
+                        console.warn("Local storage write skipped (likely quota or private mode)");
+                    }
+
+                    // Update local component state
+                    if (book.isCustom) {
+                        setCustomBooks(prev => prev.map(b => b.id === book.id ? { ...b, coverImage: base64 } : b));
+                        if (currentUser) {
+                            await saveCustomBook({ ...book, coverImage: base64 });
+                        }
+                    } else {
+                        setSystemBooksState(prev => prev.map(b => b.id === book.id ? { ...b, coverImage: base64 } : b));
+                        await saveSystemBookMetadata(book.id, { coverImage: base64 });
+                    }
+                    
+                    if (activeBook?.id === book.id) setActiveBook(prev => prev ? ({ ...prev, coverImage: base64 }) : null);
+
+                    window.dispatchEvent(new CustomEvent('neural-log', { 
+                        detail: { text: `Neural Cover refracted for ${book.title}`, type: 'success' } 
+                    }));
+                    return base64;
+                }
+            }
+        }
+    } catch (err: any) {
+        console.error(err);
+        // CRITICAL: Mark as attempted in SessionStorage so we DON'T try again until full page refresh
+        sessionStorage.setItem(`cover_attempted_${book.id}`, 'true');
+        
+        const isQuota = err.message?.includes('quota') || err.message?.includes('429');
+        window.dispatchEvent(new CustomEvent('neural-log', { 
+            detail: { 
+                text: isQuota 
+                    ? `Cover synthesis paused for ${book.title}: API Quota Exceeded. Will retry on next page load.` 
+                    : `Cover synthesis failed for ${book.title}: ${err.message}`, 
+                type: 'error' 
+            } 
+        }));
+    } finally {
+        setGeneratingCovers(prev => {
+            const next = new Set(prev);
+            next.delete(book.id);
+            return next;
+        });
+        // Note: We leave it in processingRef even if it fails to avoid redundant attempts in current mount
+    }
+    return null;
+  }, [activeBook, currentUser]);
+
+  const autoRefractCovers = useCallback(async (books: BookData[]) => {
+      // Background sequential processing to avoid rate limit
+      for (const book of books) {
+          // Verify it's truly a dark node (missing everywhere)
+          if (!book.coverImage && !localImageCache.current.has(book.id) && !processingRef.current.has(book.id)) {
+              // Check session attempt flag before bothering the API service
+              if (!sessionStorage.getItem(`cover_attempted_${book.id}`)) {
+                  window.dispatchEvent(new CustomEvent('neural-log', { 
+                      detail: { text: `Background Refraction: Requesting logic for ${book.title}...`, type: 'info' } 
+                  }));
+                  await generateCoverInternal(book);
+                  // Artificial delay to respect API burst limits
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+          }
+      }
+  }, [generateCoverInternal]);
+
+  const loadBooks = useCallback(async () => {
+    setIsHydrating(true);
+    
+    // Phase 1: Try Local & Memory hydration first
+    const hydratedSystem = await Promise.all(SYSTEM_BOOKS.map(async (book) => {
+        // 1. Session Memory
+        if (localImageCache.current.has(book.id)) {
+            return { ...book, coverImage: localImageCache.current.get(book.id) };
+        }
+        // 2. LocalStorage (Permanent cache)
+        const hotload = localStorage.getItem(`cover_hotcache_${book.id}`);
+        if (hotload) {
+            localImageCache.current.set(book.id, hotload);
+            return { ...book, coverImage: hotload };
+        }
+        // 3. Authority Cloud Registry Check
+        const metadata = await getSystemBookMetadata(book.id);
+        if (metadata?.coverImage) {
+            localImageCache.current.set(book.id, metadata.coverImage);
+            try { localStorage.setItem(`cover_hotcache_${book.id}`, metadata.coverImage); } catch(e) {}
+            return { ...book, coverImage: metadata.coverImage };
+        }
+        return book;
+    }));
+    setSystemBooksState(hydratedSystem);
+
+    // Phase 2: Load Custom Books
+    const custom = await getCustomBooks();
+    setCustomBooks(custom);
+    custom.forEach(b => {
+        if (b.coverImage) {
+            localImageCache.current.set(b.id, b.coverImage);
+            try { localStorage.setItem(`cover_hotcache_${b.id}`, b.coverImage); } catch(e) {}
+        }
+    });
+
+    setIsHydrating(false);
+
+    // Phase 3: Trigger refraction for any remaining dark nodes
+    const combined = [...hydratedSystem, ...custom];
+    autoRefractCovers(combined);
+  }, [autoRefractCovers]);
+
+  useEffect(() => {
+    loadBooks();
+  }, []); // Only once on mount
+
+  const handleManualRefract = (e: React.MouseEvent, book: BookData) => {
+      e.stopPropagation();
+      // Manual bypass: Clear session flags to allow another try if user specifically asks
+      sessionStorage.removeItem(`cover_attempted_${book.id}`);
+      processingRef.current.delete(book.id);
+      generateCoverInternal(book);
+  };
+
   const handleSaveToCloud = async () => {
       if (!activeBook || !currentUser) return;
       setIsSavingToCloud(true);
@@ -149,6 +321,8 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
       if (!confirm(`Permanently delete ${book.title} from cloud?`)) return;
       try {
           await deleteCustomBook(book.id);
+          localStorage.removeItem(`cover_hotcache_${book.id}`);
+          sessionStorage.removeItem(`cover_attempted_${book.id}`);
           setCustomBooks(prev => prev.filter(b => b.id !== book.id));
           if (activeBook?.id === book.id) setViewState('shelf');
       } catch (e) { alert("Delete failed"); }
@@ -211,14 +385,15 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
       addStep("Synthesizing Cinematic Front Cover...");
       const coverHtml = `
         <div style="width: 800px; height: 1131px; background: #020617; color: white; padding: 120px 80px; font-family: ${style.font}; display: flex; flex-direction: column; justify-content: space-between; position: relative; border: 30px solid #0f172a;">
+            ${activeBook.coverImage ? `<img src="${activeBook.coverImage}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.4;" />` : ''}
             <div style="position: absolute; top: 0; right: 0; bottom: 0; width: 300px; background: linear-gradient(to left, rgba(99, 102, 241, 0.1), transparent); pointer-events: none;"></div>
-            <div>
+            <div style="position: relative; z-index: 10;">
                 <p style="text-transform: uppercase; letter-spacing: 0.6em; font-size: 14px; font-weight: 900; color: #818cf8; margin-bottom: 25px;">NEURAL PRISM PUBLICATION</p>
-                <h1 style="font-size: 72px; font-weight: 900; margin: 0; line-height: 1.0; text-transform: uppercase; letter-spacing: -0.05em; font-style: italic;">${activeBook.title}</h1>
+                <h1 style="font-size: 72px; font-weight: 900; margin: 0; line-height: 1.1; text-transform: uppercase; letter-spacing: -0.05em; font-style: italic;">${activeBook.title}</h1>
                 <p style="font-size: 24px; color: #94a3b8; margin-top: 30px; font-weight: 500; max-width: 500px;">${activeBook.subtitle}</p>
                 <div style="width: 150px; height: 12px; background: #6366f1; margin-top: 50px; border-radius: 6px;"></div>
             </div>
-            <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+            <div style="display: flex; align-items: flex-end; justify-content: space-between; position: relative; z-index: 10;">
                 <div>
                     <p style="text-transform: uppercase; letter-spacing: 0.2em; font-size: 12px; color: #64748b; font-weight: 900; margin-bottom: 5px;">AUTHOR REGISTERED AS</p>
                     <p style="font-size: 38px; font-weight: 900; margin: 0; color: #fff;">@${activeBook.author}</p>
@@ -286,7 +461,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
                 </div>
                 <div style="text-align: right;">
                     <img src="${barcodeUrl}" style="height: 60px; width: 180px; margin-bottom: 10px;" />
-                    <p style="font-size: 10px; font-weight: 900; color: #000; letter-spacing: 0.3em; margin: 0;">VERIFIED BINDING</p>
+                    <p style="font-size: 10px; font-weight: 900; color: #000; letter-spacing: 0.2em; margin: 0;">VERIFIED BINDING</p>
                 </div>
             </div>
         </div>
@@ -456,15 +631,15 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
                           </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
                           {filteredBooks.map(book => (
                               <div 
                                 key={book.id}
                                 onClick={() => handleBookSelect(book)}
-                                className="group relative bg-slate-900/50 border border-slate-800 rounded-[2.5rem] p-8 hover:border-indigo-500/50 hover:bg-indigo-900/10 transition-all cursor-pointer shadow-xl flex flex-col items-center text-center gap-6"
+                                className="group relative bg-slate-900/50 border border-slate-800 rounded-[2.5rem] overflow-hidden hover:border-indigo-500/50 hover:bg-indigo-900/10 transition-all cursor-pointer shadow-xl flex flex-col items-center text-center"
                               >
                                   {book.isCustom && (
-                                      <div className="absolute top-6 left-6 z-10">
+                                      <div className="absolute top-6 left-6 z-20">
                                           <div className="flex items-center gap-1.5 bg-indigo-600 text-white px-2 py-0.5 rounded-full shadow-lg border border-indigo-400/50">
                                               <Cloud size={10} fill="currentColor"/>
                                               <span className="text-[8px] font-black uppercase tracking-widest">Sovereign Vault</span>
@@ -475,41 +650,66 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
                                   {book.ownerId === currentUser?.uid && (
                                       <button 
                                         onClick={(e) => { e.stopPropagation(); handleDeleteBook(book); }}
-                                        className="absolute top-6 right-6 z-10 p-2 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl transition-all opacity-0 group-hover:opacity-100 shadow-lg"
+                                        className="absolute top-6 right-6 z-20 p-2 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl transition-all opacity-0 group-hover:opacity-100 shadow-lg"
                                       >
                                           <Trash2 size={16}/>
                                       </button>
                                   )}
 
-                                  <div className="relative">
-                                      <div className="w-24 h-32 bg-gradient-to-br from-indigo-600 to-purple-800 rounded-lg shadow-2xl transition-transform group-hover:scale-105 duration-500 flex flex-col justify-between p-3 border-l-4 border-black/20">
-                                          <div className="w-4 h-0.5 bg-white/40 rounded-full"></div>
-                                          <Book size={32} className="text-white/20 self-center"/>
-                                          <div className="text-[6px] font-black text-white/40 uppercase tracking-widest">NP_v6.8.5</div>
-                                      </div>
-                                      <div className="absolute -bottom-2 -right-2 p-2 bg-slate-950 border border-indigo-500/30 rounded-xl shadow-lg">
-                                          <Zap size={14} className="text-indigo-400" />
+                                  <div className="w-full aspect-[3/4] relative bg-slate-950 overflow-hidden">
+                                      {book.coverImage ? (
+                                          <img src={book.coverImage} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-80 group-hover:opacity-100" crossOrigin="anonymous"/>
+                                      ) : (
+                                          <div className="w-full h-full flex flex-col items-center justify-center text-slate-800 gap-4 bg-gradient-to-br from-slate-900 to-indigo-950/20 p-8">
+                                              <div className="relative">
+                                                <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full animate-pulse"></div>
+                                                <Book size={48} className="opacity-10 relative z-10" />
+                                              </div>
+                                              <div className="flex flex-col items-center gap-2">
+                                                  <div className="flex items-center gap-2 px-3 py-1 bg-indigo-900/40 border border-indigo-500/20 rounded-full animate-pulse">
+                                                      <RefreshCw size={10} className="animate-spin text-indigo-400" />
+                                                      <span className="text-[8px] font-black uppercase text-indigo-300 tracking-widest">Neural Ingest...</span>
+                                                  </div>
+                                                  <button 
+                                                    onClick={(e) => handleManualRefract(e, book)}
+                                                    disabled={generatingCovers.has(book.id)}
+                                                    className="px-6 py-2 bg-indigo-600/10 hover:bg-indigo-600 border border-indigo-500/30 text-indigo-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                                                  >
+                                                    {generatingCovers.has(book.id) ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>}
+                                                    Force Refraction
+                                                  </button>
+                                              </div>
+                                          </div>
+                                      )}
+                                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent"></div>
+                                      <div className="absolute bottom-6 left-6 right-6 text-left">
+                                          <span className="px-2 py-0.5 bg-indigo-600 text-white rounded text-[8px] font-black uppercase tracking-widest">{book.category}</span>
+                                          <h3 className="text-xl font-black text-white leading-tight uppercase italic mt-2 drop-shadow-lg">{book.title}</h3>
                                       </div>
                                   </div>
                                   
-                                  <div className="space-y-2">
-                                      <span className="px-3 py-1 bg-slate-950 border border-slate-800 rounded-full text-[8px] font-black text-indigo-400 uppercase tracking-widest">{book.category}</span>
-                                      <h3 className="text-lg font-black text-white leading-tight uppercase italic group-hover:text-indigo-400 transition-colors">{book.title}</h3>
-                                      <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{book.subtitle}</p>
-                                  </div>
-
-                                  <div className="mt-auto w-full pt-6 border-t border-slate-800/50 flex justify-between items-center text-slate-600">
-                                      <div className="flex items-center gap-2"><Clock size={12}/> <span className="text-[9px] font-bold">{book.pages.length} Sectors</span></div>
-                                      <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                                  <div className="p-8 pt-4 w-full text-left space-y-4">
+                                      <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed h-8">{book.subtitle}</p>
+                                      <div className="pt-4 border-t border-slate-800/50 flex justify-between items-center text-slate-600">
+                                          <div className="flex items-center gap-2"><Clock size={12}/> <span className="text-[9px] font-bold">{book.pages.length} Sectors</span></div>
+                                          <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                                      </div>
                                   </div>
                               </div>
                           ))}
                       </div>
 
-                      {filteredBooks.length === 0 && (
+                      {filteredBooks.length === 0 && !isHydrating && (
                           <div className="py-32 flex flex-col items-center justify-center text-slate-600 gap-4">
                               <Search size={64} className="opacity-10"/>
                               <p className="text-sm font-bold uppercase tracking-[0.4em]">No Refractions Found</p>
+                          </div>
+                      )}
+
+                      {isHydrating && (
+                          <div className="py-32 flex flex-col items-center justify-center text-indigo-400 gap-4 animate-pulse">
+                              <Loader2 size={48} className="animate-spin"/>
+                              <p className="text-[10px] font-black uppercase tracking-widest">Hydrating Registry...</p>
                           </div>
                       )}
                   </div>

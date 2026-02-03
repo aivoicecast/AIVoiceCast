@@ -1,5 +1,7 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem, TranscriptItem } from '../types';
+// Removed non-existent CloudItem import
+import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, TranscriptItem } from '../types';
 import { 
     subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, 
     claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess,
@@ -352,7 +354,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
     if (!activeFile) return;
     setIsMagicFixing(true);
     try {
-        // Fixed: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
+        // Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const systemPrompt = `You are a professional code refactoring and fixing tool.
         Your tasks:
@@ -479,7 +481,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
     setIsSimulating(true);
     setTerminalOutput(null);
     try {
-        // Fixed: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
+        // Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const prompt = `ACT AS A DIGITAL TWIN TERMINAL. Execute the following code and provide the output/errors.\n\nCODE:\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\``;
         const response = await ai.models.generateContent({ 
@@ -508,7 +510,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
     setIsChatThinking(true);
 
     try {
-        // Fixed: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
+        // Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const active = activeFileRef.current;
         const context = active ? `\n\nCURRENT FILE (${active.name}):\n\`\`\`${active.language}\n${active.content}\n\`\`\`` : '';
@@ -851,10 +853,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
                   <button onClick={handleMagicFix} disabled={isMagicFixing || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/40 text-indigo-400 border border-indigo-500/30 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95 disabled:opacity-50 group">
                       {isMagicFixing ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} className="group-hover:scale-110 transition-transform" />} Magic Fix
                   </button>
-                  <button onClick={handleSimulate} disabled={isSimulating || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50">
+                  <button onClick={handleSimulate} disabled={isSimulating || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 disabled:opacity-50">
                       {isSimulating ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor"/>} Run
                   </button>
-                  <button onClick={handleSave} disabled={isSaving || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50">
+                  <button onClick={handleSave} disabled={isSaving || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 disabled:opacity-50">
                       {isSaving ? <Loader2 size={14} className="animate-spin" /> : saveSuccess ? <Check size={14} /> : <Save size={14}/>}
                       {isSaving ? 'Saving...' : saveSuccess ? 'Saved' : 'Save'}
                   </button>

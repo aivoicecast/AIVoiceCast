@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-// FIXED: Using @firebase/ scoped packages
+/* Fix: Standardized Firebase modular imports */
 import { onAuthStateChanged } from '@firebase/auth';
 import { signInWithGoogle, signOut } from '../services/authService';
 import { getAuthInstance } from '../services/firebaseConfig';
@@ -40,7 +39,6 @@ export const UserAuth: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    // Confirmation removed for seamless experience
     await signOut();
   };
 

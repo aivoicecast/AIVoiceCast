@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, FileUp, Loader2, Database, ShieldCheck, Zap, 
@@ -8,7 +7,7 @@ import {
 } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { saveScriptureToLedger, saveAudioToLedger, getScriptureFromLedger, getScriptureAudioUrl } from '../services/firestoreService';
-import { collection, query, where, getDocs } from '@firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebaseConfig';
 import { DualVerse } from '../types';
 import { synthesizeSpeech, TtsProvider } from '../services/tts';
@@ -108,7 +107,8 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
         
         const finalStatus: Record<string, { text: boolean, audio: boolean, checking: boolean }> = {};
         for (let i = 1; i <= count; i++) {
-            const docData = snap.docs.find(d => d.data().chapter === i.toString())?.data();
+            // Fix: cast data to any for property access
+            const docData = (snap as any).docs.find((d: any) => (d.data() as any).chapter === i.toString())?.data() as any;
             const hasVerses = !!docData && Array.isArray(docData.verses) && docData.verses.length > 0;
             finalStatus[i] = {
                 text: hasVerses,
@@ -318,7 +318,7 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
 
             if (needsAudio && currentResult.verses) {
                 currentResult.audioStatus = 'processing';
-                setBatchSummary(prev => prev.map(r => r.chapter === chStr ? { ...currentResult } : r));
+                setBatchSummary(prev => prev.map(r => r.chapter === i.toString() ? { ...currentResult } : r));
                 
                 const ctx = getGlobalAudioContext();
                 await warmUpAudioContext(ctx);
@@ -362,7 +362,7 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
                             } catch (e) {
                                 attempts++;
                                 if (attempts >= 3) throw e;
-                                setBatchSummary(prev => prev.map(r => r.chapter === chStr ? { ...r, genStatus: 'repairing' } : r));
+                                setBatchSummary(prev => prev.map(r => r.chapter === i.toString() ? { ...r, genStatus: 'repairing' } : r));
                                 dispatchLog(`[${chStr}:${v.number}] Neural Backoff (Attempt ${attempts})...`, 'warn');
                                 await new Promise(r => setTimeout(r, 2000));
                             }
@@ -384,7 +384,7 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
                     
                     await new Promise(r => setTimeout(r, 600)); 
                 }
-                currentResult.audioStatus = successCount === currentResult.verses.length ? 'success' : (successCount > 0 ? 'error' : 'error');
+                currentResult.audioStatus = successCount === currentResult.verses.length ? 'success' : 'error';
                 
                 if (currentResult.audioStatus === 'success') {
                     needsSave = true; 
@@ -398,7 +398,7 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
 
             if (currentResult.verses && needsSave) {
                 currentResult.saveStatus = 'processing';
-                setBatchSummary(prev => prev.map(r => r.chapter === chStr ? { ...currentResult } : r));
+                setBatchSummary(prev => prev.map(r => r.chapter === i.toString() ? { ...currentResult } : r));
                 
                 const hasAudioFinal = currentResult.audioStatus === 'success' || (existingResult?.hasAudio ?? false);
                 await saveScriptureToLedger(selectedBook, chStr, currentResult.verses, hasAudioFinal);
@@ -413,7 +413,7 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
             dispatchLog(`[${chStr}] Non-Critical Fault: ${e.message}. Moving to next chapter.`, 'warn');
         }
 
-        setBatchSummary(prev => prev.map(r => r.chapter === chStr ? { ...currentResult } : r));
+        setBatchSummary(prev => prev.map(r => r.chapter === i.toString() ? { ...currentResult } : r));
         setBatchProgress(prev => ({ ...prev, current: prev.current + 1 }));
         
         if (isBatchActiveRef.current) {
@@ -468,7 +468,7 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
             {isBatchRunning && (
                 <button onClick={stopBatch} className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[10px] font-black uppercase rounded-lg shadow-lg animate-pulse">Terminate Batch</button>
             )}
-            <button onClick={() => scanBookVault(selectedBook)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-500 transition-all"><RefreshCw size={18} className={isRegistryRefreshing ? 'animate-spin' : ''} /></button>
+            <button onClick={() => scanBookVault(selectedBook)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-all"><RefreshCw size={18} className={isRegistryRefreshing ? 'animate-spin' : ''} /></button>
         </div>
       </header>
 
@@ -510,7 +510,7 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
                                             <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-700">
                                                 <button onClick={() => setVoiceTier('standard')} title="Standard voices ($4/1M chars)" className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${voiceTier === 'standard' ? 'bg-slate-700 text-white shadow' : 'text-slate-500'}`}>Economy</button>
                                                 <button onClick={() => setVoiceTier('wavenet')} title="Neural voices ($16/1M chars)" className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${voiceTier === 'wavenet' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500'}`}>Neural</button>
-                                                <button onClick={() => setVoiceTier('openai')} title="OpenAI Multilingual ($15/1M chars)" className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${voiceTier === 'openai' ? 'bg-emerald-600 text-white shadow' : 'text-slate-500'}`}>OpenAI</button>
+                                                <button onClick={() => setVoiceTier('openai')} title="OpenAI Multilingual ($15/1M chars)" className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${voiceTier === 'openai' ? 'bg-emerald-600 text-white shadow' : 'text-slate-50'}`}>OpenAI</button>
                                                 <button onClick={() => setVoiceTier('gemini')} title="Gemini Preview voices (Free/Token based)" className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${voiceTier === 'gemini' ? 'bg-indigo-600 text-white shadow' : 'text-slate-50'}`}>Gemini</button>
                                             </div>
                                             {voiceTier !== 'gemini' && voiceTier !== 'openai' && (
@@ -561,7 +561,6 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
                                             </div>
                                             <div className="flex gap-2">
                                                 <div title="Synthesis Status" className={`w-2.5 h-2.5 rounded-full shadow-lg ${res.genStatus === 'success' ? 'bg-emerald-500 shadow-emerald-500/20' : res.genStatus === 'repairing' ? 'bg-amber-500 animate-pulse' : res.genStatus === 'skipped' ? 'bg-indigo-500' : res.genStatus === 'error' ? 'bg-red-500' : 'bg-slate-700 animate-pulse'}`}></div>
-                                                {/* Fixed: audioStatus type comparison to exclude invalid provider strings */}
                                                 <div title="Audio Status" className={`w-2.5 h-2.5 rounded-full ${res.audioStatus === 'success' ? 'bg-emerald-500' : res.audioStatus === 'error' ? 'bg-red-500' : res.audioStatus === 'skipped' ? 'bg-slate-800' : res.audioStatus === 'processing' ? 'bg-slate-700 animate-pulse' : 'bg-slate-800'}`}></div>
                                                 <div title="Save Status" className={`w-2.5 h-2.5 rounded-full ${res.saveStatus === 'success' ? 'bg-emerald-500' : res.saveStatus === 'error' ? 'bg-red-500' : res.saveStatus === 'skipped' ? 'bg-slate-800' : res.saveStatus === 'processing' ? 'bg-slate-700 animate-pulse' : 'bg-slate-800'}`}></div>
                                             </div>

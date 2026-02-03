@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel } from '../types';
-import { auth } from '../services/firebaseConfig';
+import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, RecordingSession } from '../types';
+import { auth, db } from '../services/firebaseConfig';
 import { 
   saveInterviewRecording, 
   deleteInterview, 
   getUserInterviews, 
   deductCoins, 
   AI_COSTS,
-  uploadFileToStorage 
+  uploadFileToStorage,
+  saveRecordingReference
 } from '../services/firestoreService';
+import { doc, updateDoc } from '@firebase/firestore';
 import { GeminiLiveService } from '../services/geminiLive';
 import { GoogleGenAI, Type } from "@google/genai";
-import { generateSecureId } from '../utils/idUtils';
+import { generateSecureId, safeJsonStringify } from '../utils/idUtils';
 import { CodeStudio } from './CodeStudio';
 import { MarkdownView } from './MarkdownView';
 import { Visualizer } from './Visualizer';
@@ -23,13 +25,18 @@ import {
   Cpu, HeartHandshake, ChevronDown, Check, Scissors,
   FileCode, ExternalLink as ExternalLinkIcon, CodeSquare as CodeIcon,
   ShieldCheck, Target, Award as AwardIcon,
-  Lock, Activity, Layers, RefreshCcw
+  Lock, Activity, Layers, RefreshCw, Monitor, Camera, Youtube, HardDrive,
+  UserCheck, Shield, GraduationCap, PlayCircle, ExternalLink, Copy, Share2, SearchX,
+  Play, Link, CloudUpload, HardDriveDownload, List, Table as TableIcon, FileVideo, Calendar, Download, Maximize2
 } from 'lucide-react';
-import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput } from '../utils/audioUtils';
-import { getDriveToken, connectGoogleDrive, isJudgeSession } from '../services/authService';
-import { ensureCodeStudioFolder, uploadToDrive, ensureFolder } from '../services/googleDriveService';
+import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput, getGlobalMediaStreamDest } from '../utils/audioUtils';
+import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
+import { ensureCodeStudioFolder, uploadToDrive, ensureFolder, downloadDriveFileAsBlob, getDriveFileStreamUrl } from '../services/googleDriveService';
+import { uploadToYouTube, getYouTubeVideoUrl, getYouTubeEmbedUrl } from '../services/youtubeService';
+import { saveLocalRecording, getLocalRecordings } from '../utils/db';
 
 interface MockInterviewReport {
+  id: string;
   score: number;
   technicalSkills: string;
   communication: string;
@@ -41,12 +48,14 @@ interface MockInterviewReport {
   learningMaterial: string; 
   sourceCode?: CodeFile[];
   transcript?: TranscriptItem[];
+  videoUrl?: string; 
+  videoBlob?: Blob; 
 }
 
 interface ApiLog {
     time: string;
     msg: string;
-    type: 'info' | 'error' | 'warn';
+    type: 'info' | 'error' | 'success' | 'warn';
     code?: string;
 }
 
@@ -56,6 +65,33 @@ interface MockInterviewProps {
   onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
   isProMember?: boolean;
 }
+
+const PERSONAS = [
+    { 
+        id: 'software-interview', 
+        name: 'Software Interview Expert', 
+        modelId: 'gen-lang-client-0648937375', 
+        icon: GraduationCap, 
+        desc: 'Rigorous algorithmic & system design specialist.',
+        instruction: 'You are a Senior Staff Engineer at Google. You are conducting a hard technical interview. Your tone is professional and slightly intimidating. You demand complexity analysis (Big-O) for every suggestion. If you receive a [RECONNECTION_PROTOCOL_ACTIVE] block, immediately acknowledge the link recovery, summarize your current understanding of the problem and progress, and ask the user to confirm if anything was missed before proceeding.'
+    },
+    { 
+        id: 'linux-kernel', 
+        name: 'Linux Kernel Architect', 
+        modelId: 'gen-lang-client-0375218270', 
+        icon: Cpu, 
+        desc: 'Memory safety, drivers, and scheduler audit.',
+        instruction: 'You are a Linux Kernel Maintainer. You evaluate C code for race conditions, memory leaks, and architectural elegance. You have zero tolerance for sloppy abstractions. If you receive a [RECONNECTION_PROTOCOL_ACTIVE] block, immediately acknowledge the link recovery, summarize your current understanding of the problem and progress, and ask the user to confirm if anything was missed before proceeding.'
+    },
+    { 
+        id: 'default-gem', 
+        name: 'Neural Prism Designer', 
+        modelId: 'Default Gem', 
+        icon: Zap, 
+        desc: 'General technical evaluation and coaching.',
+        instruction: 'You are the project lead of Neural Prism. You are evaluating a contributor. You focus on clean code, documentation, and feature parity. If you receive a [RECONNECTION_PROTOCOL_ACTIVE] block, immediately acknowledge the link recovery, summarize your current understanding of the problem and progress, and ask the candidate to confirm if anything was missed before proceeding.'
+    }
+];
 
 function getLanguageFromExt(filename: string): CodeFile['language'] {
     if (!filename) return 'c++';
@@ -85,7 +121,7 @@ const getCodeTool: any = {
 
 const updateActiveFileTool: any = {
   name: "update_active_file",
-  description: "Modify the active code file. Use this for adding comments, hints, or boilerplate.",
+  description: "Modify the active code file. Use this ONLY for adding TODO comments, function stubs, or high-level boilerplate. NEVER use this to provide a full working solution or implement the candidate's idea for them. If the candidate describes a plan, your job is to CRITIQUE it, not implement it.",
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -97,92 +133,175 @@ const updateActiveFileTool: any = {
 
 const createInterviewFileTool: any = {
   name: "create_interview_file",
-  description: "Generate a new problem file in the workspace.",
+  description: "Generate a new problem file in the workspace containing ONLY the problem description and basic setup. DO NOT include the solution.",
   parameters: {
     type: Type.OBJECT, 
     properties: {
       filename: { type: Type.STRING, description: "Descriptive name (e.g. 'binary_tree_sum.cpp')." },
-      content: { type: Type.STRING, description: "Initial file content." }
+      content: { type: Type.STRING, description: "Problem description and boilerplate code." }
     },
     required: ["filename", "content"]
   }
 };
 
-const EvaluationReportDisplay = ({ report }: { report: MockInterviewReport }) => {
+const EvaluationReportDisplay = ({ 
+    report, 
+    onSyncYouTube, 
+    onSyncDrive, 
+    isSyncing 
+}: { 
+    report: MockInterviewReport, 
+    onSyncYouTube: () => void, 
+    onSyncDrive: () => void, 
+    isSyncing: boolean 
+}) => {
     if (!report) return null;
 
     const [expandedFileIndex, setExpandedFileIndex] = useState<number | null>(null);
-    const [showTranscript, setShowTranscript] = useState(false);
+    const [showPlayer, setShowPlayer] = useState(false);
 
     const verdictColor = useMemo(() => {
-        const v = String(report.verdict || '').toLowerCase();
+        const v = String(report?.verdict || '').toLowerCase();
         if (v.includes('strong hire')) return 'bg-emerald-500 text-white shadow-emerald-500/20';
         if (v.includes('hire')) return 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30';
         if (v.includes('move forward')) return 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30';
         if (v.includes('reject') || v.includes('no hire')) return 'bg-red-900/20 text-red-400 border-red-500/30';
         return 'bg-slate-800 text-slate-300 border-slate-700';
-    }, [report.verdict]);
+    }, [report?.verdict]);
+
+    const handleDownload = () => {
+        if (!report.videoUrl && !report.videoBlob) return;
+        const a = document.createElement('a');
+        a.href = report.videoBlob ? URL.createObjectURL(report.videoBlob) : (report.videoUrl || '');
+        a.download = `Mock_Interview_Archive_${report.id.substring(0,8)}.webm`;
+        a.click();
+    };
 
     return (
         <div className="w-full space-y-12 animate-fade-in-up pb-32">
-            {/* Header Block with Score and Verdict */}
             <div className="flex flex-col md:flex-row items-center justify-center gap-8">
                 <div className="relative group">
                     <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
                     <div className="relative px-12 py-10 bg-slate-900 rounded-[3rem] border border-indigo-500/30 shadow-2xl flex flex-col items-center min-w-[220px]">
                         <p className="text-[10px] text-indigo-400 uppercase font-black tracking-[0.3em] mb-2">Neural Index</p>
-                        <p className="text-7xl font-black text-white italic tracking-tighter">{report.score}<span className="text-xl text-slate-600">/100</span></p>
+                        <p className="text-7xl font-black text-white italic tracking-tighter">{report.score || 0}<span className="text-xl text-slate-600">/100</span></p>
                     </div>
                 </div>
                 <div className="flex flex-col items-center md:items-start gap-4">
                     <div className={`px-8 py-3 rounded-2xl border text-2xl font-black uppercase tracking-tighter shadow-xl ${verdictColor}`}>
-                        {report.verdict}
+                        {report.verdict || 'UNAVAILABLE'}
                     </div>
                     <div className="flex items-center gap-4 text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">
-                        <span className="flex items-center gap-1.5"><ShieldCheck size={14} className="text-emerald-500"/> Verified Result</span>
+                        <span className="flex items-center gap-1.5"><ShieldCheck size={14} className="text-emerald-400"/> Verified Result</span>
                         <div className="w-1 h-1 rounded-full bg-slate-800"></div>
                         <span className="flex items-center gap-1.5"><Bot size={14} className="text-indigo-400"/> Refracted by Gemini 3 Pro</span>
                     </div>
                 </div>
             </div>
 
-            {/* Summary Block */}
+            {report.videoUrl || report.videoBlob ? (
+                <div className="space-y-4">
+                    <div className="bg-slate-900 border border-indigo-500/30 p-8 rounded-[3rem] shadow-xl flex flex-col lg:flex-row items-center justify-between gap-6 animate-fade-in">
+                        <div className="flex items-center gap-6">
+                            <div className="p-4 bg-red-600 rounded-3xl shadow-lg shadow-red-900/20">
+                                <Video size={32} className="text-white" />
+                            </div>
+                            <div>
+                                <h4 className="text-white font-black uppercase tracking-tighter italic text-xl">Session Artifact</h4>
+                                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">1080p Neural Archive Secured</p>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-3 justify-center">
+                            <button 
+                                onClick={() => setShowPlayer(!showPlayer)}
+                                className="px-6 py-3 bg-white text-slate-950 rounded-xl font-black uppercase tracking-widest shadow-lg hover:bg-indigo-50 transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap text-[10px]"
+                            >
+                                {showPlayer ? <X size={16}/> : <PlayCircle size={16}/>}
+                                {showPlayer ? 'Close Player' : 'Watch Local'}
+                            </button>
+
+                            <button 
+                                onClick={onSyncYouTube}
+                                disabled={isSyncing || report.videoUrl?.includes('youtube')}
+                                className={`px-6 py-3 rounded-xl font-black uppercase tracking-widest shadow-lg transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap text-[10px] ${report.videoUrl?.includes('youtube') ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/20' : 'bg-red-600 text-white hover:bg-red-500'}`}
+                            >
+                                {isSyncing ? <Loader2 size={16} className="animate-spin"/> : <Youtube size={16}/>}
+                                {report.videoUrl?.includes('youtube') ? 'Synced to YT' : 'Sync to YouTube'}
+                            </button>
+
+                            <button 
+                                onClick={onSyncDrive}
+                                disabled={isSyncing || report.videoUrl?.includes('drive')}
+                                className={`px-6 py-3 rounded-xl font-black uppercase tracking-widest shadow-lg transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap text-[10px] ${report.videoUrl?.includes('drive') ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/20' : 'bg-indigo-600 text-white hover:bg-indigo-500'}`}
+                            >
+                                {isSyncing ? <Loader2 size={16} className="animate-spin"/> : <HardDrive size={16}/>}
+                                {report.videoUrl?.includes('drive') ? 'Synced to Drive' : 'Sync to Drive'}
+                            </button>
+
+                            <button 
+                                onClick={handleDownload}
+                                className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition-all active:scale-95"
+                                title="Download Local Artifact"
+                            >
+                                <Download size={16}/>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {showPlayer && (
+                        <div className="bg-black border border-slate-800 rounded-[2.5rem] overflow-hidden aspect-video shadow-2xl animate-fade-in relative group/player">
+                            <video 
+                                src={report.videoBlob ? URL.createObjectURL(report.videoBlob) : (report.videoUrl || '')} 
+                                controls 
+                                autoPlay 
+                                playsInline
+                                crossOrigin="anonymous"
+                                className="w-full h-full object-contain"
+                            />
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-[3rem] flex items-center justify-center gap-4 text-slate-600 animate-pulse">
+                    <Loader2 size={20} className="animate-spin" />
+                    <span className="text-xs font-black uppercase tracking-widest">Neural Artifact Syncing...</span>
+                </div>
+            )}
+
             <div className="bg-slate-900/50 border border-slate-800 p-10 rounded-[3rem] shadow-xl relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-24 bg-indigo-500/5 blur-[100px] rounded-full group-hover:bg-indigo-500/10 transition-colors"></div>
                 <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] mb-6 flex items-center gap-2">
                     <Quote size={16} fill="currentColor"/> Executive Assessment
                 </h4>
                 <p className="text-xl font-medium leading-relaxed text-slate-200 italic border-l-4 border-indigo-500/30 pl-8 relative z-10">
-                    "{report.summary}"
+                    "{report.summary || 'Analytical synthesis in progress...'}"
                 </p>
             </div>
 
-            {/* Detailed Skills Spectrum */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] shadow-xl hover:border-indigo-500/30 transition-all group">
                     <div className="w-10 h-10 rounded-xl bg-indigo-900/30 text-indigo-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                         <Cpu size={20}/>
                     </div>
                     <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Technical Proficiency</h4>
-                    <p className="text-sm text-slate-300 leading-relaxed font-medium">{report.technicalSkills}</p>
+                    <p className="text-sm text-slate-300 leading-relaxed font-medium">{report.technicalSkills || 'Evaluating...'}</p>
                 </div>
                 <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] shadow-xl hover:border-pink-500/30 transition-all group">
                     <div className="w-10 h-10 rounded-xl bg-pink-900/30 text-pink-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                         <Presentation size={20}/>
                     </div>
                     <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Communication Flow</h4>
-                    <p className="text-sm text-slate-300 leading-relaxed font-medium">{report.communication}</p>
+                    <p className="text-sm text-slate-300 leading-relaxed font-medium">{report.communication || 'Evaluating...'}</p>
                 </div>
                 <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] shadow-xl hover:border-emerald-500/30 transition-all group">
                     <div className="w-10 h-10 rounded-xl bg-emerald-900/30 text-emerald-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                         <HeartHandshake size={20}/>
                     </div>
                     <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Collaboration / Signal</h4>
-                    <p className="text-sm text-slate-300 leading-relaxed font-medium">{report.collaboration}</p>
+                    <p className="text-sm text-slate-300 leading-relaxed font-medium">{report.collaboration || 'Evaluating...'}</p>
                 </div>
             </div>
 
-            {/* Matrix: Strengths vs Growth */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="bg-emerald-950/10 border border-emerald-500/20 p-10 rounded-[3rem] shadow-xl space-y-6">
                     <h4 className="text-xs font-black text-emerald-400 uppercase tracking-[0.3em] flex items-center gap-3">
@@ -212,18 +331,16 @@ const EvaluationReportDisplay = ({ report }: { report: MockInterviewReport }) =>
                 </div>
             </div>
 
-            {/* Neural Study Path */}
             <div className="bg-slate-900 border border-slate-800 p-10 rounded-[3rem] shadow-xl relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-32 bg-indigo-500/10 blur-[120px] rounded-full"></div>
                 <h4 className="text-xs font-black text-indigo-400 uppercase tracking-[0.4em] mb-8 flex items-center gap-3">
-                    <Zap size={18} fill="currentColor"/> 10-Week Refraction Plan
+                    <Zap size={18} fill="currentColor"/> 10-Week Master-Level Refraction Plan
                 </h4>
                 <div className="prose prose-invert prose-sm max-w-none relative z-10 bg-black/30 p-8 rounded-[2rem] border border-white/5">
                     <MarkdownView content={report.learningMaterial || ''} />
                 </div>
             </div>
 
-            {/* Neural Snapshot: Source Code Artifacts */}
             {report.sourceCode && report.sourceCode.length > 0 && (
                 <div className="bg-slate-900 border border-slate-800 p-10 rounded-[3rem] shadow-xl">
                     <h4 className="text-xs font-black text-slate-500 uppercase tracking-[0.4em] mb-8 flex items-center gap-3">
@@ -239,7 +356,7 @@ const EvaluationReportDisplay = ({ report }: { report: MockInterviewReport }) =>
                                         onClick={() => setExpandedFileIndex(isExpanded ? null : idx)}
                                     >
                                         <div className="flex items-center gap-4">
-                                            <div className={`p-2.5 rounded-xl transition-colors ${isExpanded ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-800 text-slate-500'}`}>
+                                            <div className={`p-2.5 rounded-xl transition-colors ${isExpanded ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-800 text-slate-50'}`}>
                                                 <CodeIcon size={16} />
                                             </div>
                                             <div>
@@ -247,7 +364,7 @@ const EvaluationReportDisplay = ({ report }: { report: MockInterviewReport }) =>
                                                 <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{file.language}</p>
                                             </div>
                                         </div>
-                                        {isExpanded ? <ChevronDown size={20} className="text-indigo-400 rotate-180 transition-transform" /> : <ChevronDown size={20} className="text-slate-600 transition-transform" />}
+                                        <ChevronDown size={20} className={`text-slate-600 transition-transform duration-300 ${isExpanded ? 'rotate-180 text-indigo-400' : ''}`} />
                                     </div>
                                     {isExpanded && (
                                         <div className="p-6 border-t border-slate-800 animate-fade-in-up bg-black/40">
@@ -262,70 +379,21 @@ const EvaluationReportDisplay = ({ report }: { report: MockInterviewReport }) =>
                     </div>
                 </div>
             )}
-            
-            {/* Collapsible Transcript */}
-            {report.transcript && report.transcript.length > 0 && (
-                <div className="bg-slate-900 border border-slate-800 p-10 rounded-[3rem] shadow-xl overflow-hidden">
-                    <div 
-                        className="flex items-center justify-between cursor-pointer group"
-                        onClick={() => setShowTranscript(!showTranscript)}
-                    >
-                        <h4 className="text-xs font-black text-slate-500 uppercase tracking-[0.4em] flex items-center gap-3">
-                            {/* Fixed: MessageCircle icon imported from lucide-react */}
-                            <MessageCircle size={18} /> Raw Verbal Archive
-                        </h4>
-                        <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-500 group-hover:text-indigo-400 transition-colors bg-slate-950 px-4 py-1.5 rounded-full border border-slate-800">
-                            {showTranscript ? 'Secure Archive' : 'Open Vault'}
-                            <ChevronDown size={14} className={`transition-transform duration-300 ${showTranscript ? 'rotate-180' : ''}`} />
-                        </div>
-                    </div>
-                    
-                    {showTranscript && (
-                        <div className="mt-10 space-y-4 max-h-[600px] overflow-y-auto pr-4 scrollbar-thin scrollbar-thumb-slate-800">
-                            {report.transcript.map((msg, i) => (
-                                <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                                    <span className={`text-[9px] font-black uppercase mb-1.5 tracking-widest px-2 ${msg.role === 'user' ? 'text-indigo-400' : 'text-red-400'}`}>
-                                        {msg.role === 'user' ? 'Candidate' : 'Interviewer'}
-                                    </span>
-                                    <div className={`max-w-[85%] px-5 py-3 rounded-2xl text-xs leading-relaxed shadow-lg ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-300 rounded-tl-sm border border-slate-700'}`}>
-                                        {msg.text}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
         </div>
     );
 };
 
 export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfile, onStartLiveSession, isProMember }) => {
-  const [activeRecordingForFeedback, setActiveRecordingForFeedback] = useState<MockInterviewRecording | null>(null);
-  
-  if (isProMember === false) {
-      return (
-          <div className="h-full flex items-center justify-center p-6 bg-slate-950">
-              <div className="max-w-md w-full bg-slate-900 border border-indigo-500/30 rounded-[3rem] p-12 text-center shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-32 bg-indigo-600/10 blur-[100px] rounded-full pointer-events-none"></div>
-                  <Lock size={48} className="text-indigo-400 mx-auto mb-6 relative z-10" />
-                  <h2 className="text-2xl font-black text-white italic tracking-tighter uppercase mb-4 relative z-10">Pro Access Required</h2>
-                  <p className="text-slate-400 text-sm mb-10 font-medium relative z-10">Technical Mock Interviews require an active Pro Membership to handle specialized neural evaluation logic.</p>
-                  <button onClick={onBack} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl transition-all relative z-10">Back to Hub</button>
-              </div>
-          </div>
-      );
-  }
-
   const [view, setView] = useState<'selection' | 'setup' | 'active' | 'feedback' | 'archive'>('selection');
   const [interviewMode, setInterviewMode] = useState<'coding' | 'system_design' | 'behavioral' | 'quick_screen' | 'assessment_30' | 'assessment_60'>('coding');
   const [interviewLanguage, setInterviewLanguage] = useState<'c++' | 'python' | 'javascript' | 'java'>('c++');
   const [jobDescription, setJobDescription] = useState('');
-  const [interviewerPersona, setInterviewerPersona] = useState('Senior Staff Engineer at Google. Rigorous but fair. Focuses on scalability and data structures.');
-  
+  const [selectedPersona, setSelectedPersona] = useState(PERSONAS[0]);
+  const [sessionUuid, setSessionUuid] = useState('');
+  const [archiveSearch, setArchiveSearch] = useState('');
+
   const [isLive, setIsLive] = useState(false);
   const [isRecovering, setIsRecovering] = useState(false);
-  const [isThinking, setIsThinking] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const transcriptRef = useRef<TranscriptItem[]>([]);
   const [files, setFiles] = useState<CodeFile[]>([]);
@@ -335,26 +403,45 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [volume, setVolume] = useState(0);
 
   const [apiLogs, setApiLogs] = useState<ApiLog[]>([]);
-  const [showLogs, setShowLogs] = useState(false);
 
   const [interviewDuration, setInterviewDuration] = useState(15); 
   const [timeLeft, setTimeLeft] = useState(15 * 60); 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rotationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const renderIntervalRef = useRef<any>(null);
   const autoReconnectAttempts = useRef(0);
-  const maxAutoRetries = 10;
+  const maxAutoRetries = 20; 
+  const isEndingRef = useRef(false);
+
+  // Recording State
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const [isRecordingActive, setIsRecordingActive] = useState(false);
+  const [isUploadingRecording, setIsUploadingRecording] = useState(false);
+  const [recordingId, setRecordingId] = useState<string | null>(null);
+  
+  const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
+  const [resolvedMediaUrl, setResolvedMediaUrl] = useState<string | null>(null);
+  const [activeRecording, setActiveRecording] = useState<MockInterviewRecording | null>(null);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
   
   const [isLoading, setIsLoading] = useState(false);
   const [report, setReport] = useState<MockInterviewReport | null>(null);
   const [pastInterviews, setPastInterviews] = useState<MockInterviewRecording[]>([]);
 
+  const localSessionVideoUrlRef = useRef<string>('');
+  const localSessionBlobRef = useRef<Blob | null>(null);
+
   const serviceRef = useRef<GeminiLiveService | null>(null);
-  const sessionFolderIdRef = useRef<string | null>(null);
   const currentUser = auth?.currentUser;
 
   const addApiLog = useCallback((msg: string, type: ApiLog['type'] = 'info', code?: string) => {
       const time = new Date().toLocaleTimeString();
       setApiLogs(prev => [{ time, msg, type, code }, ...prev].slice(0, 100));
+      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `[Interrogation] ${msg}`, type } }));
   }, []);
 
   useEffect(() => {
@@ -371,304 +458,180 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   useEffect(() => {
     if (view === 'archive' && auth.currentUser) {
-        getUserInterviews(auth.currentUser.uid).then(setPastInterviews);
+        setIsLoading(true);
+        const safetyTimeout = setTimeout(() => setIsLoading(false), 5000);
+        getUserInterviews(auth.currentUser.uid).then(data => {
+            clearTimeout(safetyTimeout);
+            setPastInterviews(data.sort((a, b) => b.timestamp - a.timestamp));
+            setIsLoading(false);
+        }).catch(() => {
+            clearTimeout(safetyTimeout);
+            setIsLoading(false);
+        }); 
     }
   }, [view]);
 
-  useEffect(() => {
-    if (isLive && view === 'active' && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            if (timerRef.current) clearInterval(timerRef.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isLive, view, timeLeft]);
+  const isYouTubeUrl = (url?: string) => !!url && (url.includes('youtube.com') || url.includes('youtu.be'));
+  const isDriveUrl = (url?: string) => !!url && (url.startsWith('drive://') || url.includes('drive.google.com'));
 
-  const handleFileChange = (updated: CodeFile) => {
-      setFiles(prev => {
-          const next = prev.map(f => f.path === updated.path ? updated : f);
-          filesRef.current = next;
-          return next;
-      });
+  const extractYouTubeId = (url: string): string | null => {
+      try {
+          const urlObj = new URL(url);
+          if (urlObj.hostname.includes('youtube.com')) return urlObj.searchParams.get('v');
+          else if (urlObj.hostname.includes('youtu.be')) return urlObj.pathname.slice(1);
+      } catch (e: any) {
+          const match = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
+          return match ? match[1] : null;
+      }
+      return null;
   };
 
-  const handleSyncCodeWithAi = useCallback((file: CodeFile) => {
-    if (serviceRef.current) {
-        const syncMessage = `NEURAL SNAPSHOT: I have updated the code in "${file.name}". Please review the current state:\n\n\`\`\`${file.language}\n${file.content}\n\`\`\``;
-        serviceRef.current.sendText(syncMessage);
-        addApiLog("Manually synced code to AI context", "info");
-    }
-  }, [addApiLog]);
+  const handlePlayback = async (rec: MockInterviewRecording) => {
+      if (resolvedMediaUrl?.startsWith('blob:')) { URL.revokeObjectURL(resolvedMediaUrl); }
+      if (isYouTubeUrl(rec.videoUrl)) {
+          setResolvedMediaUrl(rec.videoUrl); setActiveMediaId(rec.id); setActiveRecording(rec);
+          return;
+      }
+      if (isDriveUrl(rec.videoUrl)) {
+          setResolvingId(rec.id);
+          try {
+              const token = getDriveToken() || await connectGoogleDrive();
+              const driveUri = rec.videoUrl!;
+              const fileId = driveUri.replace('drive://', '').split('&')[0];
+              const streamUrl = getDriveFileStreamUrl(token, fileId);
+              setResolvedMediaUrl(streamUrl); setActiveMediaId(rec.id); setActiveRecording(rec);
+          } catch (e: any) {
+              window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Drive Access Denied: " + e.message, type: 'error' } }));
+          } finally {
+              setResolvingId(null);
+          }
+      } else {
+          if ((rec as any).blob instanceof Blob) {
+              const freshUrl = URL.createObjectURL((rec as any).blob);
+              setResolvedMediaUrl(freshUrl); setActiveMediaId(rec.id); setActiveRecording(rec);
+          } else {
+              setResolvedMediaUrl(rec.videoUrl); setActiveMediaId(rec.id); setActiveRecording(rec);
+          }
+      }
+  };
 
-  const connectToAI = useCallback(async (isAutoRetry = false) => {
-    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+  const closePlayer = () => {
+    if (resolvedMediaUrl?.startsWith('blob:')) URL.revokeObjectURL(resolvedMediaUrl);
+    setActiveMediaId(null); setResolvedMediaUrl(null); setActiveRecording(null);
+  };
+
+  const performSyncToYouTube = async (id: string, blob: Blob, meta: { mode: string, language: string }) => {
+    if (!currentUser) return;
+    setIsUploadingRecording(true);
+    setRecordingId(id);
+    addApiLog(`Syncing session ${id.substring(0,8)} to YouTube Registry...`, 'info');
     
-    if (isAutoRetry) {
-        setIsRecovering(true);
-        addApiLog(`Attempting reconnection ${autoReconnectAttempts.current + 1}/${maxAutoRetries}...`, "warn");
-        if (serviceRef.current) await serviceRef.current.disconnect();
-    } else {
-        setIsLive(false);
-        setIsRecovering(false);
-        autoReconnectAttempts.current = 0;
-        addApiLog("Starting fresh AI connection handshake", "info");
-    }
-
-    const service = new GeminiLiveService();
-    serviceRef.current = service;
-
-    const isResuming = isAutoRetry || transcriptRef.current.length > 0;
-
-    const systemInstruction = `
-        You are conducting a professional technical mock interview. 
-        MODE: ${interviewMode.toUpperCase()}
-        PROGRAMMING LANGUAGE: ${interviewLanguage.toUpperCase()}
-        INTERVIEWER PERSONA: ${interviewerPersona}
-        JOB DESCRIPTION: ${jobDescription || 'General Software Engineering'}
-        CANDIDATE: ${userProfile?.displayName || 'Candidate'}
-        TIME LIMIT: ${interviewDuration} minutes
-
-        CRITICAL RECOVERY RULES:
-        1. IF YOU ARE RESUMING (Check first message): You MUST continue exactly where you left off. 
-        2. DO NOT greet the candidate again. 
-        3. DO NOT ask a new question if the candidate was already working on a problem.
-        4. YOU MUST use 'get_current_code' immediately after resuming to see the latest progress.
-        5. If you see code in the snapshot, acknowledge it briefly and resume the dialogue.
-    `;
+    let token = getDriveToken() || await signInWithGoogle().then(() => getDriveToken());
+    if (!token) { setIsUploadingRecording(false); return; }
 
     try {
-        await service.initializeAudio();
-        await service.connect('Software Interview Voice', systemInstruction, {
-            onOpen: () => {
-                setIsLive(true);
-                setIsRecovering(false);
-                addApiLog("Neural Link established", "info");
-                
-                if (isResuming) {
-                    const active = filesRef.current[activeFileIndexRef.current] || filesRef.current[0];
-                    const recentTranscript = transcriptRef.current.slice(-6).map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
-                    
-                    const snapshot = `[NEURAL_SNAPSHOT - RECOVERY HANDSHAKE]
-                    RECOVERY MODE: ON
-                    We are resuming an active interview. 
-                    TIME REMAINING: ${Math.floor(timeLeft / 60)} minutes.
-                    
-                    CURRENT ACTIVE FILE: "${active?.name || 'Untitled'}"
-                    LATEST CODE STATE:
-                    \`\`\`${active?.language || 'c++'}
-                    ${active?.content || ""}
-                    \`\`\`
-                    
-                    CONVERSATION CONTEXT (Last few turns):
-                    ${recentTranscript}
-                    
-                    INSTRUCTION: Resume immediately. Do NOT introduce yourself. Acknowledge the code above and continue your interrogation.`;
-                    
-                    serviceRef.current.sendText(snapshot);
-                    addApiLog("Context snapshot dispatched for recovery", "info");
-                }
-            },
-            onClose: (reason, code) => {
-                setIsLive(false);
-                addApiLog(`Connection lost: ${reason}`, "error", String(code));
-                if (autoReconnectAttempts.current < maxAutoRetries) {
-                    autoReconnectAttempts.current++;
-                    const delay = 1000 + (autoReconnectAttempts.current * 1500);
-                    addApiLog(`Scheduling retry in ${delay}ms`, "info");
-                    reconnectTimeoutRef.current = setTimeout(() => connectToAI(true), delay);
-                } else {
-                    setIsRecovering(false);
-                    addApiLog("Maximum reconnection attempts reached.", "error");
-                }
-            },
-            onError: (err, code) => {
-                setIsLive(false);
-                addApiLog(`API Error: ${err}`, "error", code);
-                if (code === 'RATE_LIMIT') {
-                    addApiLog("Rate limit hit. Cooling down for 10s...", "warn");
-                    reconnectTimeoutRef.current = setTimeout(() => connectToAI(true), 10000);
-                } else if (autoReconnectAttempts.current < maxAutoRetries) {
-                    autoReconnectAttempts.current++;
-                    reconnectTimeoutRef.current = setTimeout(() => connectToAI(true), 3000);
-                }
-            },
-            onVolumeUpdate: (v) => setVolume(v),
-            onTranscript: (text, isUser) => {
-                setTranscript(prev => {
-                    const role = isUser ? 'user' : 'ai';
-                    if (text.includes('[NEURAL_SNAPSHOT')) return prev;
-
-                    if (prev.length > 0 && prev[prev.length - 1].role === role) {
-                        return [...prev.slice(0, -1), { ...prev[prev.length - 1], text: prev[prev.length - 1].text + text }];
-                    }
-                    return [...prev, { role, text, timestamp: Date.now() }];
-                });
-            },
-            onToolCall: async (toolCall) => {
-                for (const fc of toolCall.functionCalls) {
-                    const args = fc.args as any;
-                    addApiLog(`Tool Call: ${fc.name}`, "info");
-                    if (fc.name === 'create_interview_file') {
-                        const filename = args.filename;
-                        const content = args.content;
-                        const drivePath = `drive://${generateSecureId()}`;
-                        
-                        const newFile: CodeFile = {
-                            name: filename,
-                            path: drivePath,
-                            content: content,
-                            language: getLanguageFromExt(filename),
-                            loaded: true, isDirectory: false
-                        };
-
-                        if (!isJudgeSession()) {
-                            const token = getDriveToken();
-                            if (token && sessionFolderIdRef.current) {
-                                try {
-                                    const fileId = await uploadToDrive(token, sessionFolderIdRef.current, filename, content);
-                                    newFile.driveId = fileId;
-                                } catch(e) { addApiLog("Drive sync failed for new file", "warn"); }
-                            }
-                        }
-
-                        setFiles(prev => {
-                            const next = [...prev, newFile];
-                            filesRef.current = next;
-                            return next;
-                        });
-                        const newIndex = filesRef.current.length - 1;
-                        setActiveFileIndex(newIndex);
-                        activeFileIndexRef.current = newIndex;
-                        {/* Fixed: sendToolResponse arguments to match GeminiLiveService expectations */}
-                        service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: "File created and focused in workspace." } });
-                    } else if (fc.name === 'get_current_code') {
-                        const active = filesRef.current[activeFileIndexRef.current];
-                        {/* Fixed: sendToolResponse arguments to match GeminiLiveService expectations */}
-                        service.sendToolResponse({ id: fc.id, name: fc.name, response: { code: active?.content || "" } });
-                    } else if (fc.name === 'update_active_file') {
-                        const newContent = args.content || args.new_content || args.code;
-                        if (newContent !== undefined) {
-                            const active = filesRef.current[activeFileIndexRef.current];
-                            handleFileChange({ ...active, content: newContent });
-                            
-                            if (!isJudgeSession()) {
-                                const token = getDriveToken();
-                                if (token && sessionFolderIdRef.current && !active.path.startsWith('local-')) {
-                                    uploadToDrive(token, sessionFolderIdRef.current, active.name, newContent).then(fid => {
-                                        handleFileChange({ ...active, content: newContent, driveId: fid });
-                                    }).catch(console.warn);
-                                }
-                            }
-                        }
-                        {/* Fixed: sendToolResponse arguments to match GeminiLiveService expectations */}
-                        service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: "File updated." } });
-                    }
-                }
-            }
-        }, [{ functionDeclarations: [getCodeTool, createInterviewFileTool, updateActiveFileTool] }]);
-    } catch(e: any) {
-        setIsLive(false);
-        setIsRecovering(false);
-        addApiLog(`Connection Exception: ${e.message}`, "error");
-    }
-  }, [interviewMode, interviewLanguage, interviewerPersona, jobDescription, userProfile, interviewDuration, timeLeft, addApiLog]);
-
-  const handleStartInterview = async () => {
-    setIsLoading(true);
-    setApiLogs([]);
-    const sid = generateSecureId().substring(0, 8);
-    
-    if (isJudgeSession()) {
-        addApiLog("Sovereign Evaluation Mode: Using High-Speed Firebase Storage.", "info");
-    } else {
-        addApiLog("Initializing workspace and Drive folders...", "info");
-        try {
-            const token = getDriveToken() || await connectGoogleDrive();
-            if (token) {
-                const root = await ensureCodeStudioFolder(token);
-                const interviewsFolder = await ensureFolder(token, 'MockInterviews', root);
-                sessionFolderIdRef.current = await ensureFolder(token, `Session_${sid}_${interviewLanguage}`, interviewsFolder);
-                addApiLog("Drive vault secured.", "info");
-            }
-        } catch(e) {
-            addApiLog("Drive integration disabled for this session.", "warn");
+        const ytId = await uploadToYouTube(token!, blob, {
+            title: `Mock Interview: ${meta.mode.toUpperCase()} (${id.substring(0,8)})`,
+            description: `Neural evaluation artifact. Candidate: @${currentUser.displayName}. Language: ${meta.language}.`,
+            privacyStatus: 'unlisted'
+        });
+        const videoUrl = getYouTubeVideoUrl(ytId);
+        
+        const recRef = doc(db, 'mock_interviews', id);
+        await updateDoc(recRef, { videoUrl, visibility: 'private' });
+        
+        if (report && report.id === id) {
+            setReport({ ...report, videoUrl });
         }
+        setPastInterviews(prev => prev.map(p => p.id === id ? { ...p, videoUrl, visibility: 'private' } : p));
+        addApiLog("YouTube Sync finalized. Archive unlisted and secure.", "success");
+    } catch(e: any) {
+        addApiLog("YouTube sync interrupted: " + e.message, "error");
+    } finally {
+        setIsUploadingRecording(false);
+        setRecordingId(null);
     }
-
-    const welcomeFile: CodeFile = {
-        name: 'interview_notes.md',
-        path: 'drive://welcome',
-        content: `# Welcome to your ${interviewMode.toUpperCase()} Interview\n\n**Interviewer:** ${interviewerPersona}\n**Role Context:** ${jobDescription || 'Software Engineer'}\n**Language:** ${interviewLanguage.toUpperCase()}\n**Duration:** ${interviewDuration} minutes\n\nWaiting for the interviewer to join the session...`,
-        language: 'markdown',
-        loaded: true,
-        isDirectory: false
-    };
-    
-    setFiles([welcomeFile]);
-    filesRef.current = [welcomeFile];
-    setActiveFileIndex(0);
-    activeFileIndexRef.current = 0;
-    setTimeLeft(interviewDuration * 60);
-
-    setTranscript([]);
-    transcriptRef.current = [];
-    setReport(null);
-    setView('active');
-    
-    await connectToAI(false);
-    setIsLoading(false);
   };
 
-  const handleEndInterview = async () => {
+  const performSyncToDrive = async (id: string, blob: Blob, meta: { mode: string }) => {
+      if (!currentUser) return;
+      setIsUploadingRecording(true);
+      setRecordingId(id);
+      addApiLog(`Backing up session ${id.substring(0,8)} to Google Drive...`, 'info');
+      
+      let token = getDriveToken() || await signInWithGoogle().then(() => getDriveToken());
+      if (!token) { setIsUploadingRecording(false); return; }
+
+      try {
+          const root = await ensureCodeStudioFolder(token);
+          const folder = await ensureFolder(token, 'Interviews', root);
+          const driveId = await uploadToDrive(token, folder, `Interview_${id}.webm`, blob);
+          const videoUrl = `drive://${driveId}`;
+
+          const recRef = doc(db, 'mock_interviews', id);
+          await updateDoc(recRef, { videoUrl });
+          
+          if (report && report.id === id) {
+              setReport({ ...report, videoUrl });
+          }
+          setPastInterviews(prev => prev.map(p => p.id === id ? { ...p, videoUrl } : p));
+          addApiLog("Drive backup successful.", 'success');
+      } catch(e: any) {
+          addApiLog("Vault sync failed: " + e.message, 'error');
+      } finally {
+          setIsUploadingRecording(false);
+          setRecordingId(null);
+      }
+  };
+
+  const handleEndInterview = useCallback(async () => {
+      if (isEndingRef.current) return;
+      isEndingRef.current = true;
+      
       setIsLoading(true);
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (rotationTimerRef.current) clearInterval(rotationTimerRef.current);
+      if (renderIntervalRef.current) clearInterval(renderIntervalRef.current);
+      if (timerRef.current) clearInterval(timerRef.current);
       autoReconnectAttempts.current = maxAutoRetries;
-      addApiLog("Interview ended by user. Generating technical evaluation...", "info");
+
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          const stopPromise = new Promise(resolve => {
+              mediaRecorderRef.current!.addEventListener('stop', () => {
+                  setTimeout(resolve, 1000); 
+              }, { once: true });
+              mediaRecorderRef.current!.stop();
+          });
+          addApiLog("Closing Scribe Protocol and finalizing stream...", "info");
+          await stopPromise;
+      }
 
       if (serviceRef.current) {
-          try {
-              await serviceRef.current.disconnect();
-          } catch(e) {
-              console.warn("Service disconnect failed", e);
-          }
+          try { await serviceRef.current.disconnect(); } catch(e) {}
       }
       setIsLive(false);
 
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-          const fullTranscript = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
-          const finalCodeStr = files.map(f => `FILE: ${f.name}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
+          const currentTranscript = transcriptRef.current;
+          const currentFiles = filesRef.current;
+          const fullTranscript = currentTranscript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
+          const finalCodeStr = currentFiles.map(f => `FILE: ${f.name}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
           
-          const prompt = `Perform a comprehensive technical evaluation of this mock interview. 
+          const prompt = `Perform a MASTER-LEVEL technical evaluation of this mock interview. 
           Language: ${interviewLanguage.toUpperCase()}. 
           Mode: ${interviewMode.toUpperCase()}.
-          
-          TRANSCRIPT:
-          ${fullTranscript}
-          
-          FINAL CODE:
-          ${finalCodeStr}`;
+          Persona: ${selectedPersona.name}`;
 
           const response = await ai.models.generateContent({ 
             model: 'gemini-3-pro-preview', 
-            contents: prompt, 
+            contents: prompt + `\n\nTRANSCRIPT:\n${fullTranscript}\n\nFINAL CODE:\n${finalCodeStr}`, 
             config: { 
-                thinkingConfig: { thinkingBudget: 0 },
                 responseMimeType: 'application/json',
                 responseSchema: {
                     type: Type.OBJECT,
                     properties: {
-                        score: { type: Type.NUMBER },
+                        score: { type: Type.INTEGER },
                         technicalSkills: { type: Type.STRING },
                         communication: { type: Type.STRING },
                         collaboration: { type: Type.STRING },
@@ -685,57 +648,295 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
           if (!response.text) throw new Error("Empty response from evaluation engine.");
           const reportData: MockInterviewReport = JSON.parse(response.text);
+          const currentId = sessionUuid || generateSecureId();
           
-          reportData.sourceCode = [...files];
-          reportData.transcript = [...transcript];
+          reportData.id = currentId;
+          reportData.sourceCode = [...currentFiles];
+          reportData.transcript = [...currentTranscript];
+          reportData.videoUrl = localSessionVideoUrlRef.current || '';
+          reportData.videoBlob = localSessionBlobRef.current || undefined;
+          
           setReport(reportData);
 
           if (auth.currentUser) {
-              const recordingId = generateSecureId();
-              const isJudge = isJudgeSession();
-
               await saveInterviewRecording({ 
-                id: recordingId, 
-                userId: auth.currentUser.uid, 
+                id: currentId, userId: auth.currentUser.uid, 
                 userName: auth.currentUser.displayName || 'Candidate', 
-                mode: interviewMode, 
-                jobDescription, 
-                timestamp: Date.now(), 
-                videoUrl: '', 
-                feedback: JSON.stringify(reportData), 
-                transcript: transcript, 
-                visibility: 'private',
-                language: interviewLanguage
+                mode: interviewMode, jobDescription, timestamp: Date.now(), 
+                videoUrl: reportData.videoUrl, feedback: safeJsonStringify(reportData), 
+                transcript: currentTranscript, visibility: 'private', language: interviewLanguage,
+                blob: reportData.videoBlob
               });
-              
               await deductCoins(auth.currentUser.uid, AI_COSTS.TECHNICAL_EVALUATION);
-              
-              const reportBlob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
-              const transcriptText = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n\n');
-              const transcriptBlob = new Blob([transcriptText], { type: 'text/plain' });
-
-              if (isJudge) {
-                  await uploadFileToStorage(`interviews/${auth.currentUser.uid}/${recordingId}/evaluation_report.json`, reportBlob);
-                  await uploadFileToStorage(`interviews/${auth.currentUser.uid}/${recordingId}/interview_transcript.txt`, transcriptBlob);
-              } else {
-                  const token = getDriveToken();
-                  if (token && sessionFolderIdRef.current) {
-                      await uploadToDrive(token, sessionFolderIdRef.current, 'evaluation_report.json', reportBlob);
-                      await uploadToDrive(token, sessionFolderIdRef.current, 'interview_transcript.txt', transcriptBlob);
-                  }
-              }
           }
-          
           setView('feedback');
       } catch (e: any) { 
-          console.error("Evaluation failed", e);
-          addApiLog("Evaluation synthesis failed.", "error");
-          alert("Neural Evaluation failed to synthesize. Returning to main menu.");
+          addApiLog("Evaluation synthesis fault: " + e.message, "error");
+          alert("Neural Evaluation failed to synthesize.");
           setView('selection');
       } finally { 
           setIsLoading(false); 
+          isEndingRef.current = false;
       }
+  }, [interviewLanguage, interviewMode, jobDescription, sessionUuid, addApiLog, selectedPersona.name, report]);
+
+  useEffect(() => {
+    if (isLive && view === 'active' && timeLeft > 0) {
+      timerRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) { 
+              clearInterval(timerRef.current!); 
+              handleEndInterview(); 
+              return 0; 
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [isLive, view, handleEndInterview]);
+
+  const handleFileChange = (updated: CodeFile) => {
+      setFiles(prev => {
+          const next = prev.map(f => f.path === updated.path ? updated : f);
+          filesRef.current = next;
+          return next;
+      });
   };
+
+  const handleSyncCodeWithAi = useCallback((file: CodeFile) => {
+    if (serviceRef.current) {
+        const syncMessage = `NEURAL_SYNC_UPDATE: The candidate has manually updated "${file.name}". Current logic:\n\n\`\`\`${file.language}\n${file.content}\n\`\`\``;
+        serviceRef.current.sendText(syncMessage);
+        addApiLog("Manually pushed code delta to AI", "info");
+    }
+  }, [addApiLog]);
+
+  const initializeRecordingProtocol = useCallback(async (sid: string) => {
+    if (!currentUser) return;
+    try {
+        addApiLog("Requesting screen capture permissions for Scribe Protocol...", "info");
+        screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ 
+            video: { width: { ideal: 1920 }, height: { ideal: 1080 } }, 
+            audio: true 
+        } as any);
+
+        addApiLog("Requesting camera access...", "info");
+        cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: 1280, height: 720 }, 
+            audio: false 
+        });
+
+        const ctx = getGlobalAudioContext();
+        const recordingDest = getGlobalMediaStreamDest();
+        if (ctx.state !== 'running') await ctx.resume();
+
+        const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const userSource = ctx.createMediaStreamSource(userStream); 
+        userSource.connect(recordingDest);
+
+        if (screenStreamRef.current && screenStreamRef.current.getAudioTracks().length > 0) {
+            const screenAudioSource = ctx.createMediaStreamSource(screenStreamRef.current);
+            screenAudioSource.connect(recordingDest);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 1920; canvas.height = 1080;
+        const drawCtx = canvas.getContext('2d', { alpha: false })!;
+        
+        const createCaptureVideo = (stream: MediaStream | null) => {
+            const v = document.createElement('video');
+            v.muted = true; v.playsInline = true; v.autoplay = true;
+            if (stream) { v.srcObject = stream; v.play().catch(console.warn); }
+            return v;
+        };
+
+        const screenVideo = createCaptureVideo(screenStreamRef.current);
+        const cameraVideo = createCaptureVideo(cameraStreamRef.current);
+
+        let ready = false;
+        const checkFlow = () => {
+            const screenOk = !screenStreamRef.current || (screenVideo.readyState >= 2 && screenVideo.currentTime > 0);
+            const cameraOk = !cameraStreamRef.current || (cameraVideo.readyState >= 2 && cameraVideo.currentTime > 0);
+            if (screenOk && cameraOk) {
+                ready = true;
+                addApiLog("Scribe frame-flow verified.", "success");
+            } else {
+                if (screenVideo.paused) screenVideo.play().catch(() => {});
+                if (cameraVideo.paused) cameraVideo.play().catch(() => {});
+                setTimeout(checkFlow, 100);
+            }
+        };
+        checkFlow();
+
+        while (!ready) { 
+            await new Promise(r => setTimeout(r, 100)); 
+        }
+
+        renderIntervalRef.current = setInterval(() => {
+            if (!isRecordingActive && !isUploadingRecording) return;
+            drawCtx.fillStyle = '#020617';
+            drawCtx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (screenVideo.readyState >= 2) {
+                drawCtx.save();
+                drawCtx.filter = 'blur(40px) brightness(0.3)';
+                drawCtx.drawImage(screenVideo, -100, -100, canvas.width + 200, canvas.height + 200);
+                drawCtx.restore();
+                
+                const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight) * 0.95;
+                const w = screenVideo.videoWidth * scale; const h = screenVideo.videoHeight * scale;
+                drawCtx.save(); drawCtx.shadowColor = 'rgba(0,0,0,0.8)'; drawCtx.shadowBlur = 40;
+                drawCtx.drawImage(screenVideo, (canvas.width - w)/2, (canvas.height - h)/2, w, h); drawCtx.restore();
+            }
+            
+            if (cameraVideo.readyState >= 2) {
+                const size = 380; const margin = 60; const px = canvas.width - size - margin; const py = canvas.height - size - margin;
+                const radius = size / 2;
+                drawCtx.save(); drawCtx.beginPath(); drawCtx.arc(px + radius, py + radius, radius, 0, Math.PI * 2); drawCtx.clip();
+                const camScale = Math.max(size / cameraVideo.videoWidth, size / cameraVideo.videoHeight);
+                const cw = cameraVideo.videoWidth * camScale; const ch = cameraVideo.videoHeight * camScale;
+                drawCtx.drawImage(cameraVideo, px + radius - cw/2, py + radius - ch/2, cw, ch); drawCtx.restore();
+                drawCtx.save(); drawCtx.beginPath(); drawCtx.arc(px + radius, py + radius, radius, 0, Math.PI * 2);
+                drawCtx.strokeStyle = '#ef4444'; drawCtx.lineWidth = 8; drawCtx.stroke(); drawCtx.restore();
+            }
+        }, 1000 / 30);
+
+        const captureStream = canvas.captureStream(30);
+        recordingDest.stream.getAudioTracks().forEach(t => captureStream.addTrack(t));
+        const recorder = new MediaRecorder(captureStream, { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 8000000 });
+        
+        audioChunksRef.current = []; 
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+        recorder.onstop = async () => {
+            setIsRecordingActive(false);
+            if (renderIntervalRef.current) clearInterval(renderIntervalRef.current);
+            
+            const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
+            const mediaUrl = URL.createObjectURL(videoBlob);
+            localSessionVideoUrlRef.current = mediaUrl;
+            localSessionBlobRef.current = videoBlob;
+
+            try {
+                await saveLocalRecording({
+                    id: sid, userId: currentUser.uid, channelId: 'mock-interview',
+                    channelTitle: `Mock Interview: ${interviewMode.toUpperCase()}`,
+                    channelImage: selectedPersona.id === 'software-interview' ? 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3' : 'https://images.unsplash.com/photo-1518770660439-4636190af475',
+                    timestamp: Date.now(), mediaUrl, mediaType: 'video/webm', transcriptUrl: '',
+                    blob: videoBlob, size: videoBlob.size
+                });
+            } catch(e: any) {}
+            
+            userStream.getTracks().forEach(t => t.stop());
+            if (screenStreamRef.current) screenStreamRef.current.getTracks().forEach(t => t.stop());
+            if (cameraStreamRef.current) cameraStreamRef.current.getTracks().forEach(t => t.stop());
+            screenVideo.remove(); cameraVideo.remove();
+        };
+        mediaRecorderRef.current = recorder;
+        recorder.start(1000);
+        setIsRecordingActive(true);
+    } catch(e: any) { addApiLog("Recording initialization failed: " + e.message, "error"); }
+  }, [currentUser, interviewMode, addApiLog, selectedPersona, isRecordingActive, isUploadingRecording]);
+
+  const connectToAI = useCallback(async (isAutoRetry = false) => {
+    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+    if (isAutoRetry) {
+        setIsRecovering(true);
+        if (serviceRef.current) await serviceRef.current.disconnect();
+    } else {
+        setIsLive(false); setIsRecovering(false); autoReconnectAttempts.current = 0;
+        addApiLog(`Handshaking with interrogator: ${selectedPersona.name}...`, "info");
+    }
+    const service = new GeminiLiveService();
+    serviceRef.current = service;
+    try {
+        await service.initializeAudio();
+        await service.connect(selectedPersona.modelId, `${selectedPersona.instruction}\nUUID: ${sessionUuid}`, {
+            onOpen: () => {
+                setIsLive(true); setIsRecovering(false);
+                const allFilesText = filesRef.current.map(f => `FILE: ${f.name}\nCONTENT:\n${f.content}`).join('\n\n---\n\n');
+                const recentTranscript = transcriptRef.current.slice(-5).map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
+                
+                const contextMessage = `[RECONNECTION_PROTOCOL_ACTIVE]
+                SYSTEM_STATUS: Re-established.
+                INTERVIEW_CONTEXT:
+                - Mode: ${interviewMode.toUpperCase()}
+                - Job: ${jobDescription || 'Not provided'}
+                - Language: ${interviewLanguage.toUpperCase()}
+                - Current Workspace Content:
+                ${allFilesText}
+                
+                - Recent Dialogue Summary:
+                ${recentTranscript}
+
+                ACTION: Acknowledge the reconnection. Tell the candidate you have recovered the link. Summarize your current understanding of the problem and the candidate's progress. Ask the candidate to confirm if your understanding is correct. Then proceed with the interview.`;
+                
+                serviceRef.current?.sendText(contextMessage);
+            },
+            onClose: () => {
+                setIsLive(false);
+                if (autoReconnectAttempts.current < maxAutoRetries && !isEndingRef.current) {
+                    autoReconnectAttempts.current++;
+                    reconnectTimeoutRef.current = setTimeout(() => connectToAI(true), 2000);
+                }
+            },
+            onError: (err) => { setIsLive(false); addApiLog(`Neural Link Fault: ${err}`, "error"); },
+            onVolumeUpdate: (v) => setVolume(v),
+            onTranscript: (text, isUser) => {
+                setTranscript(prev => {
+                    const role = isUser ? 'user' : 'ai';
+                    if (text.includes('[NEURAL_SNAPSHOT') || text.includes('[RECONNECTION_PROTOCOL_ACTIVE]')) return prev;
+                    if (prev.length > 0 && prev[prev.length - 1].role === role) {
+                        return [...prev.slice(0, -1), { ...prev[prev.length - 1], text: prev[prev.length - 1].text + text }];
+                    }
+                    return [...prev, { role, text, timestamp: Date.now() }];
+                });
+            },
+            onToolCall: async (toolCall) => {
+                for (const fc of toolCall.functionCalls) {
+                    const args = fc.args as any;
+                    if (fc.name === 'create_interview_file') {
+                        const newFile: CodeFile = { name: args.filename, path: `local-${sessionUuid}-${Date.now()}`, content: args.content, language: getLanguageFromExt(args.filename), loaded: true, isDirectory: false };
+                        setFiles(prev => { const next = [...prev, newFile]; filesRef.current = next; return next; });
+                        setActiveFileIndex(filesRef.current.length - 1);
+                        service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: "File created." } });
+                    } else if (fc.name === 'get_current_code') {
+                        const active = filesRef.current[activeFileIndexRef.current];
+                        service.sendToolResponse({ id: fc.id, name: fc.name, response: { code: active?.content || "" } });
+                    } else if (fc.name === 'update_active_file') {
+                        const active = filesRef.current[activeFileIndexRef.current];
+                        handleFileChange({ ...active, content: args.content });
+                        service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: "Logic updated." } });
+                    }
+                }
+            }
+        }, { functionDeclarations: [getCodeTool, createInterviewFileTool, updateActiveFileTool] });
+    } catch(e: any) { setIsLive(false); setIsRecovering(false); }
+  }, [interviewMode, interviewLanguage, sessionUuid, selectedPersona, addApiLog, jobDescription]);
+
+  const handleStartInterview = async () => {
+    setIsLoading(true);
+    const sid = generateSecureId().substring(0, 12);
+    setSessionUuid(sid);
+    localSessionVideoUrlRef.current = '';
+    localSessionBlobRef.current = null;
+    const initialFile: CodeFile = { name: 'interview_notes.md', path: `local-${sid}-notes`, content: `# Session Artifact: ${sid}\n**Mode:** ${interviewMode}\n**Language:** ${interviewLanguage}\n**Persona:** ${selectedPersona.name}\n\nWaiting for interrogator logic...`, language: 'markdown', loaded: true, isDirectory: false };
+    setFiles([initialFile]); filesRef.current = [initialFile];
+    setActiveFileIndex(0); activeFileIndexRef.current = 0;
+    setTimeLeft(interviewDuration * 60);
+    setTranscript([]); setReport(null); setView('active');
+    await initializeRecordingProtocol(sid);
+    await connectToAI(false);
+    setIsLoading(false);
+  };
+
+  const filteredArchive = useMemo(() => {
+      if (!archiveSearch.trim()) return pastInterviews;
+      const q = archiveSearch.toLowerCase();
+      return pastInterviews.filter(iv => (iv.mode || '').toLowerCase().includes(q) || (iv.jobDescription || '').toLowerCase().includes(q));
+  }, [pastInterviews, archiveSearch]);
 
   const formatTimeLeft = (seconds: number) => {
       const mins = Math.floor(seconds / 60);
@@ -743,60 +944,35 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const parsedArchiveReport = useMemo(() => {
-      if (!activeRecordingForFeedback) return null;
-      try {
-          return JSON.parse(activeRecordingForFeedback.feedback) as MockInterviewReport;
-      } catch (e) {
-          return null;
-      }
-  }, [activeRecordingForFeedback]);
-
-
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
         {isLoading && view === 'active' && (
             <div className="absolute inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-10 text-center space-y-8 animate-fade-in">
-                <div className="relative">
-                    <div className="w-32 h-32 border-4 border-indigo-500/10 rounded-full" />
-                    <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                    <div className="absolute inset-0 flex items-center justify-center"><Sparkles className="text-indigo-400 animate-pulse" size={40} /></div>
-                </div>
-                <div className="space-y-4">
-                    <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Synthesizing Feedback</h2>
-                    <p className="text-indigo-300 font-bold uppercase tracking-[0.2em] text-sm animate-pulse">Generating technical evaluation in progress...</p>
-                </div>
+                <Loader2 className="animate-spin text-indigo-500" size={48} />
+                <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Synthesizing Session</h2>
             </div>
         )}
 
         {view === 'selection' && (
-            <div className="flex-1 overflow-y-auto p-6 md:p-12">
+            <div className="flex-1 overflow-y-auto p-6 md:p-12 scrollbar-hide">
                 <div className="max-w-6xl mx-auto space-y-12">
                     <div className="flex flex-col md:flex-row justify-between items-end gap-6">
                         <div className="space-y-3">
                             <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-red-900/30 border border-red-500/30 rounded-full text-red-400 text-[10px] font-black uppercase tracking-[0.2em] animate-pulse">
-                                <Activity size={14}/> Career Evaluation Mode
+                                <Activity size={14}/> Simulation Active
                             </div>
-                            <h1 className="text-5 font-black text-white italic tracking-tighter uppercase leading-none">Mock Interview Studio</h1>
-                            <p className="text-slate-400 text-lg max-w-xl">Master your technical presence. Practice with specialized AI personas in a live coding environment.</p>
+                            <h1 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Mock Interview Studio</h1>
+                            <p className="text-slate-400 text-lg max-w-xl">Master your technical presence via Socratic Interrogation.</p>
                         </div>
-                        <div className="flex gap-2">
-                             <button onClick={() => setView('archive')} className="px-6 py-3 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2">
-                                <History size={18}/> My Archive
-                             </button>
-                        </div>
+                        <button onClick={() => setView('archive')} className="px-6 py-3 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2">
+                            <History size={18}/> My Archive
+                        </button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        {[
-                            { id: 'coding', label: 'Algorithmic Coding', icon: Code, color: 'text-indigo-400', desc: 'Focus on LeetCode-style DSA problems.' },
-                            { id: 'system_design', label: 'System Design', icon: Layers, color: 'text-emerald-400', desc: 'Architecture, scalability, and distributed systems.' },
-                            { id: 'behavioral', label: 'Behavioral Prep', icon: MessageSquare, color: 'text-pink-400', desc: 'STAR method and cultural fit evaluation.' },
-                            { id: 'quick_screen', label: 'Quick Screening', icon: Zap, color: 'text-amber-400', desc: 'Fast-paced 15-min technical rapid fire.' }
-                        ].map(m => (
-                            <button key={m.id} onClick={() => { setInterviewMode(m.id as any); setView('setup'); }} className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] hover:border-indigo-500 transition-all text-left group flex flex-col h-full shadow-xl">
+                        {[{ id: 'coding', label: 'Algorithmic Coding', icon: Code, color: 'text-indigo-400' }, { id: 'system_design', label: 'System Design', icon: Layers, color: 'text-emerald-400' }, { id: 'behavioral', label: 'Behavioral Prep', icon: MessageSquare, color: 'text-pink-400' }, { id: 'quick_screen', label: 'Quick Screening', icon: Zap, color: 'text-amber-400' }].map(m => (
+                            <button key={m.id} onClick={() => { setInterviewMode(m.id as any); setView('setup'); }} className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] hover:border-indigo-500 transition-all text-left group h-full shadow-xl">
                                 <div className={`p-4 rounded-2xl bg-slate-950 border border-slate-800 mb-6 group-hover:scale-110 transition-transform ${m.color}`}><m.icon size={32}/></div>
                                 <h3 className="text-xl font-bold text-white mb-2">{m.label}</h3>
-                                <p className="text-sm text-slate-500 leading-relaxed flex-1">{m.desc}</p>
                                 <ChevronRight className="mt-6 text-slate-700 group-hover:text-indigo-400 group-hover:translate-x-2 transition-all" size={24}/>
                             </button>
                         ))}
@@ -806,45 +982,39 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         )}
 
         {view === 'setup' && (
-            <div className="flex-1 flex items-center justify-center p-6 animate-fade-in-up overflow-y-auto">
-                <div className="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl space-y-10 my-10">
+            <div className="flex-1 flex items-center justify-center p-6 animate-fade-in-up">
+                <div className="max-w-2xl w-full bg-slate-900 border border-slate-700 rounded-[3rem] p-10 shadow-2xl space-y-10">
                     <div className="flex items-center gap-6">
                         <button onClick={() => setView('selection')} className="p-3 hover:bg-slate-800 rounded-2xl text-slate-400 transition-colors"><ArrowLeft size={24}/></button>
-                        <div>
-                            <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Configure Session</h2>
-                            <p className="text-indigo-400 text-[10px] font-black uppercase tracking-widest">{interviewMode} Interview</p>
-                        </div>
+                        <div><h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">Setup Session</h2><p className="text-indigo-400 text-[10px] font-black uppercase tracking-widest">{(interviewMode || '').toUpperCase()} Interrogation</p></div>
                     </div>
                     <div className="space-y-8">
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Interrogator Persona</label>
+                            <div className="grid grid-cols-1 gap-2">
+                                {PERSONAS.map(p => (
+                                    <button key={p.id} onClick={() => setSelectedPersona(p)} className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left group ${selectedPersona.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border border-slate-800 text-slate-400 hover:border-slate-700'}`}>
+                                        <div className={`p-2.5 rounded-xl ${selectedPersona.id === p.id ? 'bg-indigo-500' : 'bg-slate-900 border border-slate-800'}`}><p.icon size={20}/></div>
+                                        <div className="flex-1"><p className="text-xs font-black uppercase tracking-widest">{p.name}</p><p className="text-[9px] opacity-60 font-medium uppercase mt-0.5">{p.desc}</p></div>
+                                        {selectedPersona.id === p.id && <CheckCircle2 size={20}/>}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Programming Language</label>
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Target Language</label>
                             <div className="flex gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
                                 {['c++', 'python', 'javascript', 'java'].map(lang => (
-                                    <button key={lang} onClick={() => setInterviewLanguage(lang as any)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${interviewLanguage === lang ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>{lang}</button>
+                                    <button key={lang} onClick={() => setInterviewLanguage(lang as any)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${interviewLanguage === lang ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>{lang}</button>
                                 ))}
                             </div>
                         </div>
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Description</label>
-                            <textarea value={jobDescription} onChange={e => setJobDescription(e.target.value)} placeholder="e.g. Senior Backend Engineer..." className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner h-32"/>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Interviewer Persona</label>
-                            <input type="text" value={interviewerPersona} onChange={e => setInterviewerPersona(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-4 text-white text-sm outline-none shadow-inner"/>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Session Duration</label>
-                            <div className="flex gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-                                {[15, 30, 45].map(d => (
-                                    <button key={d} onClick={() => setInterviewDuration(d)} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${interviewDuration === d ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>{d} MIN</button>
-                                ))}
-                            </div>
+                            <textarea value={jobDescription} onChange={e => setJobDescription(e.target.value)} placeholder="Copy job details here for context..." className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-32 shadow-inner"/>
                         </div>
                     </div>
-                    <button onClick={handleStartInterview} disabled={isLoading} className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl shadow-indigo-900/40 transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50">
-                        {isLoading ? <Loader2 size={24} className="animate-spin" /> : <Sparkles size={24}/>}
-                        Initialize Sovereign Session
-                    </button>
+                    <button onClick={handleStartInterview} disabled={isLoading} className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3"><Sparkles size={24}/> Initialize Neural Interface</button>
                 </div>
             </div>
         )}
@@ -854,143 +1024,108 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 <div className="flex-1 flex flex-col bg-slate-950 relative overflow-hidden">
                     <header className="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 shrink-0">
                         <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]' : isRecovering ? 'bg-amber-500' : 'bg-slate-700'}`}></div>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                {isRecovering ? 'Neural Link Interrupted' : 'Live Recording Studio'}
-                            </span>
-                            <div className="flex items-center gap-2 px-3 py-1 bg-slate-950 border border-slate-800 rounded-lg shadow-inner">
-                                <Clock size={14} className={timeLeft < 120 ? 'text-red-500 animate-pulse' : 'text-indigo-400'}/>
-                                <span className={`text-xs font-mono font-black ${timeLeft < 120 ? 'text-red-400' : 'text-white'}`}>{formatTimeLeft(timeLeft)}</span>
+                            <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'bg-slate-700'}`}></div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{isRecovering ? 'RECOVERY ACTIVE' : 'LIVE STUDIO'}</span>
+                            <div className="flex items-center gap-2 px-3 py-1 bg-slate-950 border border-slate-800 rounded-lg">
+                                <Clock size={14} className="text-indigo-400"/><span className="text-xs font-mono font-black">{formatTimeLeft(timeLeft)}</span>
                             </div>
-                            <button onClick={() => setShowLogs(!showLogs)} className={`p-2 rounded-lg transition-colors ${showLogs ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
-                                <Terminal size={16}/>
-                            </button>
+                            {isRecordingActive && (
+                                <div className="flex items-center gap-2 bg-red-600/20 px-3 py-1 rounded-lg border border-red-500/30 shadow-lg animate-pulse">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+                                    <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Scribe Protocol Syncing</span>
+                                </div>
+                            )}
                         </div>
                         <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2">
-                                <div className="w-32 h-6 overflow-hidden rounded-full"><Visualizer volume={volume} isActive={isLive} color={isRecovering ? "#f59e0b" : "#ef4444"} /></div>
-                                {isRecovering && (
-                                    <div className="flex items-center gap-1 animate-pulse">
-                                        <RefreshCcw size={10} className="text-amber-500 animate-spin"/>
-                                        <span className="text-[8px] font-black uppercase text-amber-500 whitespace-nowrap">Recovering...</span>
-                                    </div>
-                                )}
-                            </div>
-                            <button onClick={handleEndInterview} disabled={isLoading} className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[10px] font-black uppercase rounded-lg shadow-lg active:scale-95 transition-all disabled:opacity-50">{isLoading ? <Loader2 size={12} className="animate-spin" /> : 'End & Evaluate'}</button>
+                            <div className="w-32 h-6 overflow-hidden rounded-full"><Visualizer volume={volume} isActive={isLive} color="#ef4444" /></div>
+                            <button onClick={handleEndInterview} className="px-4 py-1.5 bg-red-600 hover:bg-red-600/80 text-white text-[10px] font-black uppercase rounded-lg shadow-lg">Evaluate</button>
                         </div>
                     </header>
-                    <div className="flex-1 overflow-hidden">
+                    <div className="flex-1 overflow-hidden relative">
+                        {isUploadingRecording && (
+                             <div className="absolute inset-0 z-[110] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-6 animate-fade-in text-center">
+                                <Loader2 className="animate-spin text-red-500" size={48} />
+                                <div className="space-y-1">
+                                    <h3 className="text-xl font-black text-white italic uppercase tracking-widest">Archiving Session</h3>
+                                    <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Syncing 1080p stream to YouTube/Drive Registry...</p>
+                                </div>
+                             </div>
+                        )}
                         {files.length > 0 && (
-                            <CodeStudio onBack={() => {}} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={() => {}} initialFiles={files} isInterviewerMode={true} onFileChange={handleFileChange} externalChatContent={transcript} isAiThinking={isThinking} onSyncCodeWithAi={handleSyncCodeWithAi} />
+                            <CodeStudio onBack={() => {}} currentUser={currentUser} userProfile={userProfile} onSessionStart={() => {}} onSessionStop={() => {}} onStartLiveSession={() => {}} initialFiles={files} isInterviewerMode={true} onFileChange={handleFileChange} externalChatContent={transcript} onSyncCodeWithAi={handleSyncCodeWithAi} />
                         )}
                     </div>
-
-                    {/* API Logs Overlay */}
-                    {showLogs && (
-                        <div className="absolute top-14 left-0 w-80 h-[400px] bg-slate-900/95 border-r border-b border-indigo-500/30 shadow-2xl z-[150] flex flex-col animate-fade-in-up backdrop-blur-md">
-                            <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
-                                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Neural Diagnostic Matrix</span>
-                                <button onClick={() => setShowLogs(false)} className="text-slate-500 hover:text-white"><X size={14}/></button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-4 font-mono text-[10px] space-y-3 scrollbar-hide">
-                                {apiLogs.length === 0 ? (
-                                    <p className="text-slate-600 italic">No events recorded.</p>
-                                ) : (
-                                    apiLogs.map((log, i) => (
-                                        <div key={i} className={`p-2 rounded-lg border ${log.type === 'error' ? 'bg-red-950/20 border-red-900/50 text-red-300' : log.type === 'warn' ? 'bg-amber-950/20 border-amber-900/50 text-amber-300' : 'bg-slate-950/50 border-slate-800 text-slate-300'}`}>
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className="opacity-40">{log.time}</span>
-                                                {log.code && <span className="px-1.5 py-0.5 bg-black/40 rounded text-[8px] font-black">{log.code}</span>}
-                                            </div>
-                                            <p className="break-words leading-relaxed">{log.msg}</p>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                            <div className="p-3 bg-slate-950/50 border-t border-slate-800 text-center">
-                                <button onClick={() => setApiLogs([])} className="text-[9px] font-bold text-slate-500 hover:text-white uppercase tracking-widest transition-colors">Clear Ledger</button>
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
         )}
 
-        {view === 'feedback' && (
-            <div className="flex-1 overflow-y-auto p-6 md:p-12">
-                <div className="max-w-4xl mx-auto space-y-12 pb-40">
+        {view === 'feedback' && report && (
+            <div className="flex-1 overflow-y-auto p-6 md:p-12 scrollbar-hide">
+                <div className="max-w-4xl mx-auto space-y-12 pb-40 relative">
+                    {isUploadingRecording && (
+                         <div className="fixed top-24 right-8 z-[120] bg-slate-900 border border-indigo-500/30 rounded-2xl p-4 shadow-2xl animate-fade-in-right flex items-center gap-4 border-l-4 border-l-indigo-500">
+                            <Loader2 className="animate-spin text-indigo-500" size={24} />
+                            <div><p className="text-[10px] font-black text-white uppercase tracking-widest">Cloud Sync In-Progress</p><p className="text-[8px] text-slate-500 uppercase font-bold tracking-tighter">Updating Neural Vault...</p></div>
+                         </div>
+                    )}
                     <div className="text-center space-y-4">
-                        <div className="inline-flex p-4 bg-indigo-600/10 rounded-full text-indigo-400 border border-indigo-500/20 mb-2"><Trophy size={40}/></div>
-                        <h1 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Ready</h1>
-                        <p className="text-slate-400 text-lg font-medium">Your session has been analyzed and archived to your Ledger & Drive.</p>
+                        <Trophy size={48} className="mx-auto text-indigo-400 mb-2"/>
+                        <h1 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Report</h1>
                     </div>
-                    {report && <EvaluationReportDisplay report={report} />}
-                    <div className="flex justify-center gap-4 pb-20"><button onClick={() => setView('selection')} className="px-10 py-4 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95">Main Menu</button></div>
+                    <EvaluationReportDisplay 
+                        report={report} 
+                        isSyncing={isUploadingRecording}
+                        onSyncYouTube={() => report.videoBlob && performSyncToYouTube(report.id, report.videoBlob, { mode: interviewMode, language: interviewLanguage })}
+                        onSyncDrive={() => report.videoBlob && performSyncToDrive(report.id, report.videoBlob, { mode: interviewMode })}
+                    />
+                    <div className="flex justify-center pb-20"><button onClick={() => setView('selection')} className="px-10 py-4 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-white font-black uppercase tracking-widest rounded-2xl transition-all">Main Menu</button></div>
                 </div>
             </div>
         )}
 
         {view === 'archive' && (
             <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="p-6 md:p-12 border-b border-slate-800 bg-slate-900/50 shrink-0">
-                    <div className="max-w-6xl mx-auto flex items-center gap-6">
-                        <button onClick={() => { setView('selection'); setActiveRecordingForFeedback(null); }} className="p-3 hover:bg-slate-800 rounded-2xl text-slate-400 transition-colors">
-                            <ArrowLeft size={24}/>
-                        </button>
-                        <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">Neural Archives</h1>
+                <div className="p-8 md:p-12 border-b border-slate-800 bg-slate-900/50 shrink-0">
+                    <div className="max-w-6xl mx-auto space-y-8">
+                        <div className="flex items-center gap-6">
+                            <button onClick={() => setView('selection')} className="p-3 hover:bg-slate-800 rounded-2xl text-slate-400 transition-colors"><ArrowLeft size={24}/></button>
+                            <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">Session Archive</h1>
+                        </div>
+                        <div className="relative">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18}/>
+                            <input type="text" placeholder="Search by mode or job context..." value={archiveSearch} onChange={e => setArchiveSearch(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-3xl pl-12 pr-6 py-4 text-white outline-none focus:ring-2 focus:ring-indigo-500/50 shadow-inner"/>
+                        </div>
                     </div>
                 </div>
-
-                <div className="flex-1 overflow-y-auto p-6 md:p-12">
+                <div className="flex-1 overflow-y-auto p-6 md:p-12 scrollbar-hide">
                     <div className="max-w-6xl mx-auto">
-                        {activeRecordingForFeedback ? (
-                            <div className="animate-fade-in-up">
-                                <div className="flex justify-between items-center mb-8 bg-slate-900 p-6 rounded-[2rem] border border-slate-800">
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-white truncate max-w-md">{activeRecordingForFeedback.jobDescription.split('\n')[0]}</h2>
-                                        <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-1">Archived {new Date(activeRecordingForFeedback.timestamp).toLocaleDateString()}</p>
-                                    </div>
-                                    <button onClick={() => setActiveRecordingForFeedback(null)} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all border border-slate-700 shadow-md">Close Report</button>
-                                </div>
-                                {parsedArchiveReport && <EvaluationReportDisplay report={parsedArchiveReport} />}
+                        {isLoading ? (
+                             <div className="py-24 flex flex-col items-center justify-center gap-6 text-center animate-pulse">
+                                <Loader2 className="animate-spin text-indigo-500" size={48} />
+                                <p className="text-sm font-black uppercase text-slate-500 tracking-widest">Paging Neural Archive...</p>
+                            </div>
+                        ) : filteredArchive.length === 0 ? (
+                            <div className="py-32 flex flex-col items-center justify-center text-slate-700 gap-6">
+                                <SearchX size={64} className="opacity-10"/>
+                                <p className="text-sm font-bold uppercase tracking-widest">No matching artifacts found</p>
                             </div>
                         ) : (
-                            <>
-                                {pastInterviews.length === 0 ? (
-                                    <div className="py-32 text-center text-slate-500 border-2 border-dashed border-slate-800 rounded-[3rem] space-y-6">
-                                        <History size={64} className="mx-auto opacity-10"/>
-                                        <p className="text-lg font-bold uppercase tracking-widest">Empty Ledger</p>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-20">
-                                        {pastInterviews.map(iv => (
-                                            <div key={iv.id} className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 hover:border-indigo-500/50 transition-all flex flex-col gap-6 shadow-xl relative overflow-hidden group">
-                                                <div className="relative z-10">
-                                                    <div className="flex justify-between items-start mb-4">
-                                                        <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 text-indigo-400"><Video size={24}/></div>
-                                                        <button onClick={(e) => { e.stopPropagation(); deleteInterview(iv.id).then(() => setPastInterviews(p => p.filter(x => x.id !== iv.id))); }} className="p-2 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18}/></button>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <h3 className="text-xl font-bold text-white uppercase tracking-tight">{iv.mode.replace('_', ' ')}</h3>
-                                                        <span className="bg-indigo-900/40 text-indigo-400 px-2 py-0.5 rounded text-[8px] font-black border border-indigo-500/20">{iv.language?.toUpperCase() || 'C++'}</span>
-                                                    </div>
-                                                    <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{new Date(iv.timestamp).toLocaleDateString()}</p>
-                                                    <button onClick={() => { setActiveRecordingForFeedback(iv); }} className="mt-8 text-xs font-black text-indigo-400 uppercase tracking-widest hover:underline flex items-center gap-1 transition-all group-hover:gap-2">
-                                                        View Detailed Audit <ChevronRight size={14}/>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </>
-                        )}
-                    </div>
-                </div>
-            </div>
-        )}
-    </div>
-  );
-};
-
-export default MockInterview;
+                            <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden shadow-2xl">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead className="bg-slate-950 border-b border-slate-800">
+                                            <tr>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Session Artifact</th>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Logic Mode</th>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Refraction Date</th>
+                                                <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Status</th>
+                                                <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-800/50">
+                                            {filteredArchive.map(iv => (
+                                                <tr key={iv.id} className="hover:bg-slate-800/40 transition-colors group">
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="w-12 h-8 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0">
+                                                                {iv.videoUrl

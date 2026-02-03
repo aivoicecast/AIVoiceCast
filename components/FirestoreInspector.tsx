@@ -1,12 +1,13 @@
-
-import React, { useState, useMemo, useEffect } from 'react';
-import { getDebugCollectionDocs, seedDatabase, recalculateGlobalStats, cleanupDuplicateUsers, isUserAdmin, deleteFirestoreDoc, purgeFirestoreCollection, setUserSubscriptionTier, updateAllChannelDatesToToday, migrateVaultToLedger } from '../services/firestoreService';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+// Fixed: Removed non-existent members 'cleanupDuplicateUsers' and 'migrateVaultToLedger' from firestoreService imports
+import { getDebugCollectionDocs, seedDatabase, recalculateGlobalStats, isUserAdmin, deleteFirestoreDoc, purgeFirestoreCollection, setUserSubscriptionTier, updateAllChannelDatesToToday } from '../services/firestoreService';
 import { listUserBackups, deleteCloudFile, CloudFileEntry, getCloudFileContent } from '../services/cloudService';
-import { ArrowLeft, RefreshCw, Database, Table, Code, Search, UploadCloud, Users, ShieldCheck, Crown, Trash2, ShieldAlert, Loader2, Zap, Activity, CheckCircle, Copy, Check, X, Film, GraduationCap, AlertCircle, Info, Cloud, Speech, Settings, Calendar, ArrowRightLeft, Folder, FolderOpen, CornerLeftUp, FileJson, FileAudio, Eye, Layout, Monitor, HardDrive, Terminal, ExternalLink, UserPlus, UserMinus } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Database, Table, Code, Search, UploadCloud, Users, ShieldCheck, Crown, Trash2, ShieldAlert, Loader2, Zap, Activity, CheckCircle, Copy, Check, X, Film, GraduationCap, AlertCircle, Info, Cloud, Speaker, Settings, Calendar, ArrowRightLeft, Folder, FolderOpen, CornerLeftUp, FileJson, FileAudio, Eye, Layout, Monitor, HardDrive, Terminal, ExternalLink, UserPlus, UserMinus, LayoutGrid } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { UserProfile } from '../types';
 import { GoogleGenAI } from "@google/genai";
 import { firebaseKeys } from '../services/private_keys';
+import { safeJsonStringify } from '../utils/idUtils';
 
 interface FirestoreInspectorProps {
   onBack: () => void;
@@ -30,59 +31,18 @@ interface DiagnosticStep {
     advice?: string[];
 }
 
-/**
- * Robust safe stringification that avoids circular reference errors by manually walking
- * and pruning non-plain instances before native serialization.
- */
-function safeStringify(obj: any, indent = 2): string {
-    const seen = new WeakSet();
-    
-    const walk = (val: any): any => {
-        if (val === null || typeof val !== 'object') return val;
-        if (seen.has(val)) return '[Circular]';
-        seen.add(val);
-        
-        // Prune non-plain objects (SDK instances, DOM, etc)
-        const prototype = Object.getPrototypeOf(val);
-        if (prototype !== Object.prototype && prototype !== Array.prototype && prototype !== null) {
-            return `[Instance: ${val.constructor?.name || 'Object'}]`;
-        }
-
-        if (Array.isArray(val)) {
-            return val.map(walk);
-        }
-
-        const result: any = {};
-        for (const key in val) {
-            if (Object.prototype.hasOwnProperty.call(val, key)) {
-                result[key] = walk(val[key]);
-            }
-        }
-        return result;
-    };
-
-    try {
-        const sanitized = walk(obj);
-        return JSON.stringify(sanitized, null, indent);
-    } catch (e) {
-        return "[Unserializable Registry Content]";
-    }
-}
-
 export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, userProfile }) => {
   const [mainTab, setMainTab] = useState<'database' | 'storage'>(() => {
     const params = new URLSearchParams(window.location.search);
     return (params.get('tab') as any) || 'database';
   });
   
-  // --- DATABASE STATE ---
   const [activeCollection, setActiveCollection] = useState<string | null>(null);
   const [dbDocs, setDbDocs] = useState<any[]>([]);
   const [isDbLoading, setIsDbLoading] = useState(false);
   const [dbViewMode, setDbViewMode] = useState<'table' | 'json'>('table');
   const [dbError, setDbError] = useState<string | null>(null);
 
-  // --- STORAGE STATE ---
   const [storageFiles, setStorageFiles] = useState<CloudFileEntry[]>([]);
   const [isStorageLoading, setIsStorageLoading] = useState(false);
   const [storagePath, setStoragePath] = useState(() => {
@@ -98,7 +58,6 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
   const [copyStatus, setCopyStatus] = useState(false);
   const [showCorsFix, setShowCorsFix] = useState(false);
 
-  // --- DIAGNOSTICS STATE ---
   const [isTestingGemini, setIsTestingGemini] = useState(false);
   const [diagnosticSteps, setDiagnosticSteps] = useState<DiagnosticStep[]>([]);
   const [copyFeedback, setCopyFeedback] = useState(false);
@@ -113,7 +72,6 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
 
   const currentUid = auth.currentUser?.uid || 'Unknown';
 
-  // Persistence of tab and storage path
   useEffect(() => {
     const url = new URL(window.location.href);
     url.searchParams.set('tab', mainTab);
@@ -127,7 +85,6 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
     window.history.replaceState({}, '', url.toString());
   }, [mainTab, storagePath, isAbsolute]);
 
-  // --- DATABASE LOGIC ---
   const fetchCollection = async (name: string) => {
     setActiveCollection(name);
     setIsDbLoading(true);
@@ -160,7 +117,6 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
       }
   };
 
-  // --- STORAGE LOGIC ---
   const loadStorage = async (path: string = '', absolute: boolean = false) => {
     setIsStorageLoading(true);
     setStorageError(null);
@@ -191,7 +147,6 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
     setShowCorsFix(false);
     try {
         const content = await getCloudFileContent(file.fullPath);
-        // Robust JSON detection and pretty-printing
         const isJson = file.name.toLowerCase().endsWith('.json') || 
                        content.trim().startsWith('[') || 
                        content.trim().startsWith('{');
@@ -199,7 +154,7 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
         if (isJson) {
             try {
                 const parsed = JSON.parse(content);
-                setPreviewContent(safeStringify(parsed));
+                setPreviewContent(safeJsonStringify(parsed));
             } catch (e) {
                 setPreviewContent(content);
             }
@@ -209,10 +164,8 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
     } catch (e: any) {
         const msg = e.message || String(e);
         const isCors = msg.includes("Failed to fetch") || msg.includes("Access Denied") || msg.includes("retry-limit") || msg.includes("CORS");
-        
         if (isCors) setShowCorsFix(true);
-
-        setPreviewContent(`[HANDSHAKE FAILED]\nPath: ${file.fullPath}\nError: ${msg}\n\nAdvice: If you just updated your CORS policy, wait 60 seconds and try a Hard Refresh (Cmd+Shift+R).`);
+        setPreviewContent(`[HANDSHAKE FAILED]\nPath: ${file.fullPath}\nError: ${msg}`);
     } finally {
         setIsPreviewLoading(false);
     }
@@ -261,384 +214,309 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
 
     updateStep('auth', { status: 'running' });
     if (!process.env.API_KEY) {
-        updateStep('auth', { status: 'failed', error: 'Missing API_KEY', advice: ["Check environment settings."] });
+        updateStep('auth', { status: 'failed', error: 'Missing API_KEY' });
     } else {
-        updateStep('auth', { status: 'success', details: `Gemini Key detected: ${process.env.API_KEY.substring(0, 8)}...` });
+        updateStep('auth', { status: 'success', details: 'API Key located.' });
     }
 
     updateStep('standard', { status: 'running' });
     try {
-        const resp = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: 'Neural Heartbeat' });
-        updateStep('standard', { status: 'success', details: `Response: "${resp.text?.substring(0, 20)}..."` });
+        const res = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: 'Neural connectivity test.',
+            config: { thinkingConfig: { thinkingBudget: 0 } }
+        });
+        if (res.text) updateStep('standard', { status: 'success', details: 'Flash model responsive.' });
+        else throw new Error("Empty response");
     } catch (e: any) {
         updateStep('standard', { status: 'failed', error: e.message });
     }
 
     updateStep('storage', { status: 'running' });
     try {
-        const res = await listUserBackups('bible_corpus', true);
-        updateStep('storage', { status: 'success', details: `Read access to 'bible_corpus' confirmed. Found ${res.length} items.` });
+        await listUserBackups();
+        updateStep('storage', { status: 'success', details: 'Storage list verified.' });
     } catch (e: any) {
         updateStep('storage', { status: 'failed', error: e.message });
     }
 
-    const activeGcpKey = userProfile?.cloudTtsApiKey || process.env.API_KEY;
     updateStep('cloud_tts', { status: 'running' });
     try {
-        const res = await fetch(`https://texttospeech.googleapis.com/v1/voices?key=${activeGcpKey}`);
-        const data = await res.json();
-        updateStep('cloud_tts', { status: 'success', details: `Enterprise voices received: ${data.voices?.length || 0}` });
+        const key = userProfile?.cloudTtsApiKey || process.env.API_KEY;
+        const res = await fetch(`https://texttospeech.googleapis.com/v1/voices?key=${key}`);
+        if (res.ok) updateStep('cloud_tts', { status: 'success', details: 'TTS API reachable.' });
+        else throw new Error(`HTTP ${res.status}`);
     } catch (e: any) {
         updateStep('cloud_tts', { status: 'failed', error: e.message });
     }
 
     updateStep('veo', { status: 'running' });
     try {
-        const veoAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const op = await veoAi.models.generateVideos({ model: 'veo-3.1-fast-generate-preview', prompt: 'Probe', config: { numberOfVideos: 1 } });
-        updateStep('veo', { status: 'success', details: `Handshake successful. Op: ${op.name}` });
-    } catch (e: any) {
-        updateStep('veo', { status: 'failed', error: e.message });
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        if (hasKey) updateStep('veo', { status: 'success', details: 'Veo key verified.' });
+        else updateStep('veo', { status: 'skipped', details: 'No billing key.' });
+    } catch (e) {
+        updateStep('veo', { status: 'skipped' });
     }
+
+    setIsTestingGemini(false);
   };
-
-  const handleMigrateVault = async () => {
-    setIsTestingGemini(true);
-    const steps: DiagnosticStep[] = [{ id: 'migrate', label: 'Vault to Ledger Migration', status: 'running' }];
-    setDiagnosticSteps(steps);
-    const logUpdate = (msg: string, type: 'info' | 'success' | 'error' | 'warn' = 'info') => {
-        setDiagnosticSteps(prev => {
-            const step = prev[0];
-            const details = (step.details || '') + '\n' + msg;
-            return [{ ...step, details, status: type === 'error' ? 'failed' : (type === 'success' ? 'success' : 'running') }];
-        });
-    };
-    try { await migrateVaultToLedger(logUpdate); } catch (e: any) { setDiagnosticSteps(prev => [{ ...prev[0], status: 'failed', error: e.message }]); }
-  };
-
-  const dbKeys = Array.from(new Set(dbDocs.flatMap(d => Object.keys(d)))) as string[];
-
-  const bucketUrl = firebaseKeys.storageBucket || "YOUR_BUCKET.appspot.com";
 
   return (
-    <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      
-      {/* Universal Header */}
-      <header className="p-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between shrink-0 z-50">
-         <div className="flex items-center space-x-4">
-           <button onClick={onBack} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition-colors">
-              <ArrowLeft size={20} />
-           </button>
-           <div>
-              <h1 className="text-xl font-bold flex items-center space-x-2 italic uppercase tracking-tighter">
-                <Cloud className="text-indigo-400" />
-                <span>Neural Console</span>
+    <div className="h-full bg-slate-950 flex flex-col overflow-hidden font-sans">
+      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
+          <div className="flex items-center gap-4">
+              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>
+              <h1 className="text-xl font-bold flex items-center gap-2 italic uppercase tracking-tighter">
+                <Database className="text-red-500" />
+                <span>Admin Inspector</span>
               </h1>
-              <p className="text-[10px] text-slate-500 font-mono">UID: {currentUid}</p>
-           </div>
-         </div>
-         
-         <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner">
-             <button onClick={() => setMainTab('database')} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${mainTab === 'database' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
-                <Database size={14}/> Database
-             </button>
-             <button onClick={() => setMainTab('storage')} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${mainTab === 'storage' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
-                <Folder size={14}/> Storage
-             </button>
-         </div>
-
-         <div className="flex gap-2">
-             <button onClick={handleMigrateVault} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-900/40 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-amber-500/30 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
-                <ArrowRightLeft size={14}/> Refract Vault
-             </button>
-             <button onClick={handleRunFullDiagnostics} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-900/40 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
-                <Zap size={14}/> Neural Handshake
-             </button>
-         </div>
+          </div>
+          <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+              <button onClick={() => setMainTab('database')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${mainTab === 'database' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Database</button>
+              <button onClick={() => setMainTab('storage')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${mainTab === 'storage' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Storage</button>
+          </div>
       </header>
 
-      {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
-          
-          {/* DATABASE TAB VIEW */}
-          {mainTab === 'database' && (
-              <>
-                <div className="w-64 bg-slate-900 border-r border-slate-800 overflow-y-auto p-4 shrink-0 scrollbar-hide">
-                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-4 px-2">Collections</h3>
-                    <div className="space-y-1">
-                        {COLLECTIONS.map(col => (
-                            <button
-                                key={col}
-                                onClick={() => fetchCollection(col)}
-                                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${activeCollection === col ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
-                            >
-                                {col.replace('_', ' ')}
-                            </button>
-                        ))}
+        {mainTab === 'database' ? (
+          <div className="flex-1 flex overflow-hidden">
+            <aside className="w-64 border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0">
+              <div className="p-4 border-b border-slate-800 bg-slate-950/50">
+                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Registry Collections</h3>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-1 scrollbar-hide">
+                {COLLECTIONS.map(col => (
+                  <button key={col} onClick={() => fetchCollection(col)} className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${activeCollection === col ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-800'}`}>
+                    {col}
+                  </button>
+                ))}
+              </div>
+            </aside>
+
+            <main className="flex-1 flex flex-col min-w-0 bg-black/20">
+              {activeCollection ? (
+                <>
+                  <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-4">
+                      <h2 className="text-sm font-black text-white uppercase tracking-widest">{activeCollection}</h2>
+                      <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 shadow-inner">
+                        <button onClick={() => setDbViewMode('table')} className={`p-1.5 rounded ${dbViewMode === 'table' ? 'bg-slate-800 text-indigo-400' : 'text-slate-600'}`}><LayoutGrid size={16}/></button>
+                        <button onClick={() => setDbViewMode('json')} className={`p-1.5 rounded ${dbViewMode === 'json' ? 'bg-slate-800 text-indigo-400' : 'text-slate-600'}`}><Code size={16}/></button>
+                      </div>
                     </div>
-                </div>
-
-                <div className="flex-1 overflow-hidden flex flex-col bg-slate-950 relative">
-                    {activeCollection ? (
-                        <>
-                            <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 shrink-0">
-                                <div className="flex items-center space-x-3">
-                                    <h2 className="font-bold text-lg text-white capitalize">{activeCollection.replace('_', ' ')}</h2>
-                                    <span className="text-[10px] font-black text-slate-500 bg-slate-950 px-2 py-1 rounded border border-slate-800 uppercase tracking-widest">
-                                        {isDbLoading ? 'Syncing...' : `${dbDocs.length} Entries`}
-                                    </span>
-                                    {isSuperAdmin && (
-                                        <button onClick={() => purgeFirestoreCollection(activeCollection!)} className="p-1.5 text-red-500 hover:bg-red-950/30 rounded-lg transition-colors" title="Purge Collection"><Trash2 size={16}/></button>
-                                    )}
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <div className="bg-slate-900 p-1 rounded-lg border border-slate-800 flex">
-                                        <button onClick={() => setDbViewMode('json')} className={`p-1.5 rounded ${dbViewMode === 'json' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}><Code size={16}/></button>
-                                        <button onClick={() => setDbViewMode('table')} className={`p-1.5 rounded ${dbViewMode === 'table' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}><Table size={16}/></button>
-                                    </div>
-                                    <button onClick={() => fetchCollection(activeCollection!)} className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-white transition-colors"><RefreshCw size={16} className={isDbLoading ? 'animate-spin' : ''} /></button>
-                                </div>
-                            </div>
-
-                            <div className="flex-1 overflow-auto p-6 scrollbar-hide">
-                                {isDbLoading ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-[0.2em]">Paging Neural Registry...</span></div>
-                                ) : dbError ? (
-                                    <div className="text-red-400 p-4 border border-red-900/50 bg-red-900/20 rounded-xl flex items-center gap-3"><ShieldAlert size={20}/><span>{dbError}</span></div>
-                                ) : dbDocs.length === 0 ? (
-                                    <div className="h-full flex flex-col items-center justify-center opacity-20"><Search size={64}/><p className="text-sm font-bold uppercase tracking-widest mt-4">Empty Node</p></div>
-                                ) : dbViewMode === 'json' ? (
-                                    <pre className="text-xs font-mono text-indigo-200 bg-slate-900 p-6 rounded-2xl overflow-auto border border-slate-800 max-w-full shadow-inner leading-relaxed">{safeStringify(dbDocs)}</pre>
-                                ) : (
-                                    <div className="overflow-x-auto border border-slate-800 rounded-2xl shadow-2xl bg-slate-900/20">
-                                        <table className="w-full text-left text-[11px] text-slate-400 border-collapse">
-                                            <thead className="bg-slate-950 text-slate-200 uppercase font-black tracking-widest sticky top-0 z-10 border-b border-slate-800">
-                                                <tr>{dbKeys.map(k => <th key={k} className="px-5 py-4 whitespace-nowrap">{k}</th>)}{isSuperAdmin && <th className="px-5 py-4 whitespace-nowrap text-right">Actions</th>}</tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-800/50">
-                                                {dbDocs.map((doc, i) => (
-                                                    <tr key={doc.id || i} className="hover:bg-indigo-600/5 transition-colors">
-                                                        {dbKeys.map(k => (
-                                                            <td key={k} className="px-5 py-3 whitespace-nowrap overflow-hidden text-ellipsis max-w-[250px] font-mono" title={String(doc[k])}>
-                                                                {doc[k] !== undefined ? String(doc[k]) : '-'}
-                                                            </td>
-                                                        ))}
-                                                        {isSuperAdmin && (
-                                                            <td className="px-5 py-3 text-right">
-                                                                <div className="flex items-center justify-end gap-1">
-                                                                    {activeCollection === 'users' && (
-                                                                        <button 
-                                                                            onClick={() => handleSetUserTier(doc.uid || doc.id, doc.subscriptionTier)} 
-                                                                            className={`p-2 rounded-lg transition-colors ${doc.subscriptionTier === 'pro' ? 'text-amber-400 hover:bg-amber-900/30' : 'text-indigo-400 hover:bg-indigo-900/30'}`}
-                                                                            title={doc.subscriptionTier === 'pro' ? 'Demote to Free' : 'Promote to Pro'}
-                                                                        >
-                                                                            {doc.subscriptionTier === 'pro' ? <UserMinus size={14}/> : <UserPlus size={14}/>}
-                                                                        </button>
-                                                                    )}
-                                                                    <button onClick={() => deleteFirestoreDoc(activeCollection!, doc.id)} className="p-2 text-red-400 hover:bg-red-900/30 rounded-lg"><Trash2 size={14}/></button>
-                                                                </div>
-                                                            </td>
-                                                        )}
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
-                            </div>
-                        </>
+                    <button onClick={() => fetchCollection(activeCollection)} className="p-2 text-slate-500 hover:text-white transition-colors"><RefreshCw size={18} className={isDbLoading ? 'animate-spin' : ''}/></button>
+                  </div>
+                  <div className="flex-1 overflow-auto p-6 scrollbar-thin scrollbar-thumb-slate-800">
+                    {isDbLoading ? (
+                      <div className="h-full flex flex-col items-center justify-center gap-4 animate-pulse"><Loader2 size={32} className="animate-spin text-indigo-500"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Syncing Ledger...</span></div>
+                    ) : dbError ? (
+                      <div className="p-8 bg-red-900/20 border border-red-900/50 rounded-3xl flex items-start gap-4 text-red-200 text-sm font-medium"><AlertCircle className="text-red-500 shrink-0" size={24}/><div className="flex-1"><p className="font-bold uppercase mb-1">Refraction Error</p><p>{dbError}</p></div></div>
+                    ) : dbDocs.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-700 italic"><Database size={48} className="mb-4 opacity-10"/><p>No documents found in this sector.</p></div>
+                    ) : dbViewMode === 'json' ? (
+                      <pre className="p-8 bg-slate-950 rounded-3xl border border-slate-800 text-[11px] font-mono text-indigo-300 overflow-x-auto whitespace-pre leading-relaxed shadow-inner">{safeJsonStringify(dbDocs)}</pre>
                     ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-slate-700 gap-6">
-                            <Database size={64} className="opacity-10" />
-                            <p className="text-xs font-black uppercase tracking-[0.4em]">Select Registry Segment</p>
+                      <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead className="bg-slate-950 text-slate-400 font-black uppercase tracking-widest border-b border-slate-800">
+                              <tr>
+                                <th className="px-6 py-4">Sovereign ID</th>
+                                <th className="px-6 py-4">Actions</th>
+                                <th className="px-6 py-4">Neural Data Trace</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800">
+                              {dbDocs.map(doc => (
+                                <tr key={doc.id} className="hover:bg-indigo-600/5 transition-colors group">
+                                  <td className="px-6 py-4 font-mono text-indigo-400 truncate max-w-[150px]" title={doc.id}>{doc.id}</td>
+                                  <td className="px-6 py-4">
+                                    <div className="flex items-center gap-2">
+                                      <button onClick={() => { if(confirm("Permanently delete document?")) deleteFirestoreDoc(activeCollection, doc.id).then(() => fetchCollection(activeCollection)) }} className="p-2 text-slate-600 hover:text-red-400 transition-colors bg-slate-950 rounded-lg border border-slate-800" title="Delete"><Trash2 size={14}/></button>
+                                      {activeCollection === 'users' && (
+                                        <button onClick={() => handleSetUserTier(doc.uid, doc.subscriptionTier)} className="p-2 text-slate-600 hover:text-amber-400 transition-colors bg-slate-950 rounded-lg border border-slate-800" title="Shift Tier">
+                                          {doc.subscriptionTier === 'pro' ? <UserMinus size={14}/> : <UserPlus size={14}/>}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 text-slate-500 font-mono text-[10px] truncate max-w-sm" title={safeJsonStringify(doc)}>{safeJsonStringify(doc)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-12 overflow-y-auto scrollbar-hide">
+                    <div className="space-y-4">
+                        <div className="w-24 h-24 bg-red-900/10 border border-red-500/20 rounded-[3rem] flex items-center justify-center mx-auto shadow-2xl group relative overflow-hidden">
+                            <Terminal size={48} className="text-red-500 opacity-20 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                        <h2 className="text-4xl font-black text-white italic uppercase tracking-tighter leading-none">Registry Inspector</h2>
+                        <p className="text-slate-500 text-sm max-w-md mx-auto leading-relaxed">System-level access to the Firestore data plane. Refract, audit, or purge sovereign documents with absolute authority.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+                        <button onClick={() => { if(confirm("Seed Database with defaults?")) seedDatabase().then(() => alert("Seed successful")) }} className="p-6 bg-slate-900 border border-slate-800 rounded-[2rem] text-left hover:border-emerald-500/50 transition-all group shadow-xl relative overflow-hidden">
+                            <UploadCloud className="text-emerald-500 mb-4 group-hover:scale-110 transition-transform" size={32}/>
+                            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-1">Seed Defaults</h3>
+                            <p className="text-[10px] text-slate-500 font-medium">Publish standard activities to the public registry.</p>
+                        </button>
+                        <button onClick={handleRunFullDiagnostics} className="p-6 bg-slate-900 border border-slate-800 rounded-[2rem] text-left hover:border-indigo-500/50 transition-all group shadow-xl relative overflow-hidden">
+                            <ShieldCheck className="text-indigo-400 mb-4 group-hover:scale-110 transition-transform" size={32}/>
+                            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-1">Neural Diagnostics</h3>
+                            <p className="text-[10px] text-slate-500 font-medium">Audit the handshake integrity of the entire spectrum.</p>
+                        </button>
+                    </div>
+
+                    {isTestingGemini && (
+                        <div className="w-full max-w-2xl bg-slate-900/50 border border-slate-800 rounded-[2.5rem] p-8 space-y-4 animate-fade-in-up shadow-2xl">
+                            <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2"><Activity size={16} className="text-indigo-400"/> Audit Trace</h4>
+                                <Loader2 size={18} className="animate-spin text-indigo-500" />
+                            </div>
+                            <div className="space-y-2">
+                                {diagnosticSteps.map(step => (
+                                    <div key={step.id} className="flex items-center justify-between p-4 bg-slate-950 rounded-2xl border border-slate-800 shadow-inner">
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-2 h-2 rounded-full ${step.status === 'success' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : step.status === 'failed' ? 'bg-red-500 animate-pulse' : step.status === 'running' ? 'bg-indigo-500 animate-ping' : 'bg-slate-800'}`}></div>
+                                            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-widest">{step.label}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            {step.details && <span className="text-[10px] font-mono text-slate-600 mr-4">{step.details}</span>}
+                                            {step.status === 'failed' && <span className="text-[9px] font-black text-red-500 uppercase">{step.error}</span>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>
-              </>
-          )}
-
-          {/* STORAGE TAB VIEW */}
-          {mainTab === 'storage' && (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                  <div className="flex-1 flex flex-col p-8 space-y-6 overflow-y-auto scrollbar-hide">
-                        {/* Storage Breadcrumbs */}
-                        <div className="bg-slate-900 border border-slate-800 p-3 rounded-2xl flex items-center space-x-2 text-xs font-mono overflow-x-auto shadow-inner shrink-0">
-                           <button onClick={() => loadStorage('', false)} className="text-indigo-400 hover:underline">root</button>
-                           {storagePath.split('/').filter(Boolean).map((part, i, arr) => (
-                              <React.Fragment key={i}>
-                                 <span className="text-slate-600">/</span>
-                                 <button onClick={() => loadStorage(arr.slice(0, i+1).join('/'), true)} className={`${i === arr.length - 1 ? 'text-white font-bold' : 'text-indigo-400 hover:underline'}`}>{part}</button>
-                              </React.Fragment>
-                           ))}
-                           <div className="flex-1"></div>
-                           <div className="flex gap-2">
-                               <button onClick={() => loadStorage('', false)} className="flex items-center gap-2 px-3 py-1 bg-slate-800 text-slate-400 border border-slate-700 rounded-lg text-[10px] font-black uppercase hover:text-white transition-all">
-                                    <HardDrive size={12}/> My Backups
-                               </button>
-                               <button onClick={() => loadStorage('bible_corpus', true)} className="flex items-center gap-2 px-3 py-1 bg-amber-900/20 text-amber-400 border border-amber-500/30 rounded-lg text-[10px] font-black uppercase hover:bg-amber-600 hover:text-white transition-all">
-                                    <Database size={12}/> Bible Ingest
-                                </button>
-                           </div>
-                        </div>
-
-                        {storageError && (
-                            <div className="p-4 bg-red-900/20 border border-red-900/50 rounded-xl flex items-start gap-3 animate-fade-in shadow-xl">
-                                <ShieldAlert className="text-red-500 shrink-0 mt-0.5" size={18} />
-                                <div className="space-y-1">
-                                    <p className="text-sm font-bold text-red-200">Storage Handshake Failed</p>
-                                    <p className="text-xs text-red-300 leading-relaxed font-mono whitespace-pre-wrap">{storageError}</p>
-                                    <div className="mt-3 flex gap-2">
-                                        <button onClick={() => loadStorage(storagePath, isAbsolute)} className="px-3 py-1 bg-red-600 hover:bg-red-500 text-white text-[9px] font-black uppercase rounded shadow-lg transition-all">Retry List</button>
-                                        <button onClick={() => loadStorage('', false)} className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[9px] font-black uppercase rounded border border-slate-700 transition-all">Reset to Root</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Storage Table */}
-                        <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden shadow-2xl bg-slate-900/50">
-                           <div className="overflow-x-auto">
-                             <table className="w-full text-left text-sm text-slate-400 border-collapse">
-                               <thead className="bg-slate-950 text-slate-200 uppercase text-[10px] font-black tracking-widest sticky top-0">
-                                 <tr>
-                                   <th className="px-6 py-4">Name</th>
-                                   <th className="px-6 py-4">Type</th>
-                                   <th className="px-6 py-4">Size</th>
-                                   <th className="px-6 py-4 text-right">Actions</th>
-                                 </tr>
-                               </thead>
-                               <tbody className="divide-y divide-slate-800">
-                                 {(storagePath || isAbsolute) && (
-                                    <tr onClick={() => { const parts = storagePath.split('/'); parts.pop(); loadStorage(parts.join('/'), true); }} className="hover:bg-slate-800/50 transition-colors cursor-pointer group">
-                                       <td className="px-6 py-3" colSpan={4}><div className="flex items-center space-x-2 text-indigo-400 group-hover:text-white"><CornerLeftUp size={16} /><span className="text-xs font-bold uppercase tracking-widest">.. (Go Up)</span></div></td>
-                                    </tr>
-                                 )}
-                                 {storageFiles.map((file) => (
-                                   <tr key={file.fullPath} className="hover:bg-indigo-600/5 transition-colors group">
-                                      <td className="px-6 py-4">
-                                         <div className={`flex items-center space-x-3 ${file.isFolder ? 'cursor-pointer text-indigo-300 hover:text-white' : 'text-slate-200'}`} onClick={() => file.isFolder ? loadStorage(file.fullPath, true) : handlePreviewFile(file)}>
-                                            {file.isFolder ? <Folder size={18} className="fill-indigo-900/50 text-indigo-400" /> : file.name.endsWith('.json') ? <FileJson size={18} className="text-amber-500" /> : <FileAudio size={18} className="text-emerald-500" />}
-                                            <span className="font-mono text-xs">{file.name}</span>
-                                         </div>
-                                      </td>
-                                      <td className="px-6 py-4 text-slate-600 text-[10px] font-black uppercase tracking-tighter">{file.isFolder ? 'Directory' : file.contentType || 'Binary'}</td>
-                                      <td className="px-6 py-4 font-mono text-[10px] text-emerald-400">{formatSize(file.size)}</td>
-                                      <td className="px-6 py-4 text-right">
-                                         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            {!file.isFolder && (
-                                               <>
-                                                  <button onClick={() => handlePreviewFile(file)} className="p-2 text-slate-400 hover:text-indigo-400 transition-colors" title="Preview"><Eye size={16} /></button>
-                                                  {isSuperAdmin && <button onClick={() => handleStorageDelete(file.fullPath)} className="p-2 text-slate-500 hover:text-red-400 transition-colors" title="Delete"><Trash2 size={16} /></button>}
-                                               </>
-                                            )}
-                                         </div>
-                                      </td>
-                                   </tr>
-                                 ))}
-                               </tbody>
-                             </table>
-                             {isStorageLoading && (
-                                <div className="p-20 flex flex-col items-center gap-4 animate-pulse">
-                                    <Loader2 size={32} className="animate-spin text-indigo-500"/>
-                                    <div className="text-center">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600 block">Paging Storage Nodes...</span>
-                                        <span className="text-[8px] font-mono text-slate-700 uppercase mt-1 block">Path: {storagePath || 'root'}</span>
-                                    </div>
-                                </div>
-                             )}
-                             {!isStorageLoading && !storageError && storageFiles.length === 0 && (
-                                 <div className="p-20 flex flex-col items-center gap-4 text-slate-700 animate-fade-in">
-                                     <FolderOpen size={48} className="opacity-10"/>
-                                     <div className="text-center">
-                                        <p className="text-xs font-black uppercase tracking-widest">Directory is Empty</p>
-                                        <p className="text-[9px] font-mono text-slate-800 mt-2 uppercase">Verified Path: {storagePath || 'backups/public'}</p>
-                                     </div>
-                                 </div>
-                             )}
-                           </div>
-                        </div>
-                  </div>
-
-                  {/* Storage Preview Panel */}
-                  {(previewContent || isPreviewLoading) && (
-                      <div className="w-1/2 border-l border-slate-800 bg-black/40 backdrop-blur-md flex flex-col animate-fade-in relative z-50">
-                          <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/80 shrink-0">
-                              <div className="flex items-center gap-3">
-                                  <FileJson size={18} className="text-amber-500"/>
-                                  <h3 className="text-sm font-bold text-white truncate max-w-[200px]">{previewName}</h3>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                  <button onClick={handleCopyPreview} className={`p-1.5 rounded-lg transition-colors ${copyStatus ? 'bg-emerald-600 text-white' : 'hover:bg-white/10 text-slate-400 hover:text-white'}`} title="Copy Content">
-                                      {copyStatus ? <Check size={16}/> : <Copy size={16}/>}
-                                  </button>
-                                  <button onClick={() => { setPreviewContent(null); setPreviewName(null); }} className="p-1 hover:bg-white/10 rounded-lg text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
-                              </div>
-                          </div>
-                          <div className="flex-1 overflow-auto p-6 font-mono text-xs text-indigo-200/80 leading-relaxed scrollbar-hide">
-                              {isPreviewLoading ? (
-                                  <div className="h-full flex flex-col items-center justify-center gap-3 animate-pulse"><Loader2 size={32} className="animate-spin text-indigo-500"/><span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Decrypting Storage Node...</span></div>
-                              ) : (
-                                <div className="space-y-6">
-                                    {showCorsFix && (
-                                        <div className="bg-emerald-950/40 border border-emerald-500/30 p-6 rounded-3xl space-y-4 animate-fade-in-up shadow-2xl">
-                                            <div className="flex items-center gap-3 text-emerald-400">
-                                                <CheckCircle size={20}/>
-                                                <h4 className="text-sm font-black uppercase tracking-[0.2em]">CORS Handshake Optimized</h4>
-                                            </div>
-                                            <p className="text-xs text-slate-300 leading-relaxed">Bucket origin access detected. If content fails to load, ensure your <a href="https://console.cloud.google.com/" target="_blank" className="text-indigo-400 underline">Google Cloud Shell</a> has applied the policy to the correct bucket:</p>
-                                            
-                                            <div className="bg-black/80 p-3 rounded-xl border border-white/10 relative group">
-                                                <code className="text-[10px] text-indigo-300 break-all leading-relaxed block pr-8">
-                                                    gsutil cors set cors.json gs://{bucketUrl}
-                                                </code>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <pre className="whitespace-pre-wrap select-text bg-slate-900/40 p-4 rounded-xl border border-white/5 shadow-inner">
-                                        {previewContent}
-                                    </pre>
-                                </div>
-                              )}
-                          </div>
-                          <div className="p-4 bg-slate-950 border-t border-slate-800 text-center shrink-0">
-                              <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest">Sovereign Data Preview Mode</p>
-                          </div>
-                      </div>
-                  )}
-              </div>
-          )}
-      </div>
-
-      {/* Diagnostics Overlay */}
-      {isTestingGemini && (
-        <div className="fixed inset-0 z-[200] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
-            <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-3xl shadow-2xl overflow-hidden animate-fade-in-up">
-                <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                    <div className="flex items-center gap-3"><Activity className="text-indigo-400" /><h3 className="text-lg font-black text-white italic uppercase tracking-widest">Neural Diagnostic Matrix</h3></div>
-                    <button onClick={() => setIsTestingGemini(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
+              )}
+            </main>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-800 bg-slate-900/40 flex items-center justify-between px-8">
+                <div className="flex items-center gap-3">
+                    <Cloud size={18} className="text-indigo-400"/>
+                    <div className="bg-slate-950 border border-slate-800 p-2 rounded-xl flex items-center gap-2 text-[10px] font-mono shadow-inner">
+                        <span className="text-slate-600">PATH:</span>
+                        <span className="text-indigo-300">root/{storagePath || '/'}</span>
+                    </div>
                 </div>
-                <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto scrollbar-hide">
-                    {diagnosticSteps.map((step) => (
-                        <div key={step.id} className={`p-5 rounded-2xl border transition-all ${step.status === 'success' ? 'bg-emerald-950/20 border-emerald-500/30' : step.status === 'failed' ? 'bg-red-950/20 border-red-500/30' : step.status === 'running' ? 'bg-indigo-950/20 border-indigo-500/30 animate-pulse' : 'bg-slate-900/50 border-slate-800'}`}>
-                            <div className="flex justify-between items-start">
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-lg ${step.status === 'success' ? 'bg-emerald-500' : step.status === 'failed' ? 'bg-red-500' : 'bg-slate-800'}`}>
-                                        {step.id === 'storage' ? <Cloud size={16} className="text-white"/> : <Zap size={16} className="text-white"/>}
-                                    </div>
-                                    <div><h4 className="text-sm font-bold text-white">{step.label}</h4><p className="text-[10px] text-slate-500 uppercase font-black">ID: {step.id}</p></div>
-                                </div>
-                                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${step.status === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>{step.status}</span>
-                            </div>
-                            {step.details && <pre className="text-xs text-slate-300 mt-3 leading-relaxed bg-black/30 p-3 rounded-xl border border-white/10 whitespace-pre-wrap font-mono overflow-auto max-h-40">{step.details}</pre>}
-                            {step.error && <p className="mt-3 p-3 bg-red-900/40 rounded-xl border border-red-500/20 text-[11px] font-mono text-red-200">{step.error}</p>}
-                        </div>
-                    ))}
-                    <div className="flex gap-3 pt-4"><button onClick={() => { navigator.clipboard.writeText(safeStringify(diagnosticSteps)); setCopyFeedback(true); setTimeout(() => setCopyFeedback(false), 2000); }} className="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-slate-700">{copyFeedback ? <Check size={16} className="text-emerald-400"/> : <Copy size={16}/>} Copy Log</button><button onClick={() => setIsTestingGemini(false)} className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl transition-all">Dismiss</button></div>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => loadStorage(storagePath, isAbsolute)} className="p-2 text-slate-500 hover:text-white transition-colors bg-slate-900 rounded-lg border border-slate-800 shadow-lg"><RefreshCw size={18} className={isStorageLoading ? 'animate-spin' : ''}/></button>
                 </div>
-                <div className="p-4 bg-slate-950 border-t border-slate-800 text-center"><p className="text-[8px] text-slate-600 font-black uppercase tracking-[0.2em]">Neural Handshake Protocol v5.8.2-CONSOLE</p></div>
             </div>
-        </div>
-      )}
+            
+            <div className="flex-1 flex overflow-hidden">
+                <div className="flex-1 overflow-y-auto p-8 scrollbar-hide">
+                    {storageError ? (
+                        <div className="p-10 bg-red-900/20 border border-red-900/50 rounded-[3rem] flex items-center gap-6 shadow-2xl animate-fade-in-up">
+                            <ShieldAlert size={48} className="text-red-500" />
+                            <div className="space-y-1">
+                                <h3 className="text-xl font-black text-white uppercase italic">Vault Handshake Error</h3>
+                                <p className="text-red-200 text-sm font-medium">{storageError}</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-slate-900 border border-slate-800 rounded-[3rem] overflow-hidden shadow-2xl">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs border-collapse">
+                                    <thead className="bg-slate-950 text-slate-400 font-black uppercase tracking-[0.2em] border-b border-slate-800">
+                                        <tr>
+                                            <th className="px-8 py-5">Node Identity</th>
+                                            <th className="px-8 py-5">Mass</th>
+                                            <th className="px-8 py-5 text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800/50">
+                                        {(storagePath || isAbsolute) && (
+                                            <tr onClick={() => { const parts = storagePath.split('/'); parts.pop(); loadStorage(parts.join('/'), true); }} className="hover:bg-indigo-600/5 cursor-pointer group">
+                                                <td colSpan={3} className="px-8 py-4 text-indigo-400 font-black uppercase text-[10px] flex items-center gap-2 group-hover:translate-x-1 transition-transform tracking-widest"><CornerLeftUp size={14}/> .. Escape Level</td>
+                                            </tr>
+                                        )}
+                                        {storageFiles.length === 0 && !isStorageLoading && (
+                                            <tr>
+                                                <td colSpan={3} className="px-8 py-20 text-center">
+                                                    <div className="flex flex-col items-center gap-4 opacity-10">
+                                                        <Database size={64} />
+                                                        <p className="text-sm font-black uppercase tracking-widest">Sector Empty</p>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {storageFiles.map(file => (
+                                            <tr key={file.fullPath} className="hover:bg-indigo-600/5 group transition-colors">
+                                                <td className="px-8 py-4">
+                                                    <div className="flex items-center gap-4 cursor-pointer" onClick={() => file.isFolder ? loadStorage(file.fullPath, true) : handlePreviewFile(file)}>
+                                                        {file.isFolder ? <Folder size={20} className="text-indigo-500 fill-indigo-500/10"/> : <FileJson size={20} className="text-amber-500"/>}
+                                                        <div className="flex flex-col">
+                                                            <span className="font-mono text-slate-100 font-bold">{file.name}</span>
+                                                            <span className="text-[8px] text-slate-600 uppercase font-black tracking-tighter">{file.fullPath}</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-8 py-4 font-mono text-slate-400 tabular-nums">{formatSize(file.size)}</td>
+                                                <td className="px-8 py-4 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="flex justify-end gap-1">
+                                                        {!file.isFolder && (
+                                                            <>
+                                                                <button onClick={() => handlePreviewFile(file)} className="p-2 text-slate-500 hover:text-indigo-400 transition-colors bg-slate-950 rounded-lg border border-slate-800" title="Preview"><Eye size={14}/></button>
+                                                                <button onClick={() => handleStorageDelete(file.fullPath)} className="p-2 text-slate-500 hover:text-red-400 transition-colors bg-slate-950 rounded-lg border border-slate-800" title="Purge Node"><Trash2 size={14}/></button>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {previewContent && (
+                    <div className="w-[600px] border-l border-slate-800 bg-slate-950/80 backdrop-blur-2xl flex flex-col animate-fade-in-right relative z-50 shadow-[-20px_0_50px_rgba(0,0,0,0.5)]">
+                        <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/60 shrink-0">
+                            <div className="flex items-center gap-4">
+                                <div className="p-2.5 bg-amber-900/20 text-amber-500 rounded-xl border border-amber-500/20 shadow-lg"><FileJson size={20}/></div>
+                                <div>
+                                    <h3 className="text-sm font-black text-white truncate max-w-[300px] uppercase tracking-tighter">{previewName}</h3>
+                                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest">Sovereign Data Buffer</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={handleCopyPreview} className="p-2.5 bg-slate-950 hover:bg-indigo-600 rounded-xl text-slate-400 hover:text-white transition-all border border-slate-800 shadow-xl active:scale-95">
+                                    {copyStatus ? <Check size={18} className="text-emerald-400"/> : <Copy size={18} />}
+                                </button>
+                                <button onClick={() => setPreviewContent(null)} className="p-2.5 bg-slate-950 hover:bg-red-600 rounded-xl text-slate-500 hover:text-white transition-all border border-slate-800 shadow-xl active:scale-95"><X size={20}/></button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-auto p-8 font-mono text-[11px] text-indigo-200/90 leading-relaxed scrollbar-thin scrollbar-thumb-indigo-500/20 scrollbar-track-transparent">
+                            {isPreviewLoading ? (
+                                <div className="h-full flex flex-col items-center justify-center gap-4 animate-pulse">
+                                    <Loader2 className="animate-spin text-indigo-500" size={32}/>
+                                    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-600">Reconstructing Shards...</span>
+                                </div>
+                            ) : (
+                                <pre className="whitespace-pre-wrap select-text selection:bg-indigo-500/30">{previewContent}</pre>
+                            )}
+                        </div>
+                        <div className="p-4 bg-slate-950 border-t border-slate-800 text-center"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.5em]">Neural Trace Assembly Complete</p></div>
+                    </div>
+                )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

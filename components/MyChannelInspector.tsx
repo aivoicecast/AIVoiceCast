@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { getUserChannels, deleteUserChannel, saveUserChannel } from '../utils/db';
 import { getCreatorChannels } from '../services/firestoreService';
@@ -23,9 +22,9 @@ export const MyChannelInspector: React.FC<MyChannelInspectorProps> = ({ onBack }
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      // Race condition safety: Timeout after 5 seconds if DB is locked
+      // Race condition safety: Timeout after 15 seconds if DB is locked (Increased from 5s)
       const timeout = new Promise<Channel[]>((_, reject) => 
-          setTimeout(() => reject(new Error("Database load timed out. Please reload the page.")), 5000)
+          setTimeout(() => reject(new Error("Database load timed out. Please reload the page.")), 15000)
       );
       
       const dbPromise = getUserChannels();
@@ -153,9 +152,7 @@ export const MyChannelInspector: React.FC<MyChannelInspectorProps> = ({ onBack }
         {/* Header */}
         <div className="flex items-center justify-between">
            <div className="flex items-center space-x-4">
-             <button onClick={onBack} className="p-2 bg-slate-800 rounded-lg hover:bg-slate-700">
-                <ArrowLeft size={20} />
-             </button>
+             <button onClick={onBack} className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
              <div>
                 <h1 className="text-2xl font-bold flex items-center space-x-2">
                   <HardDrive className="text-purple-400" />

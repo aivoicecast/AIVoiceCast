@@ -1,4 +1,3 @@
-
 import { 
     GoogleAuthProvider, 
     GithubAuthProvider,
@@ -53,7 +52,6 @@ export async function signInWithGoogle(): Promise<User | null> {
     }
 }
 
-// Fixed: Added isJudgeSession to check for specialized judge sessions
 /**
  * Checks if the current session is a specialized judge/auditor session.
  */

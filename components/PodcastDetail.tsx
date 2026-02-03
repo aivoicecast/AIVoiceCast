@@ -164,14 +164,14 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
               }
 
               if (!lecture) {
-                  // 5. Final Neural Refraction
-                  lecture = await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName);
+                  // 5. Final Neural Refraction - Included channel's system instruction
+                  lecture = await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName, force, channel.systemInstruction);
               }
               if (lecture) await cacheLectureScript(cacheKey, lecture);
           }
           return lecture;
       } catch (e) { return null; }
-  }, [channel.id, channel.description, channel.voiceName, language, dispatchLog]);
+  }, [channel.id, channel.description, channel.voiceName, channel.systemInstruction, language, dispatchLog]);
 
   const handleSelectSubTopic = async (sub: SubTopic, shouldStop = true, force: boolean = false) => {
       if (!force && activeSubTopicId === sub.id && activeLecture) return activeLecture;
@@ -316,11 +316,21 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
     if (isBatchSynthesizing) return;
     setIsBatchSynthesizing(true);
     setBatchProgress({ current: 0, total: flatCurriculum.length });
+    
+    const shouldForce = confirm("Force re-synthesis of all nodes? This will refresh all content using the latest persona settings.");
+
     try {
         for (let i = 0; i < flatCurriculum.length; i++) {
             const sub = flatCurriculum[i];
             dispatchLog(`Synthesizing Manuscript Segment ${i+1}/${flatCurriculum.length}: ${sub.title}`, 'info');
-            await hydrateLectureLean(sub);
+            
+            const lecture = await hydrateLectureLean(sub, shouldForce);
+            
+            // If background synthesis finishes the one the user is looking at, update the view
+            if (activeSubTopicId === sub.id && lecture) {
+                setActiveLecture(lecture);
+            }
+
             setBatchProgress({ current: i + 1, total: flatCurriculum.length });
         }
         dispatchLog(`Batch Refraction Complete.`, 'success');

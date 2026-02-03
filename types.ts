@@ -81,8 +81,8 @@ export interface DualVerse {
   number: string;
   en: string;
   zh: string;
-  audioUrl?: string;   // Baked permanent URL for English audio
-  audioZhUrl?: string; // Baked permanent URL for Chinese audio
+  audioUrl?: string;
+  audioZhUrl?: string;
 }
 
 export interface GeneratedLecture {
@@ -171,7 +171,7 @@ export interface Attachment {
   name?: string;
 }
 
-export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view';
+export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view' | 'pdf_signer' | 'badge_studio' | 'badge_viewer';
 
 export interface Group {
   id: string;
@@ -207,7 +207,6 @@ export interface AgentMemory {
   theme: 'festive' | 'minimal' | 'cyberpunk' | 'chinese-poem' | 'abstract';
   customThemePrompt?: string;
   userImages: string[];
-  googlePhotosUrl?: string;
   generatedAt: string;
   fontFamily?: string;
   fontSizeScale?: number;
@@ -216,6 +215,7 @@ export interface AgentMemory {
   voiceMessageUrl?: string;
   songLyrics?: string;
   songUrl?: string;
+  googlePhotosUrl?: string;
 }
 
 export interface ChannelStats {
@@ -247,7 +247,7 @@ export interface RealTimeMessage {
   senderId: string;
   senderName: string;
   senderImage?: string;
-  timestamp: any; // Firestore Timestamp
+  timestamp: any;
   replyTo?: {
     id: string;
     text: string;
@@ -329,14 +329,6 @@ export interface CursorPosition {
   line: number;
   ch: number;
   timestamp: number;
-}
-
-export interface CloudItem {
-  id: string;
-  name: string;
-  type: 'file' | 'folder';
-  size?: number;
-  updatedAt: number;
 }
 
 export interface WhiteboardElement {
@@ -542,13 +534,6 @@ export interface OfflinePaymentToken {
   certificate: string;
 }
 
-export interface PendingClaim {
-  id: string;
-  token: string;
-  amount: number;
-  timestamp: number;
-}
-
 export interface MockInterviewRecording {
   id: string;
   userId: string;
@@ -561,6 +546,8 @@ export interface MockInterviewRecording {
   transcript: TranscriptItem[];
   visibility: ChannelVisibility;
   language: string;
+  // Support for local video blobs and resolving type errors in MockInterview component
+  blob?: Blob;
 }
 
 export interface TodoItem {
@@ -568,4 +555,33 @@ export interface TodoItem {
   text: string;
   isCompleted: boolean;
   date: string;
+}
+
+export interface BadgeData {
+    id: string;
+    ownerId: string;
+    displayName: string;
+    photoUrl: string;
+    isSecure: boolean;
+    photoTakenAt: number;
+    certificate: string;
+    tier: string;
+    anchorNode: string;
+}
+
+export interface SignedDocument {
+    id: string;
+    name: string;
+    originalUrl: string;
+    signedUrl?: string;
+    certificateUrl?: string;
+    ownerId: string;
+    ownerName: string;
+    requestedSignerId?: string;
+    requestedSignerName?: string;
+    status: 'pending' | 'signed' | 'refused';
+    createdAt: number;
+    updatedAt?: number;
+    memo?: string;
+    hashes?: string;
 }

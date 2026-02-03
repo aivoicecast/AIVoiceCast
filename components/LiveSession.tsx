@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -5,7 +6,7 @@ import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, signInWithGoogle, isJudgeSession } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
-import { ensureCodeStudioFolder, uploadToDrive } from '../services/googleDriveService';
+import { ensureCodeStudioFolder, uploadToDrive, uploadToDriveWithProgress } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
 import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, syncUserProfile, getUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
@@ -139,6 +140,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [isUploadingRecording, setIsUploadingRecording] = useState(false);
   const [volume, setVolume] = useState(0);
 
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadSpeed, setUploadSpeed] = useState(0);
+  const [uploadETA, setUploadETA] = useState(0);
+
   const [scribeTimeLeft, setScribeTimeLeft] = useState(recordingDuration || 180);
   const [backdropStyle, setBackdropStyle] = useState<PipBackground>('blur');
   const [customPipBgBase64, setCustomPipBgBase64] = useState<string | null>(null);
@@ -159,7 +164,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [suggestions] = useState<string[]>(channel.starterPrompts?.slice(0, 4) || []);
   
-  const addLog = useCallback((msg: string, type: 'info' | 'error' | 'warn' = 'info') => {
+  const addLog = useCallback((msg: string, type: 'info' | 'error' | 'success' | 'warn' = 'info') => {
       console.log(`[Neural Log] ${msg}`);
       window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: msg, type } }));
   }, []);
@@ -177,8 +182,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   // STABLE TIMER PROTOCOL v2
   useEffect(() => {
-    // Timer should run as long as the recording is physically active, 
-    // regardless of transient AI connection blips.
     if (hasStarted && recordingEnabled && isRecordingActive && scribeTimeLeft > 0) {
       const timer = setInterval(() => {
         setScribeTimeLeft(prev => {
@@ -220,7 +223,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         
         if (ctx.state !== 'running') await ctx.resume();
 
-        // 1. Audio Setup
         const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const userSource = ctx.createMediaStreamSource(userStream); 
         userSource.connect(recordingDest);
@@ -230,7 +232,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             screenAudioSource.connect(recordingDest);
         }
 
-        // 2. Compositor Setup - Standard 1080p Landscape for MacBook
         const canvas = document.createElement('canvas');
         canvas.width = 1920; 
         canvas.height = 1080;
@@ -247,7 +248,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         const screenVideo = createCaptureVideo(screenStreamRef.current, 'screen');
         const cameraVideo = createCaptureVideo(cameraStreamRef.current, 'camera');
 
-        // FRAME-FLOW HANDSHAKE (Fix for Frozen Video)
         let ready = false;
         const checkFlow = () => {
             const screenOk = !screenStreamRef.current || (screenVideo.readyState >= 2 && screenVideo.currentTime > 0);
@@ -264,12 +264,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         };
         checkFlow();
 
-        // High-Stability Render Loop (Switch from requestAnimationFrame to setInterval)
-        // 30 FPS = ~33.3ms. setInterval is much more resistant to background throttling.
         const renderLoop = () => {
             if (!mountedRef.current) return;
             
-            // 1. Main Background Layer
             if (backdropStyle === 'black') {
                 drawCtx.fillStyle = '#020617';
                 drawCtx.fillRect(0, 0, canvas.width, canvas.height);
@@ -289,7 +286,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 }
             }
 
-            // 2. Primary Screen Layer (The Hero)
             if (screenStreamRef.current && screenVideo.readyState >= 2) {
                 const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight) * 0.95;
                 const w = screenVideo.videoWidth * scale;
@@ -301,9 +297,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 drawCtx.restore();
             }
 
-            // 3. Circular PIP Portal Overlay
             if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
-                const size = 440; // Diameter for 1080p
+                const size = 440; 
                 const margin = 60;
                 const px = canvas.width - size - margin;
                 const py = canvas.height - size - margin;
@@ -349,7 +344,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             }
         };
 
-        // Wait for handshake
         while (!ready) { await new Promise(r => setTimeout(r, 100)); if (!mountedRef.current) return; }
 
         renderIntervalRef.current = setInterval(renderLoop, 1000 / 30);
@@ -367,14 +361,21 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         recorder.onstop = async () => {
             setIsRecordingActive(false);
             setIsFinalizing(true);
+            setUploadProgress(0);
             if (renderIntervalRef.current) clearInterval(renderIntervalRef.current);
-            addLog("Finalizing neural artifact...");
+            
+            addLog("Scribe: MediaRecorder stopped. Assembling neural blob...", "info");
             
             const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
             const timestamp = Date.now();
             const recId = `session-${timestamp}`;
+            const fileSizeMB = (videoBlob.size / 1024 / 1024).toFixed(2);
+            
+            addLog(`Scribe: Neural artifact assembled (${fileSizeMB} MB). Starting local vaulting...`, "info");
             
             try {
+                // PHASE 1: LOCAL VAULT
+                setUploadProgress(2);
                 await saveLocalRecording({
                     id: recId, userId: currentUser.uid, channelId: channel.id, 
                     channelTitle: channel.title, channelImage: channel.imageUrl, 
@@ -382,26 +383,49 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     mediaType: 'video/webm', transcriptUrl: '', 
                     blob: videoBlob, size: videoBlob.size
                 });
-                addLog("Artifact secured locally.");
+                setUploadProgress(5);
+                addLog("Vault: Artifact secured in browser storage (IndexedDB).", "success");
 
+                // PHASE 2: CLOUD DISPATCH
                 setIsUploadingRecording(true);
+                addLog("Cloud: Requesting sovereign handshake with Google Drive...", "info");
+                
                 const token = getDriveToken();
                 if (token) {
                     const folderId = await ensureCodeStudioFolder(token);
-                    const driveId = await uploadToDrive(token, folderId, `${recId}.webm`, videoBlob);
+                    addLog("Cloud: Provisioning storage segment...", "info");
+                    
+                    const driveId = await uploadToDriveWithProgress(
+                        token, 
+                        folderId, 
+                        `${recId}.webm`, 
+                        videoBlob,
+                        (progress, speed, eta) => {
+                            setUploadProgress(5 + (progress * 0.9));
+                            setUploadSpeed(speed);
+                            setUploadETA(eta);
+                        }
+                    );
+                    addLog(`Cloud: Drive upload successful (ID: ${driveId}). Registering ledger...`, "success");
+                    
+                    setUploadProgress(98);
                     await saveRecordingReference({
                         id: recId, userId: currentUser.uid, channelId: channel.id, 
                         channelTitle: channel.title, channelImage: channel.imageUrl, 
                         timestamp, mediaUrl: `drive://${driveId}`, driveUrl: `drive://${driveId}`, 
                         mediaType: 'video/webm', transcriptUrl: '', size: videoBlob.size
                     });
-                    addLog("Archive synced to sovereign cloud.");
+                    setUploadProgress(100);
+                    addLog("Archive: Session manifestation complete in Cloud Registry.", "success");
+                } else {
+                    addLog("Cloud: Drive token missing. Artifact remains in local vault only.", "warn");
                 }
             } catch (e: any) {
-                addLog("Save interruption: " + e.message, "error");
+                addLog("Protocol Failure: " + e.message, "error");
             } finally {
                 setIsFinalizing(false);
                 setIsUploadingRecording(false);
+                addLog("Scribe Protocol Terminated. Handshake complete.", "info");
                 onEndSession();
             }
 
@@ -558,10 +582,60 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
          </div>
       ) : (
          <div className="flex-1 flex flex-col min-0 relative">
-            {(isProvisioning || isWaitingForFrames || isFinalizing) && (
+            {(isProvisioning || isWaitingForFrames) && (
                <div className="absolute inset-0 z-[130] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-6 animate-fade-in">
                   <Loader2 className="animate-spin text-indigo-500" size={48} />
-                  <span className="text-sm font-black text-white uppercase tracking-widest">{isFinalizing ? t.finalizing : isWaitingForFrames ? t.waitingFrames : t.provisioning}</span>
+                  <span className="text-sm font-black text-white uppercase tracking-widest">{isWaitingForFrames ? t.waitingFrames : t.provisioning}</span>
+               </div>
+            )}
+
+            {isFinalizing && (
+               <div className="absolute inset-0 z-[130] bg-slate-950/90 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center animate-fade-in">
+                  <div className="w-full max-w-md space-y-8">
+                    <div className="relative flex justify-center">
+                        <Loader2 className="animate-spin text-indigo-500" size={64} />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-[10px] font-black text-white">{Math.round(uploadProgress)}%</span>
+                        </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <h3 className="text-xl font-black text-white uppercase italic tracking-tighter">{t.finalizing}</h3>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                            {uploadProgress < 5 ? "Securing Local Shards..." : "Streaming to Sovereign Vault..."}
+                        </p>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="w-full h-2 bg-slate-900 rounded-full border border-slate-800 overflow-hidden shadow-inner">
+                            <div 
+                                className="h-full bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 transition-all duration-300"
+                                style={{ width: `${uploadProgress}%` }}
+                            />
+                        </div>
+                        
+                        {uploadProgress >= 5 && uploadETA > 0 && (
+                            <div className="flex justify-between items-center px-2">
+                                <div className="flex items-center gap-2 text-slate-500">
+                                    <Activity size={12} className="text-indigo-400" />
+                                    <span className="text-[10px] font-mono">{(uploadSpeed / 1024 / 1024).toFixed(2)} MB/s</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-slate-500">
+                                    <Timer size={12} className="text-amber-400" />
+                                    <span className="text-[10px] font-mono">
+                                        ETA: {Math.floor(uploadETA / 60)}m {Math.floor(uploadETA % 60)}s
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="p-4 bg-indigo-900/10 rounded-2xl border border-indigo-500/10">
+                        <p className="text-[9px] text-slate-400 leading-relaxed font-medium uppercase italic">
+                            Protocol status: DO NOT CLOSE TAB. Starching neural fragments into permanent technical artifact.
+                        </p>
+                    </div>
+                  </div>
                </div>
             )}
 

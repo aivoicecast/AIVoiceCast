@@ -1,9 +1,8 @@
-
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Lock, Crown, ShieldCheck, Flame, Zap, RefreshCcw, Bug, ChevronUp, Fingerprint, Database, CheckCircle, Pause, PlayCircle as PlayIcon, Copy, BookText, Send, MessageCircle, FileUp
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Lock, Crown, ShieldCheck, Flame, Zap, RefreshCcw, Bug, ChevronUp, Fingerprint, Database, CheckCircle, Pause, PlayCircle as PlayIcon, Copy, BookText, Send, MessageCircle, FileUp, FileSignature, IdCard
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewID, TranscriptItem, CodeFile, UserFeedback } from '../types';
@@ -49,16 +48,19 @@ import { ScriptureSanctuary } from './ScriptureSanctuary';
 import { ScriptureIngest } from './ScriptureIngest';
 import { BookStudio } from './BookStudio';
 import { FeedbackManager } from './FeedbackManager';
+import { PdfSigner } from './PdfSigner';
+import { BadgeStudio } from './BadgeStudio';
+import { BadgeViewer } from './BadgeViewer';
 
 import { auth, db } from '../services/firebaseConfig';
-import { onAuthStateChanged } from '@firebase/auth';
-import { onSnapshot, doc } from '@firebase/firestore';
-import { getUserChannels, saveUserChannel, purgeStaleLectures } from '../utils/db';
+import { onAuthStateChanged } from 'firebase/auth';
+import { onSnapshot, doc } from 'firebase/firestore';
+import { getUserChannels, saveUserChannel } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { stopAllPlatformAudio } from '../utils/audioUtils';
-import { subscribeToPublicChannels, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel, getUserProfile, syncUserProfile, publishChannelToFirestore, isUserAdmin, updateUserProfile, saveUserFeedback } from '../services/firestoreService';
+import { subscribeToPublicChannels, getUserProfile, syncUserProfile, publishChannelToFirestore, isUserAdmin, updateUserProfile, saveUserFeedback } from '../services/firestoreService';
 import { getSovereignSession } from '../services/authService';
-import { generateSecureId } from '../utils/idUtils';
+import { generateSecureId, safeJsonStringify } from '../utils/idUtils';
 
 interface ErrorBoundaryProps { children?: ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; error: Error | null; }
@@ -84,47 +86,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-/**
- * Robust safe stringification that avoids circular reference errors by manually walking
- * and pruning non-plain instances before native serialization.
- */
-function safeJsonStringify(obj: any, indent: number = 2): string {
-    const seen = new WeakSet();
-    
-    const walk = (val: any): any => {
-        if (val === null || typeof val !== 'object') return val;
-        if (seen.has(val)) return '[Circular Ref Truncated]';
-        seen.add(val);
-        
-        // Prune non-plain objects (SDK instances, DOM, etc)
-        const prototype = Object.getPrototypeOf(val);
-        if (prototype !== Object.prototype && prototype !== Array.prototype && prototype !== null) {
-            return `[Instance: ${val.constructor?.name || 'Object'}]`;
-        }
-
-        if (Array.isArray(val)) {
-            return val.map(walk);
-        }
-
-        const result: any = {};
-        for (const key in val) {
-            if (Object.prototype.hasOwnProperty.call(val, key)) {
-                // Prune internal SDK properties
-                if (key.startsWith('_') || key.startsWith('$')) continue;
-                result[key] = walk(val[key]);
-            }
-        }
-        return result;
-    };
-
-    try {
-        const sanitized = walk(obj);
-        return JSON.stringify(sanitized, null, indent);
-    } catch (err) {
-        return `[Unserializable Artifact]`;
-    }
-}
-
 const UI_TEXT = {
   en: {
     appTitle: "Neural Prism",
@@ -146,7 +107,7 @@ const UI_TEXT = {
     mockInterview: "Mock Interview",
     graph: "Logic Visualizer",
     story: "Project Story",
-    bible: "Scripture Sanctuary",
+    bible: "Scripture",
     bibleIngest: "Scripture Ingest",
     mentorship: "Experts",
     docs: "Documents",
@@ -187,7 +148,7 @@ const UI_TEXT = {
     mockInterview: "模拟面试",
     graph: "逻辑可视化",
     story: "项目故事",
-    bible: "经文圣所",
+    bible: "经文",
     bibleIngest: "经文录入",
     mentorship: "专家导师",
     docs: "文档空间",
@@ -210,7 +171,7 @@ const UI_TEXT = {
   }
 };
 
-const PUBLIC_VIEWS: ViewID[] = ['mission', 'story', 'privacy', 'user_guide', 'check_viewer']; 
+const PUBLIC_VIEWS: ViewID[] = ['mission', 'story', 'privacy', 'user_guide', 'check_viewer', 'badge_viewer']; 
 const FREE_VIEWS: ViewID[] = ['directory', 'podcast_detail', 'dashboard', 'groups'];
 
 const isRestrictedView = (v: string): boolean => {
@@ -240,8 +201,8 @@ const GuardedView = ({ id, children, isProMember, isSuperAdmin, t, onUpgradeClic
     return (
       <div className="h-full w-full relative flex flex-col">
         {isSuperAdmin && isRestrictedView(id) && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none bg-indigo-600 text-white px-3 py-1 rounded-full border border-indigo-400 text-[9px] font-black uppercase tracking-[0.2em] shadow-2xl flex items-center gap-2">
-                <ShieldCheck size={12}/> Root Bypass Active
+            <div className="absolute bottom-12 left-4 z-50 pointer-events-none bg-indigo-600/40 text-white px-2 py-0.5 rounded-lg border border-indigo-400/20 text-[7px] font-black uppercase tracking-[0.1em] shadow-2xl flex items-center gap-1.5 backdrop-blur-sm opacity-60 hover:opacity-100 transition-opacity">
+                <ShieldCheck size={10}/> Bypass Active
             </div>
         )}
         {children}
@@ -282,7 +243,6 @@ const App: React.FC = () => {
   const [feedbackType, setFeedbackType] = useState<'bug' | 'feature' | 'general'>('general');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
-  const [isPurging, setIsPurging] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -303,11 +263,19 @@ const App: React.FC = () => {
   const addSystemLog = useCallback((text: any, type: SystemLogMsg['type'] = 'info') => {
       let cleanText = "";
       try {
-          if (typeof text === 'string') cleanText = text;
-          else if (text instanceof Error) cleanText = `ERROR: ${text.message}\nSTACK: ${text.stack || 'No stack.'}`;
-          else if (text !== null && typeof text === 'object') cleanText = safeJsonStringify(text);
-          else cleanText = String(text);
-      } catch (e) { cleanText = "[Internal Log Serialization Blocked]"; }
+          if (typeof text === 'string') {
+              cleanText = text;
+          } else if (text instanceof Error) {
+              cleanText = `ERROR: ${text.message}\nSTACK: ${text.stack || 'No stack.'}`;
+          } else if (text !== null && typeof text === 'object') {
+              cleanText = safeJsonStringify(text); 
+          } else {
+              cleanText = String(text);
+          }
+      } catch (e) { 
+          cleanText = "[Internal Log Processing Failure - Logic Gated]"; 
+      }
+
       if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText) return;
       logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type });
   }, []);
@@ -367,27 +335,22 @@ const App: React.FC = () => {
     window.history.pushState({}, '', url.toString());
   }, [activeViewID, isProMember]);
 
-  const handlePurge = async () => {
-      if (!confirm("Scanning local ledger for inaccurate model references. Proceed?")) return;
-      setIsPurging(true);
-      addSystemLog("Initiating Neural Cache Audit sweep...", "warn");
-      try {
-          const { purgedCount } = await purgeStaleLectures();
-          if (purgedCount > 0) {
-              addSystemLog(`[Security] Audit complete. Purged ${purgedCount} stale artifacts from local vault.`, "success");
-              setTimeout(() => window.location.reload(), 1500);
-          } else {
-              addSystemLog("Audit complete. Local cache is logically pure.", "success");
-          }
-      } catch (e: any) { addSystemLog(`Audit failed: ${e.message}`, "error"); }
-      finally { setIsPurging(false); }
-  };
-
   const [liveSessionParams, setLiveSessionParams] = useState<any>(null);
 
   const handleDetailBack = useCallback(() => handleSetViewState('directory'), [handleSetViewState]);
 
-  const handleStartLiveSession = useCallback((channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, recordScreen?: boolean, recordCamera?: boolean, activeSegment?: any, recordingDuration?: number, interactionEnabled?: boolean) => {
+  // Fix: Added missing parameters to handleStartLiveSession function signature to avoid shorthand property scoping errors.
+  const handleStartLiveSession = useCallback((
+    channel: Channel, 
+    context?: string, 
+    recordingEnabled?: boolean, 
+    bookingId?: string, 
+    recordScreen?: boolean, 
+    recordCamera?: boolean, 
+    activeSegment?: any, 
+    recordingDuration?: number, 
+    interactionEnabled?: boolean
+  ) => {
     const isSpecialized = ['1', '2', 'default-gem', 'judge-deep-dive'].includes(channel.id);
     if (isSpecialized && !isProMember) {
         setIsPricingModalOpen(true);
@@ -405,7 +368,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Sovereignty Protocols v6.8.5 Active.", "info");
+    addSystemLog("Sovereignty Protocols v6.9.8 Active.", "info");
     if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
         if (u) { setCurrentUser(u); syncUserProfile(u).catch(console.error); }
@@ -422,7 +385,13 @@ const App: React.FC = () => {
           if(s.exists()) {
               const profile = s.data() as UserProfile;
               setUserProfile(prev => {
-                  if (!prev || prev.coinBalance !== profile.coinBalance || prev.subscriptionTier !== profile.subscriptionTier) return profile;
+                  if (!prev || 
+                      prev.coinBalance !== profile.coinBalance || 
+                      prev.subscriptionTier !== profile.subscriptionTier ||
+                      prev.publicKey !== profile.publicKey ||
+                      prev.certificate !== profile.certificate) {
+                      return profile;
+                  }
                   return prev;
               });
               if (profile.languagePreference && profile.languagePreference !== language) setLanguage(profile.languagePreference);
@@ -489,6 +458,7 @@ const App: React.FC = () => {
         { id: 'dashboard', label: 'Home', icon: LayoutGrid, action: () => handleSetViewState('dashboard'), color: 'text-indigo-400', restricted: false },
         { id: 'directory', label: 'Hub', icon: Podcast, action: () => handleSetViewState('directory'), color: 'text-indigo-400', restricted: false },
         { id: 'bible_study', label: 'Scripture', icon: Scroll, action: () => handleSetViewState('bible_study'), color: 'text-amber-500', restricted: false },
+        { id: 'scripture_ingest', label: 'Scripture Ingest', icon: FileUp, action: () => handleSetViewState('scripture_ingest'), color: 'text-amber-400', restricted: true },
         { id: 'mission', label: 'Vision', icon: Rocket, action: () => handleSetViewState('mission'), color: 'text-orange-500', restricted: false },
         { id: 'story', label: 'Story', icon: BookOpen, action: () => handleSetViewState('story'), color: 'text-cyan-400', restricted: false },
         { id: 'book_studio', label: 'Author', icon: BookText, action: () => handleSetViewState('book_studio'), color: 'text-indigo-500', restricted: false },
@@ -498,9 +468,16 @@ const App: React.FC = () => {
         { id: 'chat', label: 'Chat', icon: MessageSquare, action: () => handleSetViewState('chat'), color: 'text-blue-400', restricted: true },
         { id: 'code_studio', label: 'Builder', icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400', restricted: true },
         { id: 'whiteboard', label: 'Canvas', icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400', restricted: true },
+        { id: 'pdf_signer', label: 'Signer', icon: FileSignature, action: () => handleSetViewState('pdf_signer'), color: 'text-indigo-400', restricted: true },
+        { id: 'badge_studio', label: 'Badge', icon: IdCard, action: () => handleSetViewState('badge_studio'), color: 'text-indigo-400', restricted: true },
     ];
     return { free: list.filter(a => !a.restricted), pro: list.filter(a => a.restricted) };
-  }, [handleSetViewState]);
+  }, [handleSetViewState, t]);
+
+  const handleMagicCreate = useCallback(() => {
+    if (isProMember) setIsVoiceCreateOpen(true);
+    else setIsPricingModalOpen(true);
+  }, [isProMember]);
 
   if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Spectrum...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} />;
@@ -540,7 +517,6 @@ const App: React.FC = () => {
               <button onClick={() => setShowConsole(!showConsole)} className={`p-2 transition-all rounded-lg ${showConsole ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title="Neural Diagnostics"><Bug size={18} className={!showConsole ? 'animate-pulse text-red-500' : ''} /></button>
               <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-white transition-colors" title="Reload Web App"><RefreshCcw size={18} /></button>
               {userProfile && (<button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex"><Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span></button>)}
-              {activeChannel && (<button onClick={() => isProMember ? setIsVoiceCreateOpen(true) : setIsPricingModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95"><span>AI VoiceCast</span></button>)}
               <div className="relative"><button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors"><img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}`} alt="Profile" className="w-full h-full object-cover" /></button><StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice="Auto" setGlobalVoice={()=>{}} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} onNavigate={(v) => handleSetViewState(v as any)} onUpgradeClick={() => setIsPricingModalOpen(true)} setIsSyncModalOpen={()=>{}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => handleSetViewState('user_guide')} onOpenPrivacy={() => handleSetViewState('privacy')} t={t} language={language} setLanguage={handleUpdateLanguage} channels={allChannels} isSuperAdmin={isSuperAdmin} isProMember={isProMember} /></div>
            </div>
         </header>
@@ -548,13 +524,13 @@ const App: React.FC = () => {
         <main className="flex-1 overflow-hidden relative flex flex-col pb-10">
             <GuardedView id={activeViewID} isProMember={isProMember} isSuperAdmin={isSuperAdmin} t={t} onUpgradeClick={() => setIsPricingModalOpen(true)}>
                 {activeViewID === 'dashboard' && ( <Dashboard userProfile={userProfile} isProMember={isProMember} onNavigate={handleSetViewState} language={language} /> )}
-                {activeViewID === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice="Auto" currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={()=>{}} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} onOpenPricing={() => setIsPricingModalOpen(true)} language={language} /> )}
+                {activeViewID === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice="Auto" currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={()=>{}} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} onOpenPricing={() => setIsPricingModalOpen(true)} language={language} onMagicCreate={handleMagicCreate} /> )}
                 {activeViewID === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={handleDetailBack} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} onUpdateChannel={handleUpdateChannel} isProMember={isProMember} /> )}
                 {activeViewID === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} language={language} initialContext={liveSessionParams.context} recordingEnabled={liveSessionParams.recordingEnabled} lectureId={liveSessionParams.bookingId} recordScreen={liveSessionParams.recordScreen} recordCamera={liveSessionParams.recordCamera} activeSegment={liveSessionParams.activeSegment} recordingDuration={liveSessionParams.recordingDuration} interactionEnabled={liveSessionParams.interactionEnabled} /> )}
                 {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} /></div> )}
                 {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} isProMember={isProMember}/> )}
                 {activeViewID === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('dashboard')} /> )}
-                {activeViewID === 'blog' && ( <BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'blog' && ( <div className="h-full overflow-y-auto"><BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} /></div> )}
                 {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} /> )}
                 {activeViewID === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
                 {activeViewID === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice="Auto" t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={() => setIsCreateModalOpen(true)} /> )}
@@ -565,17 +541,22 @@ const App: React.FC = () => {
                 {activeViewID === 'icon_generator' && ( <IconGenerator onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} iconId={activeItemId || undefined} isProMember={isProMember} /> )}
                 {activeViewID === 'notebook_viewer' && ( <NotebookViewer onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} notebookId={activeItemId || undefined} /> )}
                 {(activeViewID === 'card_workshop' || activeViewID === 'card_viewer') && ( <CardWorkshop onBack={() => handleSetViewState('dashboard')} cardId={activeItemId || undefined} isViewer={activeViewID === 'card_viewer' || !!activeItemId} /> )}
-                {activeViewID === 'mission' && ( <MissionManifesto onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'mission' && ( <div className="h-full overflow-y-auto"><MissionManifesto onBack={() => handleSetViewState('dashboard')} /></div> )}
                 {activeViewID === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
                 {activeViewID === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('dashboard')} user={userProfile} /> )}
                 {activeViewID === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} isProMember={isProMember} /> )}
                 {activeViewID === 'graph_studio' && ( <GraphStudio onBack={() => handleSetViewState('dashboard')} isProMember={isProMember} /> )}
                 {activeViewID === 'story' && ( <ProjectStory onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'privacy' && ( <PrivacyPolicy onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'user_guide' && ( <UserManual onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'bible_study' && ( <ScriptureSanctuary onBack={() => handleSetViewState('dashboard')} language={language} isProMember={isProMember} /> )}
                 {activeViewID === 'scripture_ingest' && ( <ScriptureIngest onBack={() => handleSetViewState('bible_study')} /> )}
                 {activeViewID === 'groups' && ( <GroupManager currentUser={currentUser} userProfile={userProfile} /> )}
                 {activeViewID === 'book_studio' && ( <BookStudio onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'feedback_manager' && ( <FeedbackManager onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
+                {activeViewID === 'pdf_signer' && ( <PdfSigner onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} /> )}
+                {activeViewID === 'badge_studio' && ( <BadgeStudio onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
+                {activeViewID === 'badge_viewer' && ( <BadgeViewer onBack={() => handleSetViewState('dashboard')} badgeId={activeItemId} /> )}
             </GuardedView>
         </main>
 
@@ -600,21 +581,16 @@ const App: React.FC = () => {
                                 <div className="flex justify-between items-center py-1 border-b border-white/5"><span className="text-slate-500 uppercase">Clearance:</span><span className="text-indigo-400 font-bold uppercase">{userProfile?.subscriptionTier || 'LEVEL_0'}</span></div>
                             </div>
                         </div>
-                        <div className="pt-4 flex flex-col gap-2">
-                            <button onClick={handlePurge} disabled={isPurging} className="w-full py-2 bg-red-950/20 text-red-400 text-[9px] font-black uppercase rounded-lg border border-red-900/30 hover:bg-red-600 hover:text-white transition-all shadow-lg active:scale-95">
-                                {isPurging ? <Loader2 size={12} className="animate-spin mx-auto"/> : 'Hard Purge Stale Artifacts'}
-                            </button>
-                            <button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-2 bg-slate-800 text-slate-400 text-[9px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all">Clear Buffer</button>
-                        </div>
+                        <div className="pt-4 flex flex-col gap-2"><button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-2 bg-slate-800 text-slate-400 text-[9px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all shadow-lg active:scale-95">Clear Buffer</button></div>
                     </div>
                     <div className="flex-1 flex flex-col min-w-0 bg-black/80">
                         {consoleTab === 'trace' ? (
                             <>
                                 <div className="px-6 py-3 border-b border-white/5 flex items-center justify-between bg-slate-900/40">
-                                    <div className="flex items-center gap-2"><Terminal size={14} className="text-red-400"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t.systemLog}</span></div>
+                                    <div className="flex items-center gap-2"><Terminal size={14} className="text-red-400"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Log Trace (RAW)</span></div>
                                     <button onClick={() => setIsLogPaused(!isLogPaused)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${isLogPaused ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}>{isLogPaused ? <PlayIcon size={12}/> : <Pause size={12}/>}{isLogPaused ? 'Resume' : 'Pause'}</button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-6 space-y-2 scrollbar-thin scrollbar-thumb-white/10 text-left">{visibleLogs.length === 0 && (<p className="text-slate-700 italic text-xs">{t.awaitingActivity}</p>)}{visibleLogs.map(log => (<div key={log.id} className={`flex gap-4 text-[11px] font-mono p-2 rounded ${log.type === 'error' ? 'bg-red-950/40 text-red-200 border border-red-500/30' : log.type === 'success' ? 'bg-emerald-950/20 text-emerald-400' : log.type === 'warn' ? 'bg-amber-950/20 text-amber-400' : 'text-slate-400'}`}><span className="opacity-40 shrink-0">[{log.time}]</span><span className="flex-1 whitespace-pre-wrap">{log.text}</span></div>))}</div>
+                                <div className="flex-1 overflow-y-auto p-6 space-y-2 scrollbar-thin scrollbar-thumb-white/10 text-left">{visibleLogs.length === 0 && (<p className="text-slate-700 italic text-xs">Awaiting neural activity...</p>)}{visibleLogs.map(log => (<div key={log.id} className={`flex gap-4 text-[11px] font-mono p-2 rounded ${log.type === 'error' ? 'bg-red-950/40 text-red-200 border border-red-500/30' : log.type === 'success' ? 'bg-emerald-950/20 text-emerald-400' : log.type === 'warn' ? 'bg-amber-950/20 text-amber-400' : 'text-slate-400'}`}><span className="opacity-40 shrink-0">[{log.time}]</span><span className="flex-1 whitespace-pre-wrap">{log.text}</span></div>))}</div>
                             </>
                         ) : (
                             <div className="flex-1 flex flex-col p-8 space-y-6 animate-fade-in">
@@ -630,7 +606,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.8.5-SYN</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.9.8-PRO</p></div>
             </div>
         </div>
 

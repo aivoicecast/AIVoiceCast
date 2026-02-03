@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Bell, Check, X, Loader2, Users, Calendar, Link, ExternalLink, Coins, MessageSquare, Receipt } from 'lucide-react';
 import { getPendingInvitations, respondToInvitation, getPendingBookings, respondToBooking, subscribeToReceipts, confirmReceipt, claimReceipt } from '../services/firestoreService';
 import { Invitation, Booking, DigitalReceipt } from '../types';
 import { auth } from '../services/firebaseConfig';
+/* Fix: Standardized Firebase modular imports */
 import { onAuthStateChanged } from '@firebase/auth';
 
 export const Notifications: React.FC = () => {
@@ -21,17 +21,18 @@ export const Notifications: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!auth) return;
     return onAuthStateChanged(auth, (u) => {
       setUser(u);
     });
   }, []);
 
   const fetchData = async () => {
-    if (!user || !user.email) return;
+    if (!user) return;
     try {
       const [invData, bookData] = await Promise.all([
-          getPendingInvitations(user.email),
-          getPendingBookings(user.email)
+          getPendingInvitations(user.uid, user.email || ''),
+          getPendingBookings(user.uid, user.email || '')
       ]);
       setInvites(invData);
       setBookings(bookData);
@@ -70,8 +71,8 @@ export const Notifications: React.FC = () => {
       if (!user) return [];
       return receipts.filter(r => {
           const isSender = r.senderId === user.uid;
-          const canConfirm = isSender && r.status === 'pending';
-          const canClaim = !isSender && r.status === 'confirmed';
+          const canConfirm = !isSender && r.status === 'pending';
+          const canClaim = isSender && r.status === 'confirmed';
           return canConfirm || canClaim;
       });
   }, [receipts, user]);
@@ -186,8 +187,8 @@ export const Notifications: React.FC = () => {
                     {/* DIGITAL RECEIPTS (ACTIONABLE ONLY) */}
                     {actionableReceipts.map(r => {
                         const isSender = r.senderId === user.uid;
-                        const canConfirm = isSender && r.status === 'pending';
-                        const canClaim = !isSender && r.status === 'confirmed';
+                        const canConfirm = !isSender && r.status === 'pending';
+                        const canClaim = isSender && r.status === 'confirmed';
 
                         return (
                             <div key={r.id} className={`p-4 hover:bg-slate-800/30 transition-colors border-l-2 ${canClaim ? 'border-emerald-500' : 'border-indigo-500'}`}>
@@ -198,9 +199,9 @@ export const Notifications: React.FC = () => {
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm text-slate-200">
                                             {isSender ? (
-                                                <><span className="font-bold">{r.receiverName}</span> requested <span className="text-indigo-400 font-bold">{r.amount} VC</span></>
+                                                <><span className="font-bold">{r.receiverName}</span> confirmed your <span className="text-emerald-400 font-bold">{r.amount} VC</span> request!</>
                                             ) : (
-                                                <><span className="font-bold">{r.senderName}</span> confirmed your <span className="text-emerald-400 font-bold">{r.amount} VC</span> request!</>
+                                                <><span className="font-bold">{r.senderName}</span> requested <span className="text-indigo-400 font-bold">{r.amount} VC</span></>
                                             )}
                                         </p>
                                         {r.memo && <p className="text-[10px] text-slate-500 mt-1 italic truncate">"{r.memo}"</p>}
@@ -220,7 +221,7 @@ export const Notifications: React.FC = () => {
                                                     disabled={processingId === r.id}
                                                     className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold rounded shadow-lg flex items-center justify-center"
                                                 >
-                                                    {processingId === r.id ? <Loader2 size={12} className="animate-spin"/> : 'Claim Ledger'}
+                                                    {processingId === r.id ? <Loader2 size={12} className="animate-spin"/> : 'Claim Funds'}
                                                 </button>
                                             )}
                                         </div>
@@ -245,9 +246,11 @@ export const Notifications: React.FC = () => {
                                         </p>
                                         <button 
                                             onClick={() => handleRespondInvite(invite, true)}
+                                            // Fix: correctly reference 'invite' variable from map scope
                                             disabled={processingId === invite.id}
                                             className="w-full mt-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold rounded shadow-lg flex items-center justify-center gap-2"
                                         >
+                                            {/* Fix: correctly reference 'invite' variable from map scope */}
                                             {processingId === invite.id ? <Loader2 size={12} className="animate-spin"/> : <Check size={12}/>}
                                             Claim Coins
                                         </button>

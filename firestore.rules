@@ -29,7 +29,6 @@ service cloud.firestore {
     // ----------------------------------------------------------------------
     // NEURAL CACHE & LEDGERS (Shared Knowledge Plane)
     // ----------------------------------------------------------------------
-    // Standardizing on recursive wildcards for shared cache to ensure chunks and metadata are always accessible
     match /neural_audio_ledger/{allPaths=**} {
       allow read: if true; 
       allow write: if isAuthenticated(); 
@@ -109,6 +108,16 @@ service cloud.firestore {
       allow write: if isAuthenticated(); 
     }
     
+    match /custom_books/{bookId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    match /system_book_metadata/{bookId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
     match /bookings/{bookingId} { allow read, write: if isAuthenticated(); }
     match /recordings/{recordingId} { allow read, write: if isAuthenticated(); }
     match /checks/{checkId} { allow read: if true; allow write: if isAuthenticated(); }

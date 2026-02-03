@@ -1,11 +1,10 @@
-
 import React, { useMemo } from 'react';
 import { 
   Terminal, Code, Video, LayoutGrid, FileText, Wallet, MessageSquare, 
   Briefcase, Truck, AppWindow, Book, PenTool, Rss, Gift, Rocket, BookOpen, 
   Activity, Scroll, GraduationCap, Cpu, Star, Coins, Zap, ShieldCheck,
   Globe, Users, Clock, Sparkles, ChevronRight, Crown, Lock, Radio,
-  Disc, Calendar, History, FolderOpen, BookText, FileUp
+  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard
 } from 'lucide-react';
 import { ViewID, UserProfile } from '../types';
 
@@ -58,7 +57,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
       apps: [
         { id: 'directory', label: 'Knowledge Hub', sub: 'Podcast Stream', description: 'Interactive AI-guided learning sessions with real-time Q&A and screen-sharing support.', icon: Radio, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: false },
         { id: 'bible_study', label: 'Scripture', sub: 'Ancient Text', description: 'A sacred digital space for dual-language scripture study and cinematic AI visualizations.', icon: Scroll, color: 'text-amber-500', bg: 'bg-amber-950/40', restricted: false },
-        { id: 'scripture_ingest', label: 'Scripture Ingest', sub: 'Vault Loader', description: 'Neural parsing engine to ingest raw text into the bilingual community vault.', icon: FileUp, color: 'text-amber-400', bg: 'bg-amber-950/40', restricted: true },
+        { id: 'scripture_ingest', label: 'Scripture Ingest', sub: 'Data Refraction', description: 'Deep-hydration tool for synthesizing and archiving scripture chapters into the neural ledger.', icon: FileUp, color: 'text-amber-400', bg: 'bg-amber-900/20', restricted: true },
         { id: 'book_studio', label: 'Author Studio', sub: 'Neural Books', description: 'Synthesize full-length technical books and manuals into high-fidelity PDF formats instantly.', icon: BookText, color: 'text-indigo-500', bg: 'bg-indigo-900/30', restricted: false }
       ]
     },
@@ -73,8 +72,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
     {
       title: t.financeSector,
       apps: [
+        { id: 'pdf_signer', label: 'Sovereign Signer', sub: 'PDF Authority', description: 'Authenticate and sign any PDF document from Google Drive or local storage with neural validation.', icon: FileSignature, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: true },
         { id: 'check_designer', label: 'Finance Lab', sub: 'Asset Refraction', description: 'Design high-fidelity banking documents with secure neural signatures and printable PDF output.', icon: Wallet, color: 'text-amber-400', bg: 'bg-amber-950/40', restricted: true },
-        { id: 'shipping_labels', label: 'Logistics Lab', sub: 'Postal Protocol', description: 'Neural address parsing and professional thermal label generation for streamlined global shipping.', icon: Truck, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true },
+        { id: 'shipping_labels', label: 'Logistics Lab', sub: 'Postal Protocol', description: 'Neural address parsing and professional thermal label generation for streamlined global shipping.', icon: Truck, color: 'text-emerald-400', bg: 'bg-indigo-900/30', restricted: true },
         { id: 'coin_wallet', label: 'Wallet', sub: 'Neural Ledger', description: 'Manage your VoiceCoin assets and participate in cryptographically signed peer-to-peer transfers.', icon: Coins, color: 'text-amber-500', bg: 'bg-amber-950/40', restricted: true }
       ]
     },
@@ -83,7 +83,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
       apps: [
         { id: 'card_workshop', label: 'Gift Workshop', sub: 'Holiday Synthesis', description: 'Generative studio for custom holiday cards, AI-composed music, and personalized voice greetings.', icon: Gift, color: 'text-red-400', bg: 'bg-red-900/30', restricted: true },
         { id: 'icon_generator', label: 'Brand Lab', sub: 'Visual Identity', description: 'Transform concepts into professional high-resolution app icons using advanced neural art models.', icon: AppWindow, color: 'text-cyan-400', bg: 'bg-cyan-900/30', restricted: true },
-        { id: 'whiteboard', label: 'Visual Canvas', sub: 'Freeform Flow', description: 'A limitless collaborative whiteboard for architectural mapping and group neural brainstorming.', icon: PenTool, color: 'text-pink-400', bg: 'bg-pink-900/30', restricted: true }
+        { id: 'whiteboard', label: 'Visual Canvas', sub: 'Freeform Flow', description: 'A limitless collaborative whiteboard for architectural mapping and group neural brainstorming.', icon: PenTool, color: 'text-pink-400', bg: 'bg-pink-900/30', restricted: true },
+        { id: 'badge_studio', label: 'Badge Studio', sub: 'Digital ID', description: 'Synthesize a high-fidelity digital identification badge with biometric capture and neural watermarking.', icon: IdCard, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: true }
       ]
     },
     {
@@ -111,7 +112,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
     <div className="h-full overflow-y-auto bg-slate-950 scrollbar-hide">
       <div className="max-w-7xl mx-auto p-6 md:p-12 space-y-12 pb-32">
         
-        {/* User Hero Section */}
         <section className="bg-gradient-to-br from-indigo-900/40 to-slate-900 border border-slate-800 rounded-[3rem] p-8 md:p-12 shadow-2xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-32 bg-indigo-500/10 blur-[100px] rounded-full group-hover:scale-110 transition-transform duration-1000"></div>
             <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
@@ -155,7 +155,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
             </div>
         </section>
 
-        {/* Dashboard Grids */}
         {appSectors.map((sector, sIdx) => (
             <section key={sIdx} className="space-y-6 animate-fade-in-up" style={{ animationDelay: `${sIdx * 100}ms` }}>
                 <div className="flex items-center justify-between px-2">
@@ -171,7 +170,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                             onClick={() => onNavigate(app.id as ViewID)} 
                             className="flex flex-col items-center p-6 bg-slate-900 border border-slate-800 rounded-[2.5rem] hover:border-indigo-500/50 hover:bg-indigo-900/10 transition-all text-center group shadow-xl relative overflow-hidden"
                         >
-                            {/* Pro-only Badge - Corner Positioned, Non-intrusive */}
                             {!isProMember && app.restricted && (
                                 <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-1 pointer-events-none">
                                     <div className="p-1.5 bg-slate-900/90 border border-amber-500/50 rounded-lg shadow-2xl backdrop-blur-md">
@@ -180,7 +178,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                                 </div>
                             )}
 
-                            {/* Hover Description Overlay */}
                             <div className="absolute inset-0 bg-indigo-900/90 backdrop-blur-md flex flex-col items-center justify-center p-4 z-30 transition-all duration-300 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0">
                                 <p className="text-[10px] font-bold text-white leading-relaxed mb-3">{app.description}</p>
                                 <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-indigo-200">
@@ -202,9 +199,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
         ))}
 
         <footer className="pt-12 text-center">
-            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Prism v6.6.0-SYN • Sovereign Activity Hub</p>
+            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Prism v6.9.1-PRO • Sovereign Activity Hub</p>
         </footer>
       </div>
     </div>
   );
 };
+
+export default Dashboard;

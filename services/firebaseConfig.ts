@@ -1,3 +1,4 @@
+
 import { initializeApp, getApps, getApp } from "@firebase/app";
 import type { FirebaseApp } from "@firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
@@ -18,7 +19,6 @@ const initializeFirebase = (): FirebaseApp | null => {
         }
 
         if (firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY") {
-            // Ensure authDomain is strictly the firebaseapp.com version to minimize cross-origin issues
             const config = {
                 ...firebaseKeys,
                 authDomain: `${firebaseKeys.projectId}.firebaseapp.com`
@@ -37,33 +37,24 @@ const appInstance = initializeFirebase();
 
 /**
  * Robust Firestore Initialization
- * Configured specifically to bypass WebSocket blocks in restricted environments.
+ * Uses Long Polling Auto-detection to fix connectivity errors in restricted environments.
  */
 const initDb = (): Firestore | null => {
     if (!appInstance) return null;
     
     let firestore: Firestore;
     try {
-        console.log("[Firestore] Initializing refractive data plane...");
-        
-        // Use initializeFirestore to set specialized connectivity options
-        firestore = initializeFirestore(appInstance as FirebaseApp, {
-            // CRITICAL FIX: Force long polling to bypass WebSocket blocks 
-            // commonly found in sandboxed iframes and restricted networks.
-            experimentalForceLongPolling: true,
-            // Explicitly define the host and SSL to prevent discovery timeouts
-            host: "firestore.googleapis.com",
-            ssl: true,
-            // Set a generous cache size for local-first reliability
+        console.log("[Firestore] Initializing refractive data plane with Long-Polling auto-detect...");
+        firestore = initializeFirestore(appInstance, {
+            experimentalAutoDetectLongPolling: true, // Key fix for connectivity
             cacheSizeBytes: CACHE_SIZE_UNLIMITED
         });
     } catch (e) {
-        // Fallback to existing instance if already initialized by a concurrent module
+        console.warn("[Firestore] initializeFirestore failed, falling back to getFirestore:", e);
         firestore = getFirestore(appInstance);
     }
 
-    // Enable persistence for offline resilience
-    // We wrap this in a silent handler as it often fails in private/incognito modes
+    // Persistence initialization shouldn't block the connection.
     enableIndexedDbPersistence(firestore).catch((err) => {
         if (err.code === 'failed-precondition') {
             console.debug("[Firestore] Persistence: Multiple tabs open. Local cache active.");
@@ -75,9 +66,9 @@ const initDb = (): Firestore | null => {
     return firestore;
 };
 
+// CRITICAL: Ensure Auth is initialized with the explicit app instance
 const authInstance: Auth | null = appInstance ? getAuth(appInstance) : null;
 
-// Explicitly set persistence to Local to survive session storage clearing
 if (authInstance) {
     setPersistence(authInstance, browserLocalPersistence).catch((err) => {
         console.error("[Auth] Persistence setup failed:", err);
@@ -86,7 +77,6 @@ if (authInstance) {
 
 export const auth = authInstance;
 export const db: Firestore | null = initDb();
-// Explicitly define the storage bucket URL to prevent retry-limit issues
 export const storage: FirebaseStorage | null = appInstance ? getStorage(appInstance, firebaseKeys.storageBucket) : null;
 
 export const getAuthInstance = (): Auth | null => auth;

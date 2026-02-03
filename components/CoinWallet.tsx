@@ -1,681 +1,315 @@
-
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ArrowLeft, Wallet, Send, Clock, Sparkles, Loader2, User, Search, ArrowUpRight, ArrowDownLeft, Gift, Coins, Info, DollarSign, Zap, Crown, RefreshCw, X, CheckCircle, Smartphone, HardDrive, AlertTriangle, ChevronRight, Key, ShieldCheck, QrCode, Download, Upload, Shield, Eye, Lock, Copy, Check, Heart, Globe, WifiOff, Camera, Share2, Link, FileText, ChevronDown, Edit3, HeartHandshake, Percent, Filter, History, Signature, UserPlus, QrCode as QrIcon, SendHorizonal, ShieldAlert, Fingerprint, Receipt } from 'lucide-react';
-import { UserProfile, CoinTransaction, OfflinePaymentToken, PendingClaim, DigitalReceipt } from '../types';
-import { getCoinTransactions, transferCoins, checkAndGrantMonthlyCoins, getAllUsers, getUserProfile, registerIdentity, claimOfflinePayment, DEFAULT_MONTHLY_GRANT, issueReceipt, subscribeToReceipts, confirmReceipt, claimReceipt } from '../services/firestoreService';
-import { auth, db } from '../services/firebaseConfig';
-import { onAuthStateChanged } from '@firebase/auth';
-import { generateMemberIdentity, requestIdentityCertificate, verifyCertificateOffline, verifySignature, signPayment, AIVOICECAST_TRUST_PUBLIC_KEY } from '../utils/cryptoUtils';
-import { generateSecureId } from '../utils/idUtils';
-import { getLocalPrivateKey, saveLocalPrivateKey } from '../utils/db';
-import { Visualizer } from './Visualizer';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { 
+  Coins, ArrowUpRight, ArrowDownLeft, RefreshCw, Send, 
+  QrCode, Copy, Check, Loader2, History, Wallet, 
+  ArrowLeft, Search, AlertCircle, Info, ShieldCheck,
+  Zap, TrendingUp, CreditCard, ExternalLink, Smartphone, 
+  Clock, CheckCircle, Database
+} from 'lucide-react';
+import { UserProfile, CoinTransaction } from '../types';
+import { getCoinTransactions, transferCoins, getUserProfile } from '../services/firestoreService';
+import { auth } from '../services/firebaseConfig';
 
 interface CoinWalletProps {
   onBack: () => void;
   user: UserProfile | null;
 }
 
-export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user: propUser }) => {
-  const [user, setUser] = useState<UserProfile | null>(propUser);
+export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user }) => {
+  const [activeTab, setActiveTab] = useState<'history' | 'send' | 'receive'>('history');
   const [transactions, setTransactions] = useState<CoinTransaction[]>([]);
-  const [receipts, setReceipts] = useState<DigitalReceipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [copyStatus, setCopyStatus] = useState(false);
   
-  // Ledger Search & Filter
-  const [ledgerSearch, setLedgerSearch] = useState('');
-  const [ledgerFilter, setLedgerFilter] = useState<'all' | 'in' | 'out'>('all');
+  // Transfer State
+  const [recipientId, setRecipientId] = useState('');
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [amount, setAmount] = useState<string>('');
+  const [memo, setMemo] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [transferSuccess, setTransferSuccess] = useState(false);
 
-  // Transfer States
-  const [showSendModal, setShowSendModal] = useState(false);
-  const [transferType, setTransferType] = useState<'online' | 'offline' | 'request'>('online');
-  const [transferAmount, setTransferAmount] = useState('');
-  const [transferMemo, setTransferMemo] = useState('');
-  const [isTransferring, setIsTransferring] = useState(false);
-  const [paymentStep, setPaymentStep] = useState<'input' | 'processing' | 'receipt'>('input');
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
-  const [userSearch, setUserSearch] = useState('');
-  const [selectedRecipient, setSelectedRecipient] = useState<UserProfile | null>(null);
-  const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const currentUser = auth?.currentUser;
 
-  // Identity & Offline States
-  const [isCreatingIdentity, setIsCreatingIdentity] = useState(false);
-  const [showTokenInput, setShowTokenInput] = useState(false);
-  const [pastedToken, setPastedToken] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verifiedToken, setVerifiedToken] = useState<OfflinePaymentToken | null>(null);
-  const [verificationError, setVerificationError] = useState<string | null>(null);
-  const [isClaiming, setIsClaiming] = useState(false);
-
-  const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
-
-  useEffect(() => {
-    if (propUser) {
-        setUser(propUser);
-    } else if (auth?.currentUser) {
-        getUserProfile(auth.currentUser.uid).then(setUser);
-    }
-  }, [propUser]);
-
-  useEffect(() => {
-      if (user?.uid) {
-          getLocalPrivateKey(user.uid).then(key => {
-              if (key) setPrivateKey(key);
-          });
-          loadTransactions();
-          const unsub = subscribeToReceipts(user.uid, setReceipts);
-          getAllUsers().then(users => setAllUsers(users.filter(u => u && u.uid !== user.uid)));
-          return () => unsub();
-      }
-  }, [user?.uid]);
-
-  const loadTransactions = async () => {
-    if (!user?.uid) return;
-    setLoading(true);
+  const loadData = useCallback(async () => {
+    if (!currentUser) return;
+    setIsRefreshing(true);
     try {
-        const data = await getCoinTransactions(user.uid);
-        setTransactions(data);
-    } catch(e) {
-        console.error(e);
+      const data = await getCoinTransactions(currentUser.uid);
+      setTransactions(data);
+    } catch (e) {
+      console.error("Wallet sync failed", e);
     } finally {
-        setLoading(false);
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleCopyAddress = () => {
+    if (!currentUser) return;
+    navigator.clipboard.writeText(currentUser.uid);
+    setCopyStatus(true);
+    setTimeout(() => setCopyStatus(false), 2000);
+  };
+
+  const handleTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !amount || isProcessing) return;
+    
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      alert("Invalid amount");
+      return;
+    }
+
+    if (numAmount > (user?.coinBalance || 0)) {
+      alert("Insufficient neural assets for this handshake.");
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      // Note: transferCoins handles the escrow/invitation creation in firestoreService
+      await transferCoins(
+        recipientId || 'unknown',
+        'Recipient', // Display name placeholder, service looks it up or uses email
+        recipientEmail,
+        numAmount,
+        memo || 'Neural Prism Transfer'
+      );
+      
+      setTransferSuccess(true);
+      setAmount('');
+      setRecipientEmail('');
+      setRecipientId('');
+      setMemo('');
+      
+      loadData();
+      
+      setTimeout(() => setTransferSuccess(false), 5000);
+    } catch (e: any) {
+      alert("Handshake Refused: " + e.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleRefresh = async () => {
-      if (!user?.uid) return;
-      setIsRefreshing(true);
-      try {
-          await checkAndGrantMonthlyCoins(user.uid);
-          const [profile, txs] = await Promise.all([
-              getUserProfile(user.uid),
-              getCoinTransactions(user.uid)
-          ]);
-          if (profile) setUser(profile);
-          setTransactions(txs);
-      } finally {
-          setIsRefreshing(false);
-      }
-  };
-
-  const handleCreateIdentity = async () => {
-      if (!user || isCreatingIdentity) return;
-      setIsCreatingIdentity(true);
-      try {
-          const { publicKey, privateKey } = await generateMemberIdentity();
-          const certificate = await requestIdentityCertificate(publicKey);
-          
-          await registerIdentity(user.uid, publicKey, certificate);
-          await saveLocalPrivateKey(user.uid, privateKey);
-          
-          setPrivateKey(privateKey);
-          const updated = await getUserProfile(user.uid);
-          if (updated) setUser(updated);
-          
-          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Neural Identity Registered: Sovereign keys secured in local storage.", type: 'success' } }));
-      } catch (e: any) {
-          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Identity registration failed: " + e.message, type: 'error' } }));
-      } finally {
-          setIsCreatingIdentity(false);
-      }
-  };
-
-  const handleSendOnline = async () => {
-      if (!user || !selectedRecipient || !transferAmount) return;
-      const amt = parseInt(transferAmount);
-      if (isNaN(amt) || amt <= 0) {
-          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Invalid transaction amount.", type: 'warn' } }));
-          return;
-      }
-      if (amt > (user.coinBalance || 0)) {
-          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Insufficient ledger balance.", type: 'warn' } }));
-          return;
-      }
-
-      setPaymentStep('processing');
-      try {
-          // Changed to invitation-based flow as per user requirement
-          await transferCoins(selectedRecipient.uid, selectedRecipient.displayName || 'Recipient', selectedRecipient.email, amt, transferMemo);
-          setPaymentStep('receipt');
-          handleRefresh();
-      } catch (e: any) {
-          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Transfer handshake failed: " + e.message, type: 'error' } }));
-          setPaymentStep('input');
-      }
-  };
-
-  const handleIssueReceipt = async () => {
-      if (!user || !selectedRecipient || !transferAmount) return;
-      setPaymentStep('processing');
-      try {
-          await issueReceipt(selectedRecipient.uid, selectedRecipient.displayName || 'Sender', parseInt(transferAmount), transferMemo);
-          setPaymentStep('receipt');
-      } catch(e: any) {
-          alert("Failed to issue receipt.");
-          setPaymentStep('input');
-      }
-  };
-
-  const handleConfirmReceipt = async (id: string) => {
-      setIsTransferring(true);
-      try {
-          await confirmReceipt(id);
-          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Receipt confirmed. Receiver can now claim funds.", type: 'success' } }));
-          handleRefresh();
-      } catch(e: any) {
-          alert("Confirm failed: " + e.message);
-      } finally {
-          setIsTransferring(false);
-      }
-  };
-
-  const handleClaimReceipt = async (id: string) => {
-      setIsTransferring(true);
-      try {
-          await claimReceipt(id);
-          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Funds claimed successfully!", type: 'success' } }));
-          handleRefresh();
-      } catch(e: any) {
-          alert("Claim failed: " + e.message);
-      } finally {
-          setIsTransferring(false);
-      }
-  };
-
-  const handleGenerateOfflineToken = async () => {
-      if (!user || !transferAmount || !privateKey || !user.certificate) return;
-      const amt = parseInt(transferAmount);
-      if (isNaN(amt) || amt <= 0) return;
-      
-      setPaymentStep('processing');
-      try {
-          const nonce = generateSecureId().substring(0, 12);
-          const timestamp = Date.now();
-          const paymentData = {
-              senderId: user.uid,
-              senderName: user.displayName || 'Sender',
-              recipientId: 'any', // Anyone with the token can claim
-              amount: amt,
-              timestamp,
-              nonce,
-              memo: transferMemo
-          };
-
-          const signature = await signPayment(privateKey, paymentData);
-          const token: OfflinePaymentToken = {
-              ...paymentData,
-              signature,
-              certificate: user.certificate
-          };
-
-          const encoded = btoa(JSON.stringify(token));
-          setGeneratedToken(encoded);
-          setPaymentStep('receipt');
-      } catch (e: any) {
-          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Sovereign signing failed: " + e.message, type: 'error' } }));
-          setPaymentStep('input');
-      }
-  };
-
-  const handleVerifyToken = async () => {
-      if (!pastedToken.trim()) return;
-      setIsVerifying(true);
-      setVerificationError(null);
-      try {
-          const token: OfflinePaymentToken = JSON.parse(atob(pastedToken));
-          const isValid = await verifySignature(token.certificate, token.signature, {
-              senderId: token.senderId,
-              recipientId: token.recipientId,
-              amount: token.amount,
-              nonce: token.nonce,
-              timestamp: token.timestamp
-          });
-
-          if (!isValid) throw new Error("Cryptographic signature mismatch. Token may be forged.");
-          if (!verifyCertificateOffline(token.certificate)) throw new Error("Identity certificate not recognized by AIVoiceCast Trust Root.");
-
-          setVerifiedToken(token);
-      } catch (e: any) {
-          setVerificationError(e.message);
-      } finally {
-          setIsVerifying(false);
-      }
-  };
-
-  const handleClaim = async () => {
-      if (!verifiedToken || !user) return;
-      setIsClaiming(true);
-      try {
-          await claimOfflinePayment(verifiedToken);
-          setVerifiedToken(null);
-          setPastedToken('');
-          setShowTokenInput(false);
-          handleRefresh();
-          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `Successfully claimed ${verifiedToken.amount} VoiceCoins!`, type: 'success' } }));
-      } catch (e: any) {
-          window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Redemption failed: " + e.message, type: 'error' } }));
-      } finally {
-          setIsClaiming(false);
-      }
-  };
-
-  const filteredLedger = useMemo(() => {
-      let result = transactions;
-      if (ledgerFilter === 'in') result = result.filter(tx => tx.toId === user?.uid);
-      if (ledgerFilter === 'out') result = result.filter(tx => tx.fromId === user?.uid);
-      
-      if (ledgerSearch.trim()) {
-          const q = ledgerSearch.toLowerCase();
-          result = result.filter(tx => {
-              const fromName = (tx.fromName || '').toLowerCase();
-              const toName = (tx.toName || '').toLowerCase();
-              const memo = (tx.memo || '').toLowerCase();
-              return fromName.includes(q) || toName.includes(q) || memo.includes(q);
-          });
-      }
-      return result;
-  }, [transactions, ledgerSearch, ledgerFilter, user?.uid]);
-
-  const filteredRecipients = useMemo(() => {
-      if (!userSearch.trim()) return [];
-      const q = userSearch.toLowerCase();
-      return allUsers.filter(u => {
-          if (!u) return false;
-          const name = (u.displayName || '').toLowerCase();
-          const email = (u.email || '').toLowerCase();
-          return name.includes(q) || email.includes(q);
-      }).slice(0, 5);
-  }, [allUsers, userSearch]);
-
-  const initials = (name?: string) => (name || 'User').substring(0, 1).toUpperCase();
+  const qrCodeUrl = useMemo(() => {
+    if (!currentUser) return '';
+    return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&bgcolor=ffffff&data=${encodeURIComponent(currentUser.uid)}`;
+  }, [currentUser]);
 
   return (
-    <div className="h-full bg-slate-950 text-slate-100 flex flex-col overflow-hidden animate-fade-in">
-      {/* Header */}
+    <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
-              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>
-              <h1 className="text-lg font-bold text-white flex items-center gap-2"><Wallet className="text-amber-500" /> Neural Wallet</h1>
+              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
+                <ArrowLeft size={20} />
+              </button>
+              <div>
+                <h1 className="text-lg font-bold text-white flex items-center gap-2 italic uppercase tracking-tighter">
+                    <Wallet className="text-amber-400" /> 
+                    Neural Wallet
+                </h1>
+                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">VoiceCoin Ledger v6.9.8</p>
+              </div>
           </div>
-          <button onClick={handleRefresh} disabled={isRefreshing} className="p-2 text-slate-400 hover:text-white">
-              <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
+          <button 
+            onClick={loadData} 
+            className="p-2 text-slate-500 hover:text-white transition-all"
+            title="Sync Ledger"
+          >
+            <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
           </button>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-6 md:p-8 scrollbar-hide">
-          <div className="max-w-4xl mx-auto space-y-8 pb-20">
-              
-              {/* Balance Card */}
-              <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 p-32 bg-white/10 blur-[100px] rounded-full pointer-events-none transition-transform group-hover:scale-110 duration-700"></div>
-                  <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
-                      <div className="text-center md:text-left">
-                          <p className="text-indigo-100/60 text-xs font-black uppercase tracking-[0.3em] mb-2">Available Balance</p>
-                          <div className="flex items-center justify-center md:justify-start gap-4">
-                              <Coins className="text-amber-400" size={48} />
-                              <span className="text-6xl font-black text-white tracking-tighter tabular-nums">{user?.coinBalance || 0}</span>
-                          </div>
+      <div className="flex-1 overflow-y-auto p-6 md:p-8 scrollbar-hide">
+        <div className="max-w-4xl mx-auto space-y-8 animate-fade-in-up">
+          
+          {/* Main Balance Card */}
+          <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-[2.5rem] p-10 shadow-2xl shadow-amber-900/20 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-32 bg-white/10 blur-[100px] rounded-full group-hover:scale-110 transition-transform duration-1000"></div>
+              <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+                  <div className="space-y-2 text-center md:text-left">
+                      <p className="text-amber-100/60 text-xs font-black uppercase tracking-[0.3em]">Total Neural Assets</p>
+                      <div className="flex items-center gap-4 justify-center md:justify-start">
+                        <h2 className="text-6xl font-black text-white tracking-tighter tabular-nums">
+                            {user?.coinBalance?.toLocaleString() || '0'}
+                        </h2>
+                        <span className="text-2xl font-black text-amber-200/80 italic tracking-tighter">VC</span>
                       </div>
-                      <div className="flex gap-3">
-                          <button onClick={() => setShowTokenInput(true)} className="px-6 py-3 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-2xl text-xs font-black uppercase tracking-widest text-white transition-all active:scale-95">Receive</button>
-                          <button onClick={() => { setShowSendModal(true); setPaymentStep('input'); }} className="px-8 py-3 bg-white text-indigo-600 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl hover:scale-105 active:scale-95 transition-all">Action Hub</button>
-                      </div>
+                  </div>
+                  <div className="flex gap-3">
+                      <button onClick={() => setActiveTab('send')} className="px-8 py-4 bg-white text-orange-600 font-black uppercase tracking-widest rounded-2xl shadow-xl hover:scale-105 transition-all active:scale-95 text-xs">Send</button>
+                      <button onClick={() => setActiveTab('receive')} className="px-8 py-4 bg-black/20 text-white font-black uppercase tracking-widest rounded-2xl border border-white/20 hover:bg-black/30 transition-all active:scale-95 text-xs">Receive</button>
                   </div>
               </div>
+          </div>
 
-              {/* Digital Receipts Flow Section */}
-              {receipts.length > 0 && (
-                  <div className="space-y-4 animate-fade-in-up">
-                      <h2 className="text-xl font-bold text-white flex items-center gap-2"><Receipt className="text-indigo-400" size={20}/> Pending Receipts</h2>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {receipts.map(r => {
-                              const isSender = r.senderId === user?.uid;
-                              return (
-                                  <div key={r.id} className="bg-slate-900 border border-slate-800 p-5 rounded-[2rem] flex flex-col gap-4 shadow-xl">
-                                      <div className="flex justify-between items-start">
-                                          <div className="flex items-center gap-3">
-                                              <div className={`p-2 rounded-xl ${r.status === 'confirmed' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-indigo-900/30 text-indigo-400'}`}>
-                                                  <Receipt size={20}/>
-                                              </div>
-                                              <div>
-                                                  <p className="text-sm font-bold text-white uppercase tracking-tight">{isSender ? `Request from @${r.receiverName}` : `Request to @${r.senderName}`}</p>
-                                                  <p className="text-[10px] text-slate-500 font-black uppercase">{r.status}</p>
-                                              </div>
-                                          </div>
-                                          <p className="text-xl font-black text-indigo-400 tabular-nums">{r.amount} VC</p>
+          <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 shadow-xl max-w-sm mx-auto">
+              <button onClick={() => setActiveTab('history')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${activeTab === 'history' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>History</button>
+              <button onClick={() => setActiveTab('send')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${activeTab === 'send' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Dispatch</button>
+              <button onClick={() => setActiveTab('receive')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-xl transition-all ${activeTab === 'receive' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Address</button>
+          </div>
+
+          {activeTab === 'history' && (
+              <div className="space-y-4 animate-fade-in">
+                  <div className="flex items-center justify-between px-2">
+                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <History size={14} className="text-indigo-400"/> Transaction Registry
+                    </h3>
+                  </div>
+
+                  {loading ? (
+                      <div className="py-20 flex flex-col items-center gap-4 text-indigo-400">
+                          <Loader2 className="animate-spin" size={32}/>
+                          <p className="text-[10px] font-black uppercase tracking-widest">Paging Ledger...</p>
+                      </div>
+                  ) : transactions.length === 0 ? (
+                      <div className="py-20 flex flex-col items-center justify-center text-slate-700 bg-slate-900/20 rounded-[2.5rem] border-2 border-dashed border-slate-800 gap-4">
+                          <Coins size={48} className="opacity-10"/>
+                          <p className="text-sm font-bold uppercase tracking-widest">No activities recorded</p>
+                      </div>
+                  ) : (
+                      <div className="grid grid-cols-1 gap-3">
+                          {transactions.map(tx => (
+                              <div key={tx.id} className="bg-slate-900 border border-slate-800 p-5 rounded-[2rem] flex items-center justify-between hover:border-indigo-500/30 transition-all group">
+                                  <div className="flex items-center gap-5">
+                                      <div className={`p-3 rounded-2xl ${tx.fromId === currentUser?.uid ? 'bg-red-900/20 text-red-400' : 'bg-emerald-900/20 text-emerald-400'}`}>
+                                          {tx.fromId === currentUser?.uid ? <ArrowUpRight size={20}/> : <ArrowDownLeft size={20}/>}
                                       </div>
-                                      <p className="text-xs text-slate-400 italic">"{r.memo}"</p>
-                                      
-                                      <div className="flex gap-2">
-                                          {isSender && r.status === 'pending' && (
-                                              <button onClick={() => handleConfirmReceipt(r.id)} disabled={isTransferring} className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Confirm Payment</button>
-                                          )}
-                                          {!isSender && r.status === 'confirmed' && (
-                                              <button onClick={() => handleClaimReceipt(r.id)} disabled={isTransferring} className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Claim Funds</button>
-                                          )}
+                                      <div>
+                                          <h4 className="font-bold text-white uppercase tracking-tight">
+                                              {tx.fromId === currentUser?.uid ? `Sent to ${tx.toName}` : `Received from ${tx.fromName}`}
+                                          </h4>
+                                          <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-500 uppercase font-black">
+                                              <span className="flex items-center gap-1"><Clock size={12}/> {new Date(tx.timestamp).toLocaleDateString()}</span>
+                                              <span className="flex items-center gap-1"><Database size={12}/> {tx.type}</span>
+                                          </div>
+                                          {tx.memo && <p className="text-[10px] text-slate-600 mt-2 italic line-clamp-1">"{tx.memo}"</p>}
                                       </div>
                                   </div>
-                              );
-                          })}
+                                  <div className="text-right">
+                                      <p className={`text-xl font-black tracking-tighter ${tx.fromId === currentUser?.uid ? 'text-red-400' : 'text-emerald-400'}`}>
+                                          {tx.fromId === currentUser?.uid ? '-' : '+'}{tx.amount.toLocaleString()}
+                                      </p>
+                                      {tx.isVerified && (
+                                          <div className="flex items-center justify-end gap-1 mt-1 text-indigo-400">
+                                              <ShieldCheck size={10}/>
+                                              <span className="text-[8px] font-black uppercase">Notarized</span>
+                                          </div>
+                                      )}
+                                  </div>
+                              </div>
+                          ))}
                       </div>
-                  </div>
-              )}
-
-              {/* Identity Status Card */}
-              <div className={`rounded-[2rem] border p-8 flex flex-col md:flex-row items-center gap-8 shadow-xl transition-all duration-500 ${user?.publicKey ? 'bg-slate-900 border-slate-800' : 'bg-amber-900/10 border-amber-500/30'}`}>
-                  <div className={`p-4 rounded-3xl shadow-lg ${user?.publicKey ? 'bg-emerald-900/20 text-emerald-400' : 'bg-amber-500 text-white'}`}>
-                      {user?.publicKey ? <ShieldCheck size={32}/> : <Fingerprint size={32}/>}
-                  </div>
-                  <div className="flex-1 text-center md:text-left space-y-2">
-                      <div className="flex items-center justify-center md:justify-start gap-2">
-                        <h3 className="text-xl font-black uppercase tracking-tighter italic">{user?.publicKey ? 'Identity Verified' : 'Action Required: Initialize Identity'}</h3>
-                        {user?.publicKey && <div className="bg-emerald-500 w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]"></div>}
-                      </div>
-                      <p className="text-sm text-slate-400 leading-relaxed font-medium">
-                          {user?.publicKey 
-                            ? "Your sovereign cryptographic key is active. Peer-to-peer transfers and offline tokens are secured by your local private key."
-                            : "You must generate a cryptographic key pair to enable advanced ledger features. This process happens entirely on your device."}
-                      </p>
-                  </div>
-                  {!user?.publicKey && (
-                    <button 
-                        onClick={handleCreateIdentity} 
-                        disabled={isCreatingIdentity} 
-                        className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
-                    >
-                        {isCreatingIdentity ? <Loader2 size={18} className="animate-spin" /> : <><Sparkles size={18}/> <span>Register Identity</span></>}
-                    </button>
                   )}
               </div>
+          )}
 
-              {/* Transactions Ledger */}
-              <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <h2 className="text-xl font-bold text-white flex items-center gap-2"><History className="text-slate-500" size={20}/> Neural Ledger</h2>
-                      <div className="flex gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
-                          <button onClick={() => setLedgerFilter('all')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${ledgerFilter === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>All</button>
-                          <button onClick={() => setLedgerFilter('in')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${ledgerFilter === 'in' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>In</button>
-                          <button onClick={() => setLedgerFilter('out')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${ledgerFilter === 'out' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>Out</button>
+          {activeTab === 'send' && (
+              <div className="max-w-xl mx-auto w-full animate-fade-in-up">
+                  <form onSubmit={handleTransfer} className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl space-y-8 relative overflow-hidden">
+                      <div className="absolute top-0 right-0 p-16 bg-indigo-500/5 blur-3xl rounded-full"></div>
+                      
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Recipient Ledger URI / Email</label>
+                        <input 
+                            required
+                            type="text" 
+                            placeholder="member@email.com or UID..." 
+                            className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-6 py-4 text-white focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner"
+                            value={recipientEmail}
+                            onChange={e => setRecipientEmail(e.target.value)}
+                        />
                       </div>
-                  </div>
 
-                  <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={16}/>
-                      <input 
-                        type="text" 
-                        placeholder="Search ledger by name, memo, or amount..."
-                        value={ledgerSearch}
-                        onChange={e => setLedgerSearch(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-10 pr-4 py-3 text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 shadow-inner"
-                      />
-                  </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Asset Mass (Amount)</label>
+                        <div className="relative">
+                            <input 
+                                required
+                                type="number" 
+                                placeholder="0.00" 
+                                className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-12 pr-6 py-5 text-2xl font-black text-white focus:ring-2 focus:ring-amber-500 outline-none shadow-inner"
+                                value={amount}
+                                onChange={e => setAmount(e.target.value)}
+                            />
+                            <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500" size={24}/>
+                        </div>
+                      </div>
 
-                  <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden shadow-2xl">
-                      {loading ? (
-                          <div className="py-20 flex flex-col items-center justify-center gap-4 text-indigo-400">
-                              <Loader2 className="animate-spin" size={32}/>
-                              <span className="text-[10px] font-black uppercase tracking-widest">Scanning Blockchain...</span>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Neural Memo</label>
+                        <textarea 
+                            rows={3}
+                            placeholder="Context for this transfer..." 
+                            className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-6 py-4 text-sm text-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner"
+                            value={memo}
+                            onChange={e => setMemo(e.target.value)}
+                        />
+                      </div>
+
+                      {transferSuccess ? (
+                          <div className="p-6 bg-emerald-900/20 border border-emerald-500/30 rounded-2xl flex flex-col items-center gap-3 animate-fade-in">
+                              <CheckCircle className="text-emerald-500" size={32}/>
+                              <p className="text-sm font-bold text-emerald-400 uppercase tracking-widest">Handshake Finalized</p>
                           </div>
-                      ) : filteredLedger.length === 0 ? (
-                          <div className="py-20 text-center text-slate-600 italic text-sm">No ledger entries found.</div>
                       ) : (
-                          <div className="divide-y divide-slate-800">
-                              {filteredLedger.map((tx) => {
-                                  const isIncoming = tx.toId === user?.uid;
-                                  return (
-                                      <div key={tx.id} className="p-5 flex items-center justify-between hover:bg-slate-800/30 transition-colors group">
-                                          <div className="flex items-center gap-4">
-                                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isIncoming ? 'bg-emerald-900/20 text-emerald-400' : 'bg-red-900/20 text-red-400'}`}>
-                                                  {isIncoming ? <ArrowDownLeft size={20}/> : <ArrowUpRight size={20}/>}
-                                              </div>
-                                              <div>
-                                                  <h4 className="font-bold text-white text-sm">
-                                                      {isIncoming ? `From @${tx.fromName || 'System'}` : `To @${tx.toName || 'System'}`}
-                                                  </h4>
-                                                  <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-0.5">
-                                                      {new Date(tx.timestamp).toLocaleDateString()} • {tx.type.replace('_', ' ')}
-                                                  </p>
-                                              </div>
-                                          </div>
-                                          <div className="text-right">
-                                              <p className={`text-lg font-black tabular-nums ${isIncoming ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                  {isIncoming ? '+' : '-'}{tx.amount}
-                                              </p>
-                                              <p className="text-[10px] text-slate-600 truncate max-w-[150px] italic">"{tx.memo || 'Neural Transfer'}"</p>
-                                          </div>
-                                      </div>
-                                  );
-                              })}
-                          </div>
+                          <button 
+                            type="submit" 
+                            disabled={isProcessing || !amount || !recipientEmail}
+                            className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-[0.2em] rounded-[2rem] shadow-2xl shadow-indigo-900/40 transition-all active:scale-95 disabled:opacity-30 flex items-center justify-center gap-3"
+                          >
+                            {isProcessing ? <Loader2 className="animate-spin" size={24}/> : <Zap size={20} fill="currentColor"/>}
+                            <span>Execute Dispatch</span>
+                          </button>
                       )}
-                  </div>
+                  </form>
               </div>
-          </div>
-      </main>
+          )}
 
-      {/* Action Modal */}
-      {showSendModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
-              <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-fade-in-up">
-                  <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                      <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                        <SendHorizonal className="text-indigo-400" size={18}/> Financial Handshake Hub
-                      </h3>
-                      <button onClick={() => setShowSendModal(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
-                  </div>
+          {activeTab === 'receive' && (
+              <div className="max-w-xl mx-auto w-full animate-fade-in-up">
+                  <div className="bg-slate-900 border border-slate-800 rounded-[3.5rem] p-12 text-center shadow-2xl space-y-10 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 p-24 bg-amber-500/5 blur-[80px] rounded-full"></div>
+                      
+                      <div className="space-y-2">
+                        <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter">Your Public URI</h2>
+                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.3em]">Scan to initiate neural handshake</p>
+                      </div>
 
-                  <div className="p-8">
-                      {paymentStep === 'input' && (
-                          <div className="space-y-6">
-                              <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-                                  <button onClick={() => setTransferType('online')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'online' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-50'}`}>Send</button>
-                                  <button onClick={() => setTransferType('request')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'request' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-50'}`}>Request</button>
-                                  <button onClick={() => setTransferType('offline')} className={`flex-1 py-2 text-[10px] font-black uppercase rounded-lg transition-all ${transferType === 'offline' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-50'}`}>Token</button>
-                              </div>
+                      <div className="bg-white p-8 rounded-[3rem] shadow-2xl relative inline-block group">
+                          <div className="absolute inset-0 bg-indigo-600/5 group-hover:bg-indigo-600/10 transition-colors pointer-events-none rounded-[3rem]"></div>
+                          <img src={qrCodeUrl} className="w-48 h-48" alt="Wallet QR" />
+                      </div>
 
-                              {(transferType === 'online' || transferType === 'request') ? (
-                                  <div className="space-y-4">
-                                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">{transferType === 'online' ? 'Recipient' : 'Sender'}</label>
-                                      {selectedRecipient ? (
-                                          <div className="flex items-center justify-between bg-indigo-900/20 border border-indigo-500/30 p-3 rounded-xl animate-fade-in">
-                                              <div className="flex items-center gap-3">
-                                                  <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold">{initials(selectedRecipient.displayName)}</div>
-                                                  <span className="text-sm font-bold">@{selectedRecipient.displayName || 'Anonymous'}</span>
-                                              </div>
-                                              <button onClick={() => setSelectedRecipient(null)} className="p-1 hover:bg-white/10 rounded-full text-slate-400"><X size={14}/></button>
-                                          </div>
-                                      ) : (
-                                          <div className="relative">
-                                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={16}/>
-                                              <input 
-                                                type="text" 
-                                                value={userSearch}
-                                                onChange={e => setUserSearch(e.target.value)}
-                                                placeholder="Search members by name or email..."
-                                                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500"
-                                              />
-                                              {filteredRecipients.length > 0 && (
-                                                  <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-700 rounded-xl mt-1 shadow-2xl z-20 overflow-hidden divide-y divide-slate-700">
-                                                      {filteredRecipients.map(r => (
-                                                          <button key={r.uid} onClick={() => { setSelectedRecipient(r); setUserSearch(''); }} className="w-full text-left px-4 py-3 hover:bg-slate-700 flex items-center gap-3 transition-colors">
-                                                              <div className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">{initials(r.displayName)}</div>
-                                                              <span className="text-xs text-white">@{r.displayName || 'Anonymous'}</span>
-                                                          </button>
-                                                      ))}
-                                                  </div>
-                                              )}
-                                          </div>
-                                      )}
-                                  </div>
-                              ) : (
-                                  <div className="space-y-4 animate-fade-in">
-                                      <div className="p-4 bg-indigo-900/20 border border-indigo-500/20 rounded-2xl space-y-2">
-                                          <div className="flex items-center gap-2 text-indigo-300">
-                                              <Shield size={16}/>
-                                              <span className="text-xs font-bold uppercase">Sovereign Signing</span>
-                                          </div>
-                                          <p className="text-[10px] text-slate-400 leading-relaxed">This will generate an encrypted token using your local private key. Anyone with the token can claim the coins. Useful for gifting or offline exchange.</p>
-                                      </div>
-                                      {!privateKey && (
-                                        <div className="bg-red-900/20 border border-red-500/30 p-4 rounded-xl flex flex-col items-center gap-3">
-                                            <ShieldAlert className="text-red-400" size={24}/>
-                                            <p className="text-[10px] text-red-200 font-bold uppercase text-center">Neural Identity Required</p>
-                                            <button 
-                                                onClick={handleCreateIdentity} 
-                                                disabled={isCreatingIdentity} 
-                                                className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-all"
-                                            >
-                                                {isCreatingIdentity ? <Loader2 size={12} className="animate-spin mx-auto" /> : 'Register Identity Now'}
-                                            </button>
-                                        </div>
-                                      )}
-                                  </div>
-                              )}
-
-                              <div className="grid grid-cols-2 gap-4">
-                                  <div className="space-y-2">
-                                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Amount</label>
-                                      <div className="flex bg-slate-950 border border-slate-800 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500">
-                                          <input 
-                                            type="number" 
-                                            value={transferAmount}
-                                            onChange={e => setTransferAmount(e.target.value)}
-                                            className="w-full bg-transparent px-4 py-3 text-white text-lg font-black outline-none"
-                                            placeholder="0"
-                                          />
-                                          <div className="bg-slate-800 p-3 text-amber-400"><Coins size={18}/></div>
-                                      </div>
-                                  </div>
-                                  <div className="space-y-2">
-                                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Purpose</label>
-                                      <input 
-                                        type="text" 
-                                        value={transferMemo}
-                                        onChange={e => setTransferMemo(e.target.value)}
-                                        placeholder="Optional memo..."
-                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500"
-                                      />
-                                  </div>
-                              </div>
-
-                              <button 
-                                onClick={transferType === 'online' ? handleSendOnline : transferType === 'request' ? handleIssueReceipt : handleGenerateOfflineToken}
-                                disabled={isTransferring || !transferAmount || ((transferType === 'online' || transferType === 'request') && !selectedRecipient) || (transferType === 'offline' && !privateKey)}
-                                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
-                              >
-                                  {transferType === 'online' ? <Send size={18}/> : transferType === 'request' ? <Receipt size={18}/> : <Signature size={18}/>}
-                                  {transferType === 'online' ? 'Dispatch Notification' : transferType === 'request' ? 'Issue Digital Receipt' : 'Generate Signed Token'}
+                      <div className="space-y-4">
+                          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-inner">
+                              <code className="text-[10px] font-mono text-indigo-300 truncate max-w-[200px]">{currentUser?.uid}</code>
+                              <button onClick={handleCopyAddress} className="p-2 hover:bg-slate-800 rounded-xl text-slate-500 hover:text-white transition-all">
+                                  {copyStatus ? <Check size={18} className="text-emerald-400"/> : <Copy size={18}/>}
                               </button>
                           </div>
-                      )}
-
-                      {paymentStep === 'processing' && (
-                          <div className="py-20 text-center space-y-6 animate-pulse">
-                              <div className="relative mx-auto w-24 h-24">
-                                  <div className="absolute inset-0 border-4 border-indigo-500/10 rounded-full"></div>
-                                  <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                                  <div className="absolute inset-0 flex items-center justify-center"><Sparkles className="text-indigo-400" size={32}/></div>
-                              </div>
-                              <div className="space-y-2">
-                                <h4 className="text-xl font-black text-white italic uppercase tracking-tighter">Handshaking...</h4>
-                                <p className="text-xs text-slate-500 uppercase tracking-widest">Validating with Neural Network</p>
-                              </div>
-                          </div>
-                      )}
-
-                      {paymentStep === 'receipt' && (
-                          <div className="space-y-8 animate-fade-in-up">
-                              <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-[2.5rem] p-8 text-center space-y-4">
-                                  <div className="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-900/30">
-                                      <Check size={32} strokeWidth={4}/>
-                                  </div>
-                                  <div>
-                                      <h4 className="text-2xl font-black text-white italic uppercase tracking-tighter">Handshake Initiated</h4>
-                                      <p className="text-sm text-emerald-400 font-bold">{transferType === 'request' ? 'Receipt issued.' : 'Notification dispatched to recipient.'}</p>
-                                  </div>
-                              </div>
-
-                              {generatedToken ? (
-                                  <div className="space-y-4">
-                                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Offline Redemption Link</p>
-                                      <div className="flex gap-2">
-                                          <input readOnly value={generatedToken} className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-[10px] font-mono text-indigo-300 truncate outline-none" />
-                                          <button onClick={() => { navigator.clipboard.writeText(generatedToken); window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Token copied to clipboard.", type: 'success' } })); }} className="p-3 bg-slate-800 hover:bg-indigo-600 rounded-xl text-white transition-all"><Copy size={18}/></button>
-                                      </div>
-                                      <p className="text-[9px] text-slate-600 italic">This token is unique and one-time use. Send it to your recipient to claim.</p>
-                                  </div>
-                              ) : (
-                                  <div className="p-6 bg-slate-950 rounded-2xl border border-slate-800 space-y-3">
-                                      <div className="flex justify-between text-xs"><span className="text-slate-500">Target:</span><span className="text-white font-bold">@{selectedRecipient?.displayName || 'Anonymous'}</span></div>
-                                      <div className="flex justify-between text-xs"><span className="text-slate-500">Amount:</span><span className="text-emerald-400 font-bold">{transferAmount} VC</span></div>
-                                      <div className="flex justify-between text-xs border-t border-slate-800 pt-3"><span className="text-slate-500">Status:</span><span className="text-indigo-400 font-black uppercase tracking-widest">Pending Claim</span></div>
-                                  </div>
-                              )}
-
-                              <button onClick={() => setShowSendModal(false)} className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white font-black uppercase rounded-2xl transition-all">Close</button>
-                          </div>
-                      )}
+                          <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest leading-relaxed">
+                              This is your sovereign ledger address. Share it to receive VoiceCoins from other activity nodes.
+                          </p>
+                      </div>
                   </div>
               </div>
-          </div>
-      )}
+          )}
 
-      {/* Redemption Modal */}
-      {showTokenInput && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-fade-in">
-              <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-fade-in-up">
-                  <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                      <h3 className="text-lg font-bold text-white flex items-center gap-2"><Key className="text-indigo-400" size={18}/> Redemption Center</h3>
-                      <button onClick={() => { setShowTokenInput(false); setVerifiedToken(null); setPastedToken(''); }} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
-                  </div>
-                  <div className="p-8 space-y-6">
-                      {!verifiedToken ? (
-                        <>
-                          <div className="space-y-4">
-                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block px-1">Neural Payment Token</label>
-                              <textarea 
-                                value={pastedToken}
-                                onChange={e => setPastedToken(e.target.value)}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs font-mono text-indigo-300 outline-none focus:ring-2 focus:ring-indigo-500 h-32 resize-none"
-                                placeholder="Paste encrypted token string here..."
-                              />
-                              {verificationError && <p className="text-xs text-red-400 flex items-center gap-1"><AlertTriangle size={12}/> {verificationError}</p>}
-                          </div>
-                          <button 
-                              onClick={handleVerifyToken}
-                              disabled={isVerifying || !pastedToken.trim()}
-                              className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
-                          >
-                              {isVerifying ? <Loader2 size={18} className="animate-spin"/> : <ShieldCheck size={18}/>}
-                              Decrypt & Verify
-                          </button>
-                        </>
-                      ) : (
-                        <div className="space-y-6 animate-fade-in">
-                            <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-2xl p-6 text-center">
-                                <CheckCircle size={48} className="text-emerald-400 mx-auto mb-4" />
-                                <h4 className="text-xl font-bold text-white">Token Authenticated</h4>
-                                <p className="text-3xl font-black text-emerald-400 mt-2">+{verifiedToken.amount} VC</p>
-                                <div className="mt-4 pt-4 border-t border-emerald-500/20 text-left space-y-2">
-                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Source: <span className="text-white">@{verifiedToken.senderName || 'Sender'}</span></p>
-                                    <p className="text-[10px] text-slate-500 uppercase font-bold">Signed: <span className="text-white">{new Date(verifiedToken.timestamp).toLocaleString()}</span></p>
-                                    {verifiedToken.memo && <p className="text-[10px] text-slate-500 uppercase font-bold">Memo: <span className="text-white italic">"{verifiedToken.memo}"</span></p>}
-                                </div>
-                            </div>
-                            <button 
-                                onClick={handleClaim}
-                                disabled={isClaiming}
-                                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase rounded-2xl shadow-xl transition-all"
-                            >
-                                {isClaiming ? <Loader2 size={18} className="animate-spin mx-auto"/> : 'Redeem into Wallet'}
-                            </button>
-                        </div>
-                      )}
-                  </div>
-              </div>
-          </div>
-      )}
+        </div>
+      </div>
 
+      <footer className="p-4 text-center border-t border-slate-800 bg-slate-950 shrink-0">
+          <p className="text-[9px] font-black text-slate-700 uppercase tracking-[0.5em]">Neural Ledger Stability: 100.0%</p>
+      </footer>
     </div>
   );
 };

@@ -1,4 +1,3 @@
-
 import { Chapter, GeneratedLecture } from '../types';
 import { STARTUP_CONTENT } from './content/startup';
 import { LINUX_CONTENT } from './content/linux';
@@ -8,7 +7,8 @@ import { CULTURE_CONTENT } from './content/culture';
 import { BST_CONTENT } from './content/bst';
 import { LIFESTYLE_CONTENT } from './content/lifestyle';
 import { SYSTEM_CONTENT } from './content/system';
-import { JUDGING_CONTENT } from './content/judging';
+import { JUDGE_DEEP_DIVE_CONTENT } from './content/judge_deep_dive';
+import { MOCK_INTERVIEW_DEEP_DIVE_CONTENT } from './content/mock_interview_deep_dive';
 import { TECHNICAL_AUDIT_CONTENT } from './bookContent/technical_audit';
 
 export interface SpotlightChannelData {
@@ -26,6 +26,7 @@ export const SPOTLIGHT_DATA: Record<string, SpotlightChannelData> = {
   ...BST_CONTENT,
   ...LIFESTYLE_CONTENT,
   ...SYSTEM_CONTENT,
-  ...JUDGING_CONTENT,
+  ...JUDGE_DEEP_DIVE_CONTENT,
+  ...MOCK_INTERVIEW_DEEP_DIVE_CONTENT,
   ...TECHNICAL_AUDIT_CONTENT
 };

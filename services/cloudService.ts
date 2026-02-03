@@ -1,4 +1,3 @@
-
 import { 
   ref, 
   uploadBytes, 
@@ -33,7 +32,6 @@ function getUserId() {
 
 /**
  * Uploads local IndexedDB textual and audio data to the cloud vault.
- * Fixed: Updated to use exportFullDatabase as the source of truth for the JSON corpus.
  */
 export async function uploadToCloud(): Promise<{ count: number, size: number, time: number }> {
   if (!auth?.currentUser || !db || !storage) throw new Error("Cloud unavailable.");
@@ -41,7 +39,6 @@ export async function uploadToCloud(): Promise<{ count: number, size: number, ti
   const startTime = Date.now();
   const uid = getUserId();
   
-  // Refract local registry into a JSON string
   const metadataJson = await exportFullDatabase();
   const metadataBlob = new Blob([metadataJson], { type: 'application/json' });
   const metaRef = ref(storage, `${CLOUD_FOLDER}/${uid}/metadata.json`);
@@ -144,7 +141,11 @@ export async function getLastBackupTime(): Promise<Date | null> {
   if (!db) return null;
   try {
     const snap = await getDoc(doc(db, 'users', getUserId()));
-    if (snap.exists()) return snap.data()?.lastBackup?.toDate() || null;
+    if (snap.exists()) {
+      // Fix: cast data to any to avoid "unknown" property access errors
+      const data = snap.data() as any;
+      return data?.lastBackup?.toDate() || null;
+    }
   } catch (e) {}
   return null;
 }
@@ -167,8 +168,6 @@ export async function listUserBackups(subPath: string = '', absolute: boolean = 
   const path = absolute ? subPath : (subPath ? `${CLOUD_FOLDER}/${uid}/${subPath}` : `${CLOUD_FOLDER}/${uid}`);
   const folderRef = ref(storage, path);
   
-  console.log(`[CloudService] Attempting to list path: "${path}" (absolute: ${absolute})`);
-
   try {
     const res = await listAll(folderRef);
     const folders = res.prefixes.map(p => ({ 
@@ -191,23 +190,12 @@ export async function listUserBackups(subPath: string = '', absolute: boolean = 
             isFolder: false 
         };
       } catch (e: any) { 
-          console.warn(`[CloudService] Metadata fetch failed for item: ${itemRef.fullPath}`, e.message);
           return null; 
       }
     }));
     
-    const results = [...folders, ...(files.filter(Boolean) as CloudFileEntry[])];
-    console.log(`[CloudService] Successfully listed "${path}". Found ${results.length} total nodes.`);
-    return results;
+    return [...folders, ...(files.filter(Boolean) as CloudFileEntry[])];
   } catch (e: any) { 
-      console.error(`[CloudService] CRITICAL: listAll failed for path: "${path}"`, e);
-      // Detailed error breakdown
-      if (e.code === 'storage/unauthorized') {
-          throw new Error(`Unauthorized (403): User does not have 'storage.objects.list' permission for path "${path}". Check Firebase Storage Rules.`);
-      }
-      if (e.code === 'storage/object-not-found') {
-          throw new Error(`Not Found (404): The path "${path}" does not exist in the bucket.`);
-      }
       throw new Error(`Storage Error: ${e.message} (Path: ${path})`);
   }
 }
@@ -217,16 +205,11 @@ export async function deleteCloudFile(fullPath: string): Promise<void> {
   await deleteObject(ref(storage, fullPath));
 }
 
-/**
- * Diagnostic helper to read raw text content from a storage path.
- * Refracted v5: Optimized with TextDecoder and explicit 10MB limit for JSON corpus files.
- */
 export async function getCloudFileContent(fullPath: string): Promise<string> {
     if (!storage) throw new Error("Storage offline");
     try {
         const itemRef = ref(storage, fullPath);
-        // getBytes handles auth headers automatically.
-        const bytes = await getBytes(itemRef, 10 * 1024 * 1024); // 10MB limit for JSON files
+        const bytes = await getBytes(itemRef, 10 * 1024 * 1024);
         return new TextDecoder().decode(bytes);
     } catch (e: any) {
         console.error(`[CloudService] Handshake failed for ${fullPath}:`, e.code, e.message);

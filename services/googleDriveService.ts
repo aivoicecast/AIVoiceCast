@@ -178,6 +178,53 @@ export async function uploadToDrive(accessToken: string, folderId: string, filen
     return data.id;
 }
 
+/**
+ * Uploads a large binary with real-time progress tracking via XHR.
+ */
+export async function uploadToDriveWithProgress(
+    accessToken: string,
+    folderId: string,
+    filename: string,
+    blob: Blob,
+    onProgress: (progress: number, speed: number, eta: number) => void
+  ): Promise<string> {
+      return new Promise((resolve, reject) => {
+          const metadata = { name: filename, parents: [folderId] };
+          const formData = new FormData();
+          formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          formData.append('file', blob);
+  
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id');
+          xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+  
+          const startTime = Date.now();
+  
+          xhr.upload.onprogress = (event) => {
+              if (event.lengthComputable) {
+                  const progress = (event.loaded / event.total) * 100;
+                  const elapsedSeconds = (Date.now() - startTime) / 1000;
+                  const bytesPerSecond = event.loaded / Math.max(0.1, elapsedSeconds);
+                  const remainingBytes = event.total - event.loaded;
+                  const eta = remainingBytes / bytesPerSecond;
+                  onProgress(progress, bytesPerSecond, eta);
+              }
+          };
+  
+          xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                  const response = JSON.parse(xhr.responseText);
+                  resolve(response.id);
+              } else {
+                  reject(new Error(`Drive upload failed: ${xhr.status} ${xhr.statusText}`));
+              }
+          };
+  
+          xhr.onerror = () => reject(new Error("Network error during Drive upload"));
+          xhr.send(formData);
+      });
+  }
+
 export async function listDriveFiles(accessToken: string, folderId: string): Promise<DriveFile[]> {
   const query = `'${folderId}' in parents and trashed=false`;
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,mimeType,webViewLink,size)`, {

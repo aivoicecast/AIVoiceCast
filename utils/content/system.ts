@@ -1,3 +1,4 @@
+
 import { SpotlightChannelData } from '../spotlightContent';
 
 export const SYSTEM_CONTENT: Record<string, SpotlightChannelData> = {
@@ -47,7 +48,7 @@ export const SYSTEM_CONTENT: Record<string, SpotlightChannelData> = {
           },
           {
             speaker: "Teacher",
-            text: "We do not use generic chat windows. We orchestrate between gemini-3-pro-preview for complex document synthesis and gemini-3-flash-preview for sub-second logic simulation. This ensures you always have the right amount of intelligence for the task at hand."
+            text: "We do not use generic chat windows. We orchestrate between gemini-3-pro-preview for complex document synthesis and gemini-3-flash-preview for sub-second logic simulation. In v7.0.0-ULTRA, we use Complexity Balancer v4. This ensures you always have the right amount of intelligence for the task at hand."
           },
           {
             speaker: "Student",
@@ -74,7 +75,7 @@ export const SYSTEM_CONTENT: Record<string, SpotlightChannelData> = {
           },
           {
             speaker: "Teacher",
-            text: "Correct. We ask the model to act as a 'Digital Twin' of a POSIX terminal. Since the AI has 'read' billions of lines of high-fidelity code, it can mentally trace the variable states of C++ or Python and predict the exact stdout and errors. This achieves a 10x energy efficiency gain and allows for Socratic Debugging, where the system explains the *meaning* of an error in human terms rather than just throwing a stack trace."
+            text: "Correct. We ask the model to act as a 'Digital Twin' of a POSIX terminal. Since the AI has 'read' billions of lines of high-fidelity code, it can mentally trace the variable states of C++ or Python and predict the exact stdout and errors. This achieves a 10x energy efficiency gain and allows for Socratic Debugging, where the system explains the *meaning* of an error in human terms rather than just throwing a stack trace. This is the v7.0.0-ULTRA standard."
           }
         ]
       }

@@ -1,4 +1,3 @@
-
 import { BookData } from '../bookContent';
 
 export const SOVEREIGN_VAULT_MANUAL: BookData = {
@@ -56,19 +55,20 @@ This protocol allows the Neural Prism to handle terabytes of binary data within 
             `
         },
         {
-            title: "3. Cryptographic Identity (P-256)",
+            title: "3. Cryptographic Identity & Trust",
             content: String.raw`
-# 🔑 Chapter 3: Sovereign Identity
+# 🔑 Chapter 3: Sovereign Identity & Trust
 
-Your identity in the Neural Prism is not just a username or an email; it is a cryptographic authority. In the age of AI deepfakes and automated generation, we need a way to prove that a technical spec or a financial asset was created by a specific human and has not been altered by the AI.
+In the age of AI deepfakes and automated generation, we need a way to prove that a technical spec or a financial asset was created by a specific human. Your identity in the Neural Prism is a cryptographic authority based on **ECDSA P-256** keys generated on-device.
 
-### ECDSA P-256 Keys
-We generate 256-bit Elliptic Curve keys on-device using the Web Crypto API. 
-- **Private Key**: Resides exclusively in your local IndexedDB. It never touches our servers. It is your "Digital Soul."
-- **Public Key**: Signed by our Trust Root to create your **Member Certificate**, which is stored in the public ledger. This certificate is used to verify all your future refractions.
+### Trustless Sovereignty: The Token Protocol
+We believe in **Trustless Sovereignty**—the idea that even the platform owners should not have the power to alter your assets or move your money. We achieve this through the **Sovereign Token** system.
+- **Digital Signed Checks**: When you generate a token, you are creating a "Digital Check." You sign the amount, recipient, and memo with your **Private Key**, which never leaves your browser's IndexedDB. 
+- **Verifiable Proof**: The server only sees the *result* of the signature. It can verify that the signature matches your public certificate but cannot forge a new one. 
+- **One-Click Redemption**: These tokens are shared via **Deep-Link URLs**. When a recipient clicks the link, their wallet automatically ingests the cryptographic shard and performs a "Neural Handshake" to claim the value.
 
-### The Ledger of Trust
-Every financial refraction (Check Design) or technical artifact (Code Commit) is signed using your private key. Anyone with the check's scannable QR code can verify the signature against your public certificate. This ensures that even if the Neural Prism platform itself is compromised, your artifacts cannot be forged. You are the sole authority of your spectrum, and your digital footprint is cryptographically secure.
+### The Ledger of Truth
+Every financial refraction or technical artifact is signed using your private key. This ensures that even if the Neural Prism platform itself is compromised, your artifacts remain authentic and unalterable. You are the sole authority of your spectrum.
             `
         },
         {

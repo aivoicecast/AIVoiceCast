@@ -1,15 +1,14 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { 
   ArrowLeft, BookOpen, Scroll, Loader2, Play, Square, Pause, 
   Sparkles, Wand2, RefreshCw, RefreshCcw, BrainCircuit, Library, Lock, Palette, Cpu, Music, User, GraduationCap, Database, ChevronRight, ChevronDown, Bookmark, Search,
-  AlertTriangle, Terminal, Maximize2, Minimize2, Volume2,
+  AlertCircle, Terminal, Maximize2, Minimize2, Volume2,
   LayoutGrid, ChevronLeft, Hash, Grid3X3, Info, SkipBack, SkipForward, Zap, Speaker, Settings2, Check, Globe, CloudCheck, CloudOff, CloudDownload, Radio,
   Bug, Film, X
 } from 'lucide-react';
 import { auth, storage } from '../services/firebaseConfig';
-import { ref, listAll, getDownloadURL } from '@firebase/storage';
+import { ref, listAll, getDownloadURL } from 'firebase/storage';
 import { saveScriptureToLedger, getScriptureFromLedger, getScriptureAudioUrl } from '../services/firestoreService';
 import { DualVerse } from '../types';
 import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput } from '../utils/audioUtils';
@@ -311,6 +310,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
           setCurrentReadingIndex(i);
           
           requestAnimationFrame(() => {
+            // Fixed: replace 'v' with 'verse' to match defined constant
             const el = verseRefs.current[verse.number];
             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
           });
@@ -424,7 +424,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
         </div>
         <div className="flex items-center gap-2">
             <button onClick={() => setShowDebugPanel(!showDebugPanel)} className={`p-2 rounded-lg transition-colors ${showDebugPanel ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title="Registry Log"><Bug size={18}/></button>
-            <button onClick={() => setShowVoiceSettings(!showVoiceSettings)} className={`p-2 rounded-lg transition-colors ${showVoiceSettings ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white hover:bg-slate-800'}`} title="Neural Voice Settings"><Settings2 size={18}/></button>
+            <button onClick={() => setShowVoiceSettings(!showVoiceSettings)} className={`p-2 rounded-lg transition-colors ${showVoiceSettings ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title="Neural Voice Settings"><Settings2 size={18}/></button>
             <button onClick={() => setIsCinemaMode(!isCinemaMode)} className={`p-2 rounded-lg transition-colors ${isCinemaMode ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-white hover:bg-slate-800'}`} title="Cinema Mode"><Film size={18}/></button>
             <div className="w-px h-6 bg-slate-800 mx-2"></div>
             {viewMode === 'verses' && (
