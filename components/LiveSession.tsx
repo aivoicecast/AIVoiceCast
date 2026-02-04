@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -33,6 +32,8 @@ interface LiveSessionProps {
   existingDiscussionId?: string;
   customTools?: FunctionDeclaration[];
   onCustomToolCall?: (name: string, args: any) => Promise<any>;
+  recordingTarget?: 'drive' | 'youtube';
+  sessionTitle?: string;
 }
 
 type PipBackground = 'blur' | 'indigo' | 'black';
@@ -98,37 +99,12 @@ const UI_TEXT = {
   }
 };
 
-const SuggestionsBar: React.FC<{ suggestions: string[], welcomeMessage?: string, showWelcome: boolean, uiText: any }> = ({ suggestions, welcomeMessage, showWelcome, uiText }) => {
-  if (showWelcome && welcomeMessage) {
-    return (
-      <div className="p-4 border-b border-slate-800 bg-indigo-900/10 animate-fade-in">
-        <p className="text-xs text-indigo-300 font-medium leading-relaxed italic">
-          "{welcomeMessage}"
-        </p>
-      </div>
-    );
-  }
-  if (suggestions.length === 0) return null;
-  return (
-    <div className="p-2 border-b border-slate-800 overflow-x-auto scrollbar-hide">
-      <div className="flex gap-2">
-        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest self-center px-2">{uiText.welcomePrefix}</span>
-        {suggestions.map((s, i) => (
-          <button key={i} className="whitespace-nowrap px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-full text-[10px] font-bold text-slate-400 hover:text-indigo-400 hover:border-indigo-500/50 transition-all active:scale-95">
-            {s}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-};
-
 export const LiveSession: React.FC<LiveSessionProps> = ({ 
   channel, initialContext, lectureId, onEndSession, language, 
   recordingEnabled, recordingDuration, interactionEnabled = true,
   recordScreen: propRecordScreen, recordCamera: propRecordCamera,
   activeSegment, initialTranscript, existingDiscussionId,
-  customTools, onCustomToolCall 
+  customTools, onCustomToolCall, recordingTarget = 'drive', sessionTitle
 }) => {
   const t = UI_TEXT[language];
   const [hasStarted, setHasStarted] = useState(false); 
@@ -180,7 +156,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       };
   }, [transcript, currentLine]);
 
-  // STABLE TIMER PROTOCOL v2
   useEffect(() => {
     if (hasStarted && recordingEnabled && isRecordingActive && scribeTimeLeft > 0) {
       const timer = setInterval(() => {
@@ -287,7 +262,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             }
 
             if (screenStreamRef.current && screenVideo.readyState >= 2) {
-                const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight) * 0.95;
+                // FIXED: Match YouTube standard 1920x1080 by removing the 0.95 scale factor for edge-to-edge rendering
+                const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
                 const w = screenVideo.videoWidth * scale;
                 const h = screenVideo.videoHeight * scale;
                 drawCtx.save();
@@ -299,7 +275,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
             if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
                 const size = 440; 
-                const margin = 60;
+                const margin = 40; // Reduced margin for cleaner broadcast look
                 const px = canvas.width - size - margin;
                 const py = canvas.height - size - margin;
                 const centerX = px + size / 2;
@@ -351,10 +327,18 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         const captureStream = canvas.captureStream(30);
         recordingDest.stream.getAudioTracks().forEach(t => captureStream.addTrack(t));
         
+        // Codec fallback chain for cross-browser stability (Safari support)
+        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+            ? 'video/webm;codecs=vp9,opus' 
+            : MediaRecorder.isTypeSupported('video/webm') 
+                ? 'video/webm' 
+                : 'video/mp4';
+
         const recorder = new MediaRecorder(captureStream, { 
-            mimeType: 'video/webm;codecs=vp9,opus', 
+            mimeType, 
             videoBitsPerSecond: 8000000 
         });
+
         audioChunksRef.current = []; 
         recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
         
@@ -364,9 +348,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             setUploadProgress(0);
             if (renderIntervalRef.current) clearInterval(renderIntervalRef.current);
             
-            addLog("Scribe: MediaRecorder stopped. Assembling neural blob...", "info");
-            
-            const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
+            const videoBlob = new Blob(audioChunksRef.current, { type: mimeType });
             const timestamp = Date.now();
             const recId = `session-${timestamp}`;
             const fileSizeMB = (videoBlob.size / 1024 / 1024).toFixed(2);
@@ -374,11 +356,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             addLog(`Scribe: Neural artifact assembled (${fileSizeMB} MB). Starting local vaulting...`, "info");
             
             try {
-                // PHASE 1: LOCAL VAULT
+                // PHASE 1: LOCAL VAULT - Awaiting complete database flush
                 setUploadProgress(2);
                 await saveLocalRecording({
                     id: recId, userId: currentUser.uid, channelId: channel.id, 
-                    channelTitle: channel.title, channelImage: channel.imageUrl, 
+                    channelTitle: sessionTitle || channel.title, channelImage: channel.imageUrl, 
                     timestamp, mediaUrl: URL.createObjectURL(videoBlob), 
                     mediaType: 'video/webm', transcriptUrl: '', 
                     blob: videoBlob, size: videoBlob.size
@@ -388,37 +370,57 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
                 // PHASE 2: CLOUD DISPATCH
                 setIsUploadingRecording(true);
-                addLog("Cloud: Requesting sovereign handshake with Google Drive...", "info");
+                const token = getDriveToken() || await signInWithGoogle().then(() => getDriveToken());
                 
-                const token = getDriveToken();
                 if (token) {
-                    const folderId = await ensureCodeStudioFolder(token);
-                    addLog("Cloud: Provisioning storage segment...", "info");
-                    
-                    const driveId = await uploadToDriveWithProgress(
-                        token, 
-                        folderId, 
-                        `${recId}.webm`, 
-                        videoBlob,
-                        (progress, speed, eta) => {
-                            setUploadProgress(5 + (progress * 0.9));
-                            setUploadSpeed(speed);
-                            setUploadETA(eta);
-                        }
-                    );
-                    addLog(`Cloud: Drive upload successful (ID: ${driveId}). Registering ledger...`, "success");
-                    
-                    setUploadProgress(98);
-                    await saveRecordingReference({
-                        id: recId, userId: currentUser.uid, channelId: channel.id, 
-                        channelTitle: channel.title, channelImage: channel.imageUrl, 
-                        timestamp, mediaUrl: `drive://${driveId}`, driveUrl: `drive://${driveId}`, 
-                        mediaType: 'video/webm', transcriptUrl: '', size: videoBlob.size
-                    });
+                    if (recordingTarget === 'youtube') {
+                        addLog("Cloud: Requesting sovereign handshake with YouTube Registry...", "info");
+                        setUploadProgress(10);
+                        // FIXED: Use sessionTitle if available, otherwise fallback to channel.title
+                        const ytId = await uploadToYouTube(token, videoBlob, {
+                            title: `${sessionTitle || channel.title} (Neural Archive)`,
+                            description: `Session recorded on ${new Date(timestamp).toLocaleString()}. Source: Neural Prism Platform.`,
+                            privacyStatus: 'unlisted'
+                        });
+                        const videoUrl = getYouTubeVideoUrl(ytId);
+                        addLog(`Cloud: YouTube upload successful (ID: ${ytId}). Registering ledger...`, "success");
+                        setUploadProgress(95);
+                        await saveRecordingReference({
+                            id: recId, userId: currentUser.uid, channelId: channel.id, 
+                            channelTitle: sessionTitle || channel.title, channelImage: channel.imageUrl, 
+                            timestamp, mediaUrl: videoUrl, driveUrl: videoUrl, 
+                            mediaType: 'video/webm', transcriptUrl: '', size: videoBlob.size
+                        });
+                    } else {
+                        addLog("Cloud: Requesting sovereign handshake with Google Drive...", "info");
+                        const folderId = await ensureCodeStudioFolder(token);
+                        addLog("Cloud: Provisioning storage segment...", "info");
+                        
+                        const driveId = await uploadToDriveWithProgress(
+                            token, 
+                            folderId, 
+                            `${recId}.webm`, 
+                            videoBlob,
+                            (progress, speed, eta) => {
+                                setUploadProgress(5 + (progress * 0.9));
+                                setUploadSpeed(speed);
+                                setUploadETA(eta);
+                            }
+                        );
+                        addLog(`Cloud: Drive upload successful (ID: ${driveId}). Registering ledger...`, "success");
+                        
+                        setUploadProgress(98);
+                        await saveRecordingReference({
+                            id: recId, userId: currentUser.uid, channelId: channel.id, 
+                            channelTitle: sessionTitle || channel.title, channelImage: channel.imageUrl, 
+                            timestamp, mediaUrl: `drive://${driveId}`, driveUrl: `drive://${driveId}`, 
+                            mediaType: 'video/webm', transcriptUrl: '', size: videoBlob.size
+                        });
+                    }
                     setUploadProgress(100);
                     addLog("Archive: Session manifestation complete in Cloud Registry.", "success");
                 } else {
-                    addLog("Cloud: Drive token missing. Artifact remains in local vault only.", "warn");
+                    addLog("Cloud: Identity token missing. Artifact remains in local vault only.", "warn");
                 }
             } catch (e: any) {
                 addLog("Protocol Failure: " + e.message, "error");
@@ -426,7 +428,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 setIsFinalizing(false);
                 setIsUploadingRecording(false);
                 addLog("Scribe Protocol Terminated. Handshake complete.", "info");
-                onEndSession();
+                // Explicit wait for data settle before unmounting component
+                setTimeout(() => onEndSession(), 500);
             }
 
             userStream.getTracks().forEach(t => t.stop());
@@ -442,7 +445,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         setIsWaitingForFrames(false);
         addLog("Init failed: " + e.message, "error");
     }
-  }, [recordingEnabled, currentUser, channel, onEndSession, addLog, backdropStyle]);
+  }, [recordingEnabled, currentUser, channel, onEndSession, addLog, backdropStyle, recordingTarget, sessionTitle]);
 
   const handleStartSession = async () => {
       setIsProvisioning(true);
@@ -510,7 +513,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-slate-950 relative">
+    <div className="h-full w-full flex flex-col bg-slate-950 relative">
       <div className="p-4 flex items-center justify-between bg-slate-900 border-b border-slate-800 shrink-0 z-20">
          <div className="flex items-center space-x-3">
             {!recordingEnabled && <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" alt="" />}
@@ -602,7 +605,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     <div className="space-y-2">
                         <h3 className="text-xl font-black text-white uppercase italic tracking-tighter">{t.finalizing}</h3>
                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                            {uploadProgress < 5 ? "Securing Local Shards..." : "Streaming to Sovereign Vault..."}
+                            {uploadProgress < 5 ? "Securing Local Shards..." : recordingTarget === 'youtube' ? "Streaming to YouTube Archive..." : "Streaming to Sovereign Vault..."}
                         </p>
                     </div>
 

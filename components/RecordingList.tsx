@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { RecordingSession, Channel, TranscriptItem, UserProfile, ViewID } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
 import { getLocalRecordings, deleteLocalRecording } from '../utils/db';
-import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap, Download, Share2, Square, CheckSquare, Pause, Search, Plus, RefreshCw, ChevronRight, FileVideo, Calendar as CalendarIcon, Database, Timer, MessageSquareOff, MessageSquare, Power } from 'lucide-react';
+import { Play, FileText, Trash2, Calendar, Clock, Loader2, Video, X, HardDriveDownload, Sparkles, Mic, Monitor, CheckCircle, Languages, AlertCircle, ShieldOff, Volume2, Camera, Youtube, ExternalLink, HelpCircle, Info, Link as LinkIcon, Copy, CloudUpload, HardDrive, LogIn, Check, Terminal, Activity, ShieldAlert, History, Zap, Download, Share2, Square, CheckSquare, Pause, Search, Plus, RefreshCw, ChevronRight, FileVideo, Calendar as CalendarIcon, Database, Timer, MessageSquareOff, MessageSquare, Power, Layers, Cpu, Target, Briefcase } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getYouTubeEmbedUrl, uploadToYouTube, getYouTubeVideoUrl, deleteYouTubeVideo } from '../services/youtubeService';
 import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
@@ -21,17 +21,23 @@ interface RecordingListProps {
     cameraEnabled?: boolean,
     activeSegment?: { index: number, lectureId: string },
     recordingDuration?: number,
-    interactionEnabled?: boolean
+    interactionEnabled?: boolean,
+    recordingTarget?: 'drive' | 'youtube',
+    sessionTitle?: string
   ) => void;
 }
 
-interface SyncLog {
-    time: string;
-    msg: string;
-    type: 'info' | 'error' | 'warn' | 'success';
-}
-
+// Added missing HandshakePhase type definition to resolve TypeScript error on line 46
 type HandshakePhase = 'idle' | 'local' | 'cloud' | 'finalizing' | 'complete';
+
+const TOPIC_PRESETS = [
+    { id: 'arch', label: 'Architecture', icon: Layers, color: 'text-indigo-400', bg: 'bg-indigo-900/20' },
+    { id: 'algo', label: 'Algorithm', icon: Cpu, color: 'text-emerald-400', bg: 'bg-emerald-900/20' },
+    { id: 'sys', label: 'System Design', icon: Database, color: 'text-amber-400', bg: 'bg-amber-900/20' },
+    { id: 'biz', label: 'Business Strategy', icon: Briefcase, color: 'text-pink-400', bg: 'bg-pink-900/20' },
+    { id: 'eval', label: 'Evaluation', icon: Target, color: 'text-red-400', bg: 'bg-red-900/20' },
+    { id: 'gen', label: 'General Sync', icon: MessageSquare, color: 'text-slate-400', bg: 'bg-slate-800' }
+];
 
 const formatSize = (bytes?: number) => {
     if (bytes === undefined || bytes === null || bytes === 0) return '---';
@@ -54,14 +60,15 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   const [isRecorderModalOpen, setIsRecorderModalOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState('');
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
   const [recordCamera, setRecordCamera] = useState(true);
   const [recordScreen, setRecordScreen] = useState(true);
   const [recordingDuration, setRecordingDuration] = useState(180); 
   const [interactionEnabled, setInteractionEnabled] = useState(false); 
+  const [recordingTarget, setRecordingTarget] = useState<'drive' | 'youtube'>('drive');
 
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
@@ -104,7 +111,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     let collected: RecordingSession[] = [];
 
     try {
-      // PHASE 1: LOCAL HYDRATION
       addSyncLog("Handshake Phase 1: Local Refraction...");
       const localPromise = getLocalRecordings();
       const localTimeout = new Promise<RecordingSession[]>((resolve) => setTimeout(() => resolve([]), 4000));
@@ -120,7 +126,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           addSyncLog("Local ledger empty or timed out.", 'warn');
       }
 
-      // PHASE 2: CLOUD SYNC
       if (currentUser?.uid) {
           setPhase('cloud');
           addSyncLog(`Handshake Phase 2: Polling Cloud Vault (${currentUser.uid.substring(0,8)})...`);
@@ -143,7 +148,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           }
       }
 
-      // PHASE 3: FINALIZING
       if (lastHandshakeId.current === handshakeId && isMounted.current) {
           setPhase('finalizing');
           setRecordings(collected.sort((a, b) => b.timestamp - a.timestamp));
@@ -320,19 +324,22 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     finally { setDeletingId(null); }
   };
 
-  const toggleSelection = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const handleTopicClick = (topic: typeof TOPIC_PRESETS[0]) => {
+      setSelectedTopic(topic.id);
+      const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      setMeetingTitle(`${topic.label} [${dateStr}]`);
+      
+      // Sensible defaults based on topic
+      if (topic.id === 'arch' || topic.id === 'sys') setRecordingDuration(1800); // 30m
+      else if (topic.id === 'gen') setRecordingDuration(600); // 10m
   };
 
   const handleStartQuickRecording = () => {
     const defaultChannel: Channel = HANDCRAFTED_CHANNELS[0]; 
     if (onStartLiveSession) {
-        onStartLiveSession(defaultChannel, meetingTitle || "Manual Meeting Scribe", true, undefined, recordScreen, recordCamera, undefined, recordingDuration, interactionEnabled);
+        const context = selectedTopic ? `[TOPIC]: ${selectedTopic}\n[CONTEXT]: Scribe session regarding ${meetingTitle}` : undefined;
+        // Inject meetingTitle as the sessionTitle argument
+        onStartLiveSession(defaultChannel, context, true, undefined, recordScreen, recordCamera, undefined, recordingDuration, interactionEnabled, recordingTarget, meetingTitle);
     }
     setIsRecorderModalOpen(false);
   };
@@ -391,7 +398,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
               <AlertCircle size={48} className="opacity-50" />
               <div className="space-y-1">
                   <p className="font-bold">Handshake Interrupted</p>
-                  <p className="text-xs opacity-80 max-w-sm">{error}</p>
+                  <p className="text-xs opacity-80 max-sm">{error}</p>
               </div>
               <button onClick={loadData} className="mt-4 px-6 py-2 bg-red-600 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg">Retry Handshake</button>
           </div>
@@ -477,7 +484,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
 
       {isRecorderModalOpen && (
           <div className="fixed inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6 animate-fade-in">
-              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden animate-fade-in-up">
+              <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-xl shadow-2xl overflow-hidden animate-fade-in-up">
                   <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
                       <div className="flex items-center gap-3">
                           <div className="p-2 bg-red-600/10 rounded-xl text-red-500 border border-red-500/20"><Video size={20}/></div>
@@ -485,19 +492,42 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       </div>
                       <button onClick={() => setIsRecorderModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-white transition-colors"><X size={20}/></button>
                   </div>
-                  <div className="p-10 space-y-8">
-                      <div className="bg-amber-900/10 border border-amber-500/30 p-6 rounded-3xl space-y-3 animate-fade-in shadow-xl">
-                          <div className="flex items-center gap-3 text-amber-500"><AlertCircle size={20} /><h4 className="text-sm font-black uppercase tracking-[0.2em]">Mac Audio Alert</h4></div>
-                          <p className="text-xs text-slate-300 leading-relaxed font-bold uppercase">Mac Users: To capture audio from YouTube or other windows, you MUST check the <span className="text-amber-400">"Share system audio"</span> box in the browser's screen-selection dialog.</p>
+                  <div className="p-8 space-y-8 max-h-[80vh] overflow-y-auto scrollbar-hide">
+                      
+                      <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">1. Logic Sector (Topic)</label>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                              {TOPIC_PRESETS.map(t => (
+                                  <button 
+                                    key={t.id} 
+                                    onClick={() => handleTopicClick(t)}
+                                    className={`p-4 rounded-2xl border transition-all flex flex-col items-center gap-2 group ${selectedTopic === t.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-indigo-500/50'}`}
+                                  >
+                                      <t.icon size={20} className={selectedTopic === t.id ? 'text-white' : t.color} />
+                                      <span className="text-[9px] font-black uppercase tracking-tighter">{t.label}</span>
+                                  </button>
+                              ))}
+                          </div>
                       </div>
+
                       <div className="space-y-2">
-                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Session Title</label>
-                          <input type="text" placeholder="e.g. Q1 Architecture Review" value={meetingTitle} onChange={e => setMeetingTitle(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-4 text-white text-sm outline-none focus:ring-2 focus:ring-red-500 shadow-inner"/>
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">2. Session Identity (Title)</label>
+                          <div className="relative">
+                            <input 
+                                type="text" 
+                                placeholder="e.g. Q1 Architecture Review" 
+                                value={meetingTitle} 
+                                onChange={e => setMeetingTitle(e.target.value)} 
+                                className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-4 text-white text-sm outline-none focus:ring-2 focus:ring-red-500 shadow-inner"
+                            />
+                            {selectedTopic && <Sparkles className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 animate-pulse" size={16}/>}
+                          </div>
                       </div>
+
                       <div className="space-y-4">
                           <div className="flex justify-between items-center px-1">
-                              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Recording Limit (Max 60m)</label>
-                              <span className="text-xs font-black text-indigo-400">{Math.floor(recordingDuration / 60)}m {recordingDuration % 60}s</span>
+                              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">3. Temporal Limit (Recording Time)</label>
+                              <span className="text-xs font-black text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-500/20">{Math.floor(recordingDuration / 60)}m {recordingDuration % 60}s</span>
                           </div>
                           <input type="range" min="30" max="3600" step="30" value={recordingDuration} onChange={e => setRecordingDuration(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-red-500" />
                           <div className="flex justify-between text-[8px] font-black text-slate-600 uppercase tracking-tighter px-1">
@@ -508,21 +538,58 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                              <span>60m</span>
                           </div>
                       </div>
-                      <div className="grid grid-cols-1 gap-4">
-                           <button onClick={() => setInteractionEnabled(!interactionEnabled)} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${interactionEnabled ? 'bg-amber-600/10 border-amber-500 text-amber-300 shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
-                               <div className="flex items-center gap-3">{interactionEnabled ? <MessageSquare size={20}/> : <MessageSquareOff size={20}/>}<div className="text-left"><span className="text-xs font-bold uppercase tracking-widest block">AI Voice Interaction</span><span className="text-[8px] font-black uppercase opacity-60">{interactionEnabled ? 'Active Participation' : 'Listen-Only Mode'}</span></div></div>
-                               <div className={`w-10 h-5 rounded-full relative transition-colors ${interactionEnabled ? 'bg-amber-500' : 'bg-slate-800'}`}><div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${interactionEnabled ? 'right-1' : 'left-1'}`}></div></div>
-                           </button>
-                           <button onClick={() => setRecordScreen(!recordScreen)} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${recordScreen ? 'bg-indigo-600/10 border-indigo-500 text-indigo-300 shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>
-                               <div className="flex items-center gap-3"><Monitor size={20}/><span className="text-xs font-bold uppercase tracking-widest">Screen Capture</span></div>
-                               <div className={`w-10 h-5 rounded-full relative transition-colors ${recordScreen ? 'bg-indigo-500' : 'bg-slate-800'}`}><div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${recordScreen ? 'right-1' : 'left-1'}`}></div></div>
-                           </button>
-                           <button onClick={() => setRecordCamera(!recordCamera)} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${recordCamera ? 'bg-pink-600/10 border-pink-500 text-pink-300 shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>
-                               <div className="flex items-center gap-3"><Camera size={20}/><span className="text-xs font-bold uppercase tracking-widest">Camera Overlay</span></div>
-                               <div className={`w-10 h-5 rounded-full relative transition-colors ${recordCamera ? 'bg-pink-500' : 'bg-slate-800'}`}><div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${recordCamera ? 'right-1' : 'left-1'}`}></div></div>
-                           </button>
+
+                      <div className="space-y-4">
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">4. Target Vault (Storage)</label>
+                          <div className="flex p-1 bg-slate-950 rounded-2xl border border-slate-800 shadow-inner">
+                              <button 
+                                onClick={() => setRecordingTarget('drive')}
+                                className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all ${recordingTarget === 'drive' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                              >
+                                  <HardDrive size={14}/> Sovereign Drive
+                              </button>
+                              <button 
+                                onClick={() => setRecordingTarget('youtube')}
+                                className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all ${recordingTarget === 'youtube' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                              >
+                                  <Youtube size={14}/> Neural Archive
+                              </button>
+                          </div>
+                          <p className="px-2 text-[8px] font-black text-slate-600 uppercase tracking-widest leading-relaxed">
+                              {recordingTarget === 'drive' 
+                                ? 'Artifacts sharded across your personal Google Drive account.' 
+                                : 'Artifacts streamed directly to your unlisted YouTube channel.'}
+                          </p>
                       </div>
-                      <button onClick={handleStartQuickRecording} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3"><Play size={20} fill="currentColor"/> Begin Neural Scribe</button>
+
+                      <div className="space-y-3">
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">5. Capture Modalities</label>
+                          <div className="grid grid-cols-1 gap-2">
+                               <button onClick={() => setInteractionEnabled(!interactionEnabled)} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${interactionEnabled ? 'bg-amber-600/10 border-amber-500 text-amber-300 shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
+                                   <div className="flex items-center gap-3">{interactionEnabled ? <MessageSquare size={18}/> : <MessageSquareOff size={18}/>}<div className="text-left"><span className="text-[10px] font-bold uppercase tracking-widest block">AI Voice Interaction</span><span className="text-[8px] font-black uppercase opacity-60">{interactionEnabled ? 'Refractive Logic On' : 'Silent Scribe Only'}</span></div></div>
+                                   <div className={`w-8 h-4 rounded-full relative transition-colors ${interactionEnabled ? 'bg-amber-500' : 'bg-slate-800'}`}><div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${interactionEnabled ? 'right-0.5' : 'left-0.5'}`}></div></div>
+                               </button>
+                               <div className="grid grid-cols-2 gap-2">
+                                    <button onClick={() => setRecordScreen(!recordScreen)} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${recordScreen ? 'bg-indigo-600/10 border-indigo-500 text-indigo-300 shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>
+                                        <div className="flex items-center gap-2"><Monitor size={16}/><span className="text-[10px] font-bold uppercase tracking-widest">Screen</span></div>
+                                        <div className={`w-6 h-3 rounded-full relative transition-colors ${recordScreen ? 'bg-indigo-500' : 'bg-slate-800'}`}><div className={`absolute top-0.5 w-2 h-2 bg-white rounded-full transition-all ${recordScreen ? 'right-0.5' : 'left-0.5'}`}></div></div>
+                                    </button>
+                                    <button onClick={() => setRecordCamera(!recordCamera)} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${recordCamera ? 'bg-pink-600/10 border-pink-500 text-pink-300 shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>
+                                        <div className="flex items-center gap-2"><Camera size={16}/><span className="text-[10px] font-bold uppercase tracking-widest">Camera</span></div>
+                                        <div className={`w-6 h-3 rounded-full relative transition-colors ${recordCamera ? 'bg-pink-500' : 'bg-slate-800'}`}><div className={`absolute top-0.5 w-2 h-2 bg-white rounded-full transition-all ${recordCamera ? 'right-0.5' : 'left-0.5'}`}></div></div>
+                                    </button>
+                               </div>
+                          </div>
+                      </div>
+
+                      <div className="bg-amber-900/10 border border-amber-500/30 p-4 rounded-2xl space-y-2">
+                          <div className="flex items-center gap-2 text-amber-500"><AlertCircle size={14} /><h4 className="text-[10px] font-black uppercase tracking-widest">Hardware Handshake Alert</h4></div>
+                          <p className="text-[9px] text-slate-300 leading-relaxed font-bold uppercase">Mac Users: Ensure "Share system audio" is active in the browser prompt to capture internal sound sources.</p>
+                      </div>
+
+                      <button onClick={handleStartQuickRecording} disabled={!meetingTitle.trim()} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-30">
+                          <Play size={20} fill="currentColor"/> Begin Neural Scribe
+                      </button>
                   </div>
               </div>
           </div>
@@ -533,15 +600,15 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
               <div className="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden shadow-2xl flex flex-col h-full max-h-[85vh]">
                   <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center shrink-0">
                       <div className="flex items-center gap-4">
-                          <div className="p-3 bg-red-600 rounded-xl text-white shadow-lg shadow-red-900/20"><Video size={24}/></div>
+                          <div className="p-3 bg-red-600 rounded-2xl text-white shadow-lg shadow-red-900/20"><Video size={24}/></div>
                           <div><h2 className="text-xl font-black text-white italic tracking-tighter uppercase">{activeRecording.channelTitle}</h2><div className="flex items-center gap-4 mt-1 text-[10px] font-black text-slate-500 uppercase tracking-widest"><span className="flex items-center gap-1"><Calendar size={12}/> {formatPST(activeRecording.timestamp).split(',')[0]}</span><span className="flex items-center gap-1"><HardDrive size={12}/> 
                           {formatSize(activeRecording.size || activeRecording.blob?.size)}
                           </span></div></div>
                       </div>
-                      <button onClick={closePlayer} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl transition-all active:scale-95"><X size={24}/></button>
+                      <button onClick={closePlayer} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl transition-all active:scale-95 shadow-lg"><X size={24}/></button>
                   </div>
                   <div className="flex-1 bg-black relative flex items-center justify-center">
-                    {resolvedMediaUrl ? (isYouTubeUrl(resolvedMediaUrl) ? (<iframe src={getYouTubeEmbedUrl(extractYouTubeId(resolvedMediaUrl)!)} className="w-full h-full border-none" allowFullScreen />) : (<video src={resolvedMediaUrl} controls autoPlay playsInline className="w-full h-full object-contain" />)) : (<div className="flex flex-col items-center gap-4"><Loader2 size={48} className="animate-spin text-red-500" /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Buffering Neural Stream...</span></div>)}
+                    {resolvedMediaUrl ? (isYouTubeUrl(resolvedMediaUrl) ? (<iframe src={getYouTubeEmbedUrl(extractYouTubeId(resolvedMediaUrl)!)} className="w-full h-full border-none" allowFullScreen />) : (<video src={resolvedMediaUrl} controls autoPlay playsInline className="w-full h-full object-contain" />)) : (<div className="flex flex-col items-center gap-4"><Loader2 size={48} className="animate-spin text-red-500" /><span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500">Buffering Neural Stream...</span></div>)}
                   </div>
                   <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-center gap-4 shrink-0">
                       <button onClick={() => handleDownloadToDevice(activeRecording)} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl border border-slate-700 transition-all flex items-center gap-2"><Download size={14}/> Download Asset</button>
@@ -549,6 +616,14 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                   </div>
               </div>
           </div>
+      )}
+      
+      {showShareModal && shareUrl && (
+          <ShareModal 
+            isOpen={true} onClose={() => setShowShareModal(false)}
+            link={shareUrl} title={sharingTitle}
+            onShare={async () => {}} currentUserUid={currentUser?.uid}
+          />
       )}
     </div>
   );

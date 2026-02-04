@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ArrowLeft, BookOpen, Rocket, Sparkles, Globe, ShieldCheck } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
@@ -26,7 +27,7 @@ export const ProjectStory: React.FC<ProjectStoryProps> = ({ onBack }) => {
                         <h1 className="text-xl font-black tracking-widest uppercase text-white flex items-center gap-2 italic">
                             <BookOpen size={20} className="text-indigo-400"/> The Neural Prism Story
                         </h1>
-                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.3em]">Manifest v6.9.5-PRO</p>
+                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.3em]">Manifest v7.0.0-ULTRA</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600/20 border border-indigo-500/30 rounded-full text-indigo-400 text-[10px] font-black uppercase tracking-widest">
@@ -81,7 +82,7 @@ export const ProjectStory: React.FC<ProjectStoryProps> = ({ onBack }) => {
                             <Globe size={24} className="text-slate-900" />
                         </div>
                         <div className="text-center">
-                            <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.5em]">Neural Prism v6.9.5-PRO</p>
+                            <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.5em]">Neural Prism v7.0.0-ULTRA</p>
                             <p className="text-[10px] text-slate-400 font-bold italic mt-2 uppercase tracking-widest">Built for humanity. Refracted by Neural Prism.</p>
                         </div>
                     </footer>

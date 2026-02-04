@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ArrowLeft, Book, Sparkles, Zap, Cpu, Radio, Layout, Key, Globe, CheckCircle } from 'lucide-react';
 
@@ -73,7 +74,7 @@ export const UserManual: React.FC<UserManualProps> = ({ onBack }) => {
                 <div className="flex justify-center items-center gap-6">
                     <Globe size={20} className="text-slate-300" />
                     <span className="w-8 h-px bg-slate-200"></span>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">v6.9.5-SYN</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">v7.0.0-ULTRA</p>
                     <span className="w-8 h-px bg-slate-200"></span>
                     <Sparkles size={20} className="text-slate-300" />
                 </div>

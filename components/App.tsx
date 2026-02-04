@@ -339,7 +339,6 @@ const App: React.FC = () => {
 
   const handleDetailBack = useCallback(() => handleSetViewState('directory'), [handleSetViewState]);
 
-  // Fix: Added missing parameters to handleStartLiveSession function signature to avoid shorthand property scoping errors.
   const handleStartLiveSession = useCallback((
     channel: Channel, 
     context?: string, 
@@ -349,14 +348,16 @@ const App: React.FC = () => {
     recordCamera?: boolean, 
     activeSegment?: any, 
     recordingDuration?: number, 
-    interactionEnabled?: boolean
+    interactionEnabled?: boolean,
+    recordingTarget?: 'drive' | 'youtube',
+    sessionTitle?: string
   ) => {
     const isSpecialized = ['1', '2', 'default-gem', 'judge-deep-dive'].includes(channel.id);
     if (isSpecialized && !isProMember) {
         setIsPricingModalOpen(true);
         return;
     }
-    setLiveSessionParams({ channel, context, recordingEnabled, bookingId, recordScreen, recordCamera, activeSegment, recordingDuration, interactionEnabled, returnTo: activeViewID });
+    setLiveSessionParams({ channel, context, recordingEnabled, bookingId, recordScreen, recordCamera, activeSegment, recordingDuration, interactionEnabled, recordingTarget, sessionTitle, returnTo: activeViewID });
     handleSetViewState('live_session');
   }, [activeViewID, handleSetViewState, isProMember]);
 
@@ -368,7 +369,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Sovereignty Protocols v6.9.8 Active.", "info");
+    addSystemLog("Sovereignty Protocols Active.", "info");
     if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
         if (u) { setCurrentUser(u); syncUserProfile(u).catch(console.error); }
@@ -465,7 +466,7 @@ const App: React.FC = () => {
         { id: 'mock_interview', label: 'Career', icon: Video, action: () => handleSetViewState('mock_interview'), color: 'text-red-500', restricted: true },
         { id: 'coin_wallet', label: 'Wallet', icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400', restricted: true },
         { id: 'docs', label: 'Docs', icon: FileText, action: () => handleSetViewState('docs'), color: 'text-emerald-400', restricted: true },
-        { id: 'chat', label: 'Chat', icon: MessageSquare, action: () => handleSetViewState('chat'), color: 'text-blue-400', restricted: true },
+        { id: 'chat', label: 'Team Space', icon: MessageSquare, action: () => handleSetViewState('chat'), color: 'text-blue-400', restricted: true },
         { id: 'code_studio', label: 'Builder', icon: Code, action: () => handleSetViewState('code_studio'), color: 'text-blue-400', restricted: true },
         { id: 'whiteboard', label: 'Canvas', icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400', restricted: true },
         { id: 'pdf_signer', label: 'Signer', icon: FileSignature, action: () => handleSetViewState('pdf_signer'), color: 'text-indigo-400', restricted: true },
@@ -526,7 +527,7 @@ const App: React.FC = () => {
                 {activeViewID === 'dashboard' && ( <Dashboard userProfile={userProfile} isProMember={isProMember} onNavigate={handleSetViewState} language={language} /> )}
                 {activeViewID === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice="Auto" currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={()=>{}} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} onOpenPricing={() => setIsPricingModalOpen(true)} language={language} onMagicCreate={handleMagicCreate} /> )}
                 {activeViewID === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={handleDetailBack} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} onUpdateChannel={handleUpdateChannel} isProMember={isProMember} /> )}
-                {activeViewID === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} language={language} initialContext={liveSessionParams.context} recordingEnabled={liveSessionParams.recordingEnabled} lectureId={liveSessionParams.bookingId} recordScreen={liveSessionParams.recordScreen} recordCamera={liveSessionParams.recordCamera} activeSegment={liveSessionParams.activeSegment} recordingDuration={liveSessionParams.recordingDuration} interactionEnabled={liveSessionParams.interactionEnabled} /> )}
+                {activeViewID === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} language={language} initialContext={liveSessionParams.context} recordingEnabled={liveSessionParams.recordingEnabled} lectureId={liveSessionParams.bookingId} recordScreen={liveSessionParams.recordScreen} recordCamera={liveSessionParams.recordCamera} activeSegment={liveSessionParams.activeSegment} recordingDuration={liveSessionParams.recordingDuration} interactionEnabled={liveSessionParams.interactionEnabled} recordingTarget={liveSessionParams.recordingTarget} sessionTitle={liveSessionParams.sessionTitle} /> )}
                 {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} /></div> )}
                 {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} isProMember={isProMember}/> )}
                 {activeViewID === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('dashboard')} /> )}
@@ -606,7 +607,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v6.9.8-PRO</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol</p></div>
             </div>
         </div>
 

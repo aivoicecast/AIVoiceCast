@@ -1,11 +1,12 @@
+
 import { BookData } from '../bookContent';
 
 export const MOCK_INTERVIEW_BOOK: BookData = {
   id: 'mock-interview-core',
   title: "The Socratic Interrogator",
-  subtitle: "Technical Evaluation & Professional Reshaping Manifest v6.9.8",
+  subtitle: "Technical Evaluation & Professional Reshaping Manifest",
   author: "Neural Evaluation Team",
-  version: "v6.9.8-PRO",
+  version: "PRO",
   category: "Evaluation",
   pages: [
     {
@@ -62,7 +63,7 @@ This loop ensures that the evaluation is multimodal, deep, and objective.
 To ensure the AI always sees exactly what you see, we implement the **Delta Handshake**. Sparse code deltas and cursor coordinates are bundled into the neural session header every 200ms.
 
 ### Maintaining the Dream
-This maintains a "Stable Dream" of the project across the entire 45-minute session without consuming excessive tokens. It is the secret to why our AI interviewer never forgets a variable initialized on line 42, even if you are currently refactoring line 500. This stateful persistence on a stateless API is a core breakthrough of the v6.9.8 standard.
+This maintains a "Stable Dream" of the project across the entire 45-minute session without consuming excessive tokens. It is the secret to why our AI interviewer never forgets a variable initialized on line 42, even if you are currently refactoring line 500. This stateful persistence on a stateless API is a core breakthrough.
       `
     },
     {
@@ -103,7 +104,7 @@ MockInterview Studio simulates various stakeholder personas—the "Grumpy PM," t
 The final output is a **10-Week Refraction Plan**. We don't just give you a score; we give you a curriculum.
 
 ### Personalized Growth
-Gemini 3 Pro performs high-dimensional reasoning over your session archive to build a week-by-week roadmap. If you struggled with concurrency, Week 2 of your plan will trigger specialized Socratic lectures and algorithmic drills in the Builder Studio. We identify the gap between your current signal and a Staff-level role, and we shorten it through guided friction.
+Gemini 3 Pro performs high-dimensional reasoning over your session archive to build a week-by-week roadmap. If you struggled with LRU Cache implementation during the 'Perform' phase, Week 2 of your plan will trigger specialized Socratic lectures and algorithmic drills in the Builder Studio. We identify the gap between your current signal and a Staff-level role, and we shorten it through guided friction.
       `
     },
     {
@@ -111,7 +112,7 @@ Gemini 3 Pro performs high-dimensional reasoning over your session archive to bu
       content: String.raw`
 # ⚡ Chapter 10: Efficiency Proof
 
-By using Heuristic Simulation instead of physical containers, we achieve a **10x energy saving**. We trade redundant physical computation for high-fidelity neural prediction. This allows us to scale super-intelligence to millions of candidates without destroying the power grid. It is the first "Thermodynamically Honest" technical education platform.
+By using Heuristic Simulation instead of physical containers, we achieve a **100x energy saving**. We trade redundant physical computation for high-fidelity neural prediction. This allows us to scale super-intelligence to millions of candidates without destroying the power grid. It is the first "Thermodynamically Honest" technical education platform.
       `
     },
     {
@@ -131,7 +132,7 @@ MockInterview Studio turns the anxiety of the interview into the beauty of techn
 
 **Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things.**
 
-*Refraction complete. See you in the 2026 landscape.*
+*Refraction complete. See you in the landscape.*
       `
     }
   ]

@@ -9,22 +9,23 @@ const RECORDINGS_STORE_NAME = 'local_recordings';
 const IDENTITY_STORE_NAME = 'identity_keys';
 const TRUSTED_IDENTITIES_STORE = 'trusted_identities';
 const ASSETS_STORE_NAME = 'neural_assets'; 
-const VERSION = 9; 
+const VERSION = 10; 
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
 /**
  * High-Density Handshake Protocol for IndexedDB
+ * Hardened for v7.0.0-ULTRA to handle 100MB+ video blobs.
  */
 function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve, reject) => {
-    // 3s Watchdog: IDB is usually <100ms. If it takes 3s, it's deadlocked by another tab.
+    // 30s Watchdog: Generous window for the browser to allocate space for large video fragments.
     const watchdog = setTimeout(() => {
-        dbPromise = null;
-        reject(new Error("IDB_TIMEOUT"));
-    }, 3000);
+        dbPromise = null; 
+        reject(new Error("IDB_TIMEOUT_LIMIT_EXCEEDED"));
+    }, 30000);
 
     try {
         const request = indexedDB.open(DB_NAME, VERSION);
@@ -32,7 +33,7 @@ function openDB(): Promise<IDBDatabase> {
         request.onblocked = () => {
             clearTimeout(watchdog);
             window.dispatchEvent(new CustomEvent('neural-log', { 
-                detail: { text: `[Vault] BLOCKED: Close extra tabs to finalize update.`, type: 'error' } 
+                detail: { text: `[Vault] CONFLICT: Close other tabs to permit high-mass write.`, type: 'warn' } 
             }));
             dbPromise = null;
             reject(new Error("IDB_BLOCKED"));
@@ -57,7 +58,7 @@ function openDB(): Promise<IDBDatabase> {
         request.onerror = () => { 
             clearTimeout(watchdog);
             dbPromise = null; 
-            reject(request.error || new Error("IDB_UNKNOWN")); 
+            reject(request.error || new Error("IDB_HANDSHAKE_FAILED")); 
         };
     } catch (e: any) {
         clearTimeout(watchdog);
@@ -79,20 +80,48 @@ export async function getLocalRecordings(): Promise<RecordingSession[]> {
                 const req = store.getAll();
                 req.onsuccess = () => resolve(req.result || []);
                 req.onerror = () => reject(req.error);
-            } catch (e: any) { reject(e); }
+            } catch (e: any) { 
+                dbPromise = null; 
+                reject(e); 
+            }
         });
     } catch (e: any) {
-        console.warn("[Vault] Bypassing local scan:", e.message);
+        console.warn("[Vault] Bypassing scan:", e.message);
         return []; 
     }
 }
 
+/**
+ * Vaults a recording session into local storage.
+ * Atomic write ensures large blobs don't corrupt the ledger.
+ */
 export async function saveLocalRecording(session: RecordingSession & { blob: Blob }): Promise<void> {
     try {
         const db = await openDB();
-        const tx = db.transaction(RECORDINGS_STORE_NAME, 'readwrite');
-        tx.objectStore(RECORDINGS_STORE_NAME).put(session);
-    } catch(e) {}
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(RECORDINGS_STORE_NAME, 'readwrite');
+            const store = tx.objectStore(RECORDINGS_STORE_NAME);
+            
+            // Handle catastrophic aborts (e.g. out of disk space)
+            tx.onabort = (e) => {
+                dbPromise = null;
+                reject(new Error("VAULT_ABORTED: Likely Insufficient Disk Space"));
+            };
+
+            const req = store.put(session);
+            req.onsuccess = () => resolve();
+            req.onerror = () => {
+                dbPromise = null;
+                reject(req.error);
+            };
+        });
+    } catch(e: any) {
+        dbPromise = null;
+        window.dispatchEvent(new CustomEvent('neural-log', { 
+            detail: { text: `[Vault] High-Mass Save Failure: ${e.message}`, type: 'error' } 
+        }));
+        throw e;
+    }
 }
 
 export async function deleteLocalRecording(id: string): Promise<void> {
@@ -100,7 +129,9 @@ export async function deleteLocalRecording(id: string): Promise<void> {
         const db = await openDB();
         const tx = db.transaction(RECORDINGS_STORE_NAME, 'readwrite');
         tx.objectStore(RECORDINGS_STORE_NAME).delete(id);
-    } catch(e) {}
+    } catch(e) {
+        dbPromise = null;
+    }
 }
 
 export async function getCachedAudioBuffer(key: string): Promise<ArrayBuffer | undefined> {

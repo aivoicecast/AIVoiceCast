@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { 
   Terminal, Code, Video, LayoutGrid, FileText, Wallet, MessageSquare, 
@@ -199,7 +200,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
         ))}
 
         <footer className="pt-12 text-center">
-            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Prism v6.9.1-PRO • Sovereign Activity Hub</p>
+            <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Neural Prism v7.0.0-ULTRA • Sovereign Activity Hub</p>
         </footer>
       </div>
     </div>

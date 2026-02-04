@@ -17,7 +17,7 @@ export const HEURISTIC_SIMULATION_BOOK: BookData = {
 Traditional code execution is deterministic and infrastructure-heavy. To run a single line of C++, you need a physical compiler, a linker, a physical CPU, and a managed block of RAM. In the Neural Prism, we have moved beyond this physical dependency for the purpose of learning, prototyping, and evaluation. We use **Gemini 3 Flash** as a "Digital Twin" of a POSIX-compliant terminal.
 
 ### The "Liar's Computer"
-We call the simulation a "Liar's Computer" because it doesn't actually run the code on a CPU. It *imagines* the result of the code based on its latent knowledge of language specifications. Because the model has "read" trillions of lines of code and documentation, it understands the physics of logic at a fundamental level. It doesn't need to 'calculate' 2+2; it knows the result is 4 through semantic necessity.
+We call the simulation a "Liar's Computer" because it doesn't actually run the code on a CPU. It *imagines* the result of the code based on its latent knowledge of language specifications. Because the model has "read" trillions of lines of code and documentation, it understands the physics of logic at a fundamental level. It doesn't need a 'calculate' 2+2; it knows the result is 4 through semantic necessity.
 
 $$
 \text{Result} \approx P(\text{stdout} | \text{Code}, \text{Context}, \text{Runtime Environment})
@@ -79,9 +79,9 @@ Compilation is the "Wait Wall" of modern development. Even in high-speed cloud e
 By configuring Gemini 3 Flash with a **thinkingBudget: 0**, we skip the model's internal reasoning chain and jump straight to the STDOUT prediction. This makes the "Run" button feel like a real terminal, responding at the speed of thought. 
 
 ### Energy Thermodynamics
-We've achieved a 10x saving in the thermodynamics of software development. 
-- **Physical Build**: Boots VM (5kW), Compiles (8kW), Runs (3kW). Total: ~16kW for 15 seconds.
-- **Neural Refraction**: Single inference pass (approx. 0.5kW). Total: ~0.5kW for 0.8 seconds.
+We've achieved a 100x reduction in the energy overhead of software development. 
+- **Physical Build**: Typical lifecycle consumes approx. 50kJ of energy.
+- **Neural Refraction**: Single inference pass consumes approx. 0.5kJ.
 
 We aren't just saving time; we are saving planetary energy by eliminating the need for millions of persistent, energy-hungry virtual containers for the purpose of learning and evaluation. This is 'Green Computing' through the power of prediction.
             `

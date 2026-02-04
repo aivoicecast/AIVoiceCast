@@ -49,7 +49,8 @@ interface MockInterviewReport {
   sourceCode?: CodeFile[];
   transcript?: TranscriptItem[];
   videoUrl?: string; 
-  videoBlob?: Blob; 
+  videoBlob?: Blob;
+  videoSize?: number; 
 }
 
 interface ApiLog {
@@ -89,9 +90,16 @@ const PERSONAS = [
         modelId: 'Default Gem', 
         icon: Zap, 
         desc: 'General technical evaluation and coaching.',
-        instruction: 'You are the project lead of Neural Prism. You are evaluating a contributor. You focus on clean code, documentation, and feature parity. If you receive a [RECONNECTION_PROTOCOL_ACTIVE] block, immediately acknowledge the link recovery, summarize your current understanding of the problem and progress, and ask the candidate to confirm if anything was missed before proceeding.'
+        instruction: 'You are the project lead of Neural Prism. You are evaluating a contributor. You focus on clean code, documentation, and feature parity. If you receive a [RECONNECTION_PROTOCOL_ACTIVE] block, immediately acknowledge the link recovery, summarize your current understanding of the problem and progress, and ask the candidate to confirm if your understanding is correct. Then proceed with the interview.'
     }
 ];
+
+const formatMass = (bytes?: number) => {
+    if (!bytes) return '0 B';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 function getLanguageFromExt(filename: string): CodeFile['language'] {
     if (!filename) return 'c++';
@@ -160,6 +168,21 @@ const EvaluationReportDisplay = ({
     const [expandedFileIndex, setExpandedFileIndex] = useState<number | null>(null);
     const [showPlayer, setShowPlayer] = useState(false);
 
+    const stableVideoUrl = useMemo(() => {
+        if (report.videoBlob && report.videoBlob.size > 0) {
+            return URL.createObjectURL(report.videoBlob);
+        }
+        return report.videoUrl || '';
+    }, [report.videoBlob, report.videoUrl]);
+
+    useEffect(() => {
+        return () => {
+            if (stableVideoUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(stableVideoUrl);
+            }
+        };
+    }, [stableVideoUrl]);
+
     const verdictColor = useMemo(() => {
         const v = String(report?.verdict || '').toLowerCase();
         if (v.includes('strong hire')) return 'bg-emerald-500 text-white shadow-emerald-500/20';
@@ -170,9 +193,13 @@ const EvaluationReportDisplay = ({
     }, [report?.verdict]);
 
     const handleDownload = () => {
-        if (!report.videoUrl && !report.videoBlob) return;
+        if (!stableVideoUrl) return;
+        if (report.videoBlob && report.videoBlob.size === 0) {
+            alert("Local artifact has zero size. Playback unavailable.");
+            return;
+        }
         const a = document.createElement('a');
-        a.href = report.videoBlob ? URL.createObjectURL(report.videoBlob) : (report.videoUrl || '');
+        a.href = stableVideoUrl;
         a.download = `Mock_Interview_Archive_${report.id.substring(0,8)}.webm`;
         a.click();
     };
@@ -199,7 +226,7 @@ const EvaluationReportDisplay = ({
                 </div>
             </div>
 
-            {report.videoUrl || report.videoBlob ? (
+            {stableVideoUrl || report.videoSize === 0 ? (
                 <div className="space-y-4">
                     <div className="bg-slate-900 border border-indigo-500/30 p-8 rounded-[3rem] shadow-xl flex flex-col lg:flex-row items-center justify-between gap-6 animate-fade-in">
                         <div className="flex items-center gap-6">
@@ -208,12 +235,25 @@ const EvaluationReportDisplay = ({
                             </div>
                             <div>
                                 <h4 className="text-white font-black uppercase tracking-tighter italic text-xl">Session Artifact</h4>
-                                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">1080p Neural Archive Secured</p>
+                                <div className="flex items-center gap-3 mt-1">
+                                    <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">1080p Neural Archive Secured</p>
+                                    <div className="w-1 h-1 rounded-full bg-slate-800"></div>
+                                    <p className={`text-xs font-black font-mono ${report.videoSize === 0 ? 'text-red-500' : 'text-indigo-400'}`}>
+                                        MASS: {formatMass(report.videoSize)}
+                                        {report.videoSize === 0 && ' (EMPTY)'}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                         <div className="flex flex-wrap gap-3 justify-center">
                             <button 
-                                onClick={() => setShowPlayer(!showPlayer)}
+                                onClick={() => {
+                                    if (report.videoSize === 0) {
+                                        alert("Neural artifact is empty (0 bytes). Check microphone/screen permissions.");
+                                        return;
+                                    }
+                                    setShowPlayer(!showPlayer);
+                                }}
                                 className="px-6 py-3 bg-white text-slate-950 rounded-xl font-black uppercase tracking-widest shadow-lg hover:bg-indigo-50 transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap text-[10px]"
                             >
                                 {showPlayer ? <X size={16}/> : <PlayCircle size={16}/>}
@@ -222,8 +262,8 @@ const EvaluationReportDisplay = ({
 
                             <button 
                                 onClick={onSyncYouTube}
-                                disabled={isSyncing || report.videoUrl?.includes('youtube')}
-                                className={`px-6 py-3 rounded-xl font-black uppercase tracking-widest shadow-lg transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap text-[10px] ${report.videoUrl?.includes('youtube') ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/20' : 'bg-red-600 text-white hover:bg-red-500'}`}
+                                disabled={isSyncing || report.videoUrl?.includes('youtube') || report.videoSize === 0}
+                                className={`px-6 py-3 rounded-xl font-black uppercase tracking-widest shadow-lg transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap text-[10px] ${report.videoUrl?.includes('youtube') ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/20' : 'bg-red-600 text-white hover:bg-red-500'} ${report.videoSize === 0 ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}
                             >
                                 {isSyncing ? <Loader2 size={16} className="animate-spin"/> : <Youtube size={16}/>}
                                 {report.videoUrl?.includes('youtube') ? 'Synced to YT' : 'Sync to YouTube'}
@@ -231,8 +271,8 @@ const EvaluationReportDisplay = ({
 
                             <button 
                                 onClick={onSyncDrive}
-                                disabled={isSyncing || report.videoUrl?.includes('drive')}
-                                className={`px-6 py-3 rounded-xl font-black uppercase tracking-widest shadow-lg transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap text-[10px] ${report.videoUrl?.includes('drive') ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/20' : 'bg-indigo-600 text-white hover:bg-indigo-500'}`}
+                                disabled={isSyncing || report.videoUrl?.includes('drive') || report.videoSize === 0}
+                                className={`px-6 py-3 rounded-xl font-black uppercase tracking-widest shadow-lg transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap text-[10px] ${report.videoUrl?.includes('drive') ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/20' : 'bg-indigo-600 text-white hover:bg-indigo-500'} ${report.videoSize === 0 ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}
                             >
                                 {isSyncing ? <Loader2 size={16} className="animate-spin"/> : <HardDrive size={16}/>}
                                 {report.videoUrl?.includes('drive') ? 'Synced to Drive' : 'Sync to Drive'}
@@ -240,7 +280,8 @@ const EvaluationReportDisplay = ({
 
                             <button 
                                 onClick={handleDownload}
-                                className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition-all active:scale-95"
+                                disabled={report.videoSize === 0}
+                                className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition-all active:scale-95 disabled:opacity-50"
                                 title="Download Local Artifact"
                             >
                                 <Download size={16}/>
@@ -248,21 +289,20 @@ const EvaluationReportDisplay = ({
                         </div>
                     </div>
                     
-                    {showPlayer && (
+                    {showPlayer && report.videoSize && report.videoSize > 0 && (
                         <div className="bg-black border border-slate-800 rounded-[2.5rem] overflow-hidden aspect-video shadow-2xl animate-fade-in relative group/player">
                             <video 
-                                src={report.videoBlob ? URL.createObjectURL(report.videoBlob) : (report.videoUrl || '')} 
+                                src={stableVideoUrl} 
                                 controls 
                                 autoPlay 
                                 playsInline
-                                crossOrigin="anonymous"
                                 className="w-full h-full object-contain"
                             />
                         </div>
                     )}
                 </div>
             ) : (
-                <div className="bg-slate-900/50 border border-slate-800 p-8 rounded-[3rem] flex items-center justify-center gap-4 text-slate-600 animate-pulse">
+                <div className="bg-slate-900/50 border border-indigo-500/30 p-8 rounded-[3rem] flex items-center justify-center gap-4 text-slate-600 animate-pulse">
                     <Loader2 size={20} className="animate-spin" />
                     <span className="text-xs font-black uppercase tracking-widest">Neural Artifact Syncing...</span>
                 </div>
@@ -434,6 +474,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   const localSessionVideoUrlRef = useRef<string>('');
   const localSessionBlobRef = useRef<Blob | null>(null);
+  const localSessionVideoSizeRef = useRef<number>(0);
 
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
@@ -526,6 +567,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   const performSyncToYouTube = async (id: string, blob: Blob, meta: { mode: string, language: string }) => {
     if (!currentUser) return;
+    if (!blob || blob.size === 0) {
+        addApiLog("YouTube Sync aborted: Local artifact is empty.", "warn");
+        return;
+    }
+    
     setIsUploadingRecording(true);
     setRecordingId(id);
     addApiLog(`Syncing session ${id.substring(0,8)} to YouTube Registry...`, 'info');
@@ -559,6 +605,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   const performSyncToDrive = async (id: string, blob: Blob, meta: { mode: string }) => {
       if (!currentUser) return;
+      if (!blob || blob.size === 0) {
+          addApiLog("Drive Sync aborted: Local artifact is empty.", "warn");
+          return;
+      }
+      
       setIsUploadingRecording(true);
       setRecordingId(id);
       addApiLog(`Backing up session ${id.substring(0,8)} to Google Drive...`, 'info');
@@ -599,14 +650,21 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       if (timerRef.current) clearInterval(timerRef.current);
       autoReconnectAttempts.current = maxAutoRetries;
 
+      // CRITICAL FIX: Robustly wait for MediaRecorder to finish flushing data
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          addApiLog("Closing Scribe Protocol and finalizing stream...", "info");
           const stopPromise = new Promise(resolve => {
               mediaRecorderRef.current!.addEventListener('stop', () => {
-                  setTimeout(resolve, 1000); 
+                  // Explicitly check for blob update before continuing to navigation
+                  let attempts = 0;
+                  const check = () => {
+                      if (localSessionBlobRef.current || attempts > 10) resolve(true);
+                      else { attempts++; setTimeout(check, 200); }
+                  };
+                  check();
               }, { once: true });
               mediaRecorderRef.current!.stop();
           });
-          addApiLog("Closing Scribe Protocol and finalizing stream...", "info");
           await stopPromise;
       }
 
@@ -659,10 +717,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           reportData.transcript = [...currentTranscript];
           reportData.videoUrl = localSessionVideoUrlRef.current || '';
           reportData.videoBlob = localSessionBlobRef.current || undefined;
+          reportData.videoSize = localSessionVideoSizeRef.current || 0;
           
           setReport(reportData);
 
           if (auth.currentUser) {
+              // Wait for save operation to finish before moving to feedback view
               await saveInterviewRecording({ 
                 id: currentId, userId: auth.currentUser.uid, 
                 userName: auth.currentUser.displayName || 'Candidate', 
@@ -790,14 +850,15 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 drawCtx.drawImage(screenVideo, -100, -100, canvas.width + 200, canvas.height + 200);
                 drawCtx.restore();
                 
-                const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight) * 0.95;
+                // FIXED: YouTube edge-to-edge standard (1.0 scale factor)
+                const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
                 const w = screenVideo.videoWidth * scale; const h = screenVideo.videoHeight * scale;
                 drawCtx.save(); drawCtx.shadowColor = 'rgba(0,0,0,0.8)'; drawCtx.shadowBlur = 40;
                 drawCtx.drawImage(screenVideo, (canvas.width - w)/2, (canvas.height - h)/2, w, h); drawCtx.restore();
             }
             
             if (cameraVideo.readyState >= 2) {
-                const size = 380; const margin = 60; const px = canvas.width - size - margin; const py = canvas.height - size - margin;
+                const size = 380; const margin = 40; const px = canvas.width - size - margin; const py = canvas.height - size - margin;
                 const radius = size / 2;
                 drawCtx.save(); drawCtx.beginPath(); drawCtx.arc(px + radius, py + radius, radius, 0, Math.PI * 2); drawCtx.clip();
                 const camScale = Math.max(size / cameraVideo.videoWidth, size / cameraVideo.videoHeight);
@@ -810,7 +871,14 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
         const captureStream = canvas.captureStream(30);
         recordingDest.stream.getAudioTracks().forEach(t => captureStream.addTrack(t));
-        const recorder = new MediaRecorder(captureStream, { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 8000000 });
+        
+        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+            ? 'video/webm;codecs=vp9,opus' 
+            : MediaRecorder.isTypeSupported('video/webm') 
+                ? 'video/webm' 
+                : 'video/mp4';
+
+        const recorder = new MediaRecorder(captureStream, { mimeType, videoBitsPerSecond: 8000000 });
         
         audioChunksRef.current = []; 
         recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
@@ -818,10 +886,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             setIsRecordingActive(false);
             if (renderIntervalRef.current) clearInterval(renderIntervalRef.current);
             
-            const videoBlob = new Blob(audioChunksRef.current, { type: 'video/webm' });
+            const videoBlob = new Blob(audioChunksRef.current, { type: mimeType });
             const mediaUrl = URL.createObjectURL(videoBlob);
             localSessionVideoUrlRef.current = mediaUrl;
             localSessionBlobRef.current = videoBlob;
+            localSessionVideoSizeRef.current = videoBlob.size;
 
             try {
                 await saveLocalRecording({
@@ -926,6 +995,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setSessionUuid(sid);
     localSessionVideoUrlRef.current = '';
     localSessionBlobRef.current = null;
+    localSessionVideoSizeRef.current = 0;
     const initialFile: CodeFile = { name: 'interview_notes.md', path: `local-${sid}-notes`, content: `# Session Artifact: ${sid}\n**Mode:** ${interviewMode}\n**Language:** ${interviewLanguage}\n**Persona:** ${selectedPersona.name}\n\nWaiting for interrogator logic...`, language: 'markdown', loaded: true, isDirectory: false };
     setFiles([initialFile]); filesRef.current = [initialFile];
     setActiveFileIndex(0); activeFileIndexRef.current = 0;

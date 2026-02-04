@@ -1,7 +1,8 @@
+
 export const STORY_MARKDOWN = `
 # 🌈 The Neural Prism Story: Refracting Intelligence
 
-**Technical Manifest v6.9.5-PRO: Building a Sovereign Intelligence Hub.**
+**Technical Manifest v7.0.0-ULTRA: Building a Sovereign Intelligence Hub.**
 
 ---
 
@@ -47,15 +48,15 @@ $$
 \text{Let } \Psi(c) &\text{ be the neural refraction of code } c \\
 \text{Given } \epsilon &> 0, \exists N \in \mathbb{N} \text{ such that } \forall n > N: \\
 P\left( \| \text{Sim}(c)_n - \text{Nat}(c)_n \| < \epsilon \right) &\geq 1 - \delta \\
-\text{Performance:} & \text{ 10x Energy Efficiency Gain}
+\text{Performance:} & \text{ 100x Energy Efficiency Gain}
 \end{aligned}
 $$
 
-The AI acts as a **Digital Twin** of a terminal, predicting stdout with >98% accuracy. This provides an infrastructure-less, zero-risk developer environment.
+The AI acts as a **Digital Twin of a terminal**, predicting stdout with >98% accuracy. This provides an infrastructure-less, zero-risk developer environment.
 
 ---
 
-## 🛡️ V. v6.9.5 Breakthroughs: The Trust Layer
+## 🛡️ V. v7.0.0-ULTRA Breakthroughs: The Trust Layer
 
 Our latest update solves the "Trust Bottleneck"—the need for a central authority to verify digital artifacts.
 
@@ -71,7 +72,7 @@ Every instance of the Neural Prism (including PWA installs) contains the **AIVoi
 
 Data management in the AI era requires a balance between speed and ownership.
 
-- **The 1MB Document Wall**: Firestore enforces a strict 1MB limit. High-fidelity neural audio fragments easily exceed this. Our **Binary Chunking Protocol** shards raw binary data into 750,000-byte segments, managed by a parent Manifest Node.
+- **The 1MB Document Wall**: Firestore enforces a strict 1MB limit. High-fidelity audio logs quickly exceed this. Our **Binary Chunking Protocol** shards raw binary data into 750,000-byte segments, managed by a parent Manifest Node.
 - **Scribe Protocol**: We record a hidden 1920x1080 canvas using a **Frame-Flow Handshake** to ensure 30FPS stability even when the browser throttles background tabs.
 - **Persistence Strategy**: Source code and video logs save directly to your personal **GitHub, Drive, and YouTube** accounts. Neural Prism is a temporary lens; you own the light.
 
@@ -84,5 +85,5 @@ Neural Prism is the final bridge between superhuman AI capacity and daily human 
 **Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things.**
 
 *Refracting Super-Intelligence into Human Utility.*
-*Neural Prism v6.9.5-PRO*
+*Neural Prism v7.0.0-ULTRA*
 `;

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ArrowLeft, Shield, Lock, Eye, Database, Server, Cloud, HardDrive, Github, Wallet, Truck, Image as ImageIcon } from 'lucide-react';
 
@@ -53,7 +54,7 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack }) => {
             </section>
 
             <div className="pt-8 border-t border-slate-800 text-center text-xs text-slate-500">
-                <p>Neural Prism Privacy Framework v6.9.5</p>
+                <p>Neural Prism Privacy Framework v7.0.0-ULTRA</p>
                 <p className="mt-1">Last Updated: January 25, 2026</p>
             </div>
         </div>

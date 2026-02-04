@@ -1,6 +1,6 @@
 {
   "name": "Neural Prism Platform",
-  "description": "Neural Prism v7.0.0-ULTRA: Sovereign Intelligence Hub. High-Fidelity Infrastructure-Bypass, Multi-Model Orchestration, and Sovereign Vault Persistence.",
+  "description": "Neural Prism: Sovereign Intelligence Hub. High-Fidelity Infrastructure-Bypass, Multi-Model Orchestration, and Sovereign Vault Persistence.",
   "requestFramePermissions": [
     "camera",
     "microphone",
