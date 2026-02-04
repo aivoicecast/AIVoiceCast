@@ -27,7 +27,7 @@ import {
   ShieldCheck, Target, Award as AwardIcon,
   Lock, Activity, Layers, RefreshCw, Monitor, Camera, Youtube, HardDrive,
   UserCheck, Shield, GraduationCap, PlayCircle, ExternalLink, Copy, Share2, SearchX,
-  Play, Link, CloudUpload, HardDriveDownload, List, Table as TableIcon, FileVideo, Calendar, Download, Maximize2
+  Play, Link, CloudUpload, HardDriveDownload, List, Table as TableIcon, FileVideo, Calendar, Download, Maximize2, Maximize
 } from 'lucide-react';
 import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput, getGlobalMediaStreamDest } from '../utils/audioUtils';
 import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
@@ -56,7 +56,10 @@ interface MockInterviewReport {
 interface ApiLog {
     time: string;
     msg: string;
-    type: 'info' | 'error' | 'success' | 'warn';
+    /**
+     * Fix: Added 'info' to the type union to allow it as a valid log level for UI tracking
+     */
+    type: 'input' | 'output' | 'error' | 'success' | 'warn' | 'info';
     code?: string;
 }
 
@@ -431,6 +434,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [selectedPersona, setSelectedPersona] = useState(PERSONAS[0]);
   const [sessionUuid, setSessionUuid] = useState('');
   const [archiveSearch, setArchiveSearch] = useState('');
+  const [pipSize, setPipSize] = useState<'normal' | 'compact'>('normal');
 
   const [isLive, setIsLive] = useState(false);
   const [isRecovering, setIsRecovering] = useState(false);
@@ -479,6 +483,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
 
+  /**
+   * Fix: Updated type to allow 'info' log level and added comment
+   */
   const addApiLog = useCallback((msg: string, type: ApiLog['type'] = 'info', code?: string) => {
       const time = new Date().toLocaleTimeString();
       setApiLogs(prev => [{ time, msg, type, code }, ...prev].slice(0, 100));
@@ -650,12 +657,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       if (timerRef.current) clearInterval(timerRef.current);
       autoReconnectAttempts.current = maxAutoRetries;
 
-      // CRITICAL FIX: Robustly wait for MediaRecorder to finish flushing data
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
           addApiLog("Closing Scribe Protocol and finalizing stream...", "info");
           const stopPromise = new Promise(resolve => {
               mediaRecorderRef.current!.addEventListener('stop', () => {
-                  // Explicitly check for blob update before continuing to navigation
                   let attempts = 0;
                   const check = () => {
                       if (localSessionBlobRef.current || attempts > 10) resolve(true);
@@ -722,7 +727,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           setReport(reportData);
 
           if (auth.currentUser) {
-              // Wait for save operation to finish before moving to feedback view
               await saveInterviewRecording({ 
                 id: currentId, userId: auth.currentUser.uid, 
                 userName: auth.currentUser.displayName || 'Candidate', 
@@ -850,7 +854,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 drawCtx.drawImage(screenVideo, -100, -100, canvas.width + 200, canvas.height + 200);
                 drawCtx.restore();
                 
-                // FIXED: YouTube edge-to-edge standard (1.0 scale factor)
                 const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
                 const w = screenVideo.videoWidth * scale; const h = screenVideo.videoHeight * scale;
                 drawCtx.save(); drawCtx.shadowColor = 'rgba(0,0,0,0.8)'; drawCtx.shadowBlur = 40;
@@ -858,14 +861,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             }
             
             if (cameraVideo.readyState >= 2) {
-                const size = 380; const margin = 40; const px = canvas.width - size - margin; const py = canvas.height - size - margin;
+                // DYNAMIC PIP SIZE
+                const size = pipSize === 'compact' ? 190 : 380; 
+                const margin = pipSize === 'compact' ? 30 : 40; 
+                const px = canvas.width - size - margin; const py = canvas.height - size - margin;
                 const radius = size / 2;
                 drawCtx.save(); drawCtx.beginPath(); drawCtx.arc(px + radius, py + radius, radius, 0, Math.PI * 2); drawCtx.clip();
                 const camScale = Math.max(size / cameraVideo.videoWidth, size / cameraVideo.videoHeight);
                 const cw = cameraVideo.videoWidth * camScale; const ch = cameraVideo.videoHeight * camScale;
                 drawCtx.drawImage(cameraVideo, px + radius - cw/2, py + radius - ch/2, cw, ch); drawCtx.restore();
                 drawCtx.save(); drawCtx.beginPath(); drawCtx.arc(px + radius, py + radius, radius, 0, Math.PI * 2);
-                drawCtx.strokeStyle = '#ef4444'; drawCtx.lineWidth = 8; drawCtx.stroke(); drawCtx.restore();
+                drawCtx.strokeStyle = '#ef4444'; drawCtx.lineWidth = pipSize === 'compact' ? 4 : 8; drawCtx.stroke(); drawCtx.restore();
             }
         }, 1000 / 30);
 
@@ -911,7 +917,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         recorder.start(1000);
         setIsRecordingActive(true);
     } catch(e: any) { addApiLog("Recording initialization failed: " + e.message, "error"); }
-  }, [currentUser, interviewMode, addApiLog, selectedPersona, isRecordingActive, isUploadingRecording]);
+  }, [currentUser, interviewMode, addApiLog, selectedPersona, isRecordingActive, isUploadingRecording, pipSize]);
 
   const connectToAI = useCallback(async (isAutoRetry = false) => {
     if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
@@ -1057,7 +1063,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
         {view === 'setup' && (
             <div className="flex-1 flex items-center justify-center p-6 animate-fade-in-up">
-                <div className="max-w-2xl w-full bg-slate-900 border border-slate-700 rounded-[3rem] p-10 shadow-2xl space-y-10">
+                <div className="max-w-2xl w-full bg-slate-900 border border-slate-700 rounded-[3rem] p-10 shadow-2xl space-y-10 overflow-y-auto max-h-full scrollbar-hide">
                     <div className="flex items-center gap-6">
                         <button onClick={() => setView('selection')} className="p-3 hover:bg-slate-800 rounded-2xl text-slate-400 transition-colors"><ArrowLeft size={24}/></button>
                         <div><h2 className="text-3xl font-black text-white italic tracking-tighter uppercase">Setup Session</h2><p className="text-indigo-400 text-[10px] font-black uppercase tracking-widest">{(interviewMode || '').toUpperCase()} Interrogation</p></div>
@@ -1075,6 +1081,24 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                 ))}
                             </div>
                         </div>
+
+                        {/* NEW: PIP SIZE SELECTOR */}
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">Recording PIP Size</label>
+                            <div className="flex gap-2 p-1.5 bg-slate-950 border border-slate-800 rounded-2xl shadow-inner">
+                                {(['normal', 'compact'] as const).map(sz => (
+                                    <button 
+                                        key={sz} 
+                                        onClick={() => setPipSize(sz)} 
+                                        className={`flex-1 py-3 rounded-xl text-xs font-black uppercase transition-all ${pipSize === sz ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                                    >
+                                        {sz}
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest px-1">Compact is 2x smaller for maximized workspace visibility.</p>
+                        </div>
+
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Target Language</label>
                             <div className="flex gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">

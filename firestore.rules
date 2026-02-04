@@ -89,8 +89,13 @@ service cloud.firestore {
     match /channels/{channelId} {
       allow read: if true; 
       allow create: if isAuthenticated();
-      allow update: if isAdmin() || (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments', 'appendix', 'likes', 'shares']));
+      allow update: if isAdmin() || isAuthenticated();
       allow delete: if isAdmin();
+    }
+    
+    match /channel_stats/{id} {
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     match /chat_channels/{channelId} {

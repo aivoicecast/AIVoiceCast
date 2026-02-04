@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, TranscriptItem } from '../types';
 import { 
     subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, 
-    claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, updateProjectAccess,
+    /* Fix: Removed non-existent export 'deleteCodeFile' */
+    claimCodeProjectLock, updateProjectActiveFile, updateProjectAccess,
     getCodeProject, deductCoins, AI_COSTS 
 } from '../services/firestoreService';
 import { 
@@ -1079,7 +1080,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
                   </div>
               )}
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide pr-1">
                   {chatMessages.map((m, i) => (
                       <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
                           <div className={`max-w-[90%] rounded-2xl p-3 text-xs leading-relaxed ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-lg' : 'bg-slate-800 text-slate-300 rounded-tl-sm border border-slate-700'}`}>

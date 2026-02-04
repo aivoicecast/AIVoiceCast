@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { 
   Terminal, Code, Video, LayoutGrid, FileText, Wallet, MessageSquare, 
@@ -14,6 +13,7 @@ interface DashboardProps {
   isProMember: boolean;
   onNavigate: (view: ViewID, params?: Record<string, string>) => void;
   language: 'en' | 'zh';
+  handleVote?: (id: string, type: 'like' | 'dislike', e: React.MouseEvent) => void;
 }
 
 const UI_TEXT = {
@@ -49,7 +49,7 @@ const UI_TEXT = {
   }
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, onNavigate, language }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, onNavigate, language, handleVote }) => {
   const t = UI_TEXT[language];
 
   const appSectors = useMemo(() => [

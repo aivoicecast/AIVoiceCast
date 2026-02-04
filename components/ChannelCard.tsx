@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Channel, ChannelStats, UserProfile } from '../types';
 import { Play, Heart, MessageSquare, Lock, Globe, Users, Edit, Share2, Bookmark, User, Zap } from 'lucide-react';
@@ -18,32 +17,39 @@ interface ChannelCardProps {
   t: any;
   onCommentClick: (channel: Channel) => void;
   isLiked?: boolean;
+  isBookmarked?: boolean;
+  onBookmarkToggle?: (id: string, e: React.MouseEvent) => void;
   onCreatorClick?: (e: React.MouseEvent) => void;
 }
 
 export const ChannelCard: React.FC<ChannelCardProps> = ({ 
   channel, handleChannelClick, handleVote, currentUser, userProfile,
   setChannelToEdit, setIsSettingsModalOpen, globalVoice, t,
-  onCommentClick, isLiked = false, onCreatorClick
+  onCommentClick, isLiked = false, isBookmarked = false, onBookmarkToggle, onCreatorClick
 }) => {
   const isOwner = currentUser && (channel.ownerId === currentUser.uid || isUserAdmin(userProfile || null));
-  const [isBookmarked, setIsBookmarked] = useState(false);
   const [hasLiked, setHasLiked] = useState(isLiked);
   
   // Real-time Stats from separate collection
-  const [stats, setStats] = useState<ChannelStats>({
+  const [stats, setStats] = useState<ChannelStats & { comments?: number }>({
       likes: channel.likes,
       dislikes: channel.dislikes,
-      shares: channel.shares || 0
+      shares: channel.shares || 0,
+      comments: channel.comments?.length || 0
   });
 
   useEffect(() => {
-      // Subscribe to real-time updates for likes/shares
+      // Subscribe to real-time updates for likes/shares/comments
       const unsubscribe = subscribeToChannelStats(channel.id, (newStats) => {
-          setStats(prev => ({ ...prev, ...newStats }));
+          setStats(prev => ({ 
+              ...prev, 
+              ...newStats,
+              // Prioritize the count from the real-time stat ledger
+              comments: newStats.comments !== undefined ? newStats.comments : channel.comments?.length || 0
+          }));
       }, { likes: channel.likes, dislikes: channel.dislikes, shares: channel.shares || 0 });
       return () => unsubscribe();
-  }, [channel.id]);
+  }, [channel.id, channel.comments?.length]);
 
   // Sync state when prop updates (e.g. after profile load)
   useEffect(() => {
@@ -71,23 +77,25 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
 
   const handleBookmarkClick = (e: React.MouseEvent) => {
       e.stopPropagation();
-      setIsBookmarked(!isBookmarked);
+      if (onBookmarkToggle) onBookmarkToggle(channel.id, e);
   };
 
   const handleLikeClick = (e: React.MouseEvent) => {
       e.stopPropagation();
       if (!currentUser) {
-          alert("Please sign in to like.");
+          alert("Please sign in to participate in the neural feedback loop.");
           return;
       }
       
-      if (hasLiked) {
-          handleVote(channel.id, 'dislike', e);
-          setHasLiked(false);
-      } else {
-          handleVote(channel.id, 'like', e);
-          setHasLiked(true);
-      }
+      // OPTIMISTIC UI UPDATE
+      const newLikedState = !hasLiked;
+      setHasLiked(newLikedState);
+      setStats(prev => ({
+          ...prev,
+          likes: newLikedState ? prev.likes + 1 : Math.max(0, prev.likes - 1)
+      }));
+
+      handleVote(channel.id, hasLiked ? 'dislike' : 'like', e);
   };
 
   const isTuned = SPECIALIZED_VOICES.some(v => channel.voiceName.includes(v));
@@ -112,7 +120,6 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
         </div>
       )}
       
-      {/* Quick Edit Button for Owners and Admins */}
       {isOwner && (
          <div className="absolute top-2 left-20 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
             <button 
@@ -203,7 +210,7 @@ export const ChannelCard: React.FC<ChannelCardProps> = ({
               className="flex items-center gap-1.5 text-slate-400 hover:text-indigo-400 transition-colors"
             >
               <MessageSquare size={18} />
-              <span className="text-xs font-medium">{channel.comments.length}</span>
+              <span className="text-xs font-medium">{stats.comments}</span>
             </button>
 
             <button 

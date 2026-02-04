@@ -54,8 +54,10 @@ import { BadgeStudio } from './components/BadgeStudio';
 import { BadgeViewer } from './components/BadgeViewer';
 
 import { auth, db } from './services/firebaseConfig';
-import { onAuthStateChanged } from 'firebase/auth';
-import { onSnapshot, doc } from 'firebase/firestore';
+// Fix: Use @firebase scoped imports to match project conventions and resolve exported member errors
+import { onAuthStateChanged } from '@firebase/auth';
+// Fix: Use @firebase scoped imports to match project conventions and resolve exported member errors
+import { onSnapshot, doc } from '@firebase/firestore';
 import { getUserChannels, saveUserChannel } from './utils/db';
 import { HANDCRAFTED_CHANNELS } from './utils/initialData';
 import { stopAllPlatformAudio } from './utils/audioUtils';

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power, Database, Timer, MessageSquareOff, Image as ImageIconLucide, Palette, Upload } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power, Database, Timer, MessageSquareOff, Image as ImageIconLucide, Palette, Upload, Maximize } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, signInWithGoogle, isJudgeSession } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
@@ -37,6 +37,7 @@ interface LiveSessionProps {
 }
 
 type PipBackground = 'blur' | 'indigo' | 'black';
+type PipSize = 'normal' | 'compact';
 
 const UI_TEXT = {
   en: {
@@ -66,7 +67,8 @@ const UI_TEXT = {
     finalizing: "Securing Neural Artifact...",
     pipFrame: "PIP Frame Image",
     bgStyle: "Video Backdrop",
-    uploadBtn: "Upload Image"
+    uploadBtn: "Upload Image",
+    pipSize: "PIP Circle Size"
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -95,7 +97,8 @@ const UI_TEXT = {
     finalizing: "正在固化神经存档...",
     pipFrame: "画中画背景图",
     bgStyle: "视频背景样式",
-    uploadBtn: "上传图片"
+    uploadBtn: "上传图片",
+    pipSize: "画中画尺寸"
   }
 };
 
@@ -122,6 +125,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   const [scribeTimeLeft, setScribeTimeLeft] = useState(recordingDuration || 180);
   const [backdropStyle, setBackdropStyle] = useState<PipBackground>('blur');
+  const [pipSize, setPipSize] = useState<PipSize>('normal');
   const [customPipBgBase64, setCustomPipBgBase64] = useState<string | null>(null);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -262,7 +266,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             }
 
             if (screenStreamRef.current && screenVideo.readyState >= 2) {
-                // FIXED: Match YouTube standard 1920x1080 by removing the 0.95 scale factor for edge-to-edge rendering
                 const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
                 const w = screenVideo.videoWidth * scale;
                 const h = screenVideo.videoHeight * scale;
@@ -274,8 +277,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             }
 
             if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
-                const size = 440; 
-                const margin = 40; // Reduced margin for cleaner broadcast look
+                // DYNAMIC SIZE SELECTION
+                const size = pipSize === 'compact' ? 220 : 440; 
+                const margin = pipSize === 'compact' ? 30 : 40; 
                 const px = canvas.width - size - margin;
                 const py = canvas.height - size - margin;
                 const centerX = px + size / 2;
@@ -311,10 +315,10 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 drawCtx.beginPath();
                 drawCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
                 drawCtx.strokeStyle = '#6366f1';
-                drawCtx.lineWidth = 12;
+                drawCtx.lineWidth = pipSize === 'compact' ? 6 : 12;
                 drawCtx.stroke();
                 drawCtx.strokeStyle = '#ffffff';
-                drawCtx.lineWidth = 2;
+                drawCtx.lineWidth = pipSize === 'compact' ? 1 : 2;
                 drawCtx.stroke();
                 drawCtx.restore();
             }
@@ -327,7 +331,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         const captureStream = canvas.captureStream(30);
         recordingDest.stream.getAudioTracks().forEach(t => captureStream.addTrack(t));
         
-        // Codec fallback chain for cross-browser stability (Safari support)
         const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
             ? 'video/webm;codecs=vp9,opus' 
             : MediaRecorder.isTypeSupported('video/webm') 
@@ -356,7 +359,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             addLog(`Scribe: Neural artifact assembled (${fileSizeMB} MB). Starting local vaulting...`, "info");
             
             try {
-                // PHASE 1: LOCAL VAULT - Awaiting complete database flush
                 setUploadProgress(2);
                 await saveLocalRecording({
                     id: recId, userId: currentUser.uid, channelId: channel.id, 
@@ -368,7 +370,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 setUploadProgress(5);
                 addLog("Vault: Artifact secured in browser storage (IndexedDB).", "success");
 
-                // PHASE 2: CLOUD DISPATCH
                 setIsUploadingRecording(true);
                 const token = getDriveToken() || await signInWithGoogle().then(() => getDriveToken());
                 
@@ -376,7 +377,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     if (recordingTarget === 'youtube') {
                         addLog("Cloud: Requesting sovereign handshake with YouTube Registry...", "info");
                         setUploadProgress(10);
-                        // FIXED: Use sessionTitle if available, otherwise fallback to channel.title
                         const ytId = await uploadToYouTube(token, videoBlob, {
                             title: `${sessionTitle || channel.title} (Neural Archive)`,
                             description: `Session recorded on ${new Date(timestamp).toLocaleString()}. Source: Neural Prism Platform.`,
@@ -428,7 +428,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 setIsFinalizing(false);
                 setIsUploadingRecording(false);
                 addLog("Scribe Protocol Terminated. Handshake complete.", "info");
-                // Explicit wait for data settle before unmounting component
                 setTimeout(() => onEndSession(), 500);
             }
 
@@ -445,7 +444,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         setIsWaitingForFrames(false);
         addLog("Init failed: " + e.message, "error");
     }
-  }, [recordingEnabled, currentUser, channel, onEndSession, addLog, backdropStyle, recordingTarget, sessionTitle]);
+  }, [recordingEnabled, currentUser, channel, onEndSession, addLog, backdropStyle, pipSize, recordingTarget, sessionTitle]);
 
   const handleStartSession = async () => {
       setIsProvisioning(true);
@@ -537,7 +536,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       </div>
 
       {!hasStarted ? (
-         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6">
+         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6 overflow-y-auto">
              <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center shadow-2xl shadow-indigo-500/10"><Mic size={40} className="text-indigo-500" /></div>
              <div><h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">{t.tapToStart}</h3><p className="text-slate-400 text-sm mt-2 max-w-xs leading-relaxed">{t.tapDesc}</p></div>
              
@@ -573,6 +572,21 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                                         className={`py-2 rounded-xl text-[9px] font-black uppercase transition-all border ${backdropStyle === bg ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
                                     >
                                         <span>{bg}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* NEW: PIP SIZE SELECTOR */}
+                        <div className="space-y-3 pt-2 border-t border-slate-800">
+                            <div className="flex items-center gap-2"><Maximize size={14} className="text-indigo-400"/><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{t.pipSize}</span></div>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['normal', 'compact'] as PipSize[]).map(sz => (
+                                    <button 
+                                        key={sz} onClick={() => setPipSize(sz)}
+                                        className={`py-2 rounded-xl text-[9px] font-black uppercase transition-all border ${pipSize === sz ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                                    >
+                                        <span>{sz}</span>
                                     </button>
                                 ))}
                             </div>

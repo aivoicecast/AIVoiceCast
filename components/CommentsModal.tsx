@@ -34,6 +34,11 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scrollEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
     if (currentUser) {
@@ -47,6 +52,13 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
       setEditingCommentId(null);
     }
   }, [isOpen, currentUser]);
+
+  // Auto-scroll on new comments
+  useEffect(() => {
+    if (isOpen) {
+        scrollToBottom();
+    }
+  }, [channel.comments?.length, isOpen]);
 
   if (!isOpen) return null;
 
@@ -115,7 +127,6 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
             if (currentUser) {
                 try {
                     const path = `comments/${channel.id}/${Date.now()}_${file.name}`;
-                    // Fixed: Corrected the order of arguments to (path, file) as defined in firestoreService.ts
                     url = await uploadCommentAttachment(path, file);
                 } catch(err) {
                     console.error("Upload failed", err);
@@ -218,7 +229,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
             <MessageSquare className="text-indigo-400 w-5 h-5" />
             <h2 className="text-lg font-bold text-white">Comments</h2>
             <span className="text-xs text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">
-               {channel.comments.length}
+               {channel.comments?.length || 0}
             </span>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
@@ -227,8 +238,8 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
         </div>
 
         {/* Comments List */}
-        <div className="p-4 overflow-y-auto flex-1 space-y-4 scrollbar-thin scrollbar-thumb-slate-700">
-          {channel.comments.length === 0 ? (
+        <div className="p-4 overflow-y-auto flex-1 space-y-4 scrollbar-hide">
+          {!channel.comments || channel.comments.length === 0 ? (
             <div className="text-center py-10 text-slate-500">
                <MessageSquare size={32} className="mx-auto mb-2 opacity-50" />
                <p>No comments yet. Be the first!</p>
@@ -288,6 +299,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
               </div>
             ))
           )}
+          <div ref={scrollEndRef} />
         </div>
 
         {/* Input Area */}
@@ -304,7 +316,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
 
                {/* Attachments Preview (Existing + New) */}
                {(pendingAttachments.length > 0 || existingAttachments.length > 0) && (
-                  <div className="flex gap-2 overflow-x-auto pb-2">
+                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                      {existingAttachments.map(att => (
                         <div key={att.id} className="relative group shrink-0">
                            <div className="w-16 h-16 bg-slate-800 rounded-lg border border-indigo-500/50 flex items-center justify-center overflow-hidden">
@@ -339,14 +351,14 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
                   </div>
                )}
 
-               <div className="flex gap-2 items-end bg-slate-800 border border-slate-700 rounded-lg p-2">
+               <div className="flex gap-2 items-end bg-slate-800 border border-slate-700 rounded-xl p-2 shadow-inner">
                   <textarea
                     value={text}
                     onChange={(e) => setText(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Write a comment..."
                     rows={2}
-                    className="flex-1 bg-transparent text-white placeholder-slate-500 outline-none text-sm resize-none scrollbar-thin scrollbar-thumb-slate-600 px-2"
+                    className="flex-1 bg-transparent text-white placeholder-slate-500 outline-none text-sm resize-none scrollbar-hide px-2"
                   />
                   
                   {/* Toolbar */}
@@ -376,7 +388,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
                   </div>
                </div>
                
-               <p className="text-[10px] text-slate-500 text-right">Ctrl + Enter to send</p>
+               <p className="text-[10px] text-slate-500 text-right font-mono uppercase tracking-widest">Logic: Ctrl + Enter to Refract</p>
 
                {/* Hidden Inputs */}
                <input type="file" accept="image/*" className="hidden" ref={imageInputRef} onChange={handleFileSelect} />
@@ -384,7 +396,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
                <input type="file" accept=".pdf" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
              </div>
            ) : (
-             <p className="text-xs text-center text-slate-500">Sign in to leave a comment.</p>
+             <p className="text-xs text-center text-slate-500 font-bold uppercase tracking-widest">Neural Key Required to Reflect.</p>
            )}
         </div>
 

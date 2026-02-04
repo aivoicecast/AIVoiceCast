@@ -145,7 +145,6 @@ export function isUserAdmin(profile: UserProfile | null): boolean {
 export async function getAllUsers(): Promise<UserProfile[]> {
     if (!db) return [];
     const snap = await getDocs(collection(db, USERS_COLLECTION));
-    // Fix: cast snap to any to avoid Property 'docs' does not exist on type 'DocumentSnapshot' error
     return (snap as any).docs.map((d: any) => d.data() as UserProfile);
 }
 
@@ -220,23 +219,58 @@ export function subscribeToChannelStats(id: string, callback: (stats: any) => vo
     });
 }
 
+/**
+ * Ensures a channel document exists in Firestore before updating it.
+ * This handles "Lazy Hydration" for handcrafted channels.
+ */
+async function ensureChannelExists(id: string) {
+    if (!db) return;
+    const channelRef = doc(db, CHANNELS_COLLECTION, id);
+    const snap = await getDoc(channelRef);
+    if (!snap.exists()) {
+        const base = HANDCRAFTED_CHANNELS.find(c => c.id === id);
+        if (base) {
+            await setDoc(channelRef, sanitizeData({ ...base, visibility: 'public' }));
+        }
+    }
+}
+
 export async function shareChannel(id: string) {
     if (!db) return;
-    await updateDoc(doc(db, 'channel_stats', id), { shares: increment(1) });
+    await setDoc(doc(db, 'channel_stats', id), { shares: increment(1) }, { merge: true });
 }
 
 export async function voteChannel(id: string, type: 'like' | 'dislike') {
     if (!db) return;
+    
+    // Ensure base channel exists first
+    await ensureChannelExists(id);
+
     const statsRef = doc(db, 'channel_stats', id);
-    const update: any = {};
-    update[type === 'like' ? 'likes' : 'dislikes'] = increment(1);
-    await setDoc(statsRef, update, { merge: true });
+    const channelRef = doc(db, CHANNELS_COLLECTION, id);
+    
+    const delta = type === 'like' ? 1 : -1;
+    
+    // Atomic update for both documents
+    await setDoc(statsRef, { likes: increment(delta) }, { merge: true });
+    await updateDoc(channelRef, { likes: increment(delta) });
 }
 
 export async function addCommentToChannel(id: string, comment: Comment) {
     if (!db) return;
-    await updateDoc(doc(db, CHANNELS_COLLECTION, id), {
-        comments: arrayUnion(sanitizeData(comment))
+    
+    // Ensure base channel exists first
+    await ensureChannelExists(id);
+
+    const channelRef = doc(db, CHANNELS_COLLECTION, id);
+    const statsRef = doc(db, 'channel_stats', id);
+
+    // Run as transaction to ensure both counts stay in sync
+    await runTransaction(db, async (transaction) => {
+        transaction.update(channelRef, {
+            comments: arrayUnion(sanitizeData(comment))
+        });
+        transaction.set(statsRef, { comments: increment(1) }, { merge: true });
     });
 }
 
@@ -244,11 +278,13 @@ export async function deleteCommentFromChannel(channelId: string, commentId: str
     if (!db) return;
     const snap = await getDoc(doc(db, CHANNELS_COLLECTION, channelId));
     if (snap.exists()) {
-        // Fix: cast snap.data() to any for property access
         const data = snap.data() as any;
         const comments = data?.comments as Comment[];
         const filtered = comments.filter(c => c.id !== commentId);
         await updateDoc(doc(db, CHANNELS_COLLECTION, channelId), { comments: filtered });
+        
+        const statsRef = doc(db, 'channel_stats', channelId);
+        await setDoc(statsRef, { comments: increment(-1) }, { merge: true });
     }
 }
 
@@ -256,7 +292,6 @@ export async function updateCommentInChannel(channelId: string, commentId: strin
     if (!db) return;
     const snap = await getDoc(doc(db, CHANNELS_COLLECTION, channelId));
     if (snap.exists()) {
-        // Fix: cast snap.data() to any for property access
         const data = snap.data() as any;
         const comments = data?.comments as Comment[];
         const updated = comments.map(c => c.id === commentId ? { ...c, text, attachments: sanitizeData(attachments) } : c);
@@ -320,7 +355,7 @@ export async function transferCoins(toUid: string, toName: string, toEmail: stri
             fromName: fromName,
             toEmail: toEmail,
             toUserId: toUid,
-            amount: amount, // Fix: Use correct amount variable
+            amount: amount, 
             memo: memo,
             status: 'pending',
             type: 'coin',
@@ -343,7 +378,6 @@ export async function checkAndGrantMonthlyCoins(uid: string) {
     const userRef = doc(db, USERS_COLLECTION, uid);
     const snap = await getDoc(userRef);
     if (!snap.exists()) return;
-    // Fix: cast data to any for property access
     const data = snap.data() as any;
     const lastGrant = data?.lastCoinGrantAt || 0;
     const oneMonth = 30 * 24 * 60 * 60 * 1000;
@@ -443,14 +477,12 @@ export async function getCloudAudioUrl(channelId: string, topicId: string, nodeI
     const manifestSnap = await getDoc(doc(db, AUDIO_LEDGER_COLLECTION, nodeId));
     if (!manifestSnap.exists()) return null;
     
-    // Fix: cast manifest to any for property access
     const manifest = manifestSnap.data() as any;
     const chunkCount = manifest.chunkCount;
     let fullBase64 = "";
     
     for (let i = 0; i < chunkCount; i++) {
         const chunkSnap = await getDoc(doc(db, AUDIO_LEDGER_COLLECTION, `${nodeId}_chunk_${i}`));
-        // Fix: cast data to any for property access
         const chunkData = chunkSnap.data() as any;
         if (chunkSnap.exists() && chunkData) fullBase64 += chunkData.data;
     }
@@ -462,21 +494,18 @@ export async function getCloudAudioUrl(channelId: string, topicId: string, nodeI
 export async function getJobPostings(): Promise<JobPosting[]> {
     if (!db) return [];
     const snap = await getDocs(collection(db, JOB_POSTINGS_COLLECTION));
-    // Fix: cast data to any for spread operator compatibility
     return snap.docs.map(d => ({ ...d.data() as any, id: d.id } as JobPosting));
 }
 
 export async function getAllCareerApplications(): Promise<CareerApplication[]> {
     if (!db) return [];
     const snap = await getDocs(collection(db, CAREER_APPS_COLLECTION));
-    // Fix: cast data to any for spread operator compatibility
     return snap.docs.map(d => ({ ...d.data() as any, id: d.id } as CareerApplication));
 }
 
 export async function getJobPosting(id: string): Promise<JobPosting | null> {
     if (!db) return null;
     const snap = await getDoc(doc(db, JOB_POSTINGS_COLLECTION, id));
-    // Fix: cast data to any for spread operator compatibility
     return snap.exists() ? { ...snap.data() as any, id: snap.id } as JobPosting : null;
 }
 
@@ -582,7 +611,6 @@ export async function claimCoinCheck(id: string) {
     if (!db || !auth.currentUser) return;
     const snap = await getDoc(doc(db, CHECKS_COLLECTION, id));
     if (!snap.exists()) throw new Error("Check not found.");
-    // Fix: cast data to any for property access
     const data = snap.data() as any;
     if (!data.isCoinCheck) throw new Error("Not a coin check.");
     await transferCoins('system', 'System', 'system@neuralprism.io', data.coinAmount, `Coin Check Redemption: ${id}`);
@@ -643,15 +671,6 @@ export async function updateProjectActiveFile(projectId: string, filePath: strin
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { activeFilePath: filePath });
 }
 
-export async function deleteCodeFile(projectId: string, filePath: string) {
-    if (!db) return;
-    const p = await getCodeProject(projectId);
-    if (p) {
-        const nextFiles = p.files.filter(f => f.path !== filePath);
-        await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { files: sanitizeData(nextFiles) });
-    }
-}
-
 export async function updateProjectAccess(projectId: string, level: 'public' | 'restricted', allowedUserIds?: string[]) {
     if (!db) return;
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { accessLevel: level, allowedUserIds: allowedUserIds || [] });
@@ -661,7 +680,6 @@ export async function updateProjectAccess(projectId: string, level: 'public' | '
 export function subscribeToWhiteboard(id: string, callback: (elements: WhiteboardElement[]) => void) {
     if (!db) return () => {};
     return onSnapshot(doc(db, WHITEBOARDS_COLLECTION, id), (snap) => {
-        // Fix: cast data to any for property access
         if (snap.exists()) callback((snap.data() as any).elements || []);
     });
 }
@@ -889,7 +907,6 @@ export async function deleteGroup(id: string) {
 export async function sendInvitation(groupId: string, toEmail: string) {
     if (!db || !auth.currentUser) return;
     const groupSnap = await getDoc(doc(db, 'groups', groupId));
-    // Fix: cast data to any for property access
     const data = groupSnap.data() as any;
     const groupName = groupSnap.exists() && data ? data.name : 'Group';
     await addDoc(collection(db, 'invitations'), {
@@ -980,7 +997,6 @@ export async function getPendingInvitations(uid: string, email: string): Promise
     const q1 = query(collection(db, 'invitations'), where('toUserId', '==', uid), where('status', '==', 'pending'));
     const q2 = query(collection(db, 'invitations'), where('toEmail', '==', email), where('status', '==', 'pending'));
     const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-    // Fix: cast s1 and s2 to any to avoid Property 'docs' does not exist on type 'DocumentSnapshot' error
     const all = [...(s1 as any).docs, ...(s2 as any).docs].map((d: any) => ({ ...d.data() as any, id: d.id } as Invitation));
     return Array.from(new Map(all.map(item => [item.id, item])).values());
 }
@@ -996,7 +1012,6 @@ export async function getPendingBookings(uid: string, email: string): Promise<Bo
     const q1 = query(collection(db, 'bookings'), where('mentorId', '==', uid), where('status', '==', 'pending'));
     const q2 = query(collection(db, 'bookings'), where('invitedEmail', '==', email), where('status', '==', 'pending'));
     const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
-    // Fix: cast s1 and s2 to any to avoid Property 'docs' does not exist on type 'DocumentSnapshot' error
     const all = [...(s1 as any).docs, ...(s2 as any).docs].map((d: any) => ({ ...d.data() as any, id: d.id } as Booking));
     return Array.from(new Map(all.map(item => [item.id, item])).values());
 }
@@ -1007,7 +1022,6 @@ export async function getUserBookings(uid: string, email: string): Promise<Booki
     const q2 = query(collection(db, 'bookings'), where('mentorId', '==', uid));
     const q3 = query(collection(db, 'bookings'), where('invitedEmail', '==', email));
     const [s1, s2, s3] = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3)]);
-    // Fix: cast s1, s2, s3 to any to avoid Property 'docs' does not exist on type 'DocumentSnapshot' error
     const all = [...(s1 as any).docs, ...(s2 as any).docs, ...(s3 as any).docs].map((d: any) => ({ ...d.data() as any, id: d.id } as Booking));
     return Array.from(new Map(all.map(b => [b.id, b])).values());
 }
@@ -1140,7 +1154,6 @@ export async function getUserDesignDocs(uid: string): Promise<CommunityDiscussio
     if (!db) return [];
     const q = query(collection(db, DISCUSSIONS_COLLECTION), where('userId', '==', uid));
     const snap = await getDocs(q);
-    // Fix: cast data to any for spread operator compatibility
     return (snap as any).docs.map((d: any) => ({ ...d.data() as any, id: d.id } as CommunityDiscussion));
 }
 
@@ -1148,7 +1161,6 @@ export async function getPublicDesignDocs(): Promise<CommunityDiscussion[]> {
     if (!db) return [];
     const q = query(collection(db, DISCUSSIONS_COLLECTION), where('visibility', '==', 'public'));
     const snap = await getDocs(q);
-    // Fix: cast snap to any to avoid Property 'docs' does not exist on type 'DocumentSnapshot' error
     return (snap as any).docs.map((d: any) => d.data() as CommunityDiscussion);
 }
 
@@ -1295,7 +1307,6 @@ export async function getGlobalStats(): Promise<GlobalStats> {
 export async function recalculateGlobalStats() {
     if (!db) return;
     const snap = await getDocs(collection(db, USERS_COLLECTION));
-    // Fix: QuerySnapshot has size property
     const count = (snap as any).size;
     await setDoc(doc(db, 'global_stats', 'counters'), { uniqueUsers: count, totalLogins: increment(0) }, { merge: true });
 }
@@ -1304,7 +1315,6 @@ export async function purgeFirestoreCollection(col: string) {
     if (!db) return;
     const snap = await getDocs(collection(db, col));
     const batch = writeBatch(db);
-    // Fix: cast snap to any to avoid Property 'docs' does not exist on type 'DocumentSnapshot' error
     (snap as any).docs.forEach((d: any) => batch.delete(d.ref));
     await batch.commit();
 }
@@ -1314,7 +1324,6 @@ export async function updateAllChannelDatesToToday() {
     const snap = await getDocs(collection(db, CHANNELS_COLLECTION));
     const batch = writeBatch(db);
     const now = Date.now();
-    // Fix: cast snap to any to avoid Property 'docs' does not exist on type 'DocumentSnapshot' error
     (snap as any).docs.forEach((d: any) => batch.update(d.ref, { createdAt: now }));
     await batch.commit();
 }
@@ -1328,7 +1337,6 @@ export async function getDebugCollectionDocs(col: string, l: number = 50): Promi
     if (!db) return [];
     const q = query(collection(db, col), limit(l));
     const snap = await getDocs(q);
-    // Fix: cast data to any for spread operator compatibility
     return (snap as any).docs.map((d: any) => ({ ...d.data() as any, id: d.id }));
 }
 

@@ -7,9 +7,11 @@ import {
 } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { saveScriptureToLedger, saveAudioToLedger, getScriptureFromLedger, getScriptureAudioUrl } from '../services/firestoreService';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+// Fix: Use @firebase scoped imports to match project conventions and resolve exported member errors
+import { collection, query, where, getDocs } from '@firebase/firestore';
 import { db } from '../services/firebaseConfig';
 import { DualVerse } from '../types';
+// Fix: Added missing imports for synthesizeSpeech and TtsProvider to resolve compilation errors
 import { synthesizeSpeech, TtsProvider } from '../services/tts';
 import { getCachedAudioBuffer, cacheAudioBuffer } from '../utils/db';
 import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, decodeRawPcm, connectOutput, base64ToBytes } from '../utils/audioUtils';
@@ -107,8 +109,7 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
         
         const finalStatus: Record<string, { text: boolean, audio: boolean, checking: boolean }> = {};
         for (let i = 1; i <= count; i++) {
-            // Fix: cast data to any for property access
-            const docData = (snap as any).docs.find((d: any) => (d.data() as any).chapter === i.toString())?.data() as any;
+            const docData = snap.docs.find((d: any) => (d.data() as any).chapter === i.toString())?.data() as any;
             const hasVerses = !!docData && Array.isArray(docData.verses) && docData.verses.length > 0;
             finalStatus[i] = {
                 text: hasVerses,
@@ -606,7 +607,7 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
                                 <button onClick={() => synthesizeChapter(selectedBook, selectedChapter).then(v => setParsedVerses(v))} className="flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:text-white hover:border-indigo-500 transition-all shadow-lg">
                                     <RefreshCcw size={14}/> Force Re-synthesis
                                 </button>
-                                <button onClick={() => saveScriptureToLedger(selectedBook, selectedChapter, parsedVerses, false)} className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase shadow-xl hover:bg-indigo-500 active:scale-95 transition-all">
+                                <button onClick={() => saveScriptureToLedger(selectedBook, selectedChapter, parsedVerses, false)} className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase shadow-xl hover:bg-indigo-50 active:scale-95 transition-all">
                                     <Database size={14}/> Commit to Ledger
                                 </button>
                             </div>

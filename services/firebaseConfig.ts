@@ -1,4 +1,3 @@
-
 import { initializeApp, getApps, getApp } from "@firebase/app";
 import type { FirebaseApp } from "@firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
@@ -37,16 +36,18 @@ const appInstance = initializeFirebase();
 
 /**
  * Robust Firestore Initialization
- * Uses Long Polling Auto-detection to fix connectivity errors in restricted environments.
+ * Uses forceLongPolling to bypass environment restrictions on WebSockets 
+ * which frequently causes the "Could not reach Cloud Firestore backend" timeout.
  */
 const initDb = (): Firestore | null => {
     if (!appInstance) return null;
     
     let firestore: Firestore;
     try {
-        console.log("[Firestore] Initializing refractive data plane with Long-Polling auto-detect...");
-        firestore = initializeFirestore(appInstance, {
-            experimentalAutoDetectLongPolling: true, // Key fix for connectivity
+        console.log("[Firestore] Initializing refractive data plane with Forced Long-Polling...");
+        // Fix: Use experimentalForceLongPolling instead of non-existent forceLongPolling and cast appInstance to any to satisfy version-mismatched type definitions
+        firestore = initializeFirestore(appInstance as any, {
+            experimentalForceLongPolling: true, 
             cacheSizeBytes: CACHE_SIZE_UNLIMITED
         });
     } catch (e) {

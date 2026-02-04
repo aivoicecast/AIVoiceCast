@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -5,7 +6,7 @@ import {
   Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Lock, Crown, ShieldCheck, Flame, Zap, RefreshCcw, Bug, ChevronUp, Fingerprint, Database, CheckCircle, Pause, PlayCircle as PlayIcon, Copy, BookText, Send, MessageCircle, FileUp, FileSignature, IdCard
 } from 'lucide-react';
 
-import { Channel, UserProfile, ViewID, TranscriptItem, CodeFile, UserFeedback } from '../types';
+import { Channel, UserProfile, ViewID, TranscriptItem, CodeFile, UserFeedback, Comment, Attachment } from '../types';
 
 import { Dashboard } from './Dashboard';
 import { LiveSession } from './LiveSession';
@@ -39,6 +40,10 @@ import { IconGenerator } from './IconGenerator';
 import { ShippingLabelApp } from './ShippingLabelApp';
 import { CheckDesigner } from './CheckDesigner';
 import { FirestoreInspector } from './FirestoreInspector';
+import { PublicChannelInspector } from './PublicChannelInspector';
+import { MyChannelInspector } from './MyChannelInspector';
+import { CloudDebugView } from './CloudDebugView';
+import { DebugView } from './DebugView';
 import { BrandLogo } from './BrandLogo';
 import { CoinWallet } from './CoinWallet';
 import { MockInterview } from './MockInterview';
@@ -53,12 +58,12 @@ import { BadgeStudio } from './BadgeStudio';
 import { BadgeViewer } from './BadgeViewer';
 
 import { auth, db } from '../services/firebaseConfig';
-import { onAuthStateChanged } from 'firebase/auth';
-import { onSnapshot, doc } from 'firebase/firestore';
+import { onAuthStateChanged } from '@firebase/auth';
+import { onSnapshot, doc } from '@firebase/firestore';
 import { getUserChannels, saveUserChannel } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { stopAllPlatformAudio } from '../utils/audioUtils';
-import { subscribeToPublicChannels, getUserProfile, syncUserProfile, publishChannelToFirestore, isUserAdmin, updateUserProfile, saveUserFeedback } from '../services/firestoreService';
+import { subscribeToPublicChannels, getUserProfile, syncUserProfile, publishChannelToFirestore, isUserAdmin, updateUserProfile, saveUserFeedback, voteChannel, addCommentToChannel, deleteCommentFromChannel, updateCommentInChannel } from '../services/firestoreService';
 import { getSovereignSession } from '../services/authService';
 import { generateSecureId, safeJsonStringify } from '../utils/idUtils';
 
@@ -299,8 +304,28 @@ const App: React.FC = () => {
   const [isVoiceCreateOpen, setIsVoiceCreateOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
-  const [channelToComment, setChannelToComment] = useState<Channel | null>(null);
-  const [channelToEdit, setChannelToEdit] = useState<Channel | null>(null);
+  
+  const [commentChannelId, setCommentChannelId] = useState<string | null>(null);
+  const [editChannelId, setEditChannelId] = useState<string | null>(null);
+
+  const [observedChannel, setObservedChannel] = useState<Channel | null>(null);
+
+  useEffect(() => {
+    const idToObserve = commentChannelId || editChannelId || activeChannelId;
+    if (!idToObserve || !db) {
+        setObservedChannel(null);
+        return;
+    }
+
+    const unsub = onSnapshot(doc(db, 'channels', idToObserve), (snap) => {
+        if (snap.exists()) {
+            const data = snap.data() as Channel;
+            setObservedChannel(data);
+        }
+    });
+
+    return () => unsub();
+  }, [commentChannelId, editChannelId, activeChannelId]);
 
   const isSuperAdmin = useMemo(() => {
       if (!currentUser) return false;
@@ -328,12 +353,119 @@ const App: React.FC = () => {
     setIsAppsMenuOpen(false); 
     setIsUserMenuOpen(false);
     
-    const url = new URL(window.location.href);
-    url.searchParams.forEach((_, k) => url.searchParams.delete(k));
-    if (target !== 'dashboard') url.searchParams.set('view', target);
-    Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
-    window.history.pushState({}, '', url.toString());
+    try {
+        if (window.location.protocol !== 'blob:') {
+            const url = new URL(window.location.href);
+            url.searchParams.forEach((_, k) => url.searchParams.delete(k));
+            if (target !== 'dashboard') url.searchParams.set('view', target);
+            Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
+            window.history.pushState({}, '', url.toString());
+        }
+    } catch (historyErr) {
+        console.warn("History push blocked by environment security policy:", historyErr);
+    }
   }, [activeViewID, isProMember]);
+
+  useEffect(() => {
+    const handleGlobalResize = () => {
+        const isSmall = window.innerWidth < 768;
+        if (isSmall && activeViewID === 'dashboard') {
+            handleSetViewState('directory');
+            addSystemLog("Mobile Refraction Triggered: Switching to Podcast Feed Layout.", "info");
+        }
+    };
+    window.addEventListener('resize', handleGlobalResize);
+    handleGlobalResize();
+    return () => window.removeEventListener('resize', handleGlobalResize);
+  }, [activeViewID, handleSetViewState, addSystemLog]);
+
+  const handleVote = useCallback(async (id: string, type: 'like' | 'dislike', e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentUser) {
+        alert("Please sign in to participate in the neural feedback loop.");
+        return;
+    }
+
+    try {
+        await voteChannel(id, type);
+        const currentLiked = userProfile?.likedChannelIds || [];
+        let nextLiked = [...currentLiked];
+        if (type === 'like' && !nextLiked.includes(id)) {
+            nextLiked.push(id);
+        } else if (type === 'dislike') {
+            nextLiked = nextLiked.filter(cid => cid !== id);
+        }
+        await updateUserProfile(currentUser.uid, { likedChannelIds: nextLiked });
+        addSystemLog(`Refraction Vote Registered: ${type.toUpperCase()} for ${id.substring(0, 8)}`, "success");
+    } catch (err: any) {
+        addSystemLog(`Vote Handshake Refused: ${err.message}`, "error");
+    }
+  }, [currentUser, userProfile, addSystemLog]);
+
+  const handleBookmarkToggle = useCallback(async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentUser) {
+        alert("Please sign in to secure your bookmarks.");
+        return;
+    }
+
+    try {
+        const currentBookmarked = userProfile?.bookmarkedChannelIds || [];
+        let nextBookmarked = [...currentBookmarked];
+        const isBookmarking = !nextBookmarked.includes(id);
+
+        if (isBookmarking) {
+            nextBookmarked.push(id);
+            addSystemLog(`Activity Secured: ${id.substring(0, 8)} added to vault.`, "success");
+        } else {
+            nextBookmarked = nextBookmarked.filter(cid => cid !== id);
+            addSystemLog(`Activity Refracted: ${id.substring(0, 8)} removed from vault.`, "info");
+        }
+        
+        await updateUserProfile(currentUser.uid, { bookmarkedChannelIds: nextBookmarked });
+    } catch (err: any) {
+        addSystemLog(`Vault Update Refused: ${err.message}`, "error");
+    }
+  }, [currentUser, userProfile, addSystemLog]);
+
+  const handleAddComment = useCallback(async (text: string, attachments: Attachment[]) => {
+    if (!currentUser || !commentChannelId) return;
+
+    try {
+        const newComment: Comment = {
+            id: generateSecureId(),
+            userId: currentUser.uid,
+            user: currentUser.displayName || 'Anonymous',
+            text,
+            timestamp: Date.now(),
+            attachments
+        };
+        await addCommentToChannel(commentChannelId, newComment);
+        addSystemLog(`Neural Reflection Shared. Local state syncing...`, "success");
+    } catch (err: any) {
+        addSystemLog(`Reflection Sync Refused: ${err.message}`, "error");
+    }
+  }, [currentUser, commentChannelId, addSystemLog]);
+
+  const handleDeleteComment = useCallback(async (commentId: string) => {
+      if (!currentUser || !commentChannelId) return;
+      try {
+          await deleteCommentFromChannel(commentChannelId, commentId);
+          addSystemLog(`Neural Reflection Purged.`, "info");
+      } catch (err: any) {
+          addSystemLog(`Purge Handshake Refused: ${err.message}`, "error");
+      }
+  }, [currentUser, commentChannelId, addSystemLog]);
+
+  const handleEditComment = useCallback(async (commentId: string, text: string, attachments: Attachment[]) => {
+      if (!currentUser || !commentChannelId) return;
+      try {
+          await updateCommentInChannel(commentChannelId, commentId, text, attachments);
+          addSystemLog(`Neural Reflection Modified.`, "success");
+      } catch (err: any) {
+          addSystemLog(`Modification Handshake Refused: ${err.message}`, "error");
+      }
+  }, [currentUser, commentChannelId, addSystemLog]);
 
   const [liveSessionParams, setLiveSessionParams] = useState<any>(null);
 
@@ -390,7 +522,9 @@ const App: React.FC = () => {
                       prev.coinBalance !== profile.coinBalance || 
                       prev.subscriptionTier !== profile.subscriptionTier ||
                       prev.publicKey !== profile.publicKey ||
-                      prev.certificate !== profile.certificate) {
+                      prev.certificate !== profile.certificate ||
+                      JSON.stringify(prev.likedChannelIds) !== JSON.stringify(profile.likedChannelIds) ||
+                      JSON.stringify(prev.bookmarkedChannelIds) !== JSON.stringify(profile.bookmarkedChannelIds)) {
                       return profile;
                   }
                   return prev;
@@ -411,8 +545,13 @@ const App: React.FC = () => {
       HANDCRAFTED_CHANNELS.forEach(c => map.set(c.id, c));
       publicChannels.forEach(c => map.set(c.id, c));
       userChannels.forEach(c => map.set(c.id, c));
+      
+      if (observedChannel) {
+          map.set(observedChannel.id, observedChannel);
+      }
+      
       return Array.from(map.values());
-  }, [publicChannels, userChannels]);
+  }, [publicChannels, userChannels, observedChannel]);
 
   const handleUpdateChannel = useCallback(async (updated: Channel) => {
       await saveUserChannel(updated);
@@ -430,6 +569,9 @@ const App: React.FC = () => {
   };
 
   const activeChannel = useMemo(() => allChannels.find(c => c.id === activeChannelId), [allChannels, activeChannelId]);
+  
+  const channelToComment = useMemo(() => allChannels.find(c => c.id === commentChannelId), [allChannels, commentChannelId]);
+  const channelToEdit = useMemo(() => allChannels.find(c => c.id === editChannelId), [allChannels, editChannelId]);
 
   const handleSendFeedback = async () => {
     if (!feedbackText.trim() || isSubmittingFeedback) return;
@@ -524,8 +666,8 @@ const App: React.FC = () => {
 
         <main className="flex-1 overflow-hidden relative flex flex-col pb-10">
             <GuardedView id={activeViewID} isProMember={isProMember} isSuperAdmin={isSuperAdmin} t={t} onUpgradeClick={() => setIsPricingModalOpen(true)}>
-                {activeViewID === 'dashboard' && ( <Dashboard userProfile={userProfile} isProMember={isProMember} onNavigate={handleSetViewState} language={language} /> )}
-                {activeViewID === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice="Auto" currentUser={currentUser} t={t} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={setChannelToComment} handleVote={()=>{}} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} onOpenPricing={() => setIsPricingModalOpen(true)} language={language} onMagicCreate={handleMagicCreate} /> )}
+                {activeViewID === 'dashboard' && ( <Dashboard userProfile={userProfile} isProMember={isProMember} onNavigate={handleSetViewState} language={language} handleVote={handleVote} /> )}
+                {activeViewID === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice="Auto" currentUser={currentUser} t={t} setChannelToEdit={(c) => setEditChannelId(c.id)} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={(c) => setCommentChannelId(c.id)} handleVote={handleVote} handleBookmarkToggle={handleBookmarkToggle} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} onOpenPricing={() => setIsPricingModalOpen(true)} language={language} onMagicCreate={handleMagicCreate} /> )}
                 {activeViewID === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={handleDetailBack} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} onUpdateChannel={handleUpdateChannel} isProMember={isProMember} /> )}
                 {activeViewID === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} language={language} initialContext={liveSessionParams.context} recordingEnabled={liveSessionParams.recordingEnabled} lectureId={liveSessionParams.bookingId} recordScreen={liveSessionParams.recordScreen} recordCamera={liveSessionParams.recordCamera} activeSegment={liveSessionParams.activeSegment} recordingDuration={liveSessionParams.recordingDuration} interactionEnabled={liveSessionParams.interactionEnabled} recordingTarget={liveSessionParams.recordingTarget} sessionTitle={liveSessionParams.sessionTitle} /> )}
                 {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} /></div> )}
@@ -534,7 +676,7 @@ const App: React.FC = () => {
                 {activeViewID === 'blog' && ( <div className="h-full overflow-y-auto"><BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} /></div> )}
                 {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} /> )}
                 {activeViewID === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
-                {activeViewID === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={()=>{}} currentUser={currentUser} setChannelToEdit={setChannelToEdit} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice="Auto" t={t} onCommentClick={setChannelToComment} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={() => setIsCreateModalOpen(true)} /> )}
+                {activeViewID === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={(c) => setEditChannelId(c.id)} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice="Auto" t={t} onCommentClick={(c) => setCommentChannelId(c.id)} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={() => setIsCreateModalOpen(true)} /> )}
                 {activeViewID === 'mentorship' && ( <div className="h-full overflow-y-auto"><MentorBooking currentUser={currentUser} userProfile={userProfile} channels={allChannels} onStartLiveSession={handleStartLiveSession} /></div> )}
                 {activeViewID === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><RecordingList onBack={() => handleSetViewState('dashboard')} onStartLiveSession={handleStartLiveSession} /></div> )}
                 {(activeViewID === 'check_designer' || activeViewID === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} isProMember={isProMember} /> )}
@@ -546,11 +688,17 @@ const App: React.FC = () => {
                 {activeViewID === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
                 {activeViewID === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('dashboard')} user={userProfile} /> )}
                 {activeViewID === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} isProMember={isProMember} /> )}
+                {activeViewID === 'firestore_inspector' && ( <FirestoreInspector onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
+                {activeViewID === 'public_channel_inspector' && ( <PublicChannelInspector onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'my_channel_inspector' && ( <MyChannelInspector onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'cloud_debug' && ( <CloudDebugView onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'debug_view' && ( <DebugView onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'graph_studio' && ( <GraphStudio onBack={() => handleSetViewState('dashboard')} isProMember={isProMember} /> )}
                 {activeViewID === 'story' && ( <ProjectStory onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'privacy' && ( <PrivacyPolicy onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'user_guide' && ( <UserManual onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'bible_study' && ( <ScriptureSanctuary onBack={() => handleSetViewState('dashboard')} language={language} isProMember={isProMember} /> )}
+                {/* Fixed: Line 700 changed 'activeTestament' to 'activeViewID' */}
                 {activeViewID === 'scripture_ingest' && ( <ScriptureIngest onBack={() => handleSetViewState('bible_study')} /> )}
                 {activeViewID === 'groups' && ( <GroupManager currentUser={currentUser} userProfile={userProfile} /> )}
                 {activeViewID === 'book_studio' && ( <BookStudio onBack={() => handleSetViewState('dashboard')} /> )}
@@ -615,8 +763,8 @@ const App: React.FC = () => {
         <VoiceCreateModal isOpen={isVoiceCreateOpen} onClose={() => setIsVoiceCreateOpen(false)} onCreate={handleCreateChannel} />
         <PricingModal isOpen={isPricingModalOpen} onClose={() => setIsPricingModalOpen(false)} user={userProfile} onSuccess={(tier) => { if(userProfile) setUserProfile({...userProfile, subscriptionTier: tier}); }} />
         {currentUser && ( <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} user={userProfile || { uid: currentUser.uid, email: currentUser.email, displayName: currentUser.displayName, photoURL: currentUser.photoURL, groups: [], coinBalance: 0, createdAt: Date.now(), lastLogin: Date.now(), subscriptionTier: 'free', apiUsageCount: 0 } as UserProfile} onUpdateProfile={setUserProfile} onUpgradeClick={() => setIsPricingModalOpen(true)} isSuperAdmin={isSuperAdmin} onNavigateAdmin={() => handleSetViewState('firestore_debug')} /> )}
-        {channelToComment && ( <CommentsModal isOpen={true} onClose={() => setChannelToComment(null)} channel={channelToComment} onAddComment={()=>{}} currentUser={currentUser} /> )}
-        {channelToEdit && ( <ChannelSettingsModal isOpen={true} onClose={() => setChannelToEdit(null)} channel={channelToEdit} onUpdate={handleUpdateChannel} /> )}
+        {channelToComment && ( <CommentsModal isOpen={true} onClose={() => setCommentChannelId(null)} channel={channelToComment} onAddComment={handleAddComment} onDeleteComment={handleDeleteComment} onEditComment={handleEditComment} currentUser={currentUser} /> )}
+        {channelToEdit && ( <ChannelSettingsModal isOpen={true} onClose={() => setEditChannelId(null)} channel={channelToEdit} onUpdate={handleUpdateChannel} /> )}
       </div>
     </ErrorBoundary>
   );

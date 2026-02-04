@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { 
@@ -8,7 +9,8 @@ import {
   Bug, Film, X
 } from 'lucide-react';
 import { auth, storage } from '../services/firebaseConfig';
-import { ref, listAll, getDownloadURL } from 'firebase/storage';
+// Fix: Use @firebase scoped imports to match project conventions and resolve exported member errors
+import { ref, listAll, getDownloadURL } from '@firebase/storage';
 import { saveScriptureToLedger, getScriptureFromLedger, getScriptureAudioUrl } from '../services/firestoreService';
 import { DualVerse } from '../types';
 import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput } from '../utils/audioUtils';
@@ -63,7 +65,7 @@ const BIBLE_NAMES_ZH: Record<string, string> = {
     'Jeremiah': '耶利米书', 'Lamentations': '耶利米哀歌', 'Ezekiel': '以西结书', 'Daniel': '但以理书',
     'Hosea': '何西阿书', 'Joel': '约珥书', 'Amos': '阿摩司书', 'Obadiah': '俄底亚书', 'Jonah': '约拿书',
     'Micah': '弥迦书', 'Nahum': '那鸿书', 'Habakkuk': '哈巴谷书', 'Zephaniah': '西番雅书', 'Haggai': '哈该书',
-    'Zechariah': '撒迦利亚书', 'Malachi': '玛拉基书',
+    'Zechariah': '撒利亚书', 'Malachi': '玛拉基书',
     'Matthew': '马太福音', 'Mark': '马可福音', 'Luke': '路加福音', 'John': '约翰福音', 'Acts': '使徒行传',
     'Romans': '罗马书', '1 Corinthians': '哥林多前书', '2 Corinthians': '哥林多后书', 'Galatians': '加拉太书',
     'Ephesians': '以弗所书', 'Philippians': '腓立比书', 'Colossians': '歌罗西书', '1 Thessalonians': '帖撒罗尼迦前书',
@@ -310,7 +312,6 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
           setCurrentReadingIndex(i);
           
           requestAnimationFrame(() => {
-            // Fixed: replace 'v' with 'verse' to match defined constant
             const el = verseRefs.current[verse.number];
             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
           });
@@ -332,7 +333,6 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                       window.speechSynthesis.speak(utterance);
                   });
               } else {
-                  // CRITICAL: Fixed metadata key mapping to match TtsResult expectation
                   const resultEn = await synthesizeSpeech(verse.en, neuralPersona, ctx, ttsProvider, 'en', {
                       channelId: selectedBook, topicId: selectedChapter, nodeId: `node_${selectedBook}_${selectedChapter}_${verse.number}_en`
                   });
@@ -376,7 +376,6 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                       window.speechSynthesis.speak(utterance);
                   });
               } else {
-                  // CRITICAL: Fixed metadata key mapping to match TtsResult expectation
                   const resultZh = await synthesizeSpeech(verse.zh, 'Kore', ctx, ttsProvider, 'zh', {
                       channelId: selectedBook, topicId: selectedChapter, nodeId: `node_${selectedBook}_${selectedChapter}_${verse.number}_zh`
                   });
@@ -489,7 +488,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                         <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Provider Spectrum</label>
                         <div className="flex p-1 bg-slate-950 rounded-xl border border-slate-800 shadow-inner">
                             <button onClick={() => { setTtsProvider('gemini'); localStorage.setItem('bible_tts_provider', 'gemini'); }} className={`flex-1 py-2 text-[9px] font-black uppercase rounded-lg transition-all ${ttsProvider === 'gemini' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>Gemini</button>
-                            <button onClick={() => { setTtsProvider('openai'); localStorage.setItem('bible_tts_provider', 'openai'); }} className={`flex-1 py-2 text-[9px] font-black uppercase rounded-lg transition-all ${ttsProvider === 'openai' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>OpenAI</button>
+                            <button onClick={() => { setTtsProvider('openai'); localStorage.setItem('bible_tts_provider', 'openai'); }} className={`flex-1 py-2 text-[9px] font-black uppercase rounded-lg transition-all ${ttsProvider === 'openai' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}>OpenAI</button>
                             <button onClick={() => { setTtsProvider('system'); localStorage.setItem('bible_tts_provider', 'system'); }} className={`flex-1 py-2 text-[9px] font-black uppercase rounded-lg transition-all ${ttsProvider === 'system' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}>System</button>
                         </div>
                     </div>
@@ -608,27 +607,27 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 gap-12">
-                                {parsedVerses.map((v, i) => {
+                                {parsedVerses.map((verse, i) => {
                                     const isCurrent = i === currentReadingIndex;
                                     return (
                                         <div 
-                                            key={v.number} 
-                                            ref={el => { verseRefs.current[v.number] = el; }}
+                                            key={verse.number} 
+                                            ref={el => { verseRefs.current[verse.number] = el; }}
                                             className={`transition-all duration-1000 ease-in-out flex flex-col gap-8 relative ${isCurrent ? 'opacity-100 scale-100 translate-x-4' : 'opacity-40 scale-95 hover:opacity-100 translate-x-0'}`}
                                         >
                                             {isCurrent && <div className="absolute -left-8 top-0 bottom-0 w-1 bg-amber-500 rounded-full shadow-[0_0_10px_rgba(245,158,11,0.5)] animate-pulse"></div>}
                                             
                                             <div className="flex items-start gap-8">
                                                 <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-black shrink-0 transition-all ${isCurrent ? 'bg-amber-500 text-black shadow-2xl scale-110' : 'bg-slate-900 text-slate-700 border border-slate-800'}`}>
-                                                    {v.number}
+                                                    {verse.number}
                                                 </div>
                                                 <div className="space-y-6 flex-1">
                                                     <p className={`text-2xl md:text-3xl font-serif leading-relaxed italic transition-colors duration-700 ${isCurrent ? 'text-white' : 'text-slate-300'}`}>
-                                                        "{v.en}"
+                                                        "{verse.en}"
                                                     </p>
                                                     <div className={`h-px bg-gradient-to-r from-slate-800 via-slate-700 to-transparent w-full transition-all duration-700 ${isCurrent ? 'opacity-100' : 'opacity-30'}`}></div>
                                                     <p className={`text-2xl md:text-3xl font-serif leading-relaxed transition-colors duration-700 ${isCurrent ? 'text-indigo-200' : 'text-slate-500'}`}>
-                                                        {v.zh}
+                                                        {verse.zh}
                                                     </p>
                                                 </div>
                                                 <div className="flex flex-col gap-2 pt-1 opacity-0 hover:opacity-100 transition-opacity">

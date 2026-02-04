@@ -60,6 +60,7 @@ export interface UserProfile {
   followers?: string[];
   following?: string[];
   likedChannelIds?: string[];
+  bookmarkedChannelIds?: string[];
   resumeUrl?: string;
   resumeText?: string;
   defaultRepoUrl?: string;
