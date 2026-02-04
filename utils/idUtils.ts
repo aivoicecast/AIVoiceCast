@@ -36,8 +36,8 @@ export async function generateContentUid(topic: string, context: string, lang: s
 /**
  * Deep Atomic Cloner:
  * Manually clones objects to a maximum depth while stripping all non-serializable 
- * and circular references. This is the only 100% safe way to handle 
- * minified SDK internals (Firebase 'Y'/'Ka' constructors).
+ * and circular references. Hardened for v8.0.0 to prevent circularity errors
+ * from minified SDK internal constructors (like 'Y', 'Ka', etc).
  */
 function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = new WeakSet()): any {
     // 1. Primitives and Null
@@ -57,14 +57,17 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = n
     
     // 4. Specialized Type Normalization
     if (val instanceof Date) return val.toISOString();
-    if (val instanceof Error) return { message: val.message, name: val.name };
+    if (val instanceof Error) return { message: val.message, name: val.name, stack: val.stack?.substring(0, 200) };
     if (val instanceof Blob || val instanceof File) return `[Binary Asset: ${val.constructor.name}(${(val as any).size} bytes)]`;
     if (ArrayBuffer.isView(val)) return `[TypedArray]`;
 
     // 5. Prototype Guard (Prune Instances/SDK Internals/DOM)
-    // Minified constructor names like 'Y' or 'Ka' usually indicate library internals.
-    const proto = Object.getPrototypeOf(val);
-    if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) {
+    // Only allow plain objects {} and arrays []
+    const isPlainObject = Object.prototype.toString.call(val) === '[object Object]';
+    const isArray = Array.isArray(val);
+
+    if (!isPlainObject && !isArray) {
+        // This is where 'Y' or 'Ka' constructors from minified Firebase/GCP SDKs are caught
         return `[Instance: ${val.constructor?.name || 'Unknown'}]`;
     }
 
@@ -72,19 +75,20 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = n
     seen.add(val);
 
     // 6. Recursive Clone
-    if (Array.isArray(val)) {
+    if (isArray) {
         return val.map(item => atomicClone(item, depth + 1, maxDepth, seen));
     }
 
     const result: any = {};
     try {
         for (const key in val) {
+            // We use hasOwnProperty to avoid inherited properties that often trigger circularity
             if (Object.prototype.hasOwnProperty.call(val, key)) {
-                // Filter dangerous or useless keys that often contain circularity or large state
                 const lowerKey = key.toLowerCase();
+                // Extended blacklisted keys that often cause circularity or massive state
                 if (key.startsWith('_') || 
-                    ['auth', 'app', 'firestore', 'storage', 'parent', 'window', 'document', 'navigator', 'location'].includes(lowerKey)) {
-                    result[key] = `[Filtered property: ${key}]`;
+                    ['auth', 'app', 'firestore', 'storage', 'parent', 'window', 'document', 'navigator', 'location', 'client', 'session'].includes(lowerKey)) {
+                    result[key] = `[Filtered: ${key}]`;
                     continue;
                 }
                 result[key] = atomicClone(val[key], depth + 1, maxDepth, seen);
@@ -106,6 +110,7 @@ export function safeJsonStringify(obj: any, indent: number = 2): string {
         const safeObj = atomicClone(obj);
         return JSON.stringify(safeObj, null, indent);
     } catch (err) {
-        return `[Unserializable Artifact: ${err instanceof Error ? err.message : 'Unknown'}]`;
+        // Final fallback if the clone logic itself fails
+        return `[Unserializable Artifact: ${err instanceof Error ? err.message : 'Circular'}]`;
     }
 }

@@ -27,7 +27,7 @@ import {
   ShieldCheck, Target, Award as AwardIcon,
   Lock, Activity, Layers, RefreshCw, Monitor, Camera, Youtube, HardDrive,
   UserCheck, Shield, GraduationCap, PlayCircle, ExternalLink, Copy, Share2, SearchX,
-  Play, Link, CloudUpload, HardDriveDownload, List, Table as TableIcon, FileVideo, Calendar, Download, Maximize2, Maximize
+  Play, Link, CloudUpload, HardDriveDownload, List, Table as TableIcon, FileVideo, Calendar, Download, Maximize2, Maximize, Info
 } from 'lucide-react';
 import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput, getGlobalMediaStreamDest } from '../utils/audioUtils';
 import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
@@ -68,6 +68,8 @@ interface MockInterviewProps {
   userProfile: UserProfile | null;
   onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
   isProMember?: boolean;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
 const PERSONAS = [
@@ -426,7 +428,7 @@ const EvaluationReportDisplay = ({
     );
 };
 
-export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfile, onStartLiveSession, isProMember }) => {
+export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfile, onStartLiveSession, isProMember, onOpenManual }) => {
   const [view, setView] = useState<'selection' | 'setup' | 'active' | 'feedback' | 'archive'>('selection');
   const [interviewMode, setInterviewMode] = useState<'coding' | 'system_design' | 'behavioral' | 'quick_screen' | 'assessment_30' | 'assessment_60'>('coding');
   const [interviewLanguage, setInterviewLanguage] = useState<'c++' | 'python' | 'javascript' | 'java'>('c++');
@@ -1026,6 +1028,14 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
+        <header className="p-4 border-b border-slate-800 bg-slate-900 flex items-center justify-between">
+           <div className="flex items-center gap-3">
+              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20}/></button>
+              <h2 className="text-sm font-black uppercase tracking-widest text-slate-400">Interrogation Studio</h2>
+           </div>
+           {onOpenManual && <button onClick={onOpenManual} className="p-2 text-slate-400 hover:text-white" title="Interrogation Manual"><Info size={18}/></button>}
+        </header>
+
         {isLoading && view === 'active' && (
             <div className="absolute inset-0 z-[100] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-10 text-center space-y-8 animate-fade-in">
                 <Loader2 className="animate-spin text-indigo-500" size={48} />
@@ -1168,152 +1178,4 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                     )}
                     <div className="text-center space-y-4">
                         <Trophy size={48} className="mx-auto text-indigo-400 mb-2"/>
-                        <h1 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Report</h1>
-                    </div>
-                    <EvaluationReportDisplay 
-                        report={report} 
-                        isSyncing={isUploadingRecording}
-                        onSyncYouTube={() => report.videoBlob && performSyncToYouTube(report.id, report.videoBlob, { mode: interviewMode, language: interviewLanguage })}
-                        onSyncDrive={() => report.videoBlob && performSyncToDrive(report.id, report.videoBlob, { mode: interviewMode })}
-                    />
-                    <div className="flex justify-center pb-20"><button onClick={() => setView('selection')} className="px-10 py-4 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-white font-black uppercase tracking-widest rounded-2xl transition-all">Main Menu</button></div>
-                </div>
-            </div>
-        )}
-
-        {view === 'archive' && (
-            <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="p-8 md:p-12 border-b border-slate-800 bg-slate-900/50 shrink-0">
-                    <div className="max-w-6xl mx-auto space-y-8">
-                        <div className="flex items-center gap-6">
-                            <button onClick={() => setView('selection')} className="p-3 hover:bg-slate-800 rounded-2xl text-slate-400 transition-colors"><ArrowLeft size={24}/></button>
-                            <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">Session Archive</h1>
-                        </div>
-                        <div className="relative">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18}/>
-                            <input type="text" placeholder="Search by mode or job context..." value={archiveSearch} onChange={e => setArchiveSearch(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-3xl pl-12 pr-6 py-4 text-white outline-none focus:ring-2 focus:ring-indigo-500/50 shadow-inner"/>
-                        </div>
-                    </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-6 md:p-12 scrollbar-hide">
-                    <div className="max-w-6xl mx-auto">
-                        {isLoading ? (
-                             <div className="py-24 flex flex-col items-center justify-center gap-6 text-center animate-pulse">
-                                <Loader2 className="animate-spin text-indigo-500" size={48} />
-                                <p className="text-sm font-black uppercase text-slate-500 tracking-widest">Paging Neural Archive...</p>
-                            </div>
-                        ) : filteredArchive.length === 0 ? (
-                            <div className="py-32 flex flex-col items-center justify-center text-slate-700 gap-6">
-                                <SearchX size={64} className="opacity-10"/>
-                                <p className="text-sm font-bold uppercase tracking-widest">No matching artifacts found</p>
-                            </div>
-                        ) : (
-                            <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden shadow-2xl">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead className="bg-slate-950 border-b border-slate-800">
-                                            <tr>
-                                                <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Session Artifact</th>
-                                                <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Logic Mode</th>
-                                                <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Refraction Date</th>
-                                                <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Status</th>
-                                                <th className="px-6 py-4 text-right text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-800/50">
-                                            {filteredArchive.map(iv => (
-                                                <tr key={iv.id} className="hover:bg-slate-800/40 transition-colors group">
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="w-12 h-8 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0">
-                                                                {iv.videoUrl ? (
-                                                                    isYouTubeUrl(iv.videoUrl) ? <Youtube size={16} className="text-red-500" /> : <HardDrive size={16} className="text-indigo-400" />
-                                                                ) : <FileVideo size={16} className="text-slate-600" />}
-                                                            </div>
-                                                            <div className="min-w-0">
-                                                                <p className="text-sm font-black text-white truncate max-w-[250px] uppercase tracking-tight">{iv.jobDescription || 'Neural Interrogation'}</p>
-                                                                <p className="text-[10px] text-slate-500 font-mono tracking-tighter">ID: {iv.id.substring(0,12)}</p>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <span className="px-2 py-1 bg-slate-950 rounded text-[9px] font-black text-indigo-400 border border-indigo-500/20 uppercase">{iv.mode}</span>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-xs font-bold text-slate-300">{new Date(iv.timestamp).toLocaleDateString()}</span>
-                                                            <span className="text-[9px] text-slate-600 uppercase font-bold">{new Date(iv.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center gap-1.5">
-                                                            <div className={`w-1.5 h-1.5 rounded-full ${iv.videoUrl ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`}></div>
-                                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{iv.videoUrl ? 'Secured' : 'Local Only'}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-right">
-                                                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button onClick={() => handlePlayback(iv)} className="p-2 bg-slate-800 hover:bg-indigo-600 text-slate-400 hover:text-white rounded-xl transition-all" title="Playback"><Play size={16}/></button>
-                                                            <button onClick={() => { setReport(JSON.parse(iv.feedback)); setView('feedback'); }} className="p-2 bg-slate-800 hover:bg-emerald-600 text-slate-400 hover:text-white rounded-xl transition-all" title="Review Evaluation"><MessageCircle size={16}/></button>
-                                                            <button onClick={() => deleteInterview(iv.id).then(loadData)} className="p-2 bg-slate-800 hover:bg-red-600 text-slate-400 hover:text-white rounded-xl transition-all" title="Purge Artifact"><Trash2 size={16}/></button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* Video Artifact Player Overlay */}
-        {activeMediaId && activeRecording && (
-          <div className="fixed inset-0 z-[150] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 sm:p-10 animate-fade-in">
-              <div className="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-[3rem] overflow-hidden shadow-2xl flex flex-col h-full max-h-[85vh]">
-                  <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center shrink-0">
-                      <div className="flex items-center gap-4">
-                          <div className="p-3 bg-red-600 rounded-2xl text-white shadow-lg shadow-red-900/20"><Video size={24}/></div>
-                          <div>
-                              <h2 className="text-xl font-black text-white italic uppercase tracking-tighter">{activeRecording.mode.toUpperCase()} ARCHIVE</h2>
-                              <div className="flex items-center gap-4 mt-1 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                  <span className="flex items-center gap-1"><Calendar size={12}/> {new Date(activeRecording.timestamp).toLocaleDateString()}</span>
-                                  <span className="flex items-center gap-1"><History size={12}/> ID: {activeRecording.id.substring(0,12)}</span>
-                              </div>
-                          </div>
-                      </div>
-                      <button onClick={closePlayer} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl transition-all active:scale-95 shadow-lg"><X size={24}/></button>
-                  </div>
-                  <div className="flex-1 bg-black relative flex items-center justify-center">
-                    {resolvedMediaUrl ? (
-                        isYouTubeUrl(resolvedMediaUrl) ? (
-                            <iframe src={getYouTubeEmbedUrl(extractYouTubeId(resolvedMediaUrl)!)} className="w-full h-full border-none" allowFullScreen title="YouTube Archive" />
-                        ) : (
-                            <video src={resolvedMediaUrl} controls autoPlay playsInline className="w-full h-full object-contain" />
-                        )
-                    ) : (
-                        <div className="flex flex-col items-center gap-4">
-                            <Loader2 size={48} className="animate-spin text-red-500" />
-                            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500">Decrypting Neural Shards...</span>
-                        </div>
-                    )}
-                  </div>
-                  <div className="p-6 bg-slate-950 border-t border-slate-800 flex justify-center items-center gap-6 shrink-0">
-                      <button onClick={() => { setReport(JSON.parse(activeRecording.feedback)); setView('feedback'); closePlayer(); }} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all flex items-center gap-3 shadow-lg"><MessageCircle size={18}/> View Evaluation</button>
-                      {isYouTubeUrl(activeRecording.videoUrl) && (
-                          <a href={activeRecording.videoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-red-500 transition-colors">
-                              <ExternalLink size={16}/> External Vault
-                          </a>
-                      )}
-                  </div>
-              </div>
-          </div>
-        )}
-    </div>
-  );
-};
-
-export default MockInterview;
+                        <h1 className="text-5xl font-black text-white italic tracking-tighter uppercase

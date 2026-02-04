@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { CommunityDiscussion } from '../types';
 import { getUserDesignDocs, deleteDiscussion, getPublicDesignDocs, getGroupDesignDocs, getUserProfile } from '../services/firestoreService';
@@ -9,9 +8,10 @@ import { APP_COMPARISON_DOC, STACK_STORY_DOC, BUILT_WITH_DOC } from '../utils/do
 
 interface DocumentListProps {
   onBack?: () => void;
+  onOpenManual?: () => void;
 }
 
-export const DocumentList: React.FC<DocumentListProps> = ({ onBack }) => {
+export const DocumentList: React.FC<DocumentListProps> = ({ onBack, onOpenManual }) => {
   const [docs, setDocs] = useState<CommunityDiscussion[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
@@ -106,6 +106,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({ onBack }) => {
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <span className="w-2 h-6 bg-emerald-500 rounded-full"></span>
             <span>Document Studio</span>
+            {onOpenManual && <button onClick={onOpenManual} className="p-1 text-slate-600 hover:text-white transition-colors" title="Docs Manual"><Info size={16}/></button>}
           </h2>
           <p className="text-xs text-slate-500 mt-1">Create and manage technical specifications and design docs.</p>
         </div>

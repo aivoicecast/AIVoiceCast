@@ -4,7 +4,7 @@ import {
   ArrowLeft, BookText, Download, Loader2, BookOpen, 
   ChevronLeft, ChevronRight, FileDown, ShieldCheck, 
   Sparkles, CheckCircle, RefreshCw, RefreshCcw, Layers, Printer, X, Barcode, QrCode,
-  Palette, Type, AlignLeft, Hash, Fingerprint, Activity, Terminal, Shield, Check, Library, Search, Filter, Grid, Book, Clock, Zap, Upload, Cloud, Save, Trash2, Image as ImageIcon
+  Palette, Type, AlignLeft, Hash, Fingerprint, Activity, Terminal, Shield, Check, Library, Search, Filter, Grid, Book, Clock, Zap, Upload, Cloud, Save, Trash2, Image as ImageIcon, Info
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -19,6 +19,8 @@ import { GoogleGenAI } from "@google/genai";
 
 interface BookStudioProps {
   onBack: () => void;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
 const STYLE_CONFIGS: Record<BookStyle, { 
@@ -113,7 +115,7 @@ const processMarkdownForPdf = (text: string, currentStyle: BookStyle) => {
     return finalHtml;
 };
 
-export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
+export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) => {
   const [viewState, setViewState] = useState<'shelf' | 'studio'>('shelf');
   const [customBooks, setCustomBooks] = useState<BookData[]>([]);
   const [systemBooksState, setSystemBooksState] = useState<BookData[]>(SYSTEM_BOOKS);
@@ -350,7 +352,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
           <div className="flex items-center gap-4">
               <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>
               <div>
-                <h1 className="text-lg font-bold text-white flex items-center gap-2 italic uppercase tracking-tighter">
+                <h1 className="text-lg font-bold text-white flex items-center gap-2 uppercase tracking-tighter italic">
                     <BookText className="text-indigo-400" /> Author Studio
                 </h1>
                 <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Library Scale v6.8.5</p>
@@ -369,6 +371,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack }) => {
                           {isExporting ? <Loader2 size={16} className="animate-spin"/> : <FileDown size={16}/>}
                           <span>Synthesize PDF</span>
                       </button>
+                      {onOpenManual && <button onClick={onOpenManual} className="p-2 text-slate-400 hover:text-white" title="Author Manual"><Info size={18}/></button>}
                   </div>
               )}
           </div>

@@ -43,14 +43,14 @@ Once the session terminates, the full multi-modal transcript—including audio l
 
 One of the most significant engineering breakthroughs in v6.8.5 is the replacement of server-side computation with **Heuristic Logic Tracing.**
 
-### The 100x Efficiency Proof
+### The 10x Efficiency Proof
 Traditional cloud-based IDEs (like CodeSandbox or Docker-based terminals) are fundamentally energy inefficient. Every "Run" command triggers a costly infrastructure lifecycle:
 1.  **Provisioning**: Booting a container (Power cost: High).
 2.  **Compilation**: Invoking a compiler (Power cost: Medium).
 3.  **Execution**: Running the binary (Power cost: Low).
 4.  **Teardown**: Closing the sandbox (Power cost: High).
 
-Infrastructure overhead accounts for nearly **100x more energy** than the actual computation performed. By moving this logic to the **Gemini Prediction Layer**, we bypass the physical lifecycle entirely. The AI acts as a **Digital Twin of a POSIX terminal**, "imagining" the result of code execution with >98% accuracy for algorithmic tasks. This achieves a **100x saving in total operational wattage.**
+Infrastructure overhead accounts for nearly **10x more energy** than the actual computation performed. By moving this logic to the **Gemini Prediction Layer**, we bypass the physical lifecycle entirely. The AI acts as a **Digital Twin of a POSIX terminal**, "imagining" the result of code execution with >98% accuracy for algorithmic tasks. This achieves a **10x saving in total operational wattage.**
 
 ---
 

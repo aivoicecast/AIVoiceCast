@@ -1,12 +1,14 @@
-import React, { useMemo } from 'react';
+
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   Terminal, Code, Video, LayoutGrid, FileText, Wallet, MessageSquare, 
   Briefcase, Truck, AppWindow, Book, PenTool, Rss, Gift, Rocket, BookOpen, 
   Activity, Scroll, GraduationCap, Cpu, Star, Coins, Zap, ShieldCheck,
   Globe, Users, Clock, Sparkles, ChevronRight, Crown, Lock, Radio,
-  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard
+  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard, Info, TrendingUp, BarChart3, Binary, Github, Scale
 } from 'lucide-react';
-import { ViewID, UserProfile } from '../types';
+import { ViewID, UserProfile, PlatformMetrics } from '../types';
+import { Visualizer } from './Visualizer';
 
 interface DashboardProps {
   userProfile: UserProfile | null;
@@ -14,6 +16,7 @@ interface DashboardProps {
   onNavigate: (view: ViewID, params?: Record<string, string>) => void;
   language: 'en' | 'zh';
   handleVote?: (id: string, type: 'like' | 'dislike', e: React.MouseEvent) => void;
+  onOpenManual?: () => void;
 }
 
 const UI_TEXT = {
@@ -30,7 +33,11 @@ const UI_TEXT = {
     proBadge: "Elite Access",
     freeBadge: "Standard",
     launch: "Launch",
-    unlockCta: "Unlock Pro"
+    unlockCta: "Unlock Pro",
+    pulseTitle: "Network Propagation",
+    metricsTotal: "Global Refractions",
+    metricsHumanoid: "Optimus Hubs Deployed",
+    metricsEfficiency: "Distributed Index"
   },
   zh: {
     greeting: "欢迎回来，",
@@ -45,12 +52,46 @@ const UI_TEXT = {
     proBadge: "精英权限",
     freeBadge: "标准",
     launch: "启动",
-    unlockCta: "解锁专业版"
+    unlockCta: "解锁专业版",
+    pulseTitle: "网络传播",
+    metricsTotal: "全球折射总数",
+    metricsHumanoid: "Optimus 枢纽已部署",
+    metricsEfficiency: "分布式指数"
   }
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, onNavigate, language, handleVote }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, onNavigate, language, handleVote, onOpenManual }) => {
   const t = UI_TEXT[language];
+  const [metrics, setMetrics] = useState<PlatformMetrics>({
+      globalRefractions: 1284052,
+      voiceCoinVelocity: 842.5,
+      computeEfficiency: '10x',
+      // Initializing with the requested 122.8M start
+      humanoidCapacity: 122843668 / 1000, 
+      distributedIndex: 0.122843668
+  });
+
+  // Simulate real-time metrics for distributed network vision (Target: 1 Billion Optimus Hubs)
+  useEffect(() => {
+    const interval = setInterval(() => {
+        setMetrics(prev => {
+            // Increase by 5 to 15 hubs per cycle to simulate active propagation
+            const delta = (Math.random() * 10 + 5) / 1000;
+            const newCapacity = prev.humanoidCapacity + delta;
+            
+            // Distributed Index is (Actual Hubs) / 1,000,000,000
+            const newIndex = (newCapacity * 1000) / 1000000000;
+            
+            return {
+                ...prev,
+                globalRefractions: prev.globalRefractions + Math.floor(Math.random() * 5),
+                humanoidCapacity: newCapacity,
+                distributedIndex: newIndex
+            };
+        });
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   const appSectors = useMemo(() => [
     {
@@ -111,50 +152,80 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
 
   return (
     <div className="h-full overflow-y-auto bg-slate-950 scrollbar-hide">
-      <div className="max-w-7xl mx-auto p-6 md:p-12 space-y-12 pb-32">
+      <div className="max-w-7xl mx-auto p-6 md:p-12 space-y-8 pb-32">
         
-        <section className="bg-gradient-to-br from-indigo-900/40 to-slate-900 border border-slate-800 rounded-[3rem] p-8 md:p-12 shadow-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-32 bg-indigo-500/10 blur-[100px] rounded-full group-hover:scale-110 transition-transform duration-1000"></div>
-            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-                <div className="flex items-center gap-6">
-                    <div className="relative">
-                        {userProfile?.photoURL ? (
-                            <img src={userProfile.photoURL} className="w-20 h-20 rounded-3xl border-4 border-slate-800 shadow-2xl object-cover" />
-                        ) : (
-                            <div className="w-20 h-20 rounded-3xl bg-slate-800 border-4 border-slate-800 flex items-center justify-center text-3xl font-black text-indigo-400 shadow-2xl">
-                                {userProfile?.displayName?.[0] || 'U'}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <section className="lg:col-span-2 bg-gradient-to-br from-indigo-900/40 to-slate-900 border border-slate-800 rounded-[3rem] p-8 md:p-12 shadow-2xl relative overflow-hidden group flex flex-col justify-center">
+                <div className="absolute top-0 right-0 p-32 bg-indigo-500/10 blur-[100px] rounded-full group-hover:scale-110 transition-transform duration-1000"></div>
+                <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+                    <div className="flex items-center gap-6">
+                        <div className="relative">
+                            {userProfile?.photoURL ? (
+                                <img src={userProfile.photoURL} className="w-20 h-20 rounded-3xl border-4 border-slate-800 shadow-2xl object-cover" />
+                            ) : (
+                                <div className="w-20 h-20 rounded-3xl bg-slate-800 border-4 border-slate-800 flex items-center justify-center text-3xl font-black text-indigo-400 shadow-2xl">
+                                    {userProfile?.displayName?.[0] || 'U'}
+                                </div>
+                            )}
+                            <div className="absolute -bottom-2 -right-2 bg-emerald-500 p-1.5 rounded-xl border-4 border-slate-900 shadow-lg">
+                                <ShieldCheck size={16} className="text-white" />
                             </div>
-                        )}
-                        <div className="absolute -bottom-2 -right-2 bg-emerald-500 p-1.5 rounded-xl border-4 border-slate-900 shadow-lg">
-                            <ShieldCheck size={16} className="text-white" />
+                        </div>
+                        <div>
+                            <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">
+                                {t.greeting} <span className="text-indigo-400">{userProfile?.displayName?.split(' ')[0]}</span>
+                            </h2>
+                            <div className="flex items-center gap-3 mt-2">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                    <Activity size={12} className="text-emerald-500" /> {t.status}
+                                </span>
+                                <div className="h-3 w-px bg-slate-800"></div>
+                                <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${isProMember ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
+                                    {isProMember ? t.proBadge : t.freeBadge}
+                                </span>
+                                <button onClick={onOpenManual} className="p-1 text-indigo-400 hover:text-white transition-colors" title="Hub Manual">
+                                    <Info size={14}/>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    <div>
-                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">
-                            {t.greeting} <span className="text-indigo-400">{userProfile?.displayName?.split(' ')[0]}</span>
-                        </h2>
-                        <div className="flex items-center gap-3 mt-2">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                                <Activity size={12} className="text-emerald-500" /> {t.status}
-                            </span>
-                            <div className="h-3 w-px bg-slate-800"></div>
-                            <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${isProMember ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
-                                {isProMember ? t.proBadge : t.freeBadge}
-                            </span>
+                    <div className="flex items-center gap-4 bg-slate-950/50 p-6 rounded-[2rem] border border-slate-800 shadow-inner">
+                        <div className="text-right">
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{t.balance}</p>
+                            <p className="text-3xl font-black text-white tracking-tighter tabular-nums">{userProfile?.coinBalance?.toLocaleString() || 0}</p>
+                        </div>
+                        <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-xl shadow-amber-900/20">
+                            <Coins size={24} fill="currentColor" />
                         </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-4 bg-slate-950/50 p-6 rounded-[2rem] border border-slate-800 shadow-inner">
-                    <div className="text-right">
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{t.balance}</p>
-                        <p className="text-3xl font-black text-white tracking-tighter tabular-nums">{userProfile?.coinBalance?.toLocaleString() || 0}</p>
+            </section>
+
+            {/* Neural Pulse Widget (Scaling Vision: 1 Billion Optimus Hubs Target) */}
+            <section className="bg-slate-900 border border-slate-800 rounded-[3rem] p-8 shadow-xl relative overflow-hidden flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <Globe size={14}/> {t.pulseTitle}
+                    </h3>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">10-Year Scaling Target</span>
+                </div>
+                
+                <div className="flex-1 min-h-[80px]">
+                    <Visualizer volume={metrics.distributedIndex} isActive={true} color="#6366f1" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-6">
+                    <div className="space-y-1">
+                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{t.metricsHumanoid}</p>
+                        <p className="text-lg font-black text-white font-mono">{Math.floor(metrics.humanoidCapacity * 1000).toLocaleString()}</p>
                     </div>
-                    <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-xl shadow-amber-900/20">
-                        <Coins size={24} fill="currentColor" />
+                    <div className="space-y-1">
+                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{t.metricsEfficiency}</p>
+                        <p className="text-lg font-black text-emerald-400 font-mono">{(metrics.distributedIndex * 100).toFixed(6)}%</p>
                     </div>
                 </div>
-            </div>
-        </section>
+            </section>
+        </div>
 
         {appSectors.map((sector, sIdx) => (
             <section key={sIdx} className="space-y-6 animate-fade-in-up" style={{ animationDelay: `${sIdx * 100}ms` }}>
@@ -199,8 +270,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
             </section>
         ))}
 
-        <footer className="pt-12 text-center">
-            <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest">Neural Prism v7.0.0-ULTRA • Sovereign Activity Hub</p>
+        <footer className="pt-12 flex flex-col items-center gap-6 border-t border-slate-900/50">
+            <div className="flex flex-wrap justify-center items-center gap-8 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                <a href="https://github.com/aivoicecast/AIVoiceCast" target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
+                    <Github size={14}/> Open Source
+                </a>
+                <span className="hidden md:inline">•</span>
+                <div className="flex items-center gap-2">
+                    <Scale size={14}/> MIT License
+                </div>
+                <span className="hidden md:inline">•</span>
+                <div className="flex items-center gap-2">
+                    <Sparkles size={14}/> Refracted by Neural Prism v7.5.0
+                </div>
+            </div>
+            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Sovereign 2036 Hub • 10:1 Resident/Hub Ratio Enabled</p>
         </footer>
       </div>
     </div>

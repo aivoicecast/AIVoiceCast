@@ -123,7 +123,7 @@ export const BadgeViewer: React.FC<BadgeViewerProps> = ({ onBack, badgeId }) => 
             >
               <div className="h-1/2 p-10 flex items-center justify-center relative">
                 <div className="w-full aspect-square bg-slate-900 rounded-[2rem] border-4 border-slate-800 overflow-hidden shadow-2xl relative">
-                  <img src={badge.photoUrl} className="w-full h-full object-cover" crossOrigin="anonymous" />
+                  <img src={badge.photoUrl} className="w-full h-full object-cover object-[center_20%] transform scale-105" crossOrigin="anonymous" />
                   <div className="absolute top-3 left-3">
                     <div className={`px-2 py-0.5 rounded-full text-[7px] font-black uppercase flex items-center gap-1 shadow-lg border ${badge.isSecure ? 'bg-emerald-500 text-white border-white/20' : 'bg-slate-800 text-slate-400 border-white/5'}`}>
                       {badge.isSecure ? <ShieldCheck size={8}/> : <User size={8}/>}

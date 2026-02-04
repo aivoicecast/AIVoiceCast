@@ -6,25 +6,8 @@ import { SOVEREIGN_VAULT_MANUAL } from './bookContent/sovereign_vault';
 import { LINUX_KERNEL_BOOK } from './bookContent/linux_kernel';
 import { C_PROGRAMMING_BOOK } from './bookContent/c_programming';
 
-export interface BookPage {
-  title: string;
-  content: string;
-}
-
-export type BookCategory = 'Platform' | 'Methodology' | 'Evaluation' | 'Architecture' | 'Daily';
-
-export interface BookData {
-  id: string;
-  title: string;
-  subtitle: string;
-  author: string;
-  version: string;
-  category: BookCategory;
-  pages: BookPage[];
-  coverImage?: string;
-  ownerId?: string;
-  isCustom?: boolean;
-}
+// Added BookData, BookPage, BookCategory re-exports from types to resolve firestoreService errors
+export type { BookPage, BookCategory, BookData } from '../types';
 
 export const SYSTEM_BOOKS = [
     NEURAL_PRISM_BOOK, 

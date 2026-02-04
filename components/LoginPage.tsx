@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2, Sparkles, BookOpen, Key, User, ShieldAlert, Lock } from 'lucide-react';
+import { ArrowRight, Loader2, ShieldCheck, HardDrive, Share2, Sparkles, BookOpen, Key, User, ShieldAlert, Lock, UserCircle, Github } from 'lucide-react';
 import { signInWithGoogle } from '../services/authService';
 import { BrandLogo } from './BrandLogo';
 
@@ -7,6 +8,7 @@ interface LoginPageProps {
   onPrivacyClick?: () => void;
   onMissionClick?: () => void;
   onStoryClick?: () => void;
+  onResumeClick?: () => void;
 }
 
 const GoogleLogo = ({ size = 20 }: { size?: number }) => (
@@ -19,7 +21,7 @@ const GoogleLogo = ({ size = 20 }: { size?: number }) => (
   </svg>
 );
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionClick, onStoryClick }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionClick, onStoryClick, onResumeClick }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -104,6 +106,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onPrivacyClick, onMissionC
               <button onClick={onStoryClick} className="text-[10px] text-indigo-400 hover:text-indigo-300 uppercase font-black tracking-[0.2em] transition-colors flex items-center gap-1">
                 Story <BookOpen size={10} />
               </button>
+              <button onClick={onResumeClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold tracking-[0.2em] transition-colors flex items-center gap-1">
+                Architect <UserCircle size={10} />
+              </button>
+              <a href="https://github.com/aivoicecast/AIVoiceCast" target="_blank" rel="noreferrer" className="text-[10px] text-slate-500 hover:text-white uppercase font-bold tracking-[0.2em] transition-colors flex items-center gap-1">
+                Source <Github size={10} />
+              </a>
               <button onClick={onPrivacyClick} className="text-[10px] text-slate-500 hover:text-indigo-400 uppercase font-bold tracking-[0.2em] transition-colors">Privacy</button>
           </div>
       </div>

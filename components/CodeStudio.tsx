@@ -1,8 +1,8 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, TranscriptItem } from '../types';
 import { 
     subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, 
-    /* Fix: Removed non-existent export 'deleteCodeFile' */
     claimCodeProjectLock, updateProjectActiveFile, updateProjectAccess,
     getCodeProject, deductCoins, AI_COSTS 
 } from '../services/firestoreService';
@@ -26,7 +26,7 @@ import {
   File, Folder, Loader2, RefreshCw, Trash2, Edit2, FolderOpen, Send, Bot, Mic, MicOff, 
   Sparkles, Terminal, Wand2, PanelLeft, PenTool, Activity, Lock, Search, FilePlus, 
   FileUp, Play, ExternalLink, ShieldCheck, Zap, Download, Layout, LayoutGrid, 
-  PanelRightClose, PanelRightOpen, Database, Globe, FolderPlus, MoreVertical, Check, Settings, AlertCircle, FileText, FileVideo, Eye, TestTube, Microscope, MessageSquare, Binary
+  PanelRightClose, PanelRightOpen, Database, Globe, FolderPlus, MoreVertical, Check, Settings, AlertCircle, FileText, FileVideo, Eye, TestTube, Microscope, MessageSquare, Binary, Info
 } from 'lucide-react';
 import { Whiteboard } from './Whiteboard';
 import { Visualizer } from './Visualizer';
@@ -49,6 +49,7 @@ interface CodeStudioProps {
   externalChatContent?: TranscriptItem[];
   isAiThinking?: boolean;
   onSyncCodeWithAi?: (file: CodeFile) => void;
+  onOpenManual?: () => void;
 }
 
 type StorageSource = 'cloud' | 'drive' | 'github';
@@ -82,7 +83,7 @@ const updateCodeTool: FunctionDeclaration = {
 
 export const CodeStudio: React.FC<CodeStudioProps> = ({ 
   onBack, currentUser, userProfile, isProMember, sessionId, initialFiles,
-  isInterviewerMode, onFileChange, externalChatContent, isAiThinking, onSyncCodeWithAi
+  isInterviewerMode, onFileChange, externalChatContent, isAiThinking, onSyncCodeWithAi, onOpenManual
 }) => {
   if (isProMember === false) {
     return (
@@ -978,6 +979,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
                       <div className="flex items-center gap-2">
                         <div className={`w-1.5 h-1.5 rounded-full ${source === 'cloud' ? 'bg-amber-500' : source === 'drive' ? 'bg-emerald-500' : 'bg-white'}`}></div>
                         <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{source} Mode</span>
+                        {onOpenManual && <button onClick={onOpenManual} className="p-1 text-slate-600 hover:text-white transition-colors" title="Studio Manual"><Info size={12}/></button>}
                       </div>
                   </div>
               </div>
@@ -1005,7 +1007,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
                   <button onClick={handleSimulate} disabled={isSimulating || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 disabled:opacity-50">
                       {isSimulating ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor"/>} Run
                   </button>
-                  <button onClick={handleSave} disabled={isSaving || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 disabled:opacity-50">
+                  <button onClick={handleSave} disabled={isSaving || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 disabled:opacity-50">
                       {isSaving ? <Loader2 size={14} className="animate-spin" /> : saveSuccess ? <Check size={14} /> : <Save size={14}/>}
                       {isSaving ? 'Saving...' : saveSuccess ? 'Saved' : 'Save'}
                   </button>
@@ -1105,7 +1107,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
                           <button 
                             onClick={() => handleQuickAction('test')}
                             disabled={isChatThinking}
-                            className="flex items-center justify-center gap-2 py-2 bg-slate-800 hover:bg-emerald-900/40 text-emerald-300 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-700 transition-all hover:border-emerald-500/30 disabled:opacity-50"
+                            className="flex items-center justify-center gap-2 py-2 bg-slate-800 hover:bg-emerald-900/40 text-emerald-300 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-700 transition-all hover:border-indigo-500/30 disabled:opacity-50"
                           >
                             <TestTube size={12}/> Generate Tests
                           </button>

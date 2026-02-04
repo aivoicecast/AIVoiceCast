@@ -13,8 +13,9 @@ import { auth } from '../services/firebaseConfig';
 import { Whiteboard } from './Whiteboard';
 import { generateSecureId } from '../utils/idUtils';
 import { ShareModal } from './ShareModal';
-import { connectGoogleDrive, getDriveToken, isJudgeSession } from '../services/authService';
-import { ensureFolder, uploadToDrive, makeFilePubliclyViewable, getDriveFileSharingLink, ensureCodeStudioFolder, getDrivePreviewUrl } from '../services/googleDriveService';
+// Fix: added signInWithGoogle to imports to resolve Error in file components/CheckDesigner.tsx on line 482
+import { connectGoogleDrive, getDriveToken, signInWithGoogle, isJudgeSession } from '../services/authService';
+import { ensureCodeStudioFolder, ensureFolder, uploadToDrive, makeFilePubliclyViewable, getDriveFileSharingLink, ensureCodeStudioFolder as getShipRoot, getDrivePreviewUrl } from '../services/googleDriveService';
 import { MarkdownView } from './MarkdownView';
 import { saveLocalAsset, getLocalAsset } from '../utils/db';
 import { FINANCE_LAB_MANUAL } from '../utils/financeContent';
@@ -100,9 +101,10 @@ interface CheckDesignerProps {
   currentUser: any;
   userProfile: UserProfile | null;
   isProMember?: boolean;
+  onOpenManual?: () => void;
 }
 
-export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUser, userProfile, isProMember }) => {
+export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUser, userProfile, isProMember, onOpenManual }) => {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const checkIdFromUrl = params.get('id');
   const isReadOnly = params.get('mode') === 'view';
@@ -479,7 +481,7 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
             finalizedCheck.drivePdfUrl = firebasePdfUrl;
         } else {
             try {
-                const token = getDriveToken() || await connectGoogleDrive();
+                const token = getDriveToken() || await signInWithGoogle().then(() => getDriveToken());
                 if (token) {
                     const root = await ensureCodeStudioFolder(token);
                     const folder = await ensureFolder(token, 'Checks', root);
@@ -588,10 +590,11 @@ export const CheckDesigner: React.FC<CheckDesignerProps> = ({ onBack, currentUse
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative font-sans">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
-              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
-              <h1 className="text-lg font-bold text-white flex items-center gap-2"><Wallet className="text-indigo-400" /> {isReadOnly ? 'Asset Viewer' : 'Finance Lab'}</h1>
+              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>
+              <h1 className="text-lg font-bold text-white flex items-center gap-2 uppercase tracking-tighter italic"><Wallet className="text-indigo-400" /> {isReadOnly ? 'Asset Viewer' : 'Finance Lab'}</h1>
               <button onClick={() => setShowManual(true)} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-indigo-400 rounded-lg transition-colors border border-slate-700" title="Usage Guide"><BookOpen size={18}/></button>
               <button onClick={() => setShowHistory(true)} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-lg transition-colors border border-slate-700" title="Registry History"><History size={18}/></button>
+              {onOpenManual && <button onClick={onOpenManual} className="p-1 text-slate-600 hover:text-white transition-colors" title="Finance Manual"><Info size={16}/></button>}
           </div>
           <div className="flex items-center gap-3">
               {!isReadOnly && (

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { RecordingSession, Channel, TranscriptItem, UserProfile, ViewID } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
@@ -25,6 +26,7 @@ interface RecordingListProps {
     recordingTarget?: 'drive' | 'youtube',
     sessionTitle?: string
   ) => void;
+  onOpenManual?: () => void;
 }
 
 // Added missing HandshakePhase type definition to resolve TypeScript error on line 46
@@ -46,7 +48,7 @@ const formatSize = (bytes?: number) => {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 };
 
-export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiveSession }) => {
+export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiveSession, onOpenManual }) => {
   const [recordings, setRecordings] = useState<RecordingSession[]>([]);
   const [phase, setPhase] = useState<HandshakePhase>('idle');
   const [loading, setLoading] = useState(true);
@@ -339,7 +341,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     if (onStartLiveSession) {
         const context = selectedTopic ? `[TOPIC]: ${selectedTopic}\n[CONTEXT]: Scribe session regarding ${meetingTitle}` : undefined;
         // Inject meetingTitle as the sessionTitle argument
-        onStartLiveSession(defaultChannel, context, true, undefined, recordScreen, recordCamera, undefined, recordingDuration, interactionEnabled, recordingTarget, meetingTitle);
+        onStartLiveSession(defaultChannel, context, true, undefined, undefined, undefined, undefined, recordingDuration, interactionEnabled, recordingTarget, meetingTitle);
     }
     setIsRecorderModalOpen(false);
   };
@@ -351,6 +353,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <span className="w-2 h-6 bg-red-500 rounded-full"></span>
             <span>Recordings Archive</span>
+            {onOpenManual && <button onClick={onOpenManual} className="p-1 text-slate-600 hover:text-white transition-colors" title="Recordings Manual"><Info size={16}/></button>}
           </h2>
           <div className="flex items-center gap-3 mt-1">
              <p className="text-xs text-slate-500">Sovereign meeting logs and neural evaluations.</p>
@@ -602,6 +605,7 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <div className="flex items-center gap-4">
                           <div className="p-3 bg-red-600 rounded-2xl text-white shadow-lg shadow-red-900/20"><Video size={24}/></div>
                           <div><h2 className="text-xl font-black text-white italic tracking-tighter uppercase">{activeRecording.channelTitle}</h2><div className="flex items-center gap-4 mt-1 text-[10px] font-black text-slate-500 uppercase tracking-widest"><span className="flex items-center gap-1"><Calendar size={12}/> {formatPST(activeRecording.timestamp).split(',')[0]}</span><span className="flex items-center gap-1"><HardDrive size={12}/> 
+                          {/* Fix: changed 'rec' to 'activeRecording' to resolve Error in file components/RecordingList.tsx on line 607 */}
                           {formatSize(activeRecording.size || activeRecording.blob?.size)}
                           </span></div></div>
                       </div>

@@ -1,8 +1,9 @@
+
 import { initializeApp, getApps, getApp } from "@firebase/app";
 import type { FirebaseApp } from "@firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
 import type { Auth } from "@firebase/auth";
-import { initializeFirestore, getFirestore, enableIndexedDbPersistence, CACHE_SIZE_UNLIMITED } from "@firebase/firestore";
+import { initializeFirestore, getFirestore, enableIndexedDbPersistence, CACHE_SIZE_UNLIMITED, terminate } from "@firebase/firestore";
 import type { Firestore } from "@firebase/firestore";
 import { getStorage } from "@firebase/storage";
 import type { FirebaseStorage } from "@firebase/storage";
@@ -17,7 +18,7 @@ const initializeFirebase = (): FirebaseApp | null => {
             return getApp();
         }
 
-        if (firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY") {
+        if (firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_BASE_API_KEY") {
             const config = {
                 ...firebaseKeys,
                 authDomain: `${firebaseKeys.projectId}.firebaseapp.com`
@@ -36,7 +37,7 @@ const appInstance = initializeFirebase();
 
 /**
  * Robust Firestore Initialization
- * Uses forceLongPolling to bypass environment restrictions on WebSockets 
+ * Uses experimentalForceLongPolling to bypass environment restrictions on WebSockets 
  * which frequently causes the "Could not reach Cloud Firestore backend" timeout.
  */
 const initDb = (): Firestore | null => {
@@ -44,10 +45,11 @@ const initDb = (): Firestore | null => {
     
     let firestore: Firestore;
     try {
-        console.log("[Firestore] Initializing refractive data plane with Forced Long-Polling...");
-        // Fix: Use experimentalForceLongPolling instead of non-existent forceLongPolling and cast appInstance to any to satisfy version-mismatched type definitions
+        console.log("[Firestore] Initializing refractive data plane with Enhanced Long-Polling...");
+        // Use experimentalForceLongPolling to handle environments where WebSockets are blocked/unstable
         firestore = initializeFirestore(appInstance as any, {
-            experimentalForceLongPolling: true, 
+            experimentalForceLongPolling: true,
+            experimentalAutoDetectLongPolling: true,
             cacheSizeBytes: CACHE_SIZE_UNLIMITED
         });
     } catch (e) {
@@ -56,11 +58,14 @@ const initDb = (): Firestore | null => {
     }
 
     // Persistence initialization shouldn't block the connection.
+    // In some environments, IndexedDB persistence can hang the initial connection if storage is full or restricted.
     enableIndexedDbPersistence(firestore).catch((err) => {
         if (err.code === 'failed-precondition') {
             console.debug("[Firestore] Persistence: Multiple tabs open. Local cache active.");
         } else if (err.code === 'unimplemented') {
             console.debug("[Firestore] Persistence: Browser environment lacks IndexedDB support.");
+        } else {
+            console.warn("[Firestore] Persistence failed to initialize:", err.message);
         }
     });
 
@@ -84,7 +89,7 @@ export const getAuthInstance = (): Auth | null => auth;
 export const getDb = (): Firestore | null => db;
 export const getStorageInstance = (): FirebaseStorage | null => storage;
 
-export const isFirebaseConfigured = !!(firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY");
+export const isFirebaseConfigured = !!(firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_BASE_API_KEY");
 
 export const getFirebaseDiagnostics = () => {
     return {
@@ -92,7 +97,7 @@ export const getFirebaseDiagnostics = () => {
         hasAuth: !!auth,
         hasFirestore: !!db,
         projectId: firebaseKeys?.projectId || "Missing",
-        apiKeyPresent: !!firebaseKeys?.apiKey && firebaseKeys.apiKey !== "YOUR_FIREBASE_API_KEY",
+        apiKeyPresent: !!firebaseKeys?.apiKey && firebaseKeys.apiKey !== "YOUR_BASE_API_KEY",
         configSource: localStorage.getItem('firebase_config') ? 'LocalStorage' : 'Static Keys'
     };
 };

@@ -1,17 +1,18 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { ChatChannel, RealTimeMessage, Group, UserProfile } from '../types';
 import { sendMessage, subscribeToMessages, getUserGroups, getAllUsers, createOrGetDMChannel, getUserDMChannels, deleteMessage, uploadFileToStorage } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
-import { Send, Hash, Lock, User, Plus, Search, MessageSquare, MoreVertical, Paperclip, Loader2, ArrowLeft, Menu, Users, Briefcase, Reply, Trash2, X, FileText, Image as ImageIcon, Video, CheckCircle } from 'lucide-react';
+import { Send, Hash, Lock, User, Plus, Search, MessageSquare, MoreVertical, Paperclip, Loader2, ArrowLeft, Menu, Users, Briefcase, Reply, Trash2, X, FileText, Image as ImageIcon, Video, CheckCircle, Info } from 'lucide-react';
 
 interface WorkplaceChatProps {
   onBack: () => void;
   currentUser: any;
   initialChannelId?: string | null;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
-export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUser, initialChannelId }) => {
+export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUser, initialChannelId, onOpenManual }) => {
   const [activeChannelId, setActiveChannelId] = useState<string>('general');
   const [activeChannelType, setActiveChannelType] = useState<'public' | 'group' | 'dm'>('public');
   const [activeChannelName, setActiveChannelName] = useState<string>('General');
@@ -183,6 +184,11 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
       }
   };
 
+  const handleDeleteChatWorkspace = async () => {
+    if (!confirm("Flush all session messages and reset workspace focus?")) return;
+    setMessages([]);
+  };
+
   const handleStartDM = async (otherUserId: string, otherUserName: string) => {
       try {
           const channelId = await createOrGetDMChannel(otherUserId, otherUserName);
@@ -287,6 +293,10 @@ export const WorkplaceChat: React.FC<WorkplaceChatProps> = ({ onBack, currentUse
                       {activeChannelType === 'dm' && <User size={18} className="text-slate-400"/>}
                       {activeChannelName}
                   </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={handleDeleteChatWorkspace} className="p-2 text-slate-500 hover:text-red-400" title="Flush Messages"><Trash2 size={18}/></button>
+                {onOpenManual && <button onClick={onOpenManual} className="p-2 text-slate-500 hover:text-white" title="Chat Manual"><Info size={18}/></button>}
               </div>
           </div>
 

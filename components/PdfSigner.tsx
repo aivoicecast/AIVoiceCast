@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   ArrowLeft, FileSignature, Upload, Loader2, Save, Download, 
@@ -58,9 +59,11 @@ interface PdfSignerProps {
   onBack: () => void;
   currentUser: any;
   userProfile: UserProfile | null;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
-export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userProfile }) => {
+export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userProfile, onOpenManual }) => {
   // Fix: Added useMemo import and corrected usage for URLSearchParams
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const docIdFromUrl = params.get('id');
@@ -372,8 +375,7 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
         auditPage.drawText("VERIFIED NEURAL ARTIFACT", { x: 210, y: 100, size: 14, font: boldFont });
         
         const certBytes = await certDoc.save();
-        const certBlob = new Blob([certBytes], { type: 'application/pdf' });
-        // Fix: Defined certName before usage
+        const certBlob = new Blob([certBytes], { type: 'pdf' });
         const certName = activePdf.name.replace('.pdf', '_AuditCert.pdf');
         
         if (activePdf.remoteId) {
@@ -579,6 +581,7 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
                       {isSaving ? <Loader2 size={16} className="animate-spin"/> : <ShieldCheck size={16}/>}<span>{activePdf.remoteId ? 'Sign & Return' : 'Commit & Notarize'}</span>
                   </button>
               )}
+              {onOpenManual && <button onClick={onOpenManual} className="p-2 text-slate-400 hover:text-white" title="Signer Manual"><Info size={18}/></button>}
           </div>
       </header>
 

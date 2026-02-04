@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Channel, Booking, TodoItem } from '../types';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Briefcase, Plus, Video, CheckCircle, X, Users, Loader2, Mic, Play, Mail, Sparkles, ArrowLeft, Monitor, Filter, LayoutGrid, List, Languages, CloudSun, Wind, BookOpen, CheckSquare, Square, Trash2, StopCircle, Download, FileText, Check, Podcast, RefreshCw, Share2, Target, ExternalLink, Circle, Edit3, Timer, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Briefcase, Plus, Video, CheckCircle, X, Users, Loader2, Mic, Play, Mail, Sparkles, ArrowLeft, Monitor, Filter, LayoutGrid, List, Languages, CloudSun, Wind, BookOpen, CheckSquare, Square, Trash2, StopCircle, Download, FileText, Check, Podcast, RefreshCw, Share2, Target, ExternalLink, Circle, Edit3, Timer, Lock, Info } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 // Fixed: removed non-existent and unused exports
 import { getUserBookings, createBooking } from '../services/firestoreService';
@@ -23,6 +22,7 @@ interface CalendarViewProps {
   onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
   onCreateChannel: (channel: Channel) => void;
   onSchedulePodcast: (date: Date) => void;
+  onOpenManual?: () => void;
 }
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -34,7 +34,7 @@ const getDateKey = (date: Date | number | string) => {
 };
 
 export const CalendarView: React.FC<CalendarViewProps> = ({
-  channels, handleChannelClick, handleVote, currentUser, setChannelToEdit, setIsSettingsModalOpen, globalVoice, t, onCommentClick, onStartLiveSession, onCreateChannel, onSchedulePodcast
+  channels, handleChannelClick, handleVote, currentUser, setChannelToEdit, setIsSettingsModalOpen, globalVoice, t, onCommentClick, onStartLiveSession, onCreateChannel, onSchedulePodcast, onOpenManual
 }) => {
   const [displayDate, setDisplayDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -149,12 +149,15 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
               <div className="absolute top-0 right-0 p-24 bg-white/10 blur-3xl rounded-full"></div>
               <div className="relative z-10">
                   <div className="flex justify-between items-start">
-                    <div>
-                        <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">{MONTHS[displayDate.getMonth()]} {displayDate.getFullYear()}</h2>
-                        <p className="text-indigo-100 font-bold opacity-80 mt-1 flex items-center gap-2">
-                           <Target size={14}/> 
-                           {bookings.length} Sessions scheduled this month
-                        </p>
+                    <div className="flex items-center gap-4">
+                        <div className="flex flex-col">
+                            <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">{MONTHS[displayDate.getMonth()]} {displayDate.getFullYear()}</h2>
+                            <p className="text-indigo-100 font-bold opacity-80 mt-1 flex items-center gap-2">
+                                <Target size={14}/> 
+                                {bookings.length} Sessions scheduled this month
+                                {onOpenManual && <button onClick={onOpenManual} className="p-1 text-indigo-300 hover:text-white transition-colors" title="Calendar Manual"><Info size={14}/></button>}
+                            </p>
+                        </div>
                     </div>
                     <div className="flex gap-2">
                         <button onClick={() => setDisplayDate(new Date())} className="px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-xl text-xs font-black text-white border border-white/20 transition-all">TODAY</button>

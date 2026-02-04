@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { ArrowLeft, Download, Globe, Loader2, MapPin, Printer, Scale, Share2, Sparkles, Truck, User } from 'lucide-react';
+import { ArrowLeft, Download, Globe, Loader2, MapPin, Printer, Scale, Share2, Sparkles, Truck, User, Info } from 'lucide-react';
 import React, { useMemo, useRef, useState } from 'react';
 import { auth } from '../services/firebaseConfig';
 import { connectGoogleDrive, getDriveToken, isJudgeSession } from '../services/authService';
@@ -13,6 +13,8 @@ import { ShareModal } from './ShareModal';
 
 interface ShippingLabelAppProps {
   onBack: () => void;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
 const DEFAULT_ADDRESS: Address = {
@@ -38,7 +40,7 @@ const CARRIER_CONFIG = {
     FedEx: { color: 'bg-[#4d148c]', text: 'text-white', border: 'border-black', label: 'FedEx Express', font: 'font-sans' }
 };
 
-export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) => {
+export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack, onOpenManual }) => {
   const [sender, setSender] = useState<Address>(DEFAULT_ADDRESS);
   const [recipient, setRecipient] = useState<Address>(DEFAULT_ADDRESS);
   const [pkg, setPkg] = useState<PackageDetails>(DEFAULT_PACKAGE);
@@ -166,6 +168,7 @@ export const ShippingLabelApp: React.FC<ShippingLabelAppProps> = ({ onBack }) =>
                   {isExporting ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />}
                   <span>Print PDF</span>
               </button>
+              {onOpenManual && <button onClick={onOpenManual} className="p-2 text-slate-400 hover:text-white" title="Shipping Manual"><Info size={18}/></button>}
           </div>
       </header>
 

@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Book, Play, Terminal, MoreVertical, Plus, Edit3, Trash2, Cpu, Share2, Sparkles, Loader2, Save, Image as ImageIcon, X, ChevronUp, ChevronDown, Check, Zap, Wand2, Link } from 'lucide-react';
+import { ArrowLeft, Book, Play, Terminal, MoreVertical, Plus, Edit3, Trash2, Cpu, Share2, Sparkles, Loader2, Save, Image as ImageIcon, X, ChevronUp, ChevronDown, Check, Zap, Wand2, Link, Info } from 'lucide-react';
 import { Notebook, NotebookCell } from '../types';
 import { getCreatorNotebooks, saveNotebook, getNotebook } from '../services/firestoreService';
 import { MarkdownView } from './MarkdownView';
@@ -13,9 +12,11 @@ interface NotebookViewerProps {
   onBack: () => void;
   currentUser: any;
   notebookId?: string;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
-export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentUser, notebookId }) => {
+export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentUser, notebookId, onOpenManual }) => {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [activeNotebook, setActiveNotebook] = useState<Notebook | null>(null);
   const [loading, setLoading] = useState(true);
@@ -326,7 +327,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
       </div>
 
       {/* Main Content: Interactive Notebook */}
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-950 relative">
+      <div className="flex-1 flex flex-col min-0 bg-slate-950 relative">
           {activeNotebook ? (
               <>
                   <header className="h-16 border-b border-slate-800 flex items-center justify-between px-6 bg-slate-900/50 backdrop-blur-md sticky top-0 z-30">
@@ -349,6 +350,7 @@ export const NotebookViewer: React.FC<NotebookViewerProps> = ({ onBack, currentU
                           </button>
                           <div className="w-px h-6 bg-slate-800 mx-1"></div>
                           <button className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"><MoreVertical size={18}/></button>
+                          {onOpenManual && <button onClick={onOpenManual} className="p-2 text-slate-400 hover:text-white" title="Notebook Manual"><Info size={18}/></button>}
                       </div>
                   </header>
 

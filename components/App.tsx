@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode,
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Lock, Crown, ShieldCheck, Flame, Zap, RefreshCcw, Bug, ChevronUp, Fingerprint, Database, CheckCircle, Pause, PlayCircle as PlayIcon, Copy, BookText, Send, MessageCircle, FileUp, FileSignature, IdCard
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Lock, Crown, ShieldCheck, Flame, Zap, RefreshCcw, Bug, ChevronUp, Fingerprint, Database, CheckCircle, Pause, PlayCircle as PlayIcon, Copy, BookText, Send, MessageCircle, FileUp, FileSignature, IdCard, Info
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewID, TranscriptItem, CodeFile, UserFeedback, Comment, Attachment } from '../types';
@@ -56,6 +56,8 @@ import { FeedbackManager } from './FeedbackManager';
 import { PdfSigner } from './PdfSigner';
 import { BadgeStudio } from './BadgeStudio';
 import { BadgeViewer } from './BadgeViewer';
+import { ManualModal } from './ManualModal';
+import { ResumeView } from './ResumeView';
 
 import { auth, db } from '../services/firebaseConfig';
 import { onAuthStateChanged } from '@firebase/auth';
@@ -176,7 +178,7 @@ const UI_TEXT = {
   }
 };
 
-const PUBLIC_VIEWS: ViewID[] = ['mission', 'story', 'privacy', 'user_guide', 'check_viewer', 'badge_viewer']; 
+const PUBLIC_VIEWS: ViewID[] = ['mission', 'story', 'privacy', 'user_guide', 'check_viewer', 'badge_viewer', 'resume']; 
 const FREE_VIEWS: ViewID[] = ['directory', 'podcast_detail', 'dashboard', 'groups'];
 
 const isRestrictedView = (v: string): boolean => {
@@ -248,6 +250,8 @@ const App: React.FC = () => {
   const [feedbackType, setFeedbackType] = useState<'bug' | 'feature' | 'general'>('general');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
+
+  const [manualViewId, setManualViewId] = useState<ViewID | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -570,8 +574,8 @@ const App: React.FC = () => {
 
   const activeChannel = useMemo(() => allChannels.find(c => c.id === activeChannelId), [allChannels, activeChannelId]);
   
-  const channelToComment = useMemo(() => allChannels.find(c => c.id === commentChannelId), [allChannels, commentChannelId]);
-  const channelToEdit = useMemo(() => allChannels.find(c => c.id === editChannelId), [allChannels, editChannelId]);
+  const commentChannel = useMemo(() => allChannels.find(c => c.id === commentChannelId), [allChannels, commentChannelId]);
+  const editChannel = useMemo(() => allChannels.find(c => c.id === editChannelId), [allChannels, editChannelId]);
 
   const handleSendFeedback = async () => {
     if (!feedbackText.trim() || isSubmittingFeedback) return;
@@ -623,11 +627,11 @@ const App: React.FC = () => {
   }, [isProMember]);
 
   if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Spectrum...</span></div>;
-  if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} />;
+  if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} onResumeClick={() => handleSetViewState('resume')} />;
 
   return (
     <ErrorBoundary>
-      <div className="h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative">
+      <div className="h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative border-b border-white/5">
         <header className="min-h-[4rem] pt-[env(safe-area-inset-top)] border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 shrink-0 z-50 backdrop-blur-xl">
            <div className="flex items-center gap-3">
               <div className="relative">
@@ -657,6 +661,13 @@ const App: React.FC = () => {
            </div>
            <div className="flex items-center gap-3 sm:gap-4">
               <Notifications />
+              <button 
+                onClick={() => setManualViewId(activeViewID)} 
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all" 
+                title="Application Manual"
+              >
+                  <BookOpen size={18} />
+              </button>
               <button onClick={() => setShowConsole(!showConsole)} className={`p-2 transition-all rounded-lg ${showConsole ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title="Neural Diagnostics"><Bug size={18} className={!showConsole ? 'animate-pulse text-red-500' : ''} /></button>
               <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-white transition-colors" title="Reload Web App"><RefreshCcw size={18} /></button>
               {userProfile && (<button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex"><Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span></button>)}
@@ -666,46 +677,46 @@ const App: React.FC = () => {
 
         <main className="flex-1 overflow-hidden relative flex flex-col pb-10">
             <GuardedView id={activeViewID} isProMember={isProMember} isSuperAdmin={isSuperAdmin} t={t} onUpgradeClick={() => setIsPricingModalOpen(true)}>
-                {activeViewID === 'dashboard' && ( <Dashboard userProfile={userProfile} isProMember={isProMember} onNavigate={handleSetViewState} language={language} handleVote={handleVote} /> )}
-                {activeViewID === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice="Auto" currentUser={currentUser} t={t} setChannelToEdit={(c) => setEditChannelId(c.id)} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={(c) => setCommentChannelId(c.id)} handleVote={handleVote} handleBookmarkToggle={handleBookmarkToggle} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} onOpenPricing={() => setIsPricingModalOpen(true)} language={language} onMagicCreate={handleMagicCreate} /> )}
+                {activeViewID === 'dashboard' && ( <Dashboard userProfile={userProfile} isProMember={isProMember} onNavigate={handleSetViewState} language={language} handleVote={handleVote} onOpenManual={() => setManualViewId('dashboard')} /> )}
+                {activeViewID === 'directory' && ( <PodcastFeed channels={allChannels} onChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} onStartLiveSession={handleStartLiveSession} userProfile={userProfile} globalVoice="Auto" currentUser={currentUser} t={t} setChannelToEdit={(c) => setEditChannelId(c.id)} setIsSettingsModalOpen={setIsSettingsModalOpen} onCommentClick={(c) => setCommentChannelId(c.id)} handleVote={handleVote} handleBookmarkToggle={handleBookmarkToggle} searchQuery={searchQuery} setSearchQuery={setSearchQuery} onNavigate={(v) => handleSetViewState(v as any)} onUpdateChannel={handleUpdateChannel} onOpenPricing={() => setIsPricingModalOpen(true)} language={language} onMagicCreate={handleMagicCreate} onOpenManual={() => setManualViewId('directory')} /> )}
                 {activeViewID === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={handleDetailBack} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} onUpdateChannel={handleUpdateChannel} isProMember={isProMember} /> )}
                 {activeViewID === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} language={language} initialContext={liveSessionParams.context} recordingEnabled={liveSessionParams.recordingEnabled} lectureId={liveSessionParams.bookingId} recordScreen={liveSessionParams.recordScreen} recordCamera={liveSessionParams.recordCamera} activeSegment={liveSessionParams.activeSegment} recordingDuration={liveSessionParams.recordingDuration} interactionEnabled={liveSessionParams.interactionEnabled} recordingTarget={liveSessionParams.recordingTarget} sessionTitle={liveSessionParams.sessionTitle} /> )}
-                {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} /></div> )}
-                {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} isProMember={isProMember}/> )}
-                {activeViewID === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('dashboard')} /> )}
-                {activeViewID === 'blog' && ( <div className="h-full overflow-y-auto"><BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} /></div> )}
-                {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} /> )}
-                {activeViewID === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} jobId={activeItemId || undefined} /> )}
-                {activeViewID === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={(c) => setEditChannelId(c.id)} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice="Auto" t={t} onCommentClick={(c) => setCommentChannelId(c.id)} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={() => setIsCreateModalOpen(true)} /> )}
-                {activeViewID === 'mentorship' && ( <div className="h-full overflow-y-auto"><MentorBooking currentUser={currentUser} userProfile={userProfile} channels={allChannels} onStartLiveSession={handleStartLiveSession} /></div> )}
-                {activeViewID === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><RecordingList onBack={() => handleSetViewState('dashboard')} onStartLiveSession={handleStartLiveSession} /></div> )}
-                {(activeViewID === 'check_designer' || activeViewID === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} isProMember={isProMember} /> )}
-                {activeViewID === 'shipping_labels' && ( <ShippingLabelApp onBack={() => handleSetViewState('dashboard')} /> )}
-                {activeViewID === 'icon_generator' && ( <IconGenerator onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} iconId={activeItemId || undefined} isProMember={isProMember} /> )}
-                {activeViewID === 'notebook_viewer' && ( <NotebookViewer onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} notebookId={activeItemId || undefined} /> )}
-                {(activeViewID === 'card_workshop' || activeViewID === 'card_viewer') && ( <CardWorkshop onBack={() => handleSetViewState('dashboard')} cardId={activeItemId || undefined} isViewer={activeViewID === 'card_viewer' || !!activeItemId} /> )}
+                {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('docs')} /></div> )}
+                {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} isProMember={isProMember} onOpenManual={() => setManualViewId('code_studio')} /> )}
+                {activeViewID === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('whiteboard')} /> )}
+                {activeViewID === 'blog' && ( <div className="h-full overflow-y-auto"><BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('blog')} /></div> )}
+                {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} onOpenManual={() => setManualViewId('chat')} /> )}
+                {activeViewID === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} jobId={activeItemId || undefined} onOpenManual={() => setManualViewId('careers')} /> )}
+                {activeViewID === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={(c) => setEditChannelId(c.id)} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice="Auto" t={t} onCommentClick={(c) => setCommentChannelId(c.id)} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={() => setIsCreateModalOpen(true)} onOpenManual={() => setManualViewId('calendar')} /> )}
+                {activeViewID === 'mentorship' && ( <div className="h-full overflow-y-auto"><MentorBooking currentUser={currentUser} userProfile={userProfile} channels={allChannels} onStartLiveSession={handleStartLiveSession} onOpenManual={() => setManualViewId('mentorship')} /></div> )}
+                {activeViewID === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><RecordingList onBack={() => handleSetViewState('dashboard')} onStartLiveSession={handleStartLiveSession} onOpenManual={() => setManualViewId('recordings')} /></div> )}
+                {(activeViewID === 'check_designer' || activeViewID === 'check_viewer') && ( <CheckDesigner onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} isProMember={isProMember} onOpenManual={() => setManualViewId('check_designer')} /> )}
+                {activeViewID === 'shipping_labels' && ( <ShippingLabelApp onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('shipping_labels')} /> )}
+                {activeViewID === 'icon_generator' && ( <IconGenerator onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} iconId={activeItemId || undefined} isProMember={isProMember} onOpenManual={() => setManualViewId('icon_generator')} /> )}
+                {activeViewID === 'notebook_viewer' && ( <NotebookViewer onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} notebookId={activeItemId || undefined} onOpenManual={() => setManualViewId('notebook_viewer')} /> )}
+                {(activeViewID === 'card_workshop' || activeViewID === 'card_viewer') && ( <CardWorkshop onBack={() => handleSetViewState('dashboard')} cardId={activeItemId || undefined} isViewer={activeViewID === 'card_viewer' || !!activeItemId} onOpenManual={() => setManualViewId('card_workshop')} /> )}
                 {activeViewID === 'mission' && ( <div className="h-full overflow-y-auto"><MissionManifesto onBack={() => handleSetViewState('dashboard')} /></div> )}
                 {activeViewID === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
-                {activeViewID === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('dashboard')} user={userProfile} /> )}
-                {activeViewID === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} isProMember={isProMember} /> )}
+                {activeViewID === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('dashboard')} user={userProfile} onOpenManual={() => setManualViewId('coin_wallet')} /> )}
+                {activeViewID === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} isProMember={isProMember} onOpenManual={() => setManualViewId('mock_interview')} /> )}
                 {activeViewID === 'firestore_inspector' && ( <FirestoreInspector onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
                 {activeViewID === 'public_channel_inspector' && ( <PublicChannelInspector onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'my_channel_inspector' && ( <MyChannelInspector onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'cloud_debug' && ( <CloudDebugView onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'debug_view' && ( <DebugView onBack={() => handleSetViewState('dashboard')} /> )}
-                {activeViewID === 'graph_studio' && ( <GraphStudio onBack={() => handleSetViewState('dashboard')} isProMember={isProMember} /> )}
+                {activeViewID === 'graph_studio' && ( <GraphStudio onBack={() => handleSetViewState('dashboard')} isProMember={isProMember} onOpenManual={() => setManualViewId('graph_studio')} /> )}
                 {activeViewID === 'story' && ( <ProjectStory onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'privacy' && ( <PrivacyPolicy onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'user_guide' && ( <UserManual onBack={() => handleSetViewState('dashboard')} /> )}
-                {activeViewID === 'bible_study' && ( <ScriptureSanctuary onBack={() => handleSetViewState('dashboard')} language={language} isProMember={isProMember} /> )}
-                {/* Fixed: Line 700 changed 'activeTestament' to 'activeViewID' */}
+                {activeViewID === 'bible_study' && ( <ScriptureSanctuary onBack={() => handleSetViewState('dashboard')} language={language} isProMember={isProMember} onOpenManual={() => setManualViewId('bible_study')} /> )}
                 {activeViewID === 'scripture_ingest' && ( <ScriptureIngest onBack={() => handleSetViewState('bible_study')} /> )}
-                {activeViewID === 'groups' && ( <GroupManager currentUser={currentUser} userProfile={userProfile} /> )}
-                {activeViewID === 'book_studio' && ( <BookStudio onBack={() => handleSetViewState('dashboard')} /> )}
+                {activeViewID === 'groups' && ( <GroupManager currentUser={currentUser} userProfile={userProfile} onOpenManual={() => setManualViewId('groups')} /> )}
+                {activeViewID === 'book_studio' && ( <BookStudio onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('book_studio')} /> )}
                 {activeViewID === 'feedback_manager' && ( <FeedbackManager onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
-                {activeViewID === 'pdf_signer' && ( <PdfSigner onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} /> )}
-                {activeViewID === 'badge_studio' && ( <BadgeStudio onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
+                {activeViewID === 'pdf_signer' && ( <PdfSigner onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onOpenManual={() => setManualViewId('pdf_signer')} /> )}
+                {activeViewID === 'badge_studio' && ( <BadgeStudio onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} onOpenManual={() => setManualViewId('badge_studio')} /> )}
                 {activeViewID === 'badge_viewer' && ( <BadgeViewer onBack={() => handleSetViewState('dashboard')} badgeId={activeItemId} /> )}
+                {activeViewID === 'resume' && ( <ResumeView onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} /> )}
             </GuardedView>
         </main>
 
@@ -755,7 +766,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v8.0.0-COMPLETE</p></div>
             </div>
         </div>
 
@@ -763,8 +774,11 @@ const App: React.FC = () => {
         <VoiceCreateModal isOpen={isVoiceCreateOpen} onClose={() => setIsVoiceCreateOpen(false)} onCreate={handleCreateChannel} />
         <PricingModal isOpen={isPricingModalOpen} onClose={() => setIsPricingModalOpen(false)} user={userProfile} onSuccess={(tier) => { if(userProfile) setUserProfile({...userProfile, subscriptionTier: tier}); }} />
         {currentUser && ( <SettingsModal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} user={userProfile || { uid: currentUser.uid, email: currentUser.email, displayName: currentUser.displayName, photoURL: currentUser.photoURL, groups: [], coinBalance: 0, createdAt: Date.now(), lastLogin: Date.now(), subscriptionTier: 'free', apiUsageCount: 0 } as UserProfile} onUpdateProfile={setUserProfile} onUpgradeClick={() => setIsPricingModalOpen(true)} isSuperAdmin={isSuperAdmin} onNavigateAdmin={() => handleSetViewState('firestore_debug')} /> )}
-        {channelToComment && ( <CommentsModal isOpen={true} onClose={() => setCommentChannelId(null)} channel={channelToComment} onAddComment={handleAddComment} onDeleteComment={handleDeleteComment} onEditComment={handleEditComment} currentUser={currentUser} /> )}
-        {channelToEdit && ( <ChannelSettingsModal isOpen={true} onClose={() => setEditChannelId(null)} channel={channelToEdit} onUpdate={handleUpdateChannel} /> )}
+        
+        {commentChannelId && ( <CommentsModal isOpen={true} onClose={() => setCommentChannelId(null)} channel={commentChannel!} onAddComment={handleAddComment} onDeleteComment={handleDeleteComment} onEditComment={handleEditComment} currentUser={currentUser} /> )}
+        {editChannelId && ( <ChannelSettingsModal isOpen={true} onClose={() => setEditChannelId(null)} channel={editChannel!} onUpdate={handleUpdateChannel} /> )}
+        
+        {manualViewId && ( <ManualModal isOpen={true} onClose={() => setManualViewId(null)} viewId={manualViewId} /> )}
       </div>
     </ErrorBoundary>
   );

@@ -7,11 +7,10 @@ import {
 } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { saveScriptureToLedger, saveAudioToLedger, getScriptureFromLedger, getScriptureAudioUrl } from '../services/firestoreService';
-// Fix: Use @firebase scoped imports to match project conventions and resolve exported member errors
 import { collection, query, where, getDocs } from '@firebase/firestore';
+import { ref, listAll, getDownloadURL } from '@firebase/storage';
 import { db } from '../services/firebaseConfig';
 import { DualVerse } from '../types';
-// Fix: Added missing imports for synthesizeSpeech and TtsProvider to resolve compilation errors
 import { synthesizeSpeech, TtsProvider } from '../services/tts';
 import { getCachedAudioBuffer, cacheAudioBuffer } from '../utils/db';
 import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, decodeRawPcm, connectOutput, base64ToBytes } from '../utils/audioUtils';
@@ -562,7 +561,7 @@ export const ScriptureIngest: React.FC<ScriptureIngestProps> = ({ onBack }) => {
                                             </div>
                                             <div className="flex gap-2">
                                                 <div title="Synthesis Status" className={`w-2.5 h-2.5 rounded-full shadow-lg ${res.genStatus === 'success' ? 'bg-emerald-500 shadow-emerald-500/20' : res.genStatus === 'repairing' ? 'bg-amber-500 animate-pulse' : res.genStatus === 'skipped' ? 'bg-indigo-500' : res.genStatus === 'error' ? 'bg-red-500' : 'bg-slate-700 animate-pulse'}`}></div>
-                                                <div title="Audio Status" className={`w-2.5 h-2.5 rounded-full ${res.audioStatus === 'success' ? 'bg-emerald-500' : res.audioStatus === 'error' ? 'bg-red-500' : res.audioStatus === 'skipped' ? 'bg-slate-800' : res.audioStatus === 'processing' ? 'bg-slate-700 animate-pulse' : 'bg-slate-800'}`}></div>
+                                                <div title="Audio Status" className={`w-2.5 h-2.5 rounded-full ${res.audioStatus === 'success' ? 'bg-emerald-500' : res.audioStatus === 'error' ? 'bg-red-500' : res.audioStatus === 'skipped' ? 'bg-slate-800' : res.audioStatus === 'processing' ? 'bg-slate-800' : 'bg-slate-800'}`}></div>
                                                 <div title="Save Status" className={`w-2.5 h-2.5 rounded-full ${res.saveStatus === 'success' ? 'bg-emerald-500' : res.saveStatus === 'error' ? 'bg-red-500' : res.saveStatus === 'skipped' ? 'bg-slate-800' : res.saveStatus === 'processing' ? 'bg-slate-700 animate-pulse' : 'bg-slate-800'}`}></div>
                                             </div>
                                         </div>

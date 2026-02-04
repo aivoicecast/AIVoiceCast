@@ -17,9 +17,11 @@ const GLOBAL_SYNC_REGISTRY = new Map<string, number>();
 interface GroupManagerProps {
   currentUser: any;
   userProfile: UserProfile | null;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
-export const GroupManager: React.FC<GroupManagerProps> = ({ currentUser, userProfile }) => {
+export const GroupManager: React.FC<GroupManagerProps> = ({ currentUser, userProfile, onOpenManual }) => {
   const [activeTab, setActiveTab] = useState<'my' | 'discover'>('my');
   const [groups, setGroups] = useState<Group[]>([]);
   const [publicGroups, setPublicGroups] = useState<Group[]>([]);
@@ -228,7 +230,10 @@ export const GroupManager: React.FC<GroupManagerProps> = ({ currentUser, userPro
                             <Users className="text-indigo-500" size={48} /> 
                             Communities
                         </h1>
-                        <p className="text-slate-400 font-medium max-w-xl text-lg leading-relaxed">Collaborative nodes for technical research and shared intelligence.</p>
+                        <div className="flex items-center gap-2">
+                            <p className="text-slate-400 font-medium max-w-xl text-lg leading-relaxed">Collaborative nodes for technical research and shared intelligence.</p>
+                            {onOpenManual && <button onClick={onOpenManual} className="p-1 text-slate-600 hover:text-white transition-colors" title="Groups Manual"><Info size={16}/></button>}
+                        </div>
                     </div>
                     <div className="flex bg-slate-900 rounded-[1.5rem] p-1.5 border border-slate-800 shadow-2xl">
                         <button onClick={() => setActiveTab('my')} className={`px-8 py-3 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === 'my' ? 'bg-indigo-600 text-white shadow-xl' : 'text-slate-500 hover:text-white'}`}>My Registry</button>

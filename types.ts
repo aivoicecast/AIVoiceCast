@@ -5,6 +5,14 @@ export type ReaderTheme = 'slate' | 'light' | 'dark' | 'sepia';
 export type BookStyle = 'brutalist' | 'academic' | 'minimal';
 export type TtsProvider = 'gemini' | 'google' | 'system' | 'openai';
 
+export interface PlatformMetrics {
+    globalRefractions: number;
+    voiceCoinVelocity: number;
+    computeEfficiency: string;
+    humanoidCapacity: number;
+    distributedIndex: number;
+}
+
 export interface TranscriptItem {
   role: 'user' | 'ai';
   text: string;
@@ -172,7 +180,7 @@ export interface Attachment {
   name?: string;
 }
 
-export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view' | 'pdf_signer' | 'badge_studio' | 'badge_viewer';
+export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view' | 'pdf_signer' | 'badge_studio' | 'badge_viewer' | 'resume';
 
 export interface Group {
   id: string;
@@ -585,4 +593,24 @@ export interface SignedDocument {
     updatedAt?: number;
     memo?: string;
     hashes?: string;
+}
+
+export interface BookPage {
+  title: string;
+  content: string;
+}
+
+export type BookCategory = 'Platform' | 'Methodology' | 'Evaluation' | 'Architecture' | 'Daily';
+
+export interface BookData {
+  id: string;
+  title: string;
+  subtitle: string;
+  author: string;
+  version: string;
+  category: BookCategory;
+  pages: BookPage[];
+  coverImage?: string;
+  ownerId?: string;
+  isCustom?: boolean;
 }

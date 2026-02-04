@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Channel, Booking, UserProfile, UserAvailability } from '../types';
-import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Loader2, Play, Users, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight, Coins, Check as CheckIcon, HeartHandshake, Edit3, Timer, Coffee, Sunrise, Sun, Sunset, Hash, Star, ShieldCheck, MoreHorizontal, Zap, Bot, ChevronLeft, RefreshCw } from 'lucide-react';
+import { Calendar, Clock, User, ArrowLeft, Search, Briefcase, Sparkles, CheckCircle, X, Users, Loader2, Play, Mail, Video, Mic, FileText, Download, Trash2, Monitor, UserPlus, Grid, List, ArrowDown, ArrowUp, Heart, Share2, Info, ShieldAlert, ChevronRight, Coins, Check as CheckIcon, HeartHandshake, Edit3, Timer, Coffee, Sunrise, Sun, Sunset, Hash, Star, ShieldCheck, MoreHorizontal, Zap, Bot, ChevronLeft, RefreshCw } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { createBooking, getUserBookings, cancelBooking, getAllUsers, getUserProfile } from '../services/firestoreService';
 import { getDriveToken, connectGoogleDrive } from '../services/authService';
@@ -13,6 +12,7 @@ interface MentorBookingProps {
   userProfile?: UserProfile | null;
   channels: Channel[]; 
   onStartLiveSession: (channel: Channel, context?: string, recordingEnabled?: boolean, bookingId?: string, videoEnabled?: boolean, cameraEnabled?: boolean, activeSegment?: { index: number, lectureId: string }) => void;
+  onOpenManual?: () => void;
 }
 
 interface Slot {
@@ -57,7 +57,7 @@ const SafeAvatar = ({ src, name, icon: Icon = User }: { src?: string, name: stri
 };
 
 export const MentorBooking: React.FC<MentorBookingProps> = ({ 
-  currentUser, userProfile, channels, onStartLiveSession 
+  currentUser, userProfile, channels, onStartLiveSession, onOpenManual 
 }) => {
     const [view, setView] = useState<'mentors' | 'calendar' | 'bookings'>('mentors');
     const [mentors, setMentors] = useState<UserProfile[]>([]);
@@ -199,7 +199,10 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({
                     )}
                     <div>
                         <h1 className="text-xl font-black italic uppercase tracking-tighter text-white">Expert Hub</h1>
-                        <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Connect & Refract Knowledge</p>
+                        <div className="flex items-center gap-2">
+                            <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Connect & Refract Knowledge</p>
+                            {onOpenManual && <button onClick={onOpenManual} className="p-1 text-slate-600 hover:text-white transition-colors" title="Experts Manual"><Info size={12}/></button>}
+                        </div>
                     </div>
                 </div>
                 <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700">
@@ -322,7 +325,7 @@ export const MentorBooking: React.FC<MentorBookingProps> = ({
                                                     key={i} 
                                                     disabled={slot.isBusy || bookingInProgress}
                                                     onClick={() => handleBookSlot(slot)}
-                                                    className={`py-4 rounded-2xl text-xs font-black tracking-tighter border transition-all active:scale-95 ${slot.isBusy ? 'bg-slate-950 border-slate-800 text-slate-800 cursor-not-allowed' : 'bg-slate-900 border-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white hover:border-indigo-400 shadow-md'}`}
+                                                    className={`py-4 rounded-2xl text-xs font-black tracking-tighter border transition-all active:scale-95 ${slot.isBusy ? 'bg-slate-950 border-slate-800 text-slate-800 cursor-not-allowed' : 'bg-slate-900 border border-slate-800 text-indigo-400 hover:bg-indigo-600 hover:text-white hover:border-indigo-400 shadow-md'}`}
                                                 >
                                                     {slot.start}
                                                 </button>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { GoogleGenAI } from '@google/genai';
 import { 
@@ -9,7 +8,6 @@ import {
   Bug, Film, X
 } from 'lucide-react';
 import { auth, storage } from '../services/firebaseConfig';
-// Fix: Use @firebase scoped imports to match project conventions and resolve exported member errors
 import { ref, listAll, getDownloadURL } from '@firebase/storage';
 import { saveScriptureToLedger, getScriptureFromLedger, getScriptureAudioUrl } from '../services/firestoreService';
 import { DualVerse } from '../types';
@@ -24,6 +22,8 @@ interface ScriptureSanctuaryProps {
   onBack: () => void;
   language: 'en' | 'zh';
   isProMember: boolean;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
 interface DebugLog {
@@ -92,7 +92,7 @@ const BIBLE_CHAPTER_COUNTS: Record<string, number> = {
     '1 John': 5, '2 John': 1, '3 John': 1, 'Jude': 1, 'Revelation': 22
 };
 
-export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, language, isProMember }) => {
+export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, language, isProMember, onOpenManual }) => {
   const [activeTestament, setActiveTestament] = useState<'OT' | 'NT'>(() => (localStorage.getItem('last_bible_testament') as any) || 'NT');
   const [selectedBook, setSelectedBook] = useState(() => localStorage.getItem('last_bible_book') || 'John');
   const [selectedChapter, setSelectedChapter] = useState(() => localStorage.getItem('last_bible_chapter') || '1');
@@ -113,7 +113,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
   const [systemVoices, setSystemVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedSystemVoiceURI, setSelectedSystemVoiceURI] = useState(() => localStorage.getItem('bible_system_voice_uri') || '');
-  const [vaultStatus, setVaultStatus] = useState<Record<string, 'exists' | 'missing' | 'checking' | 'corrupted'>>({});
+  const [vaultStatus, setVaultStatus] = useState<Record<string, { text: boolean, audio: boolean, checking: boolean }>>({});
 
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const playbackSessionRef = useRef(0);
@@ -132,9 +132,9 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
 
   const scanBookVault = useCallback(async (book: string) => {
     if (!storage) return;
-    const bookStatus: Record<string, 'exists' | 'missing' | 'checking' | 'corrupted'> = {};
+    const bookStatus: Record<string, { text: boolean, audio: boolean, checking: boolean }> = {};
     const count = BIBLE_CHAPTER_COUNTS[book] || 0;
-    for (let i = 1; i <= count; i++) bookStatus[i] = 'checking';
+    for (let i = 1; i <= count; i++) bookStatus[i] = { text: false, audio: false, checking: true };
     setVaultStatus(bookStatus);
     
     dispatchLog(`Vault Handshake: Scanning ${book} registry...`, 'info');
@@ -144,16 +144,20 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
         const listRes = await listAll(folderRef);
         const existingChapters = listRes.items.map(item => item.name.replace('.json', ''));
         
-        const finalStatus: Record<string, 'exists' | 'missing' | 'checking' | 'corrupted'> = {};
+        const finalStatus: Record<string, { text: boolean, audio: boolean, checking: boolean }> = {};
         for (let i = 1; i <= count; i++) {
-            finalStatus[i] = existingChapters.includes(i.toString()) ? 'exists' : 'missing';
+            finalStatus[i] = {
+                text: existingChapters.includes(i.toString()),
+                audio: false, // Placeholder as listAll doesn't easily show nested status
+                checking: false
+            };
         }
         setVaultStatus(finalStatus);
         dispatchLog(`Vault Scan Complete for ${book}.`, 'success');
     } catch (e: any) {
         console.error("Vault scan failed", e);
-        const failStatus: Record<string, 'exists' | 'missing' | 'checking' | 'corrupted'> = {};
-        for (let i = 1; i <= count; i++) failStatus[i] = 'missing';
+        const failStatus: Record<string, { text: boolean, audio: boolean, checking: boolean }> = {};
+        for (let i = 1; i <= count; i++) failStatus[i] = { text: false, audio: false, checking: false };
         setVaultStatus(failStatus);
     }
   }, [dispatchLog]);
@@ -437,8 +441,8 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
         <div className="w-80 border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0">
             <div className="p-4 bg-slate-950/50 border-b border-slate-800 flex flex-col gap-3">
                 <div className="flex gap-1">
-                    <button onClick={() => setActiveTestament('OT')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTestament === 'OT' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Old Testament</button>
-                    <button onClick={() => setActiveTestament('NT')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTestament === 'NT' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>New Testament</button>
+                    <button onClick={() => setActiveTestament('OT')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTestament === 'OT' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-300 hover:text-slate-100'}`}>Old Testament</button>
+                    <button onClick={() => setActiveTestament('NT')} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTestament === 'NT' ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:text-slate-100'}`}>New Testament</button>
                 </div>
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={14}/>
@@ -512,6 +516,11 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                              </select>
                         </div>
                     )}
+                    <div className="mt-auto border-t border-slate-800 pt-6">
+                        <button onClick={() => { if (onOpenManual) onOpenManual(); }} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all">
+                            <Info size={14}/> Documentation
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -541,13 +550,13 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                                         className={`aspect-square flex flex-col items-center justify-center rounded-2xl border transition-all relative overflow-hidden group ${selectedChapter === ch ? 'bg-indigo-600 border-indigo-500 text-white shadow-xl scale-105' : 'bg-slate-900/40 border-slate-800 text-slate-500 hover:border-indigo-500'}`}
                                     >
                                         <span className="text-lg font-black">{ch}</span>
-                                        {status === 'exists' && (
+                                        {status?.text && (
                                             <div className="mt-1 flex gap-0.5">
                                                 <div className="w-1 h-1 rounded-full bg-emerald-500"></div>
                                                 <div className="w-1 h-1 rounded-full bg-amber-500 opacity-40"></div>
                                             </div>
                                         )}
-                                        {status === 'checking' && <Loader2 size={10} className="animate-spin mt-1 opacity-20"/>}
+                                        {status?.checking && <Loader2 size={10} className="animate-spin mt-1 opacity-20"/>}
                                         <div className="absolute inset-0 bg-indigo-600 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                             <Play size={18} fill="currentColor"/>
                                         </div>
@@ -564,7 +573,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                                 <div className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-2xl flex items-center gap-4 shadow-xl">
                                     <button 
                                         onClick={() => startReadingSequence(currentReadingIndex)}
-                                        className={`p-3 rounded-xl transition-all shadow-lg active:scale-95 ${isReading ? 'bg-red-600 text-white shadow-red-900/20' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-900/20'}`}
+                                        className={`p-3 rounded-xl transition-all shadow-lg active:scale-95 ${isReading ? 'bg-red-600 text-white animate-pulse' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-900/20'}`}
                                     >
                                         {audioBuffering ? <Loader2 size={18} className="animate-spin"/> : isReading ? <Pause size={18} fill="currentColor"/> : <Play size={18} fill="currentColor" className="ml-0.5"/>}
                                     </button>
@@ -594,7 +603,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                         </div>
 
                         {isSyncing && parsedVerses.length === 0 ? (
-                            <div className="py-24 flex flex-col items-center justify-center gap-8 text-center animate-pulse">
+                            <div className="py-24 flex flex-col items-center justify-center gap-6 text-center animate-pulse">
                                 <div className="relative">
                                     <div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div>
                                     <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>

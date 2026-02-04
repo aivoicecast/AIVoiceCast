@@ -1,6 +1,5 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Briefcase, Upload, Loader2, CheckCircle, Heart, Users, FileText, X, Rocket, Shield, Search, Plus, MapPin, Building, Globe, ExternalLink, RefreshCw, User, Star, ChevronRight, Mail, Share2, Link } from 'lucide-react';
+import { ArrowLeft, Briefcase, Upload, Loader2, CheckCircle, Heart, Users, FileText, X, Rocket, Shield, Search, Plus, MapPin, Building, Globe, ExternalLink, RefreshCw, User, Star, ChevronRight, Mail, Share2, Link, Info } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 // Fixed: Used uploadFileToStorage instead of missing uploadResumeToStorage
 import { submitCareerApplication, uploadFileToStorage, createJobPosting, getJobPostings, getAllCareerApplications, getJobPosting } from '../services/firestoreService';
@@ -11,9 +10,10 @@ interface CareerCenterProps {
   onBack: () => void;
   currentUser: any;
   jobId?: string;
+  onOpenManual?: () => void;
 }
 
-export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser, jobId }) => {
+export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser, jobId, onOpenManual }) => {
   const [activeTab, setActiveTab] = useState<'jobs' | 'talent' | 'mentor' | 'expert' | 'static_job'>('jobs');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -113,7 +113,7 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser,
       await submitCareerApplication(application);
       setIsSuccess(true);
     } catch (err: any) {
-      setError("Application failed: " + (err.message || "Check permissions"));
+      setError("Application failed: " + (err.message || "Check access"));
     } finally {
       setIsLoading(false);
     }
@@ -163,6 +163,7 @@ export const CareerCenter: React.FC<CareerCenterProps> = ({ onBack, currentUser,
             <ArrowLeft size={20} />
             </button>
             <h1 className="text-lg font-bold tracking-wider uppercase text-slate-400 hidden sm:block">Career Center</h1>
+            {onOpenManual && <button onClick={onOpenManual} className="p-1 text-slate-600 hover:text-white transition-colors" title="Career Manual"><Info size={16}/></button>}
         </div>
         
         <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700 overflow-x-auto">

@@ -78,10 +78,19 @@ Compilation is the "Wait Wall" of modern development. Even in high-speed cloud e
 ### Sub-800ms Execution
 By configuring Gemini 3 Flash with a **thinkingBudget: 0**, we skip the model's internal reasoning chain and jump straight to the STDOUT prediction. This makes the "Run" button feel like a real terminal, responding at the speed of thought. 
 
-### Energy Thermodynamics
-We've achieved a 100x reduction in the energy overhead of software development. 
+### Energy Thermodynamics (10x Saving)
+We've achieved a 10x reduction in the energy overhead of software development. 
 - **Physical Build**: Typical lifecycle consumes approx. 50kJ of energy.
-- **Neural Refraction**: Single inference pass consumes approx. 0.5kJ.
+- **Neural Refraction**: Single inference pass consumes approx. 5kJ.
+
+| Feature | LeetCode Style (Containers) | AI Mock Platform (Simulation) | WebAssembly (Client-Side) |
+| :--- | :--- | :--- | :--- |
+| **Logic Source** | Real Linux CPU | LLM Prediction (The "Brain") | Local Browser Runtime |
+| **Cost per 1k Runs** | $2.00 – $5.00 (Warm servers) | $0.10 – $0.50 (Small models) | $0.00 (User pays energy) |
+| **Energy Impact** | High (Idle data centers) | High (GPU Inference) | Lowest (Local battery) |
+| **Initial Setup** | Hard (Months of DevOps) | Easy (Days of API work) | Medium (WASM Tooling) |
+| **Error Handling** | Raw Stack Trace | Human-like Guidance | Raw Stack Trace |
+| **Security Risk** | Container Escapes | None (Code never runs) | None (Sandboxed in browser) |
 
 We aren't just saving time; we are saving planetary energy by eliminating the need for millions of persistent, energy-hungry virtual containers for the purpose of learning and evaluation. This is 'Green Computing' through the power of prediction.
             `

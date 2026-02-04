@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AgentMemory, TranscriptItem } from '../types';
-import { ArrowLeft, Sparkles, Wand2, Image as ImageIcon, Download, Share2, RefreshCw, Mic, MicOff, Gift, Loader2, ChevronRight, ChevronLeft, Upload, QrCode, X, Music, Play, Pause, Volume2, Camera, CloudUpload, Lock, Globe, Check, Edit, Package, ArrowDown, Type as TypeIcon, Minus, Plus, Edit3, Link, LayoutGrid, User, Calendar, MessageSquare, Bot, CheckCircle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Sparkles, Wand2, Image as ImageIcon, Download, Share2, RefreshCw, Mic, MicOff, Gift, Loader2, ChevronRight, ChevronLeft, Upload, QrCode, X, Music, Play, Pause, Volume2, Camera, CloudUpload, Lock, Globe, Check, Edit, Package, ArrowDown, Type as TypeIcon, Minus, Plus, Edit3, Link, LayoutGrid, User, Calendar, MessageSquare, Bot, CheckCircle, Trash2, Info } from 'lucide-react';
 import { generateCardMessage, generateCardImage, generateCardAudio, generateSongLyrics } from '../services/cardGen';
 import { GeminiLiveService } from '../services/geminiLive';
 import html2canvas from 'html2canvas';
@@ -17,6 +17,8 @@ interface CardWorkshopProps {
   onBack: () => void;
   cardId?: string;
   isViewer?: boolean;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
 const DEFAULT_MEMORY: AgentMemory = {
@@ -61,7 +63,7 @@ const updateCardTool: FunctionDeclaration = {
     }
 };
 
-export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isViewer: initialIsViewer = false }) => {
+export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isViewer: initialIsViewer = false, onOpenManual }) => {
   const [viewState, setViewState] = useState<'gallery' | 'editor'>(cardId ? 'editor' : 'gallery');
   const [memory, setMemory] = useState<AgentMemory>(DEFAULT_MEMORY);
   const [activeTab, setActiveTab] = useState<'chat' | 'settings'>('chat');
@@ -372,7 +374,6 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                   for (const fc of toolCall.functionCalls) {
                       if (fc.name === 'update_card') {
                           setMemory(prev => ({ ...prev, ...fc.args }));
-                          {/* Fixed: sendToolResponse arguments to match GeminiLiveService expectations */}
                           service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: "Card data updated instantly." } });
                       }
                   }
@@ -563,10 +564,11 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                 <button onClick={handleDownloadPackage} disabled={isExportingPackage} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors" title="Export Zip Package">
                     {isExportingPackage ? <Loader2 size={20} className="animate-spin"/> : <Package size={20} />}
                 </button>
-                <button onClick={handlePublishAndShare} disabled={isPublishing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shadow-lg transition-all active:scale-95">
+                <button onClick={handlePublishAndShare} disabled={isPublishing} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-50 text-white rounded-lg text-xs font-bold shadow-lg transition-all active:scale-95">
                     {isPublishing ? <Loader2 size={14} className="animate-spin"/> : <Share2 size={14}/>}
                     <span className="hidden sm:inline">Sync & Share</span>
                 </button>
+                {onOpenManual && <button onClick={onOpenManual} className="p-2 text-slate-400 hover:text-white" title="Workshop Manual"><Info size={18}/></button>}
             </div>
         </header>
 
@@ -592,7 +594,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                             {transcript.map((item, i) => (
                                 <div key={i} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
                                     <span className={`text-[9px] font-black uppercase mb-1 ${item.role === 'user' ? 'text-indigo-400' : 'text-emerald-400'}`}>{item.role === 'user' ? 'Me' : 'AI'}</span>
-                                    <div className={`px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-300 rounded-tl-sm border border-slate-700 shadow-lg'}`}>{item.text}</div>
+                                    <div className={`max-w-[90%] rounded-2xl p-3 text-xs leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-slate-800 text-slate-300 rounded-tl-sm border border-slate-700 shadow-lg'}`}>{item.text}</div>
                                 </div>
                             ))}
                         </div>

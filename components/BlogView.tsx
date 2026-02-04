@@ -1,18 +1,23 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Blog, BlogPost, Comment, UserProfile } from '../types';
+
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Blog, BlogPost, Comment, UserProfile, TtsProvider } from '../types';
 import { ensureUserBlog, getCommunityPosts, getUserPosts, createBlogPost, updateBlogPost, deleteBlogPost, updateBlogSettings, addPostComment, getBlogPost, getUserProfile, isUserAdmin, deleteBlog } from '../services/firestoreService';
 import { auth } from '../services/firebaseConfig';
-import { Edit3, Plus, Trash2, Globe, User, MessageSquare, MessageCircle, Loader2, ArrowLeft, Save, Image as ImageIcon, Search, LayoutList, PenTool, Rss, X, Pin, AlertCircle, RefreshCw, Eye, Code, ShieldAlert } from 'lucide-react';
+import { Edit3, Plus, Trash2, Globe, User, MessageSquare, MessageCircle, Loader2, ArrowLeft, Save, Image as ImageIcon, Search, LayoutList, PenTool, Rss, X, Pin, AlertCircle, RefreshCw, Eye, Code, ShieldAlert, Play, Pause, Speaker, Info, Volume2, ChevronDown, Check, Zap } from 'lucide-react';
 import { MarkdownView } from './MarkdownView';
 import { CommentsModal } from './CommentsModal';
 import { SYSTEM_BLOG_POSTS } from '../utils/blogContent';
+import { synthesizeSpeech, speakSystem } from '../services/tts';
+import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput, syncPrimeSpeech } from '../utils/audioUtils';
+import { Visualizer } from './Visualizer';
 
 interface BlogViewProps {
   currentUser: any;
   onBack?: () => void;
+  onOpenManual?: () => void;
 }
 
-export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
+export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack, onOpenManual }) => {
   const [activeTab, setActiveTab] = useState<'feed' | 'my_blog' | 'editor' | 'post_detail'>('feed');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -32,6 +37,15 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
 
   const [activePost, setActivePost] = useState<BlogPost | null>(null);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+
+  // Audio Reader State
+  const [isReading, setIsReading] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [ttsProvider, setTtsProvider] = useState<TtsProvider>('gemini');
+  const [showProviderMenu, setShowProviderMenu] = useState(false);
+  const [liveVolume, setLiveVolume] = useState(0);
+  const playbackSessionRef = useRef(0);
+  const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
 
   const isAdmin = useMemo(() => isUserAdmin(profile), [profile]);
   const isSuperAdmin = useMemo(() => currentUser?.email === 'shengliang.song.ai@gmail.com', [currentUser]);
@@ -63,6 +77,9 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
       setPosts(finalPosts.sort((a, b) => (b.publishedAt || b.createdAt) - (a.publishedAt || a.createdAt)));
     } catch (e: any) {
       console.error("Feed load error:", e);
+      window.dispatchEvent(new CustomEvent('neural-log', { 
+        detail: { text: `[Feed Fault] Handshake failed during collection fetch. Error: ${e.message}`, type: 'error' } 
+      }));
       setErrorMsg("Failed to load community feed. Falling back to system posts.");
       setPosts(SYSTEM_BLOG_POSTS);
     } finally {
@@ -99,6 +116,87 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
       );
   }, [posts, searchQuery]);
 
+  const stopAudio = useCallback(() => {
+    playbackSessionRef.current++;
+    setIsReading(false);
+    setIsBuffering(false);
+    setLiveVolume(0);
+    activeSourcesRef.current.forEach(s => { 
+        try { s.onended = null; s.stop(); s.disconnect(); } catch(e) {} 
+    });
+    activeSourcesRef.current.clear();
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }, []);
+
+  const handleToggleRead = async () => {
+    if (isReading) {
+        stopAudio();
+        return;
+    }
+    if (!activePost) return;
+
+    const MY_TOKEN = `BlogReader:${activePost.id}`;
+    registerAudioOwner(MY_TOKEN, stopAudio);
+    const localSession = ++playbackSessionRef.current;
+    
+    setIsReading(true);
+    syncPrimeSpeech();
+    const ctx = getGlobalAudioContext();
+    await warmUpAudioContext(ctx);
+
+    const cleanText = activePost.content
+        .replace(/[#*`]/g, '')
+        .replace(/\$/g, '')
+        .replace(/---/g, '');
+
+    const segments = cleanText.split('\n').filter(s => s.trim().length > 5);
+
+    try {
+        for (let i = 0; i < segments.length; i++) {
+            if (localSession !== playbackSessionRef.current) break;
+            
+            const segment = segments[i].trim();
+            setIsBuffering(true);
+
+            if (ttsProvider === 'system') {
+                setIsBuffering(false);
+                setLiveVolume(0.8);
+                await speakSystem(segment, 'en');
+                setLiveVolume(0);
+            } else {
+                const res = await synthesizeSpeech(segment, 'Zephyr', ctx, ttsProvider, 'en');
+                setIsBuffering(false);
+
+                if (res.buffer && localSession === playbackSessionRef.current) {
+                    setLiveVolume(0.8);
+                    await new Promise<void>((resolve) => {
+                        const source = ctx.createBufferSource();
+                        source.buffer = res.buffer!;
+                        connectOutput(source, ctx);
+                        activeSourcesRef.current.add(source);
+                        source.onended = () => { 
+                            activeSourcesRef.current.delete(source); 
+                            setLiveVolume(0); 
+                            resolve(); 
+                        };
+                        source.start(0);
+                    });
+                }
+            }
+            if (localSession === playbackSessionRef.current) {
+                await new Promise(r => setTimeout(r, 600));
+            }
+        }
+    } catch (e) {
+        console.error("Blog reading failed", e);
+    } finally {
+        if (localSession === playbackSessionRef.current) {
+            setIsReading(false);
+            setIsBuffering(false);
+        }
+    }
+  };
+
   const handleSaveSettings = async () => {
     if (!myBlog) return;
     try {
@@ -112,16 +210,12 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
 
   const handleDeleteBlog = async () => {
       if (!myBlog) return;
-      // Confirmation removed for seamless experience
       setLoading(true);
       try {
-          // Delete all associated posts first
           for (const post of myPosts) {
               await deleteBlogPost(post.id);
           }
-          // Delete the blog doc itself
           await deleteBlog(myBlog.id);
-          
           setMyBlog(null);
           setMyPosts([]);
           setActiveTab('feed');
@@ -147,7 +241,6 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
   };
 
   const handleDeletePost = async (postId: string) => {
-    // Confirmation removed for seamless experience
     const isSystemPost = SYSTEM_BLOG_POSTS.some(p => p.id === postId);
     
     if (isSystemPost) {
@@ -284,13 +377,14 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
         <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-900 sticky top-0 z-10">
             <div className="flex items-center gap-4">
                 {(activeTab === 'post_detail' || activeTab === 'editor') && (
-                    <button onClick={() => setActiveTab(activeTab === 'editor' ? 'my_blog' : 'feed')} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white"><ArrowLeft size={20} /></button>
+                    <button onClick={() => { setActiveTab(activeTab === 'editor' ? 'my_blog' : 'feed'); stopAudio(); }} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white"><ArrowLeft size={20} /></button>
                 )}
                 <h1 className="text-xl font-bold flex items-center gap-2"><Rss className="text-indigo-400"/><span className="hidden sm:inline">{activeTab === 'my_blog' ? 'My Blog' : activeTab === 'editor' ? 'Post Editor' : activeTab === 'post_detail' ? 'Reading Mode' : 'Community Blog'}</span></h1>
+                {onOpenManual && <button onClick={onOpenManual} className="p-1 text-slate-600 hover:text-white transition-colors"><Info size={16}/></button>}
             </div>
             <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700 overflow-x-auto">
-                <button onClick={() => setActiveTab('feed')} className={`px-4 py-2 text-sm font-bold rounded transition-colors ${activeTab === 'feed' || activeTab === 'post_detail' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>Feed</button>
-                <button onClick={() => currentUser ? setActiveTab('my_blog') : window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Authentication required.", type: 'warn' } }))} className={`px-4 py-2 text-sm font-bold rounded transition-colors ${activeTab === 'my_blog' || activeTab === 'editor' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>My Blog</button>
+                <button onClick={() => { setActiveTab('feed'); stopAudio(); }} className={`px-4 py-2 text-sm font-bold rounded transition-colors ${activeTab === 'feed' || activeTab === 'post_detail' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>Feed</button>
+                <button onClick={() => { if(currentUser) { setActiveTab('my_blog'); stopAudio(); } else window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Authentication required.", type: 'warn' } })); }} className={`px-4 py-2 text-sm font-bold rounded transition-colors ${activeTab === 'my_blog' || activeTab === 'editor' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>My Blog</button>
             </div>
         </div>
 
@@ -381,16 +475,43 @@ export const BlogView: React.FC<BlogViewProps> = ({ currentUser, onBack }) => {
                     <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-6 shadow-xl flex-1 flex flex-col">
                         <div className="space-y-4"><div className="flex justify-between items-center"><input type="text" value={editingPost.title} onChange={e => setEditingPost({...editingPost, title: e.target.value})} className="flex-1 bg-transparent text-3xl font-bold text-white placeholder-slate-600 outline-none border-b border-slate-800 pb-2 focus:border-indigo-500 transition-colors mr-4" placeholder="Post Title..."/><div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800"><button onClick={() => setIsPreviewMode(false)} className={`p-2 rounded transition-colors ${!isPreviewMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`} title="Edit Raw Markdown"><Code size={18}/></button><button onClick={() => setIsPreviewMode(true)} className={`p-2 rounded transition-colors ${isPreviewMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`} title="Preview Rendered Content"><Eye size={18}/></button></div></div><div className="flex items-center gap-4"><select value={editingPost.status} onChange={e => setEditingPost({...editingPost, status: e.target.value as any})} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white outline-none focus:border-indigo-500"><option value="draft">Save as Draft</option><option value="published">Publish to Feed</option></select><div className="flex items-center gap-2 flex-1"><input type="text" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && tagInput.trim()) { setEditingPost(prev => ({ ...prev, tags: [...(prev.tags || []), tagInput.trim()] })); setTagInput(''); } }} className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white outline-none w-full focus:border-indigo-500" placeholder="Add tags (Enter to add)"/></div></div><div className="flex flex-wrap gap-2">{editingPost.tags?.map((t, i) => <span key={i} className="text-xs bg-indigo-900/30 text-indigo-300 px-2 py-1 rounded flex items-center gap-1 border border-indigo-500/30">#{t} <button onClick={() => setEditingPost(prev => ({...prev, tags: prev.tags?.filter((_, idx) => idx !== i)}))} className="hover:text-white"><X size={10}/></button></span>)}</div></div>
                         <div className="flex-1 min-h-[400px]">{isPreviewMode ? <div className="h-full w-full bg-[#fdfbf7] rounded-xl p-8 overflow-y-auto prose prose-sm max-w-none shadow-inner border border-slate-200">{editingPost.content ? <MarkdownView content={editingPost.content} initialTheme={profile?.preferredReaderTheme || 'slate'} /> : <div className="h-full flex flex-col items-center justify-center text-slate-400 italic"><Eye size={48} className="mb-2 opacity-10" /><p>Nothing to preview yet.</p></div>}</div> : <textarea value={editingPost.content} onChange={e => setEditingPost({...editingPost, content: e.target.value})} className="w-full h-full bg-slate-950 border border-slate-800 rounded-xl p-6 text-300 font-mono text-sm leading-relaxed outline-none focus:ring-2 focus:ring-indigo-500/30 resize-none shadow-inner" placeholder="Write your story in Markdown..."/>}</div>
-                        <div className="flex justify-end pt-2"><button onClick={handleSavePost} disabled={loading} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-transform hover:scale-105 disabled:opacity-50">{loading ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>}<span>{editingPost.id ? "Update Post" : "Publish Post"}</span></button></div>
+                        <div className="flex justify-end pt-2"><button onClick={handleSavePost} disabled={loading} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-transform hover:scale-105 disabled:opacity-50">{loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18}/>}<span>{editingPost.id ? "Update Post" : "Publish Post"}</span></button></div>
                     </div>
                 </div>
             )}
 
             {activeTab === 'post_detail' && activePost && (
-                <div className="animate-fade-in">
+                <div className="animate-fade-in relative">
                     <div className="max-w-4xl mx-auto px-6 py-12 md:py-20">
-                        <div className="mb-10 text-center">
-                            <h1 className="text-4xl md:text-5xl font-black mb-6 leading-tight tracking-tight">{activePost.title}</h1>
+                        <div className="mb-10 text-center space-y-6">
+                            <div className="inline-flex items-center gap-4 bg-slate-900 border border-slate-800 p-2 rounded-2xl shadow-xl">
+                                <button 
+                                    onClick={handleToggleRead}
+                                    className={`p-4 rounded-xl transition-all shadow-xl active:scale-95 ${isReading ? 'bg-red-600 text-white animate-pulse' : 'bg-indigo-600 text-white hover:bg-indigo-500'}`}
+                                >
+                                    {isBuffering ? <Loader2 size={20} className="animate-spin"/> : isReading ? <Pause size={20} fill="currentColor"/> : <Play size={20} fill="currentColor" className="ml-1"/>}
+                                </button>
+                                <div className="flex flex-col text-left pr-4">
+                                    <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">{isReading ? 'Neural Reader Active' : 'Listen to Post'}</span>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <div className="w-24 h-4 overflow-hidden rounded-full"><Visualizer volume={liveVolume} isActive={isReading} color="#818cf8"/></div>
+                                        <div className="relative">
+                                            <button onClick={() => setShowProviderMenu(!showProviderMenu)} className="text-[10px] text-slate-500 font-bold uppercase hover:text-white flex items-center gap-1">
+                                                {ttsProvider} <ChevronDown size={10}/>
+                                            </button>
+                                            {showProviderMenu && (
+                                                <div className="absolute top-full left-0 mt-1 w-32 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 p-1 flex flex-col gap-1">
+                                                    {(['gemini', 'openai', 'system'] as const).map(p => (
+                                                        <button key={p} onClick={() => { setTtsProvider(p); setShowProviderMenu(false); }} className={`w-full text-left px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${ttsProvider === p ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}>{p}</button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <h1 className="text-4xl md:text-5xl font-black leading-tight tracking-tight">{activePost.title}</h1>
                             <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-slate-500 font-medium">
                                 <div className="flex items-center gap-2"><div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold border border-indigo-200">{activePost.authorName.charAt(0)}</div><span>{activePost.authorName}</span></div>
                                 <span className="w-1 h-1 bg-slate-300 rounded-full"></span>

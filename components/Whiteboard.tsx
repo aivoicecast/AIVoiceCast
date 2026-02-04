@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Share2, Trash2, Undo, PenTool, Pen, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, RotateCcw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save, Activity, RefreshCcw, Type as TypeIcon, Hand } from 'lucide-react';
+import { ArrowLeft, Share2, Trash2, Undo, PenTool, Pen, Eraser, Download, Square, Circle, Minus, ArrowRight, Type, ZoomIn, ZoomOut, MousePointer2, Move, MoreHorizontal, Lock, Eye, Edit3, GripHorizontal, Brush, ChevronDown, Feather, Highlighter, Wind, Droplet, Cloud, Edit2, Copy, Clipboard, BringToFront, SendToBack, Sparkles, Send, Loader2, X, RotateCw, RotateCcw, Triangle, Star, Spline, Maximize, Scissors, Shapes, Palette, Settings2, Languages, ArrowUpLeft, ArrowDownRight, HardDrive, Check, Sliders, CloudDownload, Save, Activity, RefreshCcw, Type as TypeIcon, Hand, Info } from 'lucide-react';
 import { auth, db } from '../services/firebaseConfig';
 import { subscribeToWhiteboard, updateWhiteboardElement, deleteWhiteboardElements, saveWhiteboardSession } from '../services/firestoreService';
 import { WhiteboardElement, ToolType, LineStyle, BrushType, CapStyle } from '../types';
 import { generateSecureId } from '../utils/idUtils';
-import { getDriveToken, connectGoogleDrive } from '../services/authService';
+import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
 import { ensureFolder, uploadToDrive, readDriveFile } from '../services/googleDriveService';
 import { ShareModal } from './ShareModal';
 
@@ -20,6 +19,7 @@ interface WhiteboardProps {
   initialContent?: string;
   initialImage?: string; 
   onChange?: (content: string) => void;
+  onOpenManual?: () => void;
 }
 
 const LINE_STYLES: { label: string; value: LineStyle; dash: number[] }[] = [
@@ -56,7 +56,8 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
   backgroundColor = '#000000', 
   initialContent,
   initialImage,
-  onChange
+  onChange,
+  onOpenManual
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
@@ -520,7 +521,7 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           { id: 'nw', x: bounds.minX, y: bounds.minY }, { id: 'ne', x: bounds.maxX, y: bounds.minY },
           { id: 'sw', x: bounds.minX, y: bounds.maxY }, { id: 'se', x: bounds.maxX, y: bounds.maxY }
       ];
-      const found = handles.find(h => Math.sqrt((x - h.x)**2 + (y - h.y)**2) < handleSize * 2);
+      const found = handles.find(h => Math.sqrt((x - h.x)**2 + (h.y - y)**2) < handleSize * 2);
       return found ? found.id : null;
   };
 
@@ -555,295 +556,238 @@ export const Whiteboard: React.FC<WhiteboardProps> = ({
           const padding = 20;
           const availableWidth = width - (padding * 2);
           const availableHeight = height - (padding * 2);
-          const scaleFactor = Math.min(availableWidth / img.width, availableHeight / img.height, 1);
-          const dw = img.width * scaleFactor;
-          const dh = img.height * scaleFactor;
-          ctx.drawImage(img, (width - dw) / 2, (height - dh) / 2, dw, dh);
+          const scaleFactor = Math.min(availableWidth / img.width, availableHeight / img.height);
+          
+          const x = (width - img.width * scaleFactor) / 2;
+          const y = (height - img.height * scaleFactor) / 2;
+          
+          ctx.save();
+          ctx.translate(offset.x + width/2, offset.y + height/2);
+          ctx.rotate(boardRotation * Math.PI / 180);
+          ctx.scale(scale, scale);
+          ctx.translate(-width/2, -height/2);
+          ctx.drawImage(img, x, y, img.width * scaleFactor, img.height * scaleFactor);
+          ctx.restore();
       }
 
-      ctx.save(); 
-      const cx = width / 2;
-      const cy = height / 2;
-      
-      ctx.translate(cx, cy); 
-      ctx.rotate((boardRotation * Math.PI) / 180); 
-      ctx.translate(-cx, -cy);
-      
-      ctx.translate(offset.x, offset.y); 
+      ctx.save();
+      ctx.translate(offset.x + width/2, offset.y + height/2);
+      ctx.rotate(boardRotation * Math.PI / 180);
       ctx.scale(scale, scale);
-      
-      const drawCap = (x1: number, y1: number, x2: number, y2: number, size: number, color: string, style?: CapStyle) => {
-          if (!style || style === 'none') return;
-          const angle = Math.atan2(y2 - y1, x2 - x1);
-          ctx.save(); ctx.translate(x2, y2); ctx.rotate(angle); ctx.beginPath(); 
-          if (style === 'arrow') { ctx.moveTo(0, 0); ctx.lineTo(-size, -size / 2); ctx.lineTo(-size, size / 2); ctx.closePath(); ctx.fillStyle = color; ctx.fill(); } 
-          else if (style === 'circle') { ctx.arc(-size/2, 0, size/2, 0, 2 * Math.PI); ctx.fillStyle = color; ctx.fill(); }
-          ctx.restore();
-      };
+      ctx.translate(-width/2, -height/2);
 
-      const renderCurve = (points: {x: number, y: number}[], el: WhiteboardElement | { strokeWidth: number, color: string, lineStyle: any, brushType?: string }) => {
-          if (points.length < 2) return;
-          ctx.save(); ctx.beginPath(); ctx.lineWidth = el.strokeWidth / scale; ctx.strokeStyle = el.color;
-          const styleConfig = LINE_STYLES.find(s => s.value === (('lineStyle' in el) ? (el as any).lineStyle : 'solid'));
-          ctx.setLineDash(styleConfig?.dash || []);
+      const renderEl = (el: WhiteboardElement) => {
+          ctx.strokeStyle = el.color;
+          ctx.fillStyle = el.color;
+          ctx.lineWidth = el.strokeWidth;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
           
-          if ('brushType' in el) {
-              if (el.brushType === 'pencil') { ctx.globalAlpha = 0.6; ctx.setLineDash([2, 1]); }
-              else if (el.brushType === 'marker') { ctx.globalAlpha = 0.4; ctx.lineCap = 'square'; }
-              else if (el.brushType === 'airbrush') { ctx.shadowBlur = el.strokeWidth; ctx.shadowColor = el.color; }
-          }
+          const config = LINE_STYLES.find(s => s.value === el.lineStyle);
+          ctx.setLineDash(config?.dash || []);
 
-          ctx.moveTo(points[0].x, points[0].y);
-          if (points.length === 2) { ctx.lineTo(points[1].x, points[1].y); } else {
-              for (let i = 1; i < points.length - 2; i++) {
-                  const xc = (points[i].x + points[i + 1].x) / 2; const yc = (points[i].y + points[i + 1].y) / 2;
-                  ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+          if (el.type === 'pen' || el.type === 'eraser' || el.type === 'curve') {
+              if (!el.points || el.points.length < 2) return;
+              ctx.beginPath();
+              ctx.moveTo(el.points[0].x, el.points[0].y);
+              for (let i = 1; i < el.points.length; i++) {
+                  ctx.lineTo(el.points[i].x, el.points[i].y);
               }
-              ctx.quadraticCurveTo(points[points.length - 2].x, points[points.length - 2].y, points[points.length - 1].x, points[points.length - 1].y);
-          }
-          ctx.stroke();
-          ctx.restore();
-      };
-
-      const renderElement = (el: WhiteboardElement) => {
-          ctx.save(); ctx.beginPath(); ctx.strokeStyle = el.color; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-          const styleConfig = LINE_STYLES.find(s => s.value === (el.lineStyle || 'solid'));
-          ctx.setLineDash(styleConfig?.dash || []);
-
-          if (el.brushType === 'pencil') ctx.globalAlpha = 0.6;
-          else if (el.brushType === 'marker') ctx.globalAlpha = 0.4;
-
-          if (selectedElementIds.includes(el.id) && tool === 'move') {
-              const bounds = getElementBounds(el);
-              ctx.save(); ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 1 / scale; ctx.setLineDash([5, 5]);
-              ctx.strokeRect(bounds.minX - 5, bounds.minY - 5, (bounds.maxX - bounds.minX) + 10, (bounds.maxY - bounds.minY) + 10);
-              if (selectedElementIds.length === 1) {
-                  ctx.fillStyle = '#6366f1'; const hSize = 8 / scale;
-                  const handles = (el.type === 'line' || el.type === 'arrow') ? [{x: el.endX || el.x, y: el.endY || el.y}] :
-                     [{x: bounds.minX, y: bounds.minY}, {x: bounds.maxX, y: bounds.minY}, {x: bounds.minX, y: bounds.maxY}, {x: bounds.maxX, y: bounds.maxY}];
-                  handles.forEach(h => ctx.fillRect(h.x - hSize/2, h.y - hSize/2, hSize, hSize));
+              ctx.stroke();
+          } else if (el.type === 'rect') {
+              if (el.borderRadius) {
+                  ctx.beginPath();
+                  ctx.roundRect(el.x, el.y, el.width || 0, el.height || 0, el.borderRadius);
+                  ctx.stroke();
+              } else {
+                  ctx.strokeRect(el.x, el.y, el.width || 0, el.height || 0);
               }
-              ctx.restore();
-          }
-
-          if (el.type === 'type' && el.text) {
-              ctx.fillStyle = el.color; ctx.font = `${(el.fontSize || 16)}px 'JetBrains Mono', monospace`; ctx.textBaseline = 'top';
-              const lines = el.text.split('\n'); lines.forEach((line, i) => { ctx.fillText(line, el.x, el.y + (i * (el.fontSize || 16) * 1.2)); });
-          } else if (el.type === 'curve' && el.points) { renderCurve(el.points, el); } 
-          else if (el.type === 'pen' || el.type === 'eraser') {
-              if (el.points?.length) { ctx.lineWidth = el.strokeWidth / scale; ctx.moveTo(el.points[0].x, el.points[0].y); el.points.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke(); }
-          } else if (el.type === 'rect') { 
-              ctx.lineWidth = el.strokeWidth / scale;
-              if (ctx.roundRect) { ctx.roundRect(el.x, el.y, el.width || 0, el.height || 0, (el.borderRadius || 0)); ctx.stroke(); } 
-              else { ctx.strokeRect(el.x, el.y, el.width || 0, el.height || 0); }
-          } else if (el.type === 'circle') { 
-              ctx.lineWidth = el.strokeWidth / scale; ctx.ellipse(el.x + (el.width||0)/2, el.y + (el.height||0)/2, Math.abs((el.width||0)/2), Math.abs((el.height||0)/2), 0, 0, 2*Math.PI); ctx.stroke(); 
+          } else if (el.type === 'circle') {
+              ctx.beginPath();
+              const rx = (el.width || 0) / 2;
+              const ry = (el.height || 0) / 2;
+              ctx.ellipse(el.x + rx, el.y + ry, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
+              ctx.stroke();
+          } else if (el.type === 'line' || el.type === 'arrow') {
+              ctx.beginPath();
+              ctx.moveTo(el.x, el.y);
+              ctx.lineTo(el.endX || el.x, el.endY || el.y);
+              ctx.stroke();
+              
+              if (el.type === 'arrow' || el.endCap === 'arrow') {
+                  const angle = Math.atan2((el.endY || el.y) - el.y, (el.endX || el.x) - el.x);
+                  ctx.save();
+                  ctx.translate(el.endX || el.x, el.endY || el.y);
+                  ctx.rotate(angle);
+                  ctx.beginPath();
+                  ctx.moveTo(-15, -8);
+                  ctx.lineTo(0, 0);
+                  ctx.lineTo(-15, 8);
+                  ctx.stroke();
+                  ctx.restore();
+              }
+          } else if (el.type === 'type') {
+              ctx.font = `${el.fontSize || 16}px font-sans`;
+              ctx.textBaseline = 'top';
+              const lines = el.text?.split('\n') || [];
+              lines.forEach((line, i) => ctx.fillText(line, el.x, el.y + i * (el.fontSize || 16) * 1.2));
           } else if (el.type === 'triangle') {
-              ctx.lineWidth = el.strokeWidth / scale;
-              ctx.moveTo(el.x + (el.width||0)/2, el.y);
-              ctx.lineTo(el.x + (el.width||0), el.y + (el.height||0));
-              ctx.lineTo(el.x, el.y + (el.height||0));
+              ctx.beginPath();
+              ctx.moveTo(el.x + (el.width || 0) / 2, el.y);
+              ctx.lineTo(el.x + (el.width || 0), el.y + (el.height || 0));
+              ctx.lineTo(el.x, el.y + (el.height || 0));
               ctx.closePath();
               ctx.stroke();
-          } else if (el.type === 'star') {
-              ctx.lineWidth = el.strokeWidth / scale;
-              const cx = el.x + (el.width||0)/2; const cy = el.y + (el.height||0)/2;
-              const spikes = 5; const outerRadius = Math.abs((el.width||0)/2); const innerRadius = outerRadius/2;
-              let rot = Math.PI / 2 * 3; let x = cx; let y = cy; const step = Math.PI / spikes;
-              ctx.moveTo(cx, cy - outerRadius);
-              for (let i = 0; i < spikes; i++) {
-                  x = cx + Math.cos(rot) * outerRadius; y = cy + Math.sin(rot) * outerRadius; ctx.lineTo(x, y); rot += step;
-                  x = cx + Math.cos(rot) * innerRadius; y = cy + Math.sin(rot) * innerRadius; ctx.lineTo(x, y); rot += step;
-              }
-              ctx.lineTo(cx, cy - outerRadius); ctx.closePath(); ctx.stroke();
-          } else if (el.type === 'line' || el.type === 'arrow') { 
-              ctx.lineWidth = el.strokeWidth / scale; const x1 = el.x; const y1 = el.y; const x2 = el.endX || el.x; const y2 = el.endY || el.y;
-              ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); 
-              const capSize = Math.max(12, el.strokeWidth * 3) / scale;
-              if (el.startCap) drawCap(x2, y2, x1, y1, capSize, el.color, el.startCap);
-              if (el.endCap) drawCap(x1, y1, x2, y2, capSize, el.color, el.endCap);
           }
-          ctx.restore();
       };
 
-      elements.forEach(renderElement);
-      if (currentElement) renderElement(currentElement);
-      if (tool === 'curve' && partialPoints.length > 0) { renderCurve([...partialPoints, mousePos], { strokeWidth: lineWidth, color, lineStyle, brushType: brushType as any }); }
-      
-      if (selectionRect) {
-          ctx.save(); ctx.strokeStyle = 'rgba(99, 102, 241, 0.5)'; ctx.fillStyle = 'rgba(99, 102, 241, 0.1)';
-          ctx.lineWidth = 1 / scale; ctx.setLineDash([5, 5]);
-          ctx.fillRect(selectionRect.x, selectionRect.y, selectionRect.w, selectionRect.h);
-          ctx.strokeRect(selectionRect.x, selectionRect.y, selectionRect.w, selectionRect.h);
-          ctx.restore();
+      elements.forEach(renderEl);
+      if (currentElement) renderEl(currentElement);
+
+      if (partialPoints.length > 0) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = lineWidth;
+          ctx.setLineDash(LINE_STYLES.find(s => s.value === lineStyle)?.dash || []);
+          ctx.beginPath();
+          ctx.moveTo(partialPoints[0].x, partialPoints[0].y);
+          partialPoints.forEach(p => ctx.lineTo(p.x, p.y));
+          ctx.stroke();
+          const last = partialPoints[partialPoints.length-1];
+          ctx.lineTo(mousePos.x, mousePos.y);
+          ctx.stroke();
       }
+
+      if (tool === 'move') {
+          selectedElementIds.forEach(id => {
+              const el = elements.find(e => e.id === id);
+              if (el) {
+                  const b = getElementBounds(el);
+                  ctx.setLineDash([5, 5]);
+                  ctx.strokeStyle = '#6366f1';
+                  ctx.lineWidth = 1 / scale;
+                  ctx.strokeRect(b.minX - 4, b.minY - 4, b.maxX - b.minX + 8, b.maxY - b.minY + 8);
+                  
+                  if (selectedElementIds.length === 1) {
+                      const handleSize = 8 / scale;
+                      ctx.fillStyle = '#ffffff';
+                      ctx.setLineDash([]);
+                      const handles = el.type === 'line' || el.type === 'arrow' 
+                        ? [{ x: el.endX || el.x, y: el.endY || el.y }]
+                        : [{ x: b.minX, y: b.minY }, { x: b.maxX, y: b.minY }, { x: b.minX, y: b.maxY }, { x: b.maxX, y: b.maxY }];
+                      handles.forEach(h => {
+                          ctx.fillRect(h.x - handleSize/2, h.y - handleSize/2, handleSize, handleSize);
+                          ctx.strokeRect(h.x - handleSize/2, h.y - handleSize/2, handleSize, handleSize);
+                      });
+                  }
+              }
+          });
+          if (selectionRect) {
+              ctx.setLineDash([5, 5]);
+              ctx.strokeStyle = 'rgba(99, 102, 241, 0.5)';
+              ctx.fillStyle = 'rgba(99, 102, 241, 0.1)';
+              ctx.strokeRect(selectionRect.x, selectionRect.y, selectionRect.w, selectionRect.h);
+              ctx.fillRect(selectionRect.x, selectionRect.y, selectionRect.w, selectionRect.h);
+          }
+      }
+
       ctx.restore();
-  }, [elements, currentElement, scale, offset, boardRotation, currentBgColor, selectedElementIds, tool, partialPoints, mousePos, selectionRect, color, lineWidth, lineStyle, brushType, bgImageReady]);
+  }, [elements, currentElement, offset, scale, boardRotation, currentBgColor, selectedElementIds, selectionRect, partialPoints, mousePos, bgImageReady]);
 
   return (
-    <div className={`flex flex-col h-full w-full ${isDarkBackground ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden relative`}>
-        <div className={`${isDarkBackground ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'} border-b p-2 flex flex-wrap justify-between gap-2 shrink-0 z-10 items-center px-4`}>
-            <div className="flex items-center gap-2">
-                {onBack && <button onClick={onBack} className={`p-2 rounded-lg ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-2`}><ArrowLeft size={20}/></button>}
-                
-                <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1 mr-2`}>
-                    <button onClick={() => setTool('pen')} className={`p-1.5 rounded ${tool === 'pen' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Pen"><PenTool size={16}/></button>
-                    <button onClick={() => setTool('hand')} className={`p-1.5 rounded ${tool === 'hand' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Hand Pan"><Hand size={16}/></button>
-                    <button onClick={() => setTool('curve')} className={`p-1.5 rounded ${tool === 'curve' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Spline Curve (ESC to stop)"><Spline size={16}/></button>
-                    <button onClick={() => setTool('type')} className={`p-1.5 rounded ${tool === 'type' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Markdown Text"><TypeIcon size={16}/></button>
-                    <button onClick={() => setTool('move')} className={`p-1.5 rounded ${tool === 'move' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Select/Move/Resize"><MousePointer2 size={16}/></button>
-                    <button onClick={() => setTool('eraser')} className={`p-1.5 rounded ${tool === 'eraser' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Eraser"><Eraser size={16}/></button>
-                </div>
+    <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans relative">
+      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
+          <div className="flex items-center gap-4">
+              {onBack && <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>}
+              <div className="flex flex-col">
+                  <h1 className="text-lg font-bold text-white flex items-center gap-2 italic uppercase tracking-tighter">
+                      <PenTool className="text-pink-400" /> Neural Canvas
+                  </h1>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest">{isLive ? 'Live Sync' : 'Local Draft'}</span>
+                    {onOpenManual && <button onClick={onOpenManual} className="p-1 text-slate-600 hover:text-white transition-colors" title="Canvas Manual"><Info size={12}/></button>}
+                  </div>
+              </div>
+          </div>
 
-                <div className={`flex ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg p-1 mr-2`}>
-                    <button onClick={() => setTool('rect')} className={`p-1.5 rounded ${tool === 'rect' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Rectangle"><Square size={16}/></button>
-                    <button onClick={() => setTool('circle')} className={`p-1.5 rounded ${tool === 'circle' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Circle"><Circle size={16}/></button>
-                    <button onClick={() => setTool('line')} className={`p-1.5 rounded ${tool === 'line' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Line"><Minus size={16}/></button>
-                    <button onClick={() => setTool('triangle')} className={`p-1.5 rounded ${tool === 'triangle' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Triangle"><Triangle size={16}/></button>
-                    <button onClick={() => setTool('star')} className={`p-1.5 rounded ${tool === 'star' ? 'bg-indigo-600 text-white shadow-lg' : (isDarkBackground ? 'text-slate-400' : 'text-slate-600')}`} title="Star"><Star size={16}/></button>
-                </div>
+          <div className="flex items-center gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner">
+              <button onClick={() => setTool('move')} className={`p-2 rounded-lg transition-all ${tool === 'move' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`} title="Selection (V)"><MousePointer2 size={18}/></button>
+              <button onClick={() => setTool('hand')} className={`p-2 rounded-lg transition-all ${tool === 'hand' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`} title="Pan (H)"><Hand size={18}/></button>
+              <div className="w-px h-6 bg-slate-800 mx-1"></div>
+              <button onClick={() => setTool('pen')} className={`p-2 rounded-lg transition-all ${tool === 'pen' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`} title="Pen (P)"><Pen size={18}/></button>
+              <button onClick={() => setTool('curve')} className={`p-2 rounded-lg transition-all ${tool === 'curve' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`} title="Path (C)"><Spline size={18}/></button>
+              <button onClick={() => setTool('rect')} className={`p-2 rounded-lg transition-all ${tool === 'rect' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`} title="Rectangle (R)"><Square size={18}/></button>
+              <button onClick={() => setTool('circle')} className={`p-2 rounded-lg transition-all ${tool === 'circle' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`} title="Circle (O)"><Circle size={18}/></button>
+              <button onClick={() => setTool('arrow')} className={`p-2 rounded-lg transition-all ${tool === 'arrow' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`} title="Arrow (A)"><ArrowRight size={18}/></button>
+              <button onClick={() => setTool('type')} className={`p-2 rounded-lg transition-all ${tool === 'type' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`} title="Text (T)"><Type size={18}/></button>
+              <button onClick={() => setTool('eraser')} className={`p-2 rounded-lg transition-all ${tool === 'eraser' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`} title="Eraser (E)"><Eraser size={18}/></button>
+          </div>
 
-                <div className="flex gap-1 mr-2">
-                    {selectedElementIds.length > 0 && (
-                        <>
-                            <button onClick={handleCopy} className={`p-2 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-400 hover:text-white border border-indigo-500/30 shadow-lg transition-all active:scale-95 flex items-center gap-2`} title="Copy Group (Ctrl+C)">
-                                <Copy size={16}/> <span className="text-xs font-bold uppercase hidden sm:inline">Copy</span>
-                            </button>
-                            <button onClick={handleDeleteSelected} className={`p-2 rounded-lg bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 shadow-lg transition-all active:scale-95 flex items-center gap-2`} title="Delete Group (Del)">
-                                <Trash2 size={16}/> <span className="text-xs font-bold uppercase hidden sm:inline">Delete</span>
-                            </button>
-                        </>
-                    )}
-                    {clipboardBuffer.length > 0 && (
-                        <button onClick={handlePaste} className={`p-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 shadow-lg transition-all active:scale-95 flex items-center gap-2`} title="Paste Group (Ctrl+V)">
-                            <Clipboard size={16}/> <span className="text-xs font-bold uppercase hidden sm:inline">Paste</span>
-                        </button>
-                    )}
-                </div>
+          <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl shadow-inner">
+                  <button onClick={() => setScale(s => s / 1.1)} className="p-1 hover:bg-slate-800 rounded text-slate-500 hover:text-white transition-colors"><ZoomOut size={16}/></button>
+                  <span className="text-[10px] font-mono font-black text-indigo-400 min-w-[40px] text-center">{Math.round(scale * 100)}%</span>
+                  <button onClick={() => setScale(s => s * 1.1)} className="p-1 hover:bg-slate-800 rounded text-slate-500 hover:text-white transition-colors"><ZoomIn size={16}/></button>
+              </div>
+              <button onClick={() => { setElements([]); setSelectedElementIds([]); }} className="p-2.5 bg-slate-800 hover:bg-red-900/30 hover:text-red-400 text-slate-400 border border-slate-700 rounded-xl transition-all"><Trash2 size={18}/></button>
+          </div>
+      </header>
 
-                <div className="relative ml-2">
-                    <button onClick={() => setShowStyleMenu(!showStyleMenu)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${isDarkBackground ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
-                        <Sliders size={16}/>
-                        <span className="text-xs font-bold uppercase hidden sm:inline">Refract Styles</span>
-                        <ChevronDown size={14}/>
-                    </button>
-                    {showStyleMenu && (
-                        <>
-                            <div className="fixed inset-0 z-40" onClick={() => setShowStyleMenu(false)}></div>
-                            <div className={`absolute top-full left-0 mt-2 w-80 max-h-[80vh] overflow-y-auto ${isDarkBackground ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200 shadow-2xl'} border rounded-xl z-50 p-4 space-y-6 animate-fade-in-up scrollbar-hide`}>
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Canvas Background</label>
-                                    <div className="flex gap-2 flex-wrap">
-                                        {[ { id: '#000000', label: 'Black' }, { id: '#ffffff', label: 'White' }, { id: '#0f172a', label: 'Slate' }, { id: '#1e293b', label: 'Navy' }, { id: 'transparent', label: 'Clear' } ].map(bg => (
-                                            <button key={bg.id} onClick={() => setCurrentBgColor(bg.id)} className={`w-8 h-8 rounded-lg border-2 transition-all ${currentBgColor === bg.id ? 'border-indigo-500 scale-110 shadow-lg' : 'border-slate-700 hover:border-slate-500'}`} style={{ backgroundColor: bg.id === 'transparent' ? 'transparent' : bg.id, backgroundImage: bg.id === 'transparent' ? 'repeating-conic-gradient(#555 0% 25%, #333 0% 50%)' : 'none', backgroundSize: '8px 8px' }} title={bg.label} />
-                                        ))}
-                                    </div>
-                                </div>
+      <div className="flex-1 relative overflow-hidden bg-slate-950 flex" ref={canvasWrapperRef}>
+          {/* Floating Style Panel */}
+          <div className="absolute top-6 left-6 z-30 flex flex-col gap-4">
+              <div className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-[2rem] p-4 shadow-2xl space-y-6">
+                  <div className="space-y-3">
+                      <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest px-1">Neural Style</label>
+                      <div className="grid grid-cols-5 gap-2">
+                        {['#ffffff', '#ef4444', '#10b981', '#6366f1', '#f59e0b'].map(c => (
+                            <button key={c} onClick={() => setColor(c)} className={`w-8 h-8 rounded-full border-2 transition-all ${color === c ? 'border-white scale-110 shadow-lg shadow-white/10' : 'border-transparent opacity-60'}`} style={{ backgroundColor: c }} />
+                        ))}
+                      </div>
+                  </div>
+                  <div className="space-y-2">
+                      <div className="flex justify-between items-center text-[9px] font-black uppercase text-slate-600 px-1"><span>Mass</span><span>{lineWidth}px</span></div>
+                      <input type="range" min="1" max="50" value={lineWidth} onChange={e => setLineWidth(parseInt(e.target.value))} className="w-full h-1 bg-slate-800 appearance-none rounded-full accent-indigo-500" />
+                  </div>
+                  <div className="flex gap-2">
+                      <button onClick={() => setLineStyle('solid')} className={`flex-1 py-1.5 rounded-lg border transition-all ${lineStyle === 'solid' ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-500'}`}><Minus size={14} className="mx-auto"/></button>
+                      <button onClick={() => setLineStyle('dashed')} className={`flex-1 py-1.5 rounded-lg border transition-all ${lineStyle === 'dashed' ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-500'}`}><GripHorizontal size={14} className="mx-auto"/></button>
+                  </div>
+              </div>
+          </div>
 
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">Brush Texture</label>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {BRUSH_TYPES.map(b => (
-                                            <button key={b.value} onClick={() => setBrushType(b.value)} className={`flex flex-col items-center gap-1.5 p-2 rounded-lg border transition-all ${brushType === b.value ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}>
-                                                <b.icon size={16}/>
-                                                <span className="text-[8px] font-bold uppercase">{b.label}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+          <canvas 
+            id="whiteboard-canvas-core"
+            ref={canvasRef} 
+            className="block h-full w-full touch-none"
+            onMouseDown={startDrawing}
+            onMouseMove={draw}
+            onMouseUp={stopDrawing}
+            onMouseLeave={stopDrawing}
+            onTouchStart={startDrawing}
+            onTouchMove={draw}
+            onTouchEnd={stopDrawing}
+          />
 
-                                <div>
-                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3">Line Style</label>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {LINE_STYLES.map(s => (
-                                            <button key={s.value} onClick={() => setLineStyle(s.value)} className={`flex items-center gap-3 px-3 py-2 rounded border transition-all ${lineStyle === s.value ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}>
-                                                <div className="flex-1 h-px border-t-2" style={{ borderStyle: s.value === 'solid' ? 'solid' : s.value === 'dotted' ? 'dotted' : 'dashed', borderColor: 'currentColor', borderImage: s.value === 'dash-dot' ? 'none' : 'none' }}>
-                                                    {s.value === 'dash-dot' && <div className="h-0.5 w-full" style={{ backgroundImage: 'linear-gradient(to right, currentColor 12px, transparent 12px, transparent 17px, currentColor 17px, currentColor 20px, transparent 20px)', backgroundSize: '25px 100%' }}></div>}
-                                                    {s.value === 'long-dash' && <div className="h-0.5 w-full" style={{ backgroundImage: 'linear-gradient(to right, currentColor 20px, transparent 20px)', backgroundSize: '30px 100%' }}></div>}
-                                                    {s.value === 'dashed' && <div className="h-0.5 w-full" style={{ backgroundImage: 'linear-gradient(to right, currentColor 10px, transparent 10px)', backgroundSize: '18px 100%' }}></div>}
-                                                    {s.value === 'dotted' && <div className="h-0.5 w-full" style={{ backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)', backgroundSize: '6px 100%' }}></div>}
-                                                    {s.value === 'solid' && <div className="h-0.5 w-full bg-current"></div>}
-                                                </div>
-                                                <span className="text-[9px] font-bold uppercase min-w-[60px] text-right">{s.label}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+          {textInput.visible && (
+              <div className="absolute z-50 pointer-events-none" style={{ left: textInput.x * scale + offset.x + (canvasRef.current?.width || 0)/2/window.devicePixelRatio, top: textInput.y * scale + offset.y + (canvasRef.current?.height || 0)/2/window.devicePixelRatio }}>
+                <textarea
+                  ref={textInputRef}
+                  value={textInput.value}
+                  onChange={e => setTextInput({ ...textInput, value: e.target.value })}
+                  onBlur={handleTextCommit}
+                  className="bg-transparent text-white outline-none border-b-2 border-indigo-500 pointer-events-auto resize-none font-sans"
+                  style={{ fontSize: `${16 * scale}px`, minWidth: '100px' }}
+                />
+              </div>
+          )}
+      </div>
 
-                                <div className="space-y-4">
-                                    <div>
-                                        <div className="flex justify-between mb-2"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Thickness</label><span className="text-[10px] font-mono text-indigo-400">{lineWidth}px</span></div>
-                                        <input type="range" min="1" max="50" value={lineWidth} onChange={(e) => setLineWidth(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
-                                    </div>
-                                    
-                                    {tool === 'rect' && (
-                                        <div className="animate-fade-in">
-                                            <div className="flex justify-between mb-2"><label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Corner Radius</label><span className="text-[10px] font-mono text-indigo-400">{borderRadius}px</span></div>
-                                            <input type="range" min="0" max="100" value={borderRadius} onChange={(e) => setBorderRadius(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-800">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">Start Cap</label>
-                                        <div className="flex gap-1">
-                                            {CAP_STYLES.map(c => (
-                                                <button key={c.value} onClick={() => setStartCap(c.value)} className={`p-2 rounded-lg border transition-all ${startCap === c.value ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`} title={c.label}>
-                                                    <c.icon size={14} className="rotate-180"/>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">End Cap</label>
-                                        <div className="flex gap-1">
-                                            {CAP_STYLES.map(c => (
-                                                <button key={c.value} onClick={() => setEndCap(c.value)} className={`p-2 rounded-lg border transition-all ${endCap === c.value ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`} title={c.label}>
-                                                    <c.icon size={14}/>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                <div className={`flex gap-1 px-2 ${isDarkBackground ? 'bg-slate-800' : 'bg-slate-200'} rounded-lg py-1 items-center ml-2`}>
-                    {['#000000', '#ffffff', '#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7'].map(c => <button key={c} onClick={() => setColor(c)} className={`w-4 h-4 rounded-full border border-black/20 ${color === c ? 'ring-2 ring-indigo-500 scale-110' : 'hover:scale-105'} transition-all`} style={{ backgroundColor: c }} />)}
-                </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-                <button onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-1`} title="Zoom In"><ZoomIn size={16}/></button>
-                <button onClick={() => setScale(prev => Math.max(prev / 1.2, 0.2))} className={`p-1.5 rounded ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'} mr-1`} title="Zoom Out"><ZoomOut size={16}/></button>
-                <button onClick={() => setElements(prev => prev.slice(0, -1))} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'}`} title="Undo"><Undo size={16} /></button>
-                <button onClick={() => { setElements([]); if(sessionId) deleteWhiteboardElements(sessionId); }} className={`p-1.5 rounded transition-colors ${isDarkBackground ? 'hover:bg-slate-800 text-slate-400 hover:text-red-400' : 'hover:bg-slate-200 text-slate-600 hover:text-red-600'}`} title="Clear Canvas"><Trash2 size={16} /></button>
-            </div>
-        </div>
-        
-        <div ref={canvasWrapperRef} className={`flex-1 relative overflow-hidden ${isDarkBackground ? 'bg-slate-950' : 'bg-white'} touch-none`}>
-            {isLoading && (
-                <div className="absolute inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
-                    <Loader2 size={32} className="animate-spin text-indigo-500"/><span className="text-xs font-bold text-indigo-200 uppercase tracking-widest">Hydrating Session...</span>
-                </div>
-            )}
-            <canvas 
-                id="whiteboard-canvas-core"
-                ref={canvasRef} onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-                onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
-                className={`block w-full h-full ${tool === 'move' ? 'cursor-move' : tool === 'hand' ? 'cursor-grab active:cursor-grabbing' : 'cursor-crosshair'}`} 
-            />
-
-            {textInput.visible && (
-                <div className="absolute z-40 bg-slate-900/90 border-2 border-indigo-500 rounded-xl p-3 shadow-2xl animate-fade-in" style={{ left: (textInput.x * scale + offset.x) + 'px', top: (textInput.y * scale + offset.y) + 'px', minWidth: '400px' }}>
-                    <textarea ref={textInputRef} value={textInput.value} onChange={e => setTextInput({ ...textInput, value: e.target.value })} className="bg-transparent border-none outline-none text-white font-mono text-sm w-full h-48 resize-both placeholder-slate-600" placeholder="Type markdown / text..." onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { handleTextCommit(); } }} />
-                    <div className="flex justify-between items-center mt-2 border-t border-slate-800 pt-2"><span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Ctrl+Enter to Save</span><div className="flex gap-2"><button onClick={() => setTextInput({...textInput, visible: false, editingId: null})} className="p-1 hover:bg-red-900/20 text-red-500 rounded"><X size={14}/></button><button onClick={handleTextCommit} className="p-1 hover:bg-emerald-900/20 text-emerald-500 rounded"><Check size={14}/></button></div></div>
-                </div>
-            )}
-        </div>
+      <footer className="p-3 bg-slate-950 border-t border-slate-800 flex justify-between items-center px-6 shrink-0">
+          <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest"><RotateCw size={14}/><span>Rotation: {boardRotation}°</span></div>
+          </div>
+          <div className="flex items-center gap-2 text-[9px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Prism v7.0.0-ULTRA</div>
+      </footer>
     </div>
   );
 };

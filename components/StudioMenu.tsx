@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, SubscriptionTier, GlobalStats, Channel } from '../types';
 import { getGlobalStats, isUserAdmin, ADMIN_GROUP } from '../services/firestoreService';
-import { Sparkles, BarChart2, Plus, Wand2, Crown, Settings, Book, Users, LogIn, Terminal, Cloud, Globe, Mic, LayoutGrid, HardDrive, AlertCircle, Gift, CreditCard, Languages, MousePointer2, Rocket, Shield, LogOut, ShieldCheck, Lock, Activity } from 'lucide-react';
+import { Sparkles, BarChart2, Plus, Wand2, Crown, Settings, Book, Users, LogIn, Terminal, Cloud, Globe, Mic, LayoutGrid, HardDrive, AlertCircle, Gift, CreditCard, Languages, MousePointer2, Rocket, Shield, LogOut, ShieldCheck, Lock, Activity, UserCircle, Github } from 'lucide-react';
 import { VOICES } from '../utils/initialData';
 import { signOut } from '../services/authService';
 
@@ -90,6 +90,24 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
             <button onClick={() => { onUpgradeClick(); setIsUserMenuOpen(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-white hover:bg-slate-800 rounded-lg transition-colors bg-gradient-to-r from-indigo-900/20 to-purple-900/20 border border-indigo-500/30 mb-2">
                <div className="p-1.5 bg-amber-500 text-white rounded-md shadow-lg"><Crown size={14} fill="currentColor"/></div><span className="font-bold text-amber-200">Upgrade Membership</span>
             </button>
+
+            <button 
+                onClick={() => { onNavigate('resume'); setIsUserMenuOpen(false); }} 
+                className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-indigo-600/20 rounded-lg transition-colors group"
+            >
+               <div className="p-1.5 bg-slate-800 text-slate-400 rounded-md group-hover:text-indigo-400"><UserCircle size={16}/></div>
+               <span className="font-bold">Meet the Architect</span>
+            </button>
+
+            <a 
+                href="https://github.com/aivoicecast/AIVoiceCast"
+                target="_blank"
+                rel="noreferrer"
+                className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors group"
+            >
+               <div className="p-1.5 bg-slate-800 text-slate-400 rounded-md group-hover:text-white"><Github size={16}/></div>
+               <span className="font-bold">Source Code</span>
+            </a>
             
             {isProMember ? (
                 <>

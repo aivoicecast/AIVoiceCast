@@ -6,6 +6,8 @@ import { GoogleGenAI } from "@google/genai";
 interface GraphStudioProps {
   onBack: () => void;
   isProMember?: boolean;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
 interface CommandLog {
@@ -24,7 +26,7 @@ interface Equation {
   fn: any | null; // Can be (x)=>y, (x,y)=>z, or (theta)=>r
 }
 
-export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack, isProMember }) => {
+export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack, isProMember, onOpenManual }) => {
   if (isProMember === false) {
     return (
         <div className="h-full flex items-center justify-center p-6 bg-slate-950">
@@ -367,6 +369,7 @@ export const GraphStudio: React.FC<GraphStudioProps> = ({ onBack, isProMember })
               <button onClick={() => setZoom(prev => prev * 1.2)} className="p-3 bg-slate-900/80 backdrop-blur-md rounded-xl border border-white/5 hover:bg-indigo-600 text-white shadow-xl transition-all"><ZoomIn size={20}/></button>
               <button onClick={() => setZoom(prev => prev / 1.2)} className="p-3 bg-slate-900/80 backdrop-blur-md rounded-xl border border-white/5 hover:bg-indigo-600 text-white shadow-xl transition-all"><ZoomOut size={20}/></button>
               <div className="h-px bg-slate-800 my-1"></div>
+              <button onClick={() => { if (onOpenManual) onOpenManual(); }} className="p-3 bg-slate-900/80 backdrop-blur-md rounded-xl border border-white/5 hover:bg-indigo-600 text-white shadow-xl transition-all" title="Graph Manual"><Info size={20}/></button>
               <button onClick={() => setRotation({ x: 1.1, z: 0.5 })} className="p-3 bg-slate-900/80 backdrop-blur-md rounded-xl border border-white/5 hover:bg-indigo-600 text-white shadow-xl transition-all"><RefreshCw size={20}/></button>
           </div>
       </div>

@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, MessageCircle, FileText, Loader2, Edit2, Save, Sparkles, Cloud, Trash2, RefreshCw, Info, Lock, Globe, Users, ChevronDown, Check, Download, Image as ImageIcon, FileCode, Type } from 'lucide-react';
-import { CommunityDiscussion, Group, ChannelVisibility, UserProfile } from '../types';
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, MessageCircle, FileText, Loader2, Edit2, Save, Sparkles, Cloud, Trash2, RefreshCw, Info, Lock, Globe, Users, ChevronDown, Check, Download, Image as ImageIcon, FileCode, Type, Play, Pause, Speaker, Volume2 } from 'lucide-react';
+import { CommunityDiscussion, Group, ChannelVisibility, UserProfile, TtsProvider } from '../types';
 import { getDiscussionById, subscribeToDiscussion, saveDiscussionDesignDoc, saveDiscussion, deleteDiscussion, updateDiscussionVisibility, getUserGroups, getUserProfile, isUserAdmin } from '../services/firestoreService';
-import { generateDesignDocFromTranscript } from '../services/lectureGenerator';
+import { generateDesignDocFromTranscript, generateDesignDocFromTranscript as generateDoc } from '../services/lectureGenerator';
 import { MarkdownView } from './MarkdownView';
 import { connectGoogleDrive } from '../services/authService';
 import { createGoogleDoc } from '../services/googleDriveService';
+import { synthesizeSpeech, speakSystem } from '../services/tts';
+import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput, syncPrimeSpeech } from '../utils/audioUtils';
+import { Visualizer } from './Visualizer';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -64,8 +68,103 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
   const [isExportingGDoc, setIsExportingGDoc] = useState(false);
   const [gDocUrl, setGDocUrl] = useState<string | null>(null);
 
+  // Audio Reader State
+  const [isReading, setIsReading] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [ttsProvider, setTtsProvider] = useState<TtsProvider>('gemini');
+  const [showProviderMenu, setShowProviderMenu] = useState(false);
+  const [liveVolume, setLiveVolume] = useState(0);
+  const playbackSessionRef = useRef(0);
+  const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+
   const lastSavedContent = useRef<string>('');
   const exportRef = useRef<HTMLDivElement>(null);
+
+  const stopAudio = useCallback(() => {
+    playbackSessionRef.current++;
+    setIsReading(false);
+    setIsBuffering(false);
+    setLiveVolume(0);
+    activeSourcesRef.current.forEach(s => { 
+        try { s.onended = null; s.stop(); s.disconnect(); } catch(e) {} 
+    });
+    activeSourcesRef.current.clear();
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) stopAudio();
+  }, [isOpen, stopAudio]);
+
+  const handleToggleRead = async () => {
+    if (isReading) {
+        stopAudio();
+        return;
+    }
+    const contentToRead = viewMode === 'doc' ? editedDocContent : activeDiscussion?.transcript?.map(t => `${t.role}: ${t.text}`).join('\n');
+    if (!contentToRead) return;
+
+    const MY_TOKEN = `DocReader:${discussionId}`;
+    registerAudioOwner(MY_TOKEN, stopAudio);
+    const localSession = ++playbackSessionRef.current;
+    
+    setIsReading(true);
+    syncPrimeSpeech();
+    const ctx = getGlobalAudioContext();
+    await warmUpAudioContext(ctx);
+
+    const cleanText = contentToRead
+        .replace(/[#*`]/g, '')
+        .replace(/\$/g, '')
+        .replace(/---/g, '');
+
+    const segments = cleanText.split('\n').filter(s => s.trim().length > 5);
+
+    try {
+        for (let i = 0; i < segments.length; i++) {
+            if (localSession !== playbackSessionRef.current) break;
+            
+            const segment = segments[i].trim();
+            setIsBuffering(true);
+
+            if (ttsProvider === 'system') {
+                setIsBuffering(false);
+                setLiveVolume(0.8);
+                await speakSystem(segment, 'en');
+                setLiveVolume(0);
+            } else {
+                const res = await synthesizeSpeech(segment, 'Zephyr', ctx, ttsProvider, 'en');
+                setIsBuffering(false);
+
+                if (res.buffer && localSession === playbackSessionRef.current) {
+                    setLiveVolume(0.8);
+                    await new Promise<void>((resolve) => {
+                        const source = ctx.createBufferSource();
+                        source.buffer = res.buffer!;
+                        connectOutput(source, ctx);
+                        activeSourcesRef.current.add(source);
+                        source.onended = () => { 
+                            activeSourcesRef.current.delete(source); 
+                            setLiveVolume(0); 
+                            resolve(); 
+                        };
+                        source.start(0);
+                    });
+                }
+            }
+            if (localSession === playbackSessionRef.current) {
+                await new Promise(r => setTimeout(r, 600));
+            }
+        }
+    } catch (e) {
+        console.error("Doc reading failed", e);
+    } finally {
+        if (localSession === playbackSessionRef.current) {
+            setIsReading(false);
+            setIsBuffering(false);
+        }
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -231,6 +330,16 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
                       <input type="text" value={docTitle} readOnly={!isOwner} onChange={(e) => setDocTitle(e.target.value)} className={`bg-transparent border-b border-transparent ${isOwner ? 'hover:border-slate-700 focus:border-indigo-500' : ''} text-lg font-bold text-white focus:outline-none w-full transition-colors truncate`} placeholder="Document Title"/>
                   </div>
                   <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 mr-2">
+                          <button 
+                            onClick={handleToggleRead}
+                            className={`p-2 rounded-lg transition-all ${isReading ? 'bg-red-600 text-white animate-pulse' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                          >
+                            {isBuffering ? <Loader2 size={16} className="animate-spin"/> : isReading ? <Pause size={16} fill="currentColor"/> : <Play size={16} fill="currentColor" className="ml-0.5"/>}
+                          </button>
+                          <div className="w-16 h-4 overflow-hidden rounded-full"><Visualizer volume={liveVolume} isActive={isReading} color="#818cf8"/></div>
+                      </div>
+
                       {isOwner && currentUser && (
                           <div className="relative">
                               <button onClick={() => setShowVisibilityMenu(!showVisibilityMenu)} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-all border border-slate-700">
@@ -256,8 +365,8 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
               </div>
               {(activeDiscussion?.transcript?.length || 0) > 0 && activeDiscussion?.id !== 'new' && (
                   <div className="flex space-x-2">
-                      <button onClick={() => setViewMode('transcript')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex items-center justify-center space-x-2 ${viewMode === 'transcript' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-300'}`}><MessageCircle size={16} /><span>Transcript</span></button>
-                      <button onClick={() => setViewMode('doc')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex items-center justify-center space-x-2 ${viewMode === 'doc' ? 'bg-slate-800 text-indigo-400' : 'text-slate-500 hover:text-slate-300'}`}><FileText size={16} /><span>Specification</span></button>
+                      <button onClick={() => { setViewMode('transcript'); stopAudio(); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex items-center justify-center space-x-2 ${viewMode === 'transcript' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-300'}`}><MessageCircle size={16} /><span>Transcript</span></button>
+                      <button onClick={() => { setViewMode('doc'); stopAudio(); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex items-center justify-center space-x-2 ${viewMode === 'doc' ? 'bg-slate-800 text-indigo-400' : 'text-slate-500 hover:text-slate-300'}`}><FileText size={16} /><span>Specification</span></button>
                   </div>
               )}
           </div>

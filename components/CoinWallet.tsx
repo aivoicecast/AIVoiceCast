@@ -13,9 +13,11 @@ import { auth } from '../services/firebaseConfig';
 interface CoinWalletProps {
   onBack: () => void;
   user: UserProfile | null;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
-export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user }) => {
+export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user, onOpenManual }) => {
   const [activeTab, setActiveTab] = useState<'history' | 'send' | 'receive'>('history');
   const [transactions, setTransactions] = useState<CoinTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,13 +121,16 @@ export const CoinWallet: React.FC<CoinWalletProps> = ({ onBack, user }) => {
                 <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">VoiceCoin Ledger v6.9.8</p>
               </div>
           </div>
-          <button 
-            onClick={loadData} 
-            className="p-2 text-slate-500 hover:text-white transition-all"
-            title="Sync Ledger"
-          >
-            <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
-          </button>
+          <div className="flex items-center gap-3">
+              <button 
+                onClick={loadData} 
+                className="p-2 text-slate-500 hover:text-white transition-all"
+                title="Sync Ledger"
+              >
+                <RefreshCw size={18} className={isRefreshing ? 'animate-spin' : ''} />
+              </button>
+              {onOpenManual && <button onClick={onOpenManual} className="p-2 text-slate-400 hover:text-white" title="Wallet Manual"><Info size={18}/></button>}
+          </div>
       </header>
 
       <div className="flex-1 overflow-y-auto p-6 md:p-8 scrollbar-hide">

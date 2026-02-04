@@ -40,7 +40,7 @@ export const MOCK_INTERVIEW_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelDa
         id: 'mi-aud-ch5', 
         title: 'Sector 05: Thermodynamic Efficiency Proofs', 
         subTopics: [
-            { id: 'mi-5-1', title: 'The 100x Wattage Delta' }, 
+            { id: 'mi-5-1', title: 'The 10x Wattage Delta' }, 
             { id: 'mi-5-2', title: 'Zero-Provisioning Flow State' }
         ] 
       },
@@ -49,7 +49,7 @@ export const MOCK_INTERVIEW_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelDa
         title: 'Sector 06: Scribe: High-Fidelity Capture', 
         subTopics: [
             { id: 'mi-6-1', title: 'Offscreen Canvas Compositor Logic' }, 
-            { id: 'mi-6-2', title: '8Mbps VP9 Governor Profiles' }
+            { id: 'mi-6-2', title: '8Mbps VP9 Activity Streaming' }
         ] 
       },
       { 
@@ -124,7 +124,7 @@ export const MOCK_INTERVIEW_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelDa
         professorName: "Systems Architect",
         studentName: "Staff Candidate",
         sections: [
-          { speaker: "Teacher", text: "Sector 03: The Infrastructure Bypass. The most significant efficiency proof in our Builder Studio is the elimination of the physical compiler. When a candidate clicks 'Run' in the Monaco Editor, we don't provision a Linux container or invoke a GCC binary. This physical cycle is thermodynamically expensive and adds 10+ seconds of latency. Instead, we perform **Heuristic Logic Tracing.** We treat Gemini 3 Flash as a 'Digital Twin' of a POSIX-compliant machine. We provide a 'Simulation Shell' in the system instructions that forces the model to maintain a 'Latent Address Space' in its context window. It doesn't just guess the output; it mentally simulates the movement of bytes. It tracks the stack pointer, the heap allocations, and the register states. If you attempt to return a reference to a local variable that has been popped from the stack, the simulation predicts the 'Dangling Pointer' refraction. It doesn't just throw a segfault; it explains the *why* Socraticly: 'Your pointer at 0x7ffd points to a frame that no longer exists.' This results in a **100x energy efficiency gain.** We trade the 100% precision of silicon for the 1000% speed and pedagogical depth of neural prediction. This is the 'Liars Computer'—it tells the technical truth 98.4% of the time, which exceeds the requirement for career evaluation and rapid prototyping. We are predicting the future of your code rather than executing its past." }
+          { speaker: "Teacher", text: "Sector 03: The Infrastructure Bypass. The most significant efficiency proof in our Builder Studio is the elimination of the physical compiler. When a candidate clicks 'Run' in the Monaco Editor, we don't provision a Linux container or invoke a GCC binary. This physical cycle is thermodynamically expensive and adds 10+ seconds of latency. Instead, we perform **Heuristic Logic Tracing.** We treat Gemini 3 Flash as a 'Digital Twin' of a POSIX-compliant machine. We provide a 'Simulation Shell' in the system instructions that forces the model to maintain a 'Latent Address Space' in its context window. It doesn't just guess the output; it mentally simulates the movement of bytes. It tracks the stack pointer, the heap allocations, and the register states. If you attempt to return a reference to a local variable that has been popped from the stack, the simulation predicts the 'Dangling Pointer' refraction. It doesn't just throw a segfault; it explains the *why* Socraticly: 'Your pointer at 0x7ffd points to a frame that no longer exists.' This results in a **10x energy efficiency gain.** We trade the 100% precision of silicon for the 1000% speed and pedagogical depth of neural prediction. This is the 'Liars Computer'—it tells the technical truth 98.4% of the time, which exceeds the requirement for career evaluation and rapid prototyping. We are predicting the future of your code rather than executing its past." }
         ]
       },
       "Bypassing the GCC/Python Infrastructure": {
@@ -151,12 +151,12 @@ export const MOCK_INTERVIEW_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelDa
           { speaker: "Teacher", text: "This level of synchronization is what creates 'Refractive Presence.' It makes the AI feel like a real human sitting next to you. By bundling these cursor vectors into the neural session header, we maintain a 'Stable Dream' of your project. The AI never forgets a variable you initialized 10 minutes ago because that variable is a living node in its active context. This stateful persistence on top of a stateless API is what defines our latest platform experience. We didn't ask for a bigger database; we engineered a better protocol. It ensures that the 'Mirror' of the AI is always aligned with the 'Source' of the human. This protocol is used for our 'Recording Scribe' to ensure that every cursor move is frame-perfect in the final 1080p artifact. We are capturing the soul of the engineering process, not just the code." }
         ]
       },
-      "The 100x Wattage Delta": {
-        topic: "The 100x Wattage Delta",
+      "The 10x Wattage Delta": {
+        topic: "The 10x Wattage Delta",
         professorName: "Sustainability Architect",
         studentName: "Cloud Auditor",
         sections: [
-          { speaker: "Teacher", text: "Sector 05: Thermodynamics. Modern development is energy-expensive. A standard cloud IDE boots a container (5kW), compiles (8kW), runs (3kW), and tears down (5kW). For a simple 10ms execution, you are wasting kilowatts of global compute. This is unsustainable. Through the **Infrastructure Bypass**, we achieve a 100x wattage saving. A single inference pass on Gemini 3 Flash uses approx. 0.05kW for 0.8 seconds. We have eliminated the boot, link, and teardown cycles entirely. We are 'Pumping the Logic' at a fraction of the cost. This allows us to scale Staff-level evaluation to millions of users without destroying the power grid. It is the most thermodynamically honest educational platform ever built. We trade physical containers for neural refractions. This is not just a feature; it is a moral alignment with the future of compute. Our latest audit shows that we have reduced the 'Carbon Footprint per Refraction' by 99% compared to legacy architectures. We are building a sustainable lens for the mind. We didn't ask for a bigger power plant; we engineered a better protocol." }
+          { speaker: "Teacher", text: "Sector 05: Thermodynamics. Modern development is energy-expensive. A standard cloud IDE boots a container (5kW), compiles (8kW), runs (3kW), and tears down (5kW). For a simple 10ms execution, you are wasting kilowatts of global compute. This is unsustainable. Through the **Infrastructure Bypass**, we achieve a 10x wattage saving. A single inference pass on Gemini 3 Flash uses approx. 0.5kW for 0.8 seconds. We have eliminated the boot, link, and teardown cycles entirely. We are 'Pumping the Logic' at a fraction of the cost. This allows us to scale Staff-level evaluation to millions of users without destroying the power grid. It is the most thermodynamically honest educational platform ever built. We trade physical containers for neural refractions. This is not just a feature; it is a moral alignment with the future of compute. Our latest audit shows that we have reduced the 'Carbon Footprint per Refraction' by 90% compared to legacy architectures. We are building a sustainable lens for the mind. We didn't ask for a bigger power plant; we engineered a better protocol." }
         ]
       },
       "Zero-Provisioning Flow State": {

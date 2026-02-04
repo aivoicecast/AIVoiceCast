@@ -10,12 +10,12 @@ import {
   GeneratedLecture, CommunityDiscussion, Booking, Invitation, RecordingSession, CodeProject, 
   CodeFile, CursorPosition, WhiteboardElement, Blog, BlogPost, JobPosting, 
   CareerApplication, Notebook, AgentMemory, GlobalStats, SubscriptionTier, 
-  ChannelVisibility, GeneratedIcon, BankingCheck, ShippingLabel, CoinTransaction, OfflinePaymentToken, MockInterviewRecording, TrustScore, DualVerse, DigitalReceipt, UserFeedback, BadgeData, SignedDocument
+  ChannelVisibility, GeneratedIcon, BankingCheck, ShippingLabel, CoinTransaction, OfflinePaymentToken, MockInterviewRecording, TrustScore, DualVerse, DigitalReceipt, UserFeedback, BadgeData, SignedDocument,
+  BookData 
 } from '../types';
-import { BookData } from '../utils/bookContent';
+import { SYSTEM_BLOG_POSTS } from '../utils/blogContent';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { generateSecureId, safeJsonStringify } from '../utils/idUtils';
-import { bytesToBase64 } from '../utils/audioUtils';
 
 // Collections
 const USERS_COLLECTION = 'users';
@@ -57,41 +57,21 @@ export const AI_COSTS = {
 };
 
 /**
- * Deep Atomic Cloner for Firestore:
- * Ensures data is 100% serializable by stripping circular references and instances.
+ * Robust Data Sanitizer for Firestore:
+ * Uses safeJsonStringify to prune circular references and then parses back 
+ * to a clean object. This is the most reliable way to handle minified SDK 
+ * internal objects (constructors 'Y', 'Ka') that cause stringification errors.
  */
-function atomicSanitize(val: any, depth: number = 0, seen = new WeakSet()): any {
-    if (val === null || typeof val !== 'object') return val === undefined ? null : val;
-    if (depth >= 4 || seen.has(val)) return '[Sanitized]';
-    
-    // Built-in complex type normalization
-    if (val instanceof Date) return val.getTime();
-    if (val instanceof Timestamp) return val.toMillis();
-    
-    // Instance Pruning
-    const proto = Object.getPrototypeOf(val);
-    if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) {
-        return `[Pruned ${val.constructor?.name || 'Instance'}]`;
-    }
-
-    seen.add(val);
-
-    if (Array.isArray(val)) {
-        return val.map(item => atomicSanitize(item, depth + 1, seen));
-    }
-
-    const result: any = {};
-    for (const key in val) {
-        if (Object.prototype.hasOwnProperty.call(val, key)) {
-            if (key.startsWith('_') || key.startsWith('$')) continue;
-            result[key] = atomicSanitize(val[key], depth + 1, seen);
-        }
-    }
-    return result;
-}
-
 export const sanitizeData = (data: any): any => {
-    return atomicSanitize(data);
+    if (data === null || data === undefined) return null;
+    try {
+        // We use the hardened utility to break circularity and prune instances
+        const json = safeJsonStringify(data);
+        return JSON.parse(json);
+    } catch (e) {
+        console.warn("[Firestore] Sanitization fallback triggered:", e);
+        return { __sanitization_error: String(e) };
+    }
 };
 
 // --- STORAGE ---
@@ -671,6 +651,11 @@ export async function updateProjectActiveFile(projectId: string, filePath: strin
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { activeFilePath: filePath });
 }
 
+export async function updateProjectActiveFileRefraction(projectId: string, filePath: string) {
+    if (!db) return;
+    await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { activeFilePath: filePath });
+}
+
 export async function updateProjectAccess(projectId: string, level: 'public' | 'restricted', allowedUserIds?: string[]) {
     if (!db) return;
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { accessLevel: level, allowedUserIds: allowedUserIds || [] });
@@ -721,9 +706,20 @@ export async function ensureUserBlog(user: any): Promise<Blog> {
 
 export async function getCommunityPosts(): Promise<BlogPost[]> {
     if (!db) return [];
-    const q = query(collection(db, BLOG_POSTS_COLLECTION), where('status', '==', 'published'), orderBy('publishedAt', 'desc'), limit(50));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => d.data() as BlogPost);
+    try {
+        // PRIMARY HANDSHAKE: Requires composite index in Firebase Console
+        const q = query(collection(db, BLOG_POSTS_COLLECTION), where('status', '==', 'published'), orderBy('publishedAt', 'desc'), limit(50));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data() as BlogPost);
+    } catch (e) {
+        console.warn("[Firestore] Index likely missing. Falling back to simple query and client-side sort.", e);
+        // FALLBACK HANDSHAKE: No ordering (avoids index requirement)
+        const qSimple = query(collection(db, BLOG_POSTS_COLLECTION), where('status', '==', 'published'), limit(50));
+        const snap = await getDocs(qSimple);
+        const data = snap.docs.map(d => d.data() as BlogPost);
+        // Sort in memory to preserve user experience
+        return data.sort((a, b) => (b.publishedAt || b.createdAt) - (a.publishedAt || a.createdAt));
+    }
 }
 
 export async function getUserPosts(blogId: string): Promise<BlogPost[]> {
@@ -770,6 +766,18 @@ export async function getBlogPost(id: string): Promise<BlogPost | null> {
 export async function deleteBlog(id: string) {
     if (!db) return;
     await deleteDoc(doc(db, BLOGS_COLLECTION, id));
+}
+
+/**
+ * Seeds the blog_posts collection with initial system posts if empty.
+ */
+export async function seedBlogPosts(): Promise<void> {
+    if (!db) return;
+    const batch = writeBatch(db);
+    SYSTEM_BLOG_POSTS.forEach(p => {
+        batch.set(doc(db, BLOG_POSTS_COLLECTION, p.id), sanitizeData(p));
+    });
+    await batch.commit();
 }
 
 // --- CHAT & MESSAGING ---

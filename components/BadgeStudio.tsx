@@ -6,7 +6,7 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { resizeImage } from '../utils/imageUtils';
 import { GoogleGenAI } from '@google/genai';
-import { getDriveToken, connectGoogleDrive } from '../services/authService';
+import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
 import { ensureCodeStudioFolder, ensureFolder, uploadToDrive } from '../services/googleDriveService';
 import { saveBadge, uploadFileToStorage, getUserBadges, deleteFirestoreDoc } from '../services/firestoreService';
 import { generateSecureId } from '../utils/idUtils';
@@ -14,9 +14,11 @@ import { generateSecureId } from '../utils/idUtils';
 interface BadgeStudioProps {
   onBack: () => void;
   userProfile: UserProfile | null;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
 }
 
-export const BadgeStudio: React.FC<BadgeStudioProps> = ({ onBack, userProfile }) => {
+export const BadgeStudio: React.FC<BadgeStudioProps> = ({ onBack, userProfile, onOpenManual }) => {
   const [viewMode, setViewMode] = useState<'create' | 'gallery'>('create');
   const [activeTab, setActiveTab] = useState<'design' | 'capture'>('design');
   const [badgeSide, setBadgeSide] = useState<'front' | 'back'>('front');
@@ -230,16 +232,20 @@ export const BadgeStudio: React.FC<BadgeStudioProps> = ({ onBack, userProfile })
           <div className="flex items-center gap-4">
               <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
               <div>
-                <h1 className="text-lg font-bold text-white flex items-center gap-2 italic uppercase tracking-tighter">
+                <h1 className="text-lg font-bold text-white flex items-center gap-2 uppercase tracking-tighter italic">
                     <Fingerprint className="text-indigo-400" /> 
                     Badge Studio
                 </h1>
                 <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Sovereign Identity Synthesizer</p>
               </div>
           </div>
-          <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
-              <button onClick={() => setViewMode('create')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${viewMode === 'create' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><LayoutGrid size={16}/></button>
-              <button onClick={() => setViewMode('gallery')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${viewMode === 'gallery' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><History size={16}/></button>
+          <div className="flex items-center gap-3">
+              <button onClick={() => setViewMode('create')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'create' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white'}`} > Library </button>
+              {onOpenManual && <button onClick={onOpenManual} className="p-2 text-slate-400 hover:text-white" title="Badge Manual"><Info size={18}/></button>}
+              <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+                  <button onClick={() => setViewMode('create')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${viewMode === 'create' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><LayoutGrid size={16}/></button>
+                  <button onClick={() => setViewMode('gallery')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${viewMode === 'gallery' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}><History size={16}/></button>
+              </div>
           </div>
       </header>
 
@@ -338,7 +344,7 @@ export const BadgeStudio: React.FC<BadgeStudioProps> = ({ onBack, userProfile })
                           <div className="h-full w-full flex flex-col relative animate-fade-in">
                               <div className="h-1/2 p-10 flex items-center justify-center relative">
                                   <div className="w-full aspect-square bg-slate-900 rounded-[2rem] border-4 border-slate-800 overflow-hidden shadow-2xl relative">
-                                      {photo ? <img src={photo} className="w-full h-full object-cover" crossOrigin="anonymous"/> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-800 gap-4"><User size={64}/><p className="text-[9px] font-black uppercase tracking-widest opacity-40">Photo Pending</p></div>}
+                                      {photo ? <img src={photo} className="w-full h-full object-cover object-[center_20%] transform scale-105" crossOrigin="anonymous"/> : <div className="w-full h-full flex flex-col items-center justify-center text-slate-800 gap-4"><User size={64}/><p className="text-[9px] font-black uppercase tracking-widest opacity-40">Photo Pending</p></div>}
                                       {watermarkUrl && <div className="absolute inset-0 pointer-events-none flex items-center justify-center" style={{ opacity: watermarkOpacity }}><img src={watermarkUrl} className="w-48 h-48 object-contain mix-blend-screen" /></div>}
                                       <div className="absolute top-3 left-3">{isSecure ? <div className="px-2 py-0.5 bg-emerald-500 text-white rounded-full text-[7px] font-black uppercase flex items-center gap-1 shadow-lg border border-white/20"><ShieldCheck size={8}/> Secure</div> : <div className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full text-[7px] font-black uppercase flex items-center gap-1 shadow-lg border border-white/5"><Upload size={8}/> Standard</div>}</div>
                                   </div>
@@ -382,7 +388,7 @@ export const BadgeStudio: React.FC<BadgeStudioProps> = ({ onBack, userProfile })
                         {myBadges.map(b => (
                             <div key={b.id} onClick={() => handleOpenBadgeFromGallery(b)} className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden hover:border-indigo-500 transition-all cursor-pointer group shadow-xl relative">
                                 <div className="aspect-[3/4] relative overflow-hidden">
-                                    <img src={b.photoUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" crossOrigin="anonymous"/>
+                                    <img src={b.photoUrl} className="w-full h-full object-cover object-[center_20%] opacity-60 group-hover:opacity-100 transition-opacity" crossOrigin="anonymous"/>
                                     <div className="absolute top-4 right-4">{b.isSecure ? <div className="p-1.5 bg-emerald-500 text-white rounded-full shadow-lg"><ShieldCheck size={14}/></div> : <div className="p-1.5 bg-slate-800 text-slate-400 rounded-full"><Upload size={14}/></div>}</div>
                                     <button onClick={(e) => handleDeleteBadge(e, b.id)} className="absolute top-4 left-4 p-1.5 bg-red-900/60 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button>
                                     <div className="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-slate-950 to-transparent">
@@ -408,7 +414,7 @@ export const BadgeStudio: React.FC<BadgeStudioProps> = ({ onBack, userProfile })
               <div id="badge-front" className="w-[330px] h-[495px] bg-[#020617] rounded-[2.5rem] relative overflow-hidden flex flex-col">
                   <div className="h-1/2 p-10 flex items-center justify-center relative">
                       <div className="w-full aspect-square bg-slate-900 rounded-[2rem] border-4 border-slate-800 overflow-hidden relative">
-                          {photo && <img src={photo} className="w-full h-full object-cover" crossOrigin="anonymous"/>}
+                          {photo && <img src={photo} className="w-full h-full object-cover object-[center_20%] transform scale-105" crossOrigin="anonymous"/>}
                           {watermarkUrl && <div className="absolute inset-0 flex items-center justify-center" style={{ opacity: watermarkOpacity }}><img src={watermarkUrl} className="w-48 h-48 object-contain mix-blend-screen" /></div>}
                           <div className="absolute top-3 left-3"><div style={{ padding: '2px 8px', backgroundColor: isSecure ? '#10b981' : '#1e293b', color: 'white', borderRadius: '999px', fontSize: '7px', fontWeight: '900' }}>{isSecure ? 'SECURE' : 'STANDARD'}</div></div>
                       </div>

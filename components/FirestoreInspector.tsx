@@ -1,12 +1,11 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-// Fixed: Removed non-existent members 'cleanupDuplicateUsers' and 'migrateVaultToLedger' from firestoreService imports
-import { getDebugCollectionDocs, seedDatabase, recalculateGlobalStats, isUserAdmin, deleteFirestoreDoc, purgeFirestoreCollection, setUserSubscriptionTier, updateAllChannelDatesToToday } from '../services/firestoreService';
+import { getDebugCollectionDocs, seedDatabase, seedBlogPosts, recalculateGlobalStats, isUserAdmin, deleteFirestoreDoc, purgeFirestoreCollection, setUserSubscriptionTier, updateAllChannelDatesToToday } from '../services/firestoreService';
 import { listUserBackups, deleteCloudFile, CloudFileEntry, getCloudFileContent } from '../services/cloudService';
-import { ArrowLeft, RefreshCw, Database, Table, Code, Search, UploadCloud, Users, ShieldCheck, Crown, Trash2, ShieldAlert, Loader2, Zap, Activity, CheckCircle, Copy, Check, X, Film, GraduationCap, AlertCircle, Info, Cloud, Speaker, Settings, Calendar, ArrowRightLeft, Folder, FolderOpen, CornerLeftUp, FileJson, FileAudio, Eye, Layout, Monitor, HardDrive, Terminal, ExternalLink, UserPlus, UserMinus, LayoutGrid } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Database, Table, Code, Search, UploadCloud, Users, ShieldCheck, Crown, Trash2, ShieldAlert, Loader2, Zap, Activity, CheckCircle, Copy, Check, X, Film, GraduationCap, AlertCircle, Info, Cloud, Speaker, Settings, Calendar, ArrowRightLeft, Folder, FolderOpen, CornerLeftUp, FileJson, FileAudio, Eye, Layout, Monitor, HardDrive, Terminal, ExternalLink, UserPlus, UserMinus, LayoutGrid, Rss } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { UserProfile } from '../types';
 import { GoogleGenAI } from "@google/genai";
-import { firebaseKeys } from '../services/private_keys';
 import { safeJsonStringify } from '../utils/idUtils';
 
 interface FirestoreInspectorProps {
@@ -60,7 +59,6 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
 
   const [isTestingGemini, setIsTestingGemini] = useState(false);
   const [diagnosticSteps, setDiagnosticSteps] = useState<DiagnosticStep[]>([]);
-  const [copyFeedback, setCopyFeedback] = useState(false);
 
   const isSuperAdmin = useMemo(() => {
     const currentUser = auth?.currentUser;
@@ -262,6 +260,20 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
     setIsTestingGemini(false);
   };
 
+  const handleSeedBlog = async () => {
+    if (!confirm("Seed Community Blog Feed with default system posts?")) return;
+    setIsDbLoading(true);
+    try {
+        await seedBlogPosts();
+        alert("Blog feed seeded successfully!");
+        if (activeCollection === 'blog_posts') fetchCollection('blog_posts');
+    } catch (e: any) {
+        alert("Seed failed: " + e.message);
+    } finally {
+        setIsDbLoading(false);
+    }
+  };
+
   return (
     <div className="h-full bg-slate-950 flex flex-col overflow-hidden font-sans">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
@@ -364,8 +376,13 @@ export const FirestoreInspector: React.FC<FirestoreInspectorProps> = ({ onBack, 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
                         <button onClick={() => { if(confirm("Seed Database with defaults?")) seedDatabase().then(() => alert("Seed successful")) }} className="p-6 bg-slate-900 border border-slate-800 rounded-[2rem] text-left hover:border-emerald-500/50 transition-all group shadow-xl relative overflow-hidden">
                             <UploadCloud className="text-emerald-500 mb-4 group-hover:scale-110 transition-transform" size={32}/>
-                            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-1">Seed Defaults</h3>
+                            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-1">Seed Hub Channels</h3>
                             <p className="text-[10px] text-slate-500 font-medium">Publish standard activities to the public registry.</p>
+                        </button>
+                        <button onClick={handleSeedBlog} className="p-6 bg-slate-900 border border-slate-800 rounded-[2rem] text-left hover:border-indigo-500/50 transition-all group shadow-xl relative overflow-hidden">
+                            <Rss className="text-indigo-400 mb-4 group-hover:scale-110 transition-transform" size={32}/>
+                            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-1">Seed Blog Feed</h3>
+                            <p className="text-[10px] text-slate-500 font-medium">Inject initial system posts into the community stream.</p>
                         </button>
                         <button onClick={handleRunFullDiagnostics} className="p-6 bg-slate-900 border border-slate-800 rounded-[2rem] text-left hover:border-indigo-500/50 transition-all group shadow-xl relative overflow-hidden">
                             <ShieldCheck className="text-indigo-400 mb-4 group-hover:scale-110 transition-transform" size={32}/>

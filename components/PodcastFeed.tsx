@@ -32,6 +32,8 @@ interface PodcastFeedProps {
   onUpdateChannel?: (channel: Channel) => Promise<void>;
   language?: 'en' | 'zh';
   onMagicCreate?: () => void;
+  // Added onOpenManual prop to fix type error in App.tsx
+  onOpenManual?: () => void;
   t: any;
 }
 
@@ -316,7 +318,7 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
 };
 
 export const PodcastFeed: React.FC<PodcastFeedProps> = ({ 
-  channels, onChannelClick, onStartLiveSession, userProfile, globalVoice, onRefresh, currentUser, setChannelToEdit, setIsSettingsModalOpen, onCommentClick, handleVote, handleBookmarkToggle, searchQuery, setSearchQuery, onNavigate, onUpdateChannel, onOpenPricing, language, t, onMagicCreate
+  channels, onChannelClick, onStartLiveSession, userProfile, globalVoice, onRefresh, currentUser, setChannelToEdit, setIsSettingsModalOpen, onCommentClick, handleVote, handleBookmarkToggle, searchQuery, setSearchQuery, onNavigate, onUpdateChannel, onOpenPricing, language, t, onMagicCreate, onOpenManual
 }) => {
   const [viewMode, setViewMode] = useState<'grid' | 'table' | 'mobile'>(() => 
       window.innerWidth < 768 ? 'mobile' : 'grid'

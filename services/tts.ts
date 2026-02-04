@@ -48,7 +48,6 @@ function getValidVoiceName(voiceName: string, provider: TtsProvider, lang: 'en' 
 
 async function synthesizeGemini(text: string, voice: string, lang: 'en' | 'zh' = 'en'): Promise<{buffer: ArrayBuffer, mime: string}> {
     const targetVoice = getValidVoiceName(voice, 'gemini', lang);
-    // Fixed: Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     let cleanText = text.replace(/[*_#`\[\]()<>|]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -85,12 +84,12 @@ async function synthesizeGemini(text: string, voice: string, lang: 'en' | 'zh' =
         }
         throw new Error("Empty candidate part. Check API Key quotas or safety filters.");
     } catch (e: any) {
-        throw new Error(`Gemini TTS Error: ${e.message}`);
+        // Bubble up error to synthesizeSpeech for failover handling
+        throw e;
     }
 }
 
 async function synthesizeGoogle(text: string, voice: string, lang: 'en' | 'zh' = 'en', apiKey?: string): Promise<{buffer: ArrayBuffer, mime: string}> {
-    // Priority: UI Override > private_keys.ts > process.env
     const key = apiKey || GCP_API_KEY || process.env.API_KEY;
     if (!key) throw new Error("Google Cloud API Key missing.");
 
@@ -120,7 +119,6 @@ async function synthesizeGoogle(text: string, voice: string, lang: 'en' | 'zh' =
 }
 
 async function synthesizeOpenAI(text: string, voice: string, lang: 'en' | 'zh' = 'en', apiKey?: string): Promise<{buffer: ArrayBuffer, mime: string}> {
-    // Priority: UI Override > localStorage > private_keys.ts
     const key = apiKey || localStorage.getItem('openai_api_key') || OPENAI_API_KEY;
     if (!key) throw new Error("OpenAI API Key missing in settings and private_keys.");
     
@@ -222,14 +220,25 @@ export async function synthesizeSpeech(
       }
 
       let result: { buffer: ArrayBuffer, mime: string };
-      if (preferredProvider === 'gemini') {
-          result = await synthesizeGemini(cleanText, voiceName, lang);
-      } else if (preferredProvider === 'google') {
-          result = await synthesizeGoogle(cleanText, voiceName, lang, apiKeyOverride);
-      } else if (preferredProvider === 'openai') {
-          result = await synthesizeOpenAI(cleanText, voiceName, lang, apiKeyOverride);
-      } else {
-          throw new Error("UNSUPPORTED_PROVIDER");
+      try {
+          if (preferredProvider === 'gemini') {
+              result = await synthesizeGemini(cleanText, voiceName, lang);
+          } else if (preferredProvider === 'google') {
+              result = await synthesizeGoogle(cleanText, voiceName, lang, apiKeyOverride);
+          } else if (preferredProvider === 'openai') {
+              result = await synthesizeOpenAI(cleanText, voiceName, lang, apiKeyOverride);
+          } else {
+              throw new Error("UNSUPPORTED_PROVIDER");
+          }
+      } catch (innerError: any) {
+          // AUTO-FAILOVER LOGIC: If Gemini hits 429, retry with Google or System
+          const isRateLimit = innerError.message.includes('429') || innerError.message.includes('quota');
+          if (preferredProvider === 'gemini' && isRateLimit) {
+              dispatchLog(`Gemini TTS Rate Limit (429) hit. Initiating Auto-Failover to Google Cloud Spectrum...`, 'warn');
+              // Attempt with google as second choice
+              return await synthesizeSpeech(text, voiceName, audioContext, 'google', lang, metadata, apiKeyOverride);
+          }
+          throw innerError;
       }
 
       const decoded = await safeDecode(result.buffer, audioContext, preferredProvider === 'gemini');
