@@ -58,6 +58,7 @@ import { BadgeStudio } from './BadgeStudio';
 import { BadgeViewer } from './BadgeViewer';
 import { ManualModal } from './ManualModal';
 import { ResumeView } from './ResumeView';
+import { ScribeStudio } from './ScribeStudio';
 
 import { auth, db } from '../services/firebaseConfig';
 import { onAuthStateChanged } from '@firebase/auth';
@@ -617,6 +618,7 @@ const App: React.FC = () => {
         { id: 'whiteboard', label: 'Canvas', icon: PenTool, action: () => handleSetViewState('whiteboard'), color: 'text-pink-400', restricted: true },
         { id: 'pdf_signer', label: 'Signer', icon: FileSignature, action: () => handleSetViewState('pdf_signer'), color: 'text-indigo-400', restricted: true },
         { id: 'badge_studio', label: 'Badge', icon: IdCard, action: () => handleSetViewState('badge_studio'), color: 'text-indigo-400', restricted: true },
+        { id: 'scribe_studio', label: 'Scribe', icon: Disc, action: () => handleSetViewState('scribe_studio'), color: 'text-red-500', restricted: true },
     ];
     return { free: list.filter(a => !a.restricted), pro: list.filter(a => a.restricted) };
   }, [handleSetViewState, t]);
@@ -682,7 +684,7 @@ const App: React.FC = () => {
                 {activeViewID === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={handleDetailBack} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} onUpdateChannel={handleUpdateChannel} isProMember={isProMember} /> )}
                 {activeViewID === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} language={language} initialContext={liveSessionParams.context} recordingEnabled={liveSessionParams.recordingEnabled} lectureId={liveSessionParams.bookingId} recordScreen={liveSessionParams.recordScreen} recordCamera={liveSessionParams.recordCamera} activeSegment={liveSessionParams.activeSegment} recordingDuration={liveSessionParams.recordingDuration} interactionEnabled={liveSessionParams.interactionEnabled} recordingTarget={liveSessionParams.recordingTarget} sessionTitle={liveSessionParams.sessionTitle} /> )}
                 {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('docs')} /></div> )}
-                {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={()=>{}} isProMember={isProMember} onOpenManual={() => setManualViewId('code_studio')} /> )}
+                {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={(chan, ctx) => handleStartLiveSession(chan, ctx)} isProMember={isProMember} onOpenManual={() => setManualViewId('code_studio')} /> )}
                 {activeViewID === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('whiteboard')} /> )}
                 {activeViewID === 'blog' && ( <div className="h-full overflow-y-auto"><BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('blog')} /></div> )}
                 {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} onOpenManual={() => setManualViewId('chat')} /> )}
@@ -717,6 +719,7 @@ const App: React.FC = () => {
                 {activeViewID === 'badge_studio' && ( <BadgeStudio onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} onOpenManual={() => setManualViewId('badge_studio')} /> )}
                 {activeViewID === 'badge_viewer' && ( <BadgeViewer onBack={() => handleSetViewState('dashboard')} badgeId={activeItemId} /> )}
                 {activeViewID === 'resume' && ( <ResumeView onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} /> )}
+                {activeViewID === 'scribe_studio' && ( <ScribeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onOpenManual={() => setManualViewId('scribe_studio')} /> )}
             </GuardedView>
         </main>
 

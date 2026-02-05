@@ -32,8 +32,17 @@ export async function generateLectureScript(
     // RESOLVE TUNED MODELS
     let modelName = 'gemini-3-pro-preview';
     if (voiceName) {
-        if (voiceName.includes('0648937375')) modelName = 'gen-lang-client-0648937375';
-        else if (voiceName.includes('0375218270')) modelName = 'gen-lang-client-0375218270';
+        if (voiceName.includes('0648937375')) {
+            modelName = 'gen-lang-client-0648937375';
+            window.dispatchEvent(new CustomEvent('neural-log', { 
+                detail: { text: `[Shard] Redirecting logic to Socratic Core (0648937375)...`, type: 'info' } 
+            }));
+        } else if (voiceName.includes('0375218270')) {
+            modelName = 'gen-lang-client-0375218270';
+            window.dispatchEvent(new CustomEvent('neural-log', { 
+                detail: { text: `[Shard] Redirecting logic to Systems Core (0375218270)...`, type: 'info' } 
+            }));
+        }
     }
 
     window.dispatchEvent(new CustomEvent('neural-log', { 

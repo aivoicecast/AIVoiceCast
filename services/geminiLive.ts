@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
 
@@ -14,7 +15,6 @@ export interface LiveConnectionCallbacks {
 
 function getValidLiveVoice(voiceName: string): string {
   const name = voiceName || '';
-  // Mapping specific personas to prebuilt voices supported by the Live API
   if (name.includes('Software Interview') || name.includes('0648937375')) return 'Fenrir';
   if (name.includes('Linux Kernel') || name.includes('0375218270')) return 'Puck';
   if (name.includes('Default Gem')) return 'Zephyr';
@@ -87,7 +87,6 @@ export class GeminiLiveService {
           outputAudioTranscription: {}
       };
 
-      // Fixed: Tools should be passed directly if they are already wrapped correctly
       if (tools) {
           config.tools = Array.isArray(tools) ? tools : [tools];
       }
@@ -110,25 +109,21 @@ export class GeminiLiveService {
             
             if (message.toolCall) callbacks.onToolCall?.(message.toolCall);
             
-            const outTrans = message.serverContent?.outputTranscription;
-            if (outTrans?.text) {
-                callbacks.onTranscript(outTrans.text, false);
-            }
+            // 1. Handle Transcriptions (What the model hears - English source in Scribe mode)
             const inTrans = message.serverContent?.inputTranscription;
             if (inTrans?.text) {
                 callbacks.onTranscript(inTrans.text, true);
             }
             
+            // 2. Handle Model Responses (Translation/AI response)
             const parts = message.serverContent?.modelTurn?.parts || [];
             for (const part of parts) {
+                // Audio output
                 const base64Audio = part.inlineData?.data;
                 if (base64Audio && this.outputAudioContext) {
                     try {
                         const bytes = base64ToBytes(base64Audio);
-                        
-                        // Check if audio playback is suppressed by callback
                         const shouldPlay = callbacks.onAudioData ? callbacks.onAudioData(bytes) : true;
-                        
                         if (!shouldPlay) continue;
 
                         this.isPlayingResponse = true;
@@ -157,6 +152,11 @@ export class GeminiLiveService {
                     } catch (e) {
                         console.error("[LiveService] Audio processing error", e);
                     }
+                }
+                
+                // Text output (Translation)
+                if (part.text) {
+                    callbacks.onTranscript(part.text, false);
                 }
             }
 

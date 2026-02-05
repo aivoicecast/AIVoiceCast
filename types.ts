@@ -16,6 +16,7 @@ export interface PlatformMetrics {
 export interface TranscriptItem {
   role: 'user' | 'ai';
   text: string;
+  translation?: string;
   timestamp: number;
 }
 
@@ -180,7 +181,7 @@ export interface Attachment {
   name?: string;
 }
 
-export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view' | 'pdf_signer' | 'badge_studio' | 'badge_viewer' | 'resume';
+export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view' | 'pdf_signer' | 'badge_studio' | 'badge_viewer' | 'resume' | 'scribe_studio';
 
 export interface Group {
   id: string;

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { RecordingSession, Channel, TranscriptItem, UserProfile, ViewID } from '../types';
 import { getUserRecordings, deleteRecordingReference, saveRecordingReference, getUserProfile } from '../services/firestoreService';
@@ -340,8 +339,8 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
     const defaultChannel: Channel = HANDCRAFTED_CHANNELS[0]; 
     if (onStartLiveSession) {
         const context = selectedTopic ? `[TOPIC]: ${selectedTopic}\n[CONTEXT]: Scribe session regarding ${meetingTitle}` : undefined;
-        // Inject meetingTitle as the sessionTitle argument
-        onStartLiveSession(defaultChannel, context, true, undefined, undefined, undefined, undefined, recordingDuration, interactionEnabled, recordingTarget, meetingTitle);
+        // Fix: Explicitly pass true for recordCamera (6th arg) to ensure PiP portal is rendered
+        onStartLiveSession(defaultChannel, context, true, undefined, true, recordCamera, undefined, recordingDuration, interactionEnabled, recordingTarget, meetingTitle);
     }
     setIsRecorderModalOpen(false);
   };
@@ -605,7 +604,6 @@ export const RecordingList: React.FC<RecordingListProps> = ({ onBack, onStartLiv
                       <div className="flex items-center gap-4">
                           <div className="p-3 bg-red-600 rounded-2xl text-white shadow-lg shadow-red-900/20"><Video size={24}/></div>
                           <div><h2 className="text-xl font-black text-white italic tracking-tighter uppercase">{activeRecording.channelTitle}</h2><div className="flex items-center gap-4 mt-1 text-[10px] font-black text-slate-500 uppercase tracking-widest"><span className="flex items-center gap-1"><Calendar size={12}/> {formatPST(activeRecording.timestamp).split(',')[0]}</span><span className="flex items-center gap-1"><HardDrive size={12}/> 
-                          {/* Fix: changed 'rec' to 'activeRecording' to resolve Error in file components/RecordingList.tsx on line 607 */}
                           {formatSize(activeRecording.size || activeRecording.blob?.size)}
                           </span></div></div>
                       </div>

@@ -197,5 +197,17 @@ A high-fidelity archive of ancient texts with cinematic AI visualizations and ne
 - **Bilingual Sync**: Simultaneous English and Chinese study nodes.
 - **Deep Hydration**: Ingest entire books from the neural cloud to your local ledger.
 - **Cinema Mode**: Focus on the text with minimalist, ambient lighting.
+  `,
+  scribe_studio: `
+# ✍️ Neural Scribe: Real-time Refraction
+
+**Transforming Speech into Structured Technical Artifacts.**
+
+A dedicated low-latency studio for converting audio into Markdown or Text manuscripts.
+
+### Modes
+- **Transcription Only**: Pure audio-to-text without AI interjection.
+- **AI Interaction**: The AI acts as a recording partner, providing summaries and refinement.
+- **Sovereign Vault**: Transcripts are automatically notarized and saved to your Google Drive.
   `
 };

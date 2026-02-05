@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
-import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power, Database, Timer, MessageSquareOff, Image as ImageIconLucide, Palette, Upload, Maximize } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Radio, AlertCircle, ScrollText, RefreshCw, Music, Download, Share2, Trash2, Quote, Copy, Check, MessageSquare, BookPlus, Loader2, Globe, FilePlus, Play, Save, CloudUpload, Link, X, Video, Monitor, Camera, Youtube, ClipboardList, Maximize2, Minimize2, Activity, Terminal, ShieldAlert, LogIn, Wifi, WifiOff, Zap, ShieldCheck, Thermometer, RefreshCcw, Sparkles, Square, Power, Database, Timer, MessageSquareOff, ImageIcon as ImageIconLucide, Palette, Upload, Maximize } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
 import { getDriveToken, signInWithGoogle, isJudgeSession } from '../services/authService';
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
@@ -68,7 +68,8 @@ const UI_TEXT = {
     pipFrame: "PIP Frame Image",
     bgStyle: "Video Backdrop",
     uploadBtn: "Upload Image",
-    pipSize: "PIP Circle Size"
+    pipSize: "PIP Circle Size",
+    mirrorLabel: "Neural Mirror"
   },
   zh: {
     welcomePrefix: "试着问...",
@@ -98,7 +99,8 @@ const UI_TEXT = {
     pipFrame: "画中画背景图",
     bgStyle: "视频背景样式",
     uploadBtn: "上传图片",
-    pipSize: "画中画尺寸"
+    pipSize: "画中画尺寸",
+    mirrorLabel: "神经镜像"
   }
 };
 
@@ -127,6 +129,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [backdropStyle, setBackdropStyle] = useState<PipBackground>('blur');
   const [pipSize, setPipSize] = useState<PipSize>('normal');
   const [customPipBgBase64, setCustomPipBgBase64] = useState<string | null>(null);
+  const [isMirrorMinimized, setIsMirrorMinimized] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -137,6 +140,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const reconnectTimeoutRef = useRef<any>(null);
   const pipBgImageRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mirrorVideoRef = useRef<HTMLVideoElement>(null);
 
   const [transcript, setTranscript] = useState<TranscriptItem[]>([]);
   const [currentLine, setCurrentLine] = useState<TranscriptItem | null>(null);
@@ -220,7 +224,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             const v = document.createElement('video');
             v.muted = true; v.playsInline = true; v.autoplay = true;
             v.style.position = 'fixed'; v.style.left = '-10000px'; 
-            if (stream) { v.srcObject = stream; document.body.appendChild(v); v.play().catch(console.warn); }
+            if (stream) { 
+                v.srcObject = stream; 
+                document.body.appendChild(v); 
+                v.play().catch(err => {
+                    addLog(`Compositor: ${id} buffer delayed. Status: REPAIRING.`, "warn");
+                }); 
+            }
             return v;
         };
 
@@ -228,17 +238,30 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
         const cameraVideo = createCaptureVideo(cameraStreamRef.current, 'camera');
 
         let ready = false;
+        let firstCameraFrameLogged = false;
+
         const checkFlow = () => {
             const screenOk = !screenStreamRef.current || (screenVideo.readyState >= 2 && screenVideo.currentTime > 0);
             const cameraOk = !cameraStreamRef.current || (cameraVideo.readyState >= 2 && cameraVideo.currentTime > 0);
+            
             if (screenOk && cameraOk) {
                 ready = true;
                 setIsWaitingForFrames(false);
                 addLog("Frame flow verified. Recorder engaged.");
+                
+                // Mirror for user view
+                if (mirrorVideoRef.current && cameraStreamRef.current) {
+                    mirrorVideoRef.current.srcObject = cameraStreamRef.current;
+                }
             } else {
+                // Hardening: Explicit play calls
                 if (screenVideo.paused) screenVideo.play();
                 if (cameraVideo.paused) cameraVideo.play();
-                setTimeout(checkFlow, 100);
+
+                if (!cameraOk && cameraStreamRef.current) {
+                    addLog(`Waiting for Camera Buffer (ReadyState: ${cameraVideo.readyState})...`, "warn");
+                }
+                setTimeout(checkFlow, 500);
             }
         };
         checkFlow();
@@ -321,6 +344,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 drawCtx.lineWidth = pipSize === 'compact' ? 1 : 2;
                 drawCtx.stroke();
                 drawCtx.restore();
+
+                if (!firstCameraFrameLogged) {
+                    firstCameraFrameLogged = true;
+                    addLog("Compositor: First PiP frame rasterized successfully.", "success");
+                }
             }
         };
 
@@ -513,6 +541,34 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
 
   return (
     <div className="h-full w-full flex flex-col bg-slate-950 relative">
+      {/* Neural Mirror (PIP Portal) */}
+      {hasStarted && propRecordCamera && (
+        <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
+            <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
+                <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
+                <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-indigo-500/50 overflow-hidden shadow-2xl">
+                    <video 
+                      ref={mirrorVideoRef}
+                      autoPlay 
+                      playsInline 
+                      muted 
+                      className="w-full h-full object-cover transform scale-110"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+                    <div className="absolute top-2 left-1/2 -translate-x-1/2">
+                        <div className="bg-indigo-600 text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg border border-indigo-400/50 whitespace-nowrap">{t.mirrorLabel}</div>
+                    </div>
+                    <button 
+                      onClick={() => setIsMirrorMinimized(!isMirrorMinimized)}
+                      className="absolute bottom-2 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-indigo-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                    >
+                        {isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
       <div className="p-4 flex items-center justify-between bg-slate-900 border-b border-slate-800 shrink-0 z-20">
          <div className="flex items-center space-x-3">
             {!recordingEnabled && <img src={channel.imageUrl} className="w-10 h-10 rounded-full border border-slate-700 object-cover" alt="" />}

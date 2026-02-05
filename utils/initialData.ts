@@ -33,7 +33,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: 'mock-interview-deep-dive',
     title: '🛡️ AUDIT: MockInterview Studio',
-    description: 'The Full 10-Sector Technical Manifest. v8.0.0-COMPLETE update includes Socratic friction logic and the 200ms Emotive Link protocol.',
+    description: 'The Full 10-Sector Technical Manifest. Powered by Shard 0648937375. Includes Socratic friction logic and sub-200ms Emotive Link protocols.',
     author: 'Lead Architect',
     voiceName: 'Software Interview Voice gen-lang-client-0648937375',
     systemInstruction: 'You are the Lead Architect of the MockInterview Studio. Conduct a full 10-sector technical audit. Explain how the "Socratic Interrogator" persona uses technical friction to reveal candidate unknowns. Discuss the Emotive Link protocol using Gemini 2.5 Flash Native Audio for sub-200ms latency. Mention the "Sovereign Bake" deterministic PDF protocol and the 10-Week Refraction Plan.',
@@ -48,10 +48,10 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: 'judge-deep-dive',
     title: '🏆 JUDGE: Technical Audit',
-    description: 'v8.0.0-COMPLETE Technical manifest for Hackathon Judges. Examining the BCP sharding, 10:1 scaling, and Symbol-Flow integrity protocols.',
+    description: 'v8.0.0-COMPLETE Technical manifest for Hackathon Judges. Examining multi-shard tuned refraction, BCP sharding, and 10:1 scaling protocols.',
     author: 'Project Lead',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the Project Lead for Neural Prism. Conduct a technical audit for a hackathon judge. Focus on core architectural improvements in v8.0.0: The Complexity Balancer v4, the Binary Chunking Protocol (BCP), and the Symbol-Flow Integrity pipeline for perfect high-DPI artifact synthesis.',
+    systemInstruction: 'You are the Project Lead for Neural Prism. Conduct a technical audit for a hackathon judge. Focus on core architectural improvements in v8.0.0: The Complexity Balancer v4, the Binary Chunking Protocol (BCP), and the use of specialized tuned model shards (0648937375, 0375218270) for domain-specific technical authority.',
     likes: 2100,
     dislikes: 0,
     comments: [],
@@ -78,7 +78,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: '1',
     title: 'Software Interview Preparation',
-    description: 'Practice your coding interview skills with a strict but fair senior engineer bot. Refracted for v8.0.0.',
+    description: 'Practice your coding interview skills with Shard 0648937375. Professional, rigorous senior engineer audit.',
     author: 'Gemini Professional',
     voiceName: 'Software Interview Voice gen-lang-client-0648937375',
     systemInstruction: 'You are a world-class senior software engineer conducting a technical interview. Your tone is professional, rigorous, and analytical.',
@@ -93,7 +93,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: '2',
     title: 'Kernel Architect Lab',
-    description: 'Interactive audit of the Linux Kernel internals. Refracted for the 2036 Distributed Mesh.',
+    description: 'Interactive audit of the Linux Kernel internals via Shard 0375218270. Memory safety and architecture refraction.',
     author: 'Gemini Kernel',
     voiceName: 'Linux Kernel Voice gen-lang-client-0375218270',
     systemInstruction: 'You are a legendary Linux Kernel Maintainer. You speak with extreme technical precision about C programming.',

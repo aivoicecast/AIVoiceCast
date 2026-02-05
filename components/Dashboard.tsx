@@ -5,7 +5,7 @@ import {
   Briefcase, Truck, AppWindow, Book, PenTool, Rss, Gift, Rocket, BookOpen, 
   Activity, Scroll, GraduationCap, Cpu, Star, Coins, Zap, ShieldCheck,
   Globe, Users, Clock, Sparkles, ChevronRight, Crown, Lock, Radio,
-  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard, Info, TrendingUp, BarChart3, Binary, Github, Scale
+  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard, Info, TrendingUp, BarChart3, Binary, Github, Scale, Thermometer
 } from 'lucide-react';
 import { ViewID, UserProfile, PlatformMetrics } from '../types';
 import { Visualizer } from './Visualizer';
@@ -37,7 +37,8 @@ const UI_TEXT = {
     pulseTitle: "Network Propagation",
     metricsTotal: "Global Refractions",
     metricsHumanoid: "Optimus Hubs Deployed",
-    metricsEfficiency: "Distributed Index"
+    metricsEfficiency: "Distributed Index",
+    thermoFloor: "Cost-to-Zero Floor"
   },
   zh: {
     greeting: "欢迎回来，",
@@ -56,7 +57,8 @@ const UI_TEXT = {
     pulseTitle: "网络传播",
     metricsTotal: "全球折射总数",
     metricsHumanoid: "Optimus 枢纽已部署",
-    metricsEfficiency: "分布式指数"
+    metricsEfficiency: "分布式指数",
+    thermoFloor: "成本归零底线"
   }
 };
 
@@ -66,22 +68,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
       globalRefractions: 1284052,
       voiceCoinVelocity: 842.5,
       computeEfficiency: '10x',
-      // Initializing with the requested 122.8M start
       humanoidCapacity: 122843668 / 1000, 
       distributedIndex: 0.122843668
   });
 
-  // Simulate real-time metrics for distributed network vision (Target: 1 Billion Optimus Hubs)
+  const [thermoCost, setThermoCost] = useState(299.00);
+
   useEffect(() => {
     const interval = setInterval(() => {
         setMetrics(prev => {
-            // Increase by 5 to 15 hubs per cycle to simulate active propagation
             const delta = (Math.random() * 10 + 5) / 1000;
             const newCapacity = prev.humanoidCapacity + delta;
-            
-            // Distributed Index is (Actual Hubs) / 1,000,000,000
             const newIndex = (newCapacity * 1000) / 1000000000;
             
+            // Cost collapses as network expands
+            setThermoCost(c => Math.max(0, c - (delta * 0.001)));
+
             return {
                 ...prev,
                 globalRefractions: prev.globalRefractions + Math.floor(Math.random() * 5),
@@ -89,7 +91,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                 distributedIndex: newIndex
             };
         });
-    }, 2000);
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -140,6 +142,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
     {
       title: t.archiveSector,
       apps: [
+        { id: 'scribe_studio', label: 'Neural Scribe', sub: 'Audio to MD', description: 'Minimalist real-time audio-to-markdown transcription. Direct vault sync without video overhead.', icon: Disc, color: 'text-red-500', bg: 'bg-red-900/30', restricted: true },
         { id: 'chat', label: 'Team Space', sub: 'Neural Messaging', description: 'Secure real-time workspace messaging with deep integration for code sharing and attachments.', icon: MessageSquare, color: 'text-blue-400', bg: 'bg-blue-900/30', restricted: true },
         { id: 'blog', label: 'Voice Feed', sub: 'Community Blog', description: 'Publish technical insights and platform updates to the community thought stream.', icon: Rss, color: 'text-orange-400', bg: 'bg-orange-900/30', restricted: true },
         { id: 'recordings', label: 'Recordings', sub: 'Session Archive', description: 'A sovereign vault for all your live session video logs, transcripts, and neural artifacts.', icon: Disc, color: 'text-red-400', bg: 'bg-red-900/30', restricted: true },
@@ -161,6 +164,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                     <div className="flex items-center gap-6">
                         <div className="relative">
                             {userProfile?.photoURL ? (
+                                /* Fix: Corrected img tag syntax */
                                 <img src={userProfile.photoURL} className="w-20 h-20 rounded-3xl border-4 border-slate-800 shadow-2xl object-cover" />
                             ) : (
                                 <div className="w-20 h-20 rounded-3xl bg-slate-800 border-4 border-slate-800 flex items-center justify-center text-3xl font-black text-indigo-400 shadow-2xl">
@@ -202,12 +206,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
             </section>
 
             {/* Neural Pulse Widget (Scaling Vision: 1 Billion Optimus Hubs Target) */}
-            <section className="bg-slate-900 border border-slate-800 rounded-[3rem] p-8 shadow-xl relative overflow-hidden flex flex-col justify-between">
+            <section className="bg-slate-900 border border-slate-800 rounded-[3rem] p-8 shadow-xl relative overflow-hidden flex flex-col justify-between group/pulse">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] flex items-center gap-2">
                         <Globe size={14}/> {t.pulseTitle}
                     </h3>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">10-Year Scaling Target</span>
+                    <div className="flex items-center gap-2">
+                        <Thermometer size={12} className="text-orange-500 animate-pulse"/>
+                        <span className="text-[10px] font-bold text-orange-400 uppercase tracking-tighter tabular-nums">${thermoCost.toFixed(2)}/yr</span>
+                    </div>
                 </div>
                 
                 <div className="flex-1 min-h-[80px]">
@@ -223,6 +230,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                         <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{t.metricsEfficiency}</p>
                         <p className="text-lg font-black text-emerald-400 font-mono">{(metrics.distributedIndex * 100).toFixed(6)}%</p>
                     </div>
+                </div>
+                <div className="mt-2 text-center border-t border-slate-800 pt-3 opacity-0 group-hover/pulse:opacity-100 transition-opacity">
+                    <p className="text-[7px] font-black text-slate-600 uppercase tracking-[0.3em]">{t.thermoFloor} Target: $0.00</p>
                 </div>
             </section>
         </div>
