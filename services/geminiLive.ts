@@ -9,6 +9,7 @@ export interface LiveConnectionCallbacks {
   onVolumeUpdate: (volume: number) => void;
   onTranscript: (text: string, isUser: boolean) => void;
   onToolCall?: (toolCall: any) => void;
+  onToolResponse?: (response: any) => void;
   onTurnComplete?: () => void;
   onAudioData?: (data: Uint8Array) => boolean; // Return false to suppress output
 }
@@ -74,6 +75,15 @@ export class GeminiLiveService {
       }
 
       const validVoice = getValidLiveVoice(voiceName);
+      const isScribeMode = systemInstruction.toLowerCase().includes("scribe") || systemInstruction.toLowerCase().includes("silent");
+      
+      let modelId = 'gemini-2.5-flash-native-audio-preview-12-2025';
+      
+      if (voiceName.includes('0648937375')) {
+          modelId = 'tunedModels/gen-lang-client-0648937375';
+      } else if (voiceName.includes('0375218270')) {
+          modelId = 'tunedModels/gen-lang-client-0375218270';
+      }
 
       const config: any = {
           responseModalities: [Modality.AUDIO],
@@ -88,11 +98,11 @@ export class GeminiLiveService {
       };
 
       if (tools) {
-          config.tools = Array.isArray(tools) ? tools : [tools];
+          config.tools = Array.isArray(tools) ? Array.isArray(tools[0]) ? tools : [tools] : [tools];
       }
 
       this.sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: modelId,
         config,
         callbacks: {
           onopen: () => {
@@ -100,27 +110,23 @@ export class GeminiLiveService {
             this.startAudioInput(callbacks.onVolumeUpdate);
             this.startHeartbeat();
             callbacks.onOpen();
-            window.dispatchEvent(new CustomEvent('neural-log', { 
-                detail: { text: `[Live] Handshake verified with ${validVoice} persona.`, type: 'success' } 
-            }));
           },
           onmessage: async (message: LiveServerMessage) => {
             if (!this.isActive) return;
             
             if (message.toolCall) callbacks.onToolCall?.(message.toolCall);
             
-            // 1. Handle Transcriptions (What the model hears - English source in Scribe mode)
+            // 1. INPUT TRANSCRIPTION (Live STT Snapshot)
             const inTrans = message.serverContent?.inputTranscription;
             if (inTrans?.text) {
                 callbacks.onTranscript(inTrans.text, true);
             }
             
-            // 2. Handle Model Responses (Translation/AI response)
+            // 2. MODEL TURN (AI Speech/Text)
             const parts = message.serverContent?.modelTurn?.parts || [];
             for (const part of parts) {
-                // Audio output
                 const base64Audio = part.inlineData?.data;
-                if (base64Audio && this.outputAudioContext) {
+                if (base64Audio && this.outputAudioContext && !isScribeMode) {
                     try {
                         const bytes = base64ToBytes(base64Audio);
                         const shouldPlay = callbacks.onAudioData ? callbacks.onAudioData(bytes) : true;
@@ -154,8 +160,7 @@ export class GeminiLiveService {
                     }
                 }
                 
-                // Text output (Translation)
-                if (part.text) {
+                if (part.text && !isScribeMode) {
                     callbacks.onTranscript(part.text, false);
                 }
             }
@@ -182,8 +187,7 @@ export class GeminiLiveService {
             if (!this.isActive) return;
             this.cleanup();
             const errMsg = e?.message || String(e);
-            const code = errMsg.includes('429') ? 'RATE_LIMIT' : 'API_ERROR';
-            callbacks.onError(errMsg, code);
+            callbacks.onError(errMsg);
           }
         }
       });
@@ -191,8 +195,7 @@ export class GeminiLiveService {
       this.session = await this.sessionPromise;
     } catch (error: any) {
       this.isActive = false;
-      const errMsg = error?.message || String(error);
-      callbacks.onError(errMsg, "INIT_ERROR");
+      callbacks.onError(error?.message || String(error));
       this.cleanup();
       throw error;
     }
@@ -200,11 +203,16 @@ export class GeminiLiveService {
 
   private startHeartbeat() {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    // Silent heartbeat every 10s to keep connection alive
     this.heartbeatInterval = setInterval(() => {
         if (this.session && this.isActive) {
-            this.sendText(" "); 
+            this.sessionPromise?.then((session) => {
+                session.sendRealtimeInput({
+                    parts: [{ text: "[HEARTBEAT]" }]
+                });
+            });
         }
-    }, 15000); 
+    }, 10000); 
   }
 
   public sendToolResponse(functionResponses: any) {
@@ -213,18 +221,18 @@ export class GeminiLiveService {
       });
   }
 
-  public sendVideo(base64Data: string, mimeType: string) {
-    this.sessionPromise?.then((session) => {
-      session.sendRealtimeInput({
-        media: { data: base64Data, mimeType }
-      });
-    });
-  }
-
   public sendText(text: string) {
     this.sessionPromise?.then((session) => {
       session.sendRealtimeInput({
         parts: [{ text }]
+      });
+    });
+  }
+
+  public sendMedia(data: string, mimeType: string) {
+    this.sessionPromise?.then((session) => {
+      session.sendRealtimeInput({
+        media: { data, mimeType }
       });
     });
   }

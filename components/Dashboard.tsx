@@ -1,11 +1,10 @@
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { 
   Terminal, Code, Video, LayoutGrid, FileText, Wallet, MessageSquare, 
   Briefcase, Truck, AppWindow, Book, PenTool, Rss, Gift, Rocket, BookOpen, 
   Activity, Scroll, GraduationCap, Cpu, Star, Coins, Zap, ShieldCheck,
   Globe, Users, Clock, Sparkles, ChevronRight, Crown, Lock, Radio,
-  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard, Info, TrendingUp, BarChart3, Binary, Github, Scale, Thermometer
+  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard, Info, TrendingUp, BarChart3, Binary, Github, Scale, Thermometer, Shield, Play
 } from 'lucide-react';
 import { ViewID, UserProfile, PlatformMetrics } from '../types';
 import { Visualizer } from './Visualizer';
@@ -38,7 +37,12 @@ const UI_TEXT = {
     metricsTotal: "Global Refractions",
     metricsHumanoid: "Optimus Hubs Deployed",
     metricsEfficiency: "Distributed Index",
-    thermoFloor: "Cost-to-Zero Floor"
+    thermoFloor: "Cost-to-Zero Floor",
+    judgeHeroTitle: "🏆 Hackathon Auditor's Portal",
+    judgeHeroDesc: "Launch the v8.0.0-COMPLETE Technical Audit for an interactive project evaluation.",
+    judgeAction: "Run Audit",
+    featuredTitle: "Featured Lab",
+    featuredDesc: "Socratic Interrogation Studio"
   },
   zh: {
     greeting: "欢迎回来，",
@@ -58,7 +62,12 @@ const UI_TEXT = {
     metricsTotal: "全球折射总数",
     metricsHumanoid: "Optimus 枢纽已部署",
     metricsEfficiency: "分布式指数",
-    thermoFloor: "成本归零底线"
+    thermoFloor: "成本归零底线",
+    judgeHeroTitle: "🏆 参赛审计门户",
+    judgeHeroDesc: "启动 v8.0.0-COMPLETE 技术审计，进行交互式项目评估。",
+    judgeAction: "运行审计",
+    featuredTitle: "精选实验室",
+    featuredDesc: "苏格拉底式面试工作室"
   }
 };
 
@@ -68,7 +77,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
       globalRefractions: 1284052,
       voiceCoinVelocity: 842.5,
       computeEfficiency: '10x',
-      humanoidCapacity: 122843668 / 1000, 
+      humanoidCapacity: 122843.668, 
       distributedIndex: 0.122843668
   });
 
@@ -81,12 +90,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
             const newCapacity = prev.humanoidCapacity + delta;
             const newIndex = (newCapacity * 1000) / 1000000000;
             
-            // Cost collapses as network expands
-            setThermoCost(c => Math.max(0, c - (delta * 0.001)));
+            setThermoCost(c => Math.max(0, c - (delta * 0.0001)));
 
             return {
                 ...prev,
-                globalRefractions: prev.globalRefractions + Math.floor(Math.random() * 5),
+                globalRefractions: prev.globalRefractions + Math.floor(Math.random() * 3),
                 humanoidCapacity: newCapacity,
                 distributedIndex: newIndex
             };
@@ -99,56 +107,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
     {
       title: t.discoverySector,
       apps: [
-        { id: 'directory', label: 'Knowledge Hub', sub: 'Podcast Stream', description: 'Interactive AI-guided learning sessions with real-time Q&A and screen-sharing support.', icon: Radio, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: false },
-        { id: 'bible_study', label: 'Scripture', sub: 'Ancient Text', description: 'A sacred digital space for dual-language scripture study and cinematic AI visualizations.', icon: Scroll, color: 'text-amber-500', bg: 'bg-amber-950/40', restricted: false },
-        { id: 'scripture_ingest', label: 'Scripture Ingest', sub: 'Data Refraction', description: 'Deep-hydration tool for synthesizing and archiving scripture chapters into the neural ledger.', icon: FileUp, color: 'text-amber-400', bg: 'bg-amber-900/20', restricted: true },
-        { id: 'book_studio', label: 'Author Studio', sub: 'Neural Books', description: 'Synthesize full-length technical books and manuals into high-fidelity PDF formats instantly.', icon: BookText, color: 'text-indigo-500', bg: 'bg-indigo-900/30', restricted: false }
+        { id: 'directory', label: 'Knowledge Hub', sub: 'Podcast Stream', description: 'Interactive AI-guided learning sessions with real-time Q&A.', icon: Radio, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: false },
+        { id: 'bible_study', label: 'Scripture', sub: 'Ancient Text', description: 'Dual-language scripture study and cinematic visualizations.', icon: Scroll, color: 'text-amber-500', bg: 'bg-amber-950/40', restricted: false },
+        { id: 'scripture_ingest', label: 'Scripture Ingest', sub: 'Data Refraction', description: 'Deep-hydration tool for synthesizing scripture into the ledger.', icon: FileUp, color: 'text-amber-400', bg: 'bg-amber-900/20', restricted: true },
+        { id: 'book_studio', label: 'Author Studio', sub: 'Neural Books', description: 'Synthesize full-length technical books into high-fidelity PDFs.', icon: BookText, color: 'text-indigo-500', bg: 'bg-indigo-900/30', restricted: false }
       ]
     },
     {
       title: t.logicSector,
       apps: [
-        { id: 'code_studio', label: 'Builder Studio', sub: 'Neural IDE', description: 'Advanced IDE with heuristic code simulation. Execute C++, Python, and more without a server.', icon: Terminal, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: true },
-        { id: 'notebook_viewer', label: 'Research Lab', sub: 'Interactive Docs', description: 'Experiment with complex prompts and multi-step reasoning in a specialized AI scratchpad.', icon: Book, color: 'text-orange-400', bg: 'bg-orange-900/30', restricted: true },
-        { id: 'graph_studio', label: 'Logic Visualizer', sub: 'Math Rendering', description: 'Convert complex mathematical expressions into hardware-accelerated 3D neural visualizations.', icon: Activity, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true }
+        { id: 'code_studio', label: 'Builder Studio', sub: 'Neural IDE', description: 'Advanced IDE with heuristic code simulation. Execute C++, Python.', icon: Terminal, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: true },
+        { id: 'notebook_viewer', label: 'Research Lab', sub: 'Interactive Docs', description: 'Experiment with complex prompts in a specialized AI scratchpad.', icon: Book, color: 'text-orange-400', bg: 'bg-orange-900/30', restricted: true },
+        { id: 'graph_studio', label: 'Logic Visualizer', sub: 'Math Rendering', description: 'Convert complex math into hardware-accelerated 3D visualizations.', icon: Activity, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true }
       ]
     },
     {
       title: t.financeSector,
       apps: [
-        { id: 'pdf_signer', label: 'Sovereign Signer', sub: 'PDF Authority', description: 'Authenticate and sign any PDF document from Google Drive or local storage with neural validation.', icon: FileSignature, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: true },
-        { id: 'check_designer', label: 'Finance Lab', sub: 'Asset Refraction', description: 'Design high-fidelity banking documents with secure neural signatures and printable PDF output.', icon: Wallet, color: 'text-amber-400', bg: 'bg-amber-950/40', restricted: true },
-        { id: 'shipping_labels', label: 'Logistics Lab', sub: 'Postal Protocol', description: 'Neural address parsing and professional thermal label generation for streamlined global shipping.', icon: Truck, color: 'text-emerald-400', bg: 'bg-indigo-900/30', restricted: true },
-        { id: 'coin_wallet', label: 'Wallet', sub: 'Neural Ledger', description: 'Manage your VoiceCoin assets and participate in cryptographically signed peer-to-peer transfers.', icon: Coins, color: 'text-amber-500', bg: 'bg-amber-950/40', restricted: true }
+        { id: 'pdf_signer', label: 'Sovereign Signer', sub: 'PDF Authority', description: 'Sign any PDF from Google Drive with neural validation.', icon: FileSignature, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: true },
+        { id: 'check_designer', label: 'Finance Lab', sub: 'Asset Refraction', description: 'Design banking documents with secure neural signatures.', icon: Wallet, color: 'text-amber-400', bg: 'bg-amber-950/40', restricted: true },
+        { id: 'shipping_labels', label: 'Logistics Lab', sub: 'Postal Protocol', description: 'Neural address parsing and professional label generation.', icon: Truck, color: 'text-emerald-400', bg: 'bg-indigo-900/30', restricted: true },
+        { id: 'coin_wallet', label: 'Wallet', sub: 'Neural Ledger', description: 'Manage VoiceCoin assets and signed peer-to-peer transfers.', icon: Coins, color: 'text-amber-500', bg: 'bg-amber-950/40', restricted: true }
       ]
     },
     {
       title: t.creativeSector,
       apps: [
-        { id: 'card_workshop', label: 'Gift Workshop', sub: 'Holiday Synthesis', description: 'Generative studio for custom holiday cards, AI-composed music, and personalized voice greetings.', icon: Gift, color: 'text-red-400', bg: 'bg-red-900/30', restricted: true },
-        { id: 'icon_generator', label: 'Brand Lab', sub: 'Visual Identity', description: 'Transform concepts into professional high-resolution app icons using advanced neural art models.', icon: AppWindow, color: 'text-cyan-400', bg: 'bg-cyan-900/30', restricted: true },
-        { id: 'whiteboard', label: 'Visual Canvas', sub: 'Freeform Flow', description: 'A limitless collaborative whiteboard for architectural mapping and group neural brainstorming.', icon: PenTool, color: 'text-pink-400', bg: 'bg-pink-900/30', restricted: true },
-        { id: 'badge_studio', label: 'Badge Studio', sub: 'Digital ID', description: 'Synthesize a high-fidelity digital identification badge with biometric capture and neural watermarking.', icon: IdCard, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: true }
+        { id: 'card_workshop', label: 'Gift Workshop', sub: 'Holiday Synthesis', description: 'Generative studio for custom cards and AI-composed music.', icon: Gift, color: 'text-red-400', bg: 'bg-red-900/30', restricted: true },
+        { id: 'icon_generator', label: 'Brand Lab', sub: 'Visual Identity', description: 'Transform concepts into high-resolution app icons.', icon: AppWindow, color: 'text-cyan-400', bg: 'bg-cyan-900/30', restricted: true },
+        { id: 'whiteboard', label: 'Visual Canvas', sub: 'Freeform Flow', description: 'Limitless whiteboard for architectural mapping.', icon: PenTool, color: 'text-pink-400', bg: 'bg-pink-900/30', restricted: true },
+        { id: 'badge_studio', label: 'Badge Studio', sub: 'Digital ID', description: 'Digital ID with biometric capture and neural watermarking.', icon: IdCard, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: true }
       ]
     },
     {
       title: t.careerSector,
       apps: [
-        { id: 'mock_interview', label: 'Career Eval', sub: 'Simulation Lab', description: 'Practice with rigorous AI interviewer personas. Receive deep technical feedback and scoring.', icon: Video, color: 'text-red-500', bg: 'bg-red-950/40', restricted: true },
-        { id: 'mentorship', label: 'Expert Hub', sub: 'Knowledge Match', description: 'Book 1-on-1 sessions with human domain experts or specialized AI technical mentors.', icon: Users, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true },
-        { id: 'careers', label: 'Talent Hub', sub: 'Hiring Registry', description: 'Showcase your AI-augmented portfolio and browse high-level roles in the Prism community.', icon: Briefcase, color: 'text-yellow-400', bg: 'bg-yellow-900/30', restricted: true }
+        { id: 'mock_interview', label: 'Career Eval', sub: 'Simulation Lab', description: 'Practice with rigorous AI interviewer personas.', icon: Video, color: 'text-red-500', bg: 'bg-red-950/40', restricted: true },
+        { id: 'mentorship', label: 'Expert Hub', sub: 'Knowledge Match', description: 'Book 1-on-1 sessions with human domain experts.', icon: Users, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true },
+        { id: 'careers', label: 'Talent Hub', sub: 'Hiring Registry', description: 'Showcase your portfolio and browse roles in the community.', icon: Briefcase, color: 'text-yellow-400', bg: 'bg-yellow-900/30', restricted: true }
       ]
     },
     {
       title: t.archiveSector,
       apps: [
-        { id: 'scribe_studio', label: 'Neural Scribe', sub: 'Audio to MD', description: 'Minimalist real-time audio-to-markdown transcription. Direct vault sync without video overhead.', icon: Disc, color: 'text-red-500', bg: 'bg-red-900/30', restricted: true },
-        { id: 'chat', label: 'Team Space', sub: 'Neural Messaging', description: 'Secure real-time workspace messaging with deep integration for code sharing and attachments.', icon: MessageSquare, color: 'text-blue-400', bg: 'bg-blue-900/30', restricted: true },
-        { id: 'blog', label: 'Voice Feed', sub: 'Community Blog', description: 'Publish technical insights and platform updates to the community thought stream.', icon: Rss, color: 'text-orange-400', bg: 'bg-orange-900/30', restricted: true },
-        { id: 'recordings', label: 'Recordings', sub: 'Session Archive', description: 'A sovereign vault for all your live session video logs, transcripts, and neural artifacts.', icon: Disc, color: 'text-red-400', bg: 'bg-red-900/30', restricted: true },
-        { id: 'docs', label: 'Paperwork', sub: 'Managed Docs', description: 'Professional specification registry for managing technical design documents and specifications.', icon: FileText, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true },
-        { id: 'calendar', label: 'Schedule', sub: 'Activity Flow', description: 'AI-integrated scheduler for managing mentorship bookings and platform-wide activities.', icon: Calendar, color: 'text-cyan-400', bg: 'bg-cyan-900/30', restricted: true },
-        { id: 'groups', label: 'Communities', sub: 'Member Hub', description: 'Join or create collaborative groups for focused research and project development.', icon: Users, color: 'text-purple-400', bg: 'bg-purple-900/30', restricted: true }
+        { id: 'scribe_studio', label: 'Neural Scribe', sub: 'Audio to MD', description: 'Minimalist real-time audio-to-markdown transcription.', icon: Disc, color: 'text-red-500', bg: 'bg-red-900/30', restricted: true },
+        { id: 'chat', label: 'Team Space', sub: 'Neural Messaging', description: 'Secure real-time workspace messaging and code sharing.', icon: MessageSquare, color: 'text-blue-400', bg: 'bg-blue-900/30', restricted: true },
+        { id: 'blog', label: 'Voice Feed', sub: 'Community Blog', description: 'Publish technical insights to the community stream.', icon: Rss, color: 'text-orange-400', bg: 'bg-orange-900/30', restricted: true },
+        { id: 'recordings', label: 'Recordings', sub: 'Archive', description: 'Sovereign vault for video logs and neural artifacts.', icon: Video, color: 'text-red-400', bg: 'bg-red-900/30', restricted: true },
+        { id: 'docs', label: 'Paperwork', sub: 'Docs', description: 'Professional specification registry for managing design docs.', icon: FileText, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true },
+        { id: 'calendar', label: 'Schedule', sub: 'Activity', description: 'Scheduler for bookings and platform activities.', icon: Calendar, color: 'text-cyan-400', bg: 'bg-cyan-900/30', restricted: true },
+        { id: 'groups', label: 'Communities', sub: 'Member Hub', description: 'Collaborative groups for focused research.', icon: Users, color: 'text-purple-400', bg: 'bg-purple-900/30', restricted: true }
       ]
     }
   ], [t]);
@@ -157,17 +165,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
     <div className="h-full overflow-y-auto bg-slate-950 scrollbar-hide">
       <div className="max-w-7xl mx-auto p-6 md:p-12 space-y-8 pb-32">
         
+        {/* TOP LEVEL COMMAND CENTER */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <section className="lg:col-span-2 bg-gradient-to-br from-indigo-900/40 to-slate-900 border border-slate-800 rounded-[3rem] p-8 md:p-12 shadow-2xl relative overflow-hidden group flex flex-col justify-center">
-                <div className="absolute top-0 right-0 p-32 bg-indigo-500/10 blur-[100px] rounded-full group-hover:scale-110 transition-transform duration-1000"></div>
+            <section className="lg:col-span-2 bg-gradient-to-br from-indigo-900/60 to-slate-900 border border-slate-800 rounded-[3rem] p-8 md:p-12 shadow-2xl relative overflow-hidden group flex flex-col justify-center border-indigo-500/20">
+                <div className="absolute top-0 right-0 p-32 bg-indigo-500/20 blur-[100px] rounded-full group-hover:scale-110 transition-transform duration-1000"></div>
                 <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
                     <div className="flex items-center gap-6">
                         <div className="relative">
                             {userProfile?.photoURL ? (
-                                /* Fix: Corrected img tag syntax */
-                                <img src={userProfile.photoURL} className="w-20 h-20 rounded-3xl border-4 border-slate-800 shadow-2xl object-cover" />
+                                <img src={userProfile.photoURL} className="w-20 h-20 rounded-3xl border-4 border-slate-800 shadow-2xl object-cover" alt="Profile" />
                             ) : (
-                                <div className="w-20 h-20 rounded-3xl bg-slate-800 border-4 border-slate-800 flex items-center justify-center text-3xl font-black text-indigo-400 shadow-2xl">
+                                <div className="w-20 h-20 rounded-3xl bg-slate-800 border-4 border-slate-800 flex items-center justify-center text-3xl font-black text-indigo-400 shadow-2xl uppercase">
                                     {userProfile?.displayName?.[0] || 'U'}
                                 </div>
                             )}
@@ -187,13 +195,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                                 <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${isProMember ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
                                     {isProMember ? t.proBadge : t.freeBadge}
                                 </span>
-                                <button onClick={onOpenManual} className="p-1 text-indigo-400 hover:text-white transition-colors" title="Hub Manual">
-                                    <Info size={14}/>
-                                </button>
                             </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-4 bg-slate-950/50 p-6 rounded-[2rem] border border-slate-800 shadow-inner">
+                    <div className="flex items-center gap-4 bg-slate-950/50 p-6 rounded-[2.5rem] border border-slate-800 shadow-inner">
                         <div className="text-right">
                             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{t.balance}</p>
                             <p className="text-3xl font-black text-white tracking-tighter tabular-nums">{userProfile?.coinBalance?.toLocaleString() || 0}</p>
@@ -205,7 +210,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                 </div>
             </section>
 
-            {/* Neural Pulse Widget (Scaling Vision: 1 Billion Optimus Hubs Target) */}
+            {/* Neural Pulse Widget */}
             <section className="bg-slate-900 border border-slate-800 rounded-[3rem] p-8 shadow-xl relative overflow-hidden flex flex-col justify-between group/pulse">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] flex items-center gap-2">
@@ -237,6 +242,54 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
             </section>
         </div>
 
+        {/* HACKATHON JUDGE HERO */}
+        <section className="bg-gradient-to-r from-emerald-900/40 via-indigo-900/40 to-slate-900 border border-emerald-500/30 rounded-[3.5rem] p-10 shadow-2xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-32 bg-emerald-500/10 blur-[100px] rounded-full group-hover:scale-110 transition-transform duration-1000"></div>
+            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
+                <div className="space-y-4 text-center md:text-left flex-1">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded-full text-emerald-400 text-[9px] font-black uppercase tracking-widest">
+                        <Shield size={10} fill="currentColor"/> v8.0.0-COMPLETE Manifest
+                    </div>
+                    <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">{t.judgeHeroTitle}</h2>
+                    <p className="text-slate-400 text-lg leading-relaxed font-medium">{t.judgeHeroDesc}</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-4 shrink-0">
+                    <button onClick={() => onNavigate('podcast_detail', { channelId: 'judge-deep-dive' })} className="px-10 py-5 bg-white text-slate-900 font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3">
+                        {/* Fix: Play icon component was used but not imported */}
+                        <Play size={20} fill="currentColor"/> {t.judgeAction}
+                    </button>
+                    <button onClick={() => onNavigate('book_studio')} className="px-10 py-5 bg-slate-950 text-white font-black uppercase tracking-[0.2em] rounded-2xl border border-white/10 shadow-xl transition-all hover:bg-slate-800 active:scale-95 flex items-center justify-center gap-3">
+                        <BookOpen size={20}/> Technical Book
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        {/* FEATURED APPS SUB-GRID */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <section onClick={() => onNavigate('mock_interview')} className="bg-slate-900 border border-slate-800 rounded-[3rem] p-8 hover:border-red-500/40 transition-all cursor-pointer group shadow-xl flex items-center gap-8">
+                <div className="p-6 bg-red-950/40 text-red-500 rounded-[2rem] border border-red-500/20 group-hover:scale-110 transition-transform duration-500">
+                    <Video size={40}/>
+                </div>
+                <div>
+                    <h3 className="text-xs font-black text-red-500 uppercase tracking-widest mb-1">{t.featuredTitle}</h3>
+                    <h4 className="text-2xl font-black text-white uppercase italic tracking-tighter">{t.featuredDesc}</h4>
+                    <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">Staff-level technical interrogation using real-time audio and logic simulation.</p>
+                </div>
+            </section>
+            <section onClick={() => onNavigate('code_studio')} className="bg-slate-900 border border-slate-800 rounded-[3rem] p-8 hover:border-indigo-500/40 transition-all cursor-pointer group shadow-xl flex items-center gap-8">
+                <div className="p-6 bg-indigo-950/40 text-indigo-400 rounded-[2rem] border border-indigo-500/20 group-hover:scale-110 transition-transform duration-500">
+                    <Code size={40}/>
+                </div>
+                <div>
+                    <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-1">Active Sector</h3>
+                    <h4 className="text-2xl font-black text-white uppercase italic tracking-tighter">Infrastructure-Bypass IDE</h4>
+                    <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">Simulate C++, Python, and Rust logic instantly without server runtimes.</p>
+                </div>
+            </section>
+        </div>
+
+        {/* FULL SPECTRUM GRID */}
         {appSectors.map((sector, sIdx) => (
             <section key={sIdx} className="space-y-6 animate-fade-in-up" style={{ animationDelay: `${sIdx * 100}ms` }}>
                 <div className="flex items-center justify-between px-2">
@@ -250,19 +303,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                         <button 
                             key={app.id} 
                             onClick={() => onNavigate(app.id as ViewID)} 
-                            className="flex flex-col items-center p-6 bg-slate-900 border border-slate-800 rounded-[2.5rem] hover:border-indigo-500/50 hover:bg-indigo-900/10 transition-all text-center group shadow-xl relative overflow-hidden"
+                            className="flex flex-col items-center p-6 bg-slate-900 border border-slate-800 rounded-[2.5rem] hover:border-indigo-500/50 hover:bg-indigo-900/10 transition-all text-center group shadow-xl relative overflow-hidden h-full"
                         >
                             {!isProMember && app.restricted && (
-                                <div className="absolute top-4 right-4 z-20 flex flex-col items-end gap-1 pointer-events-none">
+                                <div className="absolute top-4 right-4 z-20 pointer-events-none">
                                     <div className="p-1.5 bg-slate-900/90 border border-amber-500/50 rounded-lg shadow-2xl backdrop-blur-md">
                                         <Lock size={12} className="text-amber-500" />
                                     </div>
                                 </div>
                             )}
 
-                            <div className="absolute inset-0 bg-indigo-900/90 backdrop-blur-md flex flex-col items-center justify-center p-4 z-30 transition-all duration-300 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0">
-                                <p className="text-[10px] font-bold text-white leading-relaxed mb-3">{app.description}</p>
-                                <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-indigo-200">
+                            <div className="absolute inset-0 bg-indigo-900/95 backdrop-blur-md flex flex-col items-center justify-center p-6 z-30 transition-all duration-300 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0">
+                                <p className="text-[10px] font-bold text-white leading-relaxed mb-4">{app.description}</p>
+                                <div className="flex items-center gap-1 text-[8px] font-black uppercase tracking-[0.2em] text-white bg-indigo-600 px-4 py-2 rounded-xl shadow-lg">
                                     {!isProMember && app.restricted ? t.unlockCta : t.launch} <ChevronRight size={10}/>
                                 </div>
                             </div>
@@ -280,21 +333,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
             </section>
         ))}
 
-        <footer className="pt-12 flex flex-col items-center gap-6 border-t border-slate-900/50">
-            <div className="flex flex-wrap justify-center items-center gap-8 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+        <footer className="pt-20 flex flex-col items-center gap-8 border-t border-slate-900/50">
+            <div className="flex flex-wrap justify-center items-center gap-12 text-slate-500 text-[10px] font-black uppercase tracking-widest">
                 <a href="https://github.com/aivoicecast/AIVoiceCast" target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
-                    <Github size={14}/> Open Source
+                    <Github size={16}/> Open Source
                 </a>
-                <span className="hidden md:inline">•</span>
                 <div className="flex items-center gap-2">
-                    <Scale size={14}/> MIT License
+                    <Scale size={16}/> MIT License
                 </div>
-                <span className="hidden md:inline">•</span>
                 <div className="flex items-center gap-2">
-                    <Sparkles size={14}/> Refracted by Neural Prism v7.5.0
+                    <Sparkles size={16}/> Refracted by Neural Prism v8.0.0
                 </div>
             </div>
-            <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.4em]">Sovereign 2036 Hub • 10:1 Resident/Hub Ratio Enabled</p>
+            <div className="text-center space-y-2">
+                <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.5em]">Sovereign 2036 Hub • 10:1 Resident/Hub Ratio Enabled</p>
+                <p className="text-[8px] text-slate-800 uppercase font-bold tracking-widest">Designed for Humanity. Balanced for Thermodynamics.</p>
+            </div>
         </footer>
       </div>
     </div>

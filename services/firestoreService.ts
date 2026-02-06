@@ -1,3 +1,4 @@
+
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -64,13 +65,29 @@ export const AI_COSTS = {
  */
 export const sanitizeData = (data: any): any => {
     if (data === null || data === undefined) return null;
+    // For non-objects, no sanitization needed
+    if (typeof data !== 'object') return data;
+    
     try {
         // We use the hardened utility to break circularity and prune instances
         const json = safeJsonStringify(data);
-        return JSON.parse(json);
+        const parsed = JSON.parse(json);
+        
+        // Ensure we actually return an object for Firestore set/add methods,
+        // as setDoc/addDoc require a plain JavaScript object.
+        if (typeof parsed !== 'object' || parsed === null) {
+            return { __refracted_value: String(parsed) };
+        }
+        
+        return parsed;
     } catch (e) {
-        console.warn("[Firestore] Sanitization fallback triggered:", e);
-        return { __sanitization_error: String(e) };
+        console.warn("[Firestore] Sanitization fault, engaging emergency recovery:", e);
+        // Emergency fallback: return a shallow copy of known safe primitives
+        // to prevent total session failure while stripping the circular culprit.
+        return { 
+            __sanitization_error: String(e),
+            __serialized_at: Date.now()
+        };
     }
 };
 

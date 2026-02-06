@@ -1,11 +1,10 @@
-
 import { Channel, ChannelVisibility } from '../types';
 import { OFFLINE_CHANNEL_ID } from './offlineContent';
 
 export const VOICES = [
-  'Software Interview Voice gen-lang-client-0648937375', 
-  'Linux Kernel Voice gen-lang-client-0375218270', 
-  'Default Gem', 
+  'Default Gem',
+  'Software Interview Expert (gen-lang-client-0648937375)',
+  'Linux Kernel Architect (gen-lang-client-0375218270)',
   'Puck', 
   'Charon', 
   'Kore', 
@@ -14,9 +13,9 @@ export const VOICES = [
 ];
 
 export const SPECIALIZED_VOICES = [
-  'Software Interview Voice gen-lang-client-0648937375', 
-  'Linux Kernel Voice gen-lang-client-0375218270', 
-  'Default Gem'
+  'Default Gem',
+  'Software Interview Expert (gen-lang-client-0648937375)',
+  'Linux Kernel Architect (gen-lang-client-0375218270)'
 ];
 
 export const TOPIC_CATEGORIES: Record<string, string[]> = {
@@ -35,7 +34,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     title: '🛡️ AUDIT: MockInterview Studio',
     description: 'The Full 10-Sector Technical Manifest. Powered by Shard 0648937375. Includes Socratic friction logic and sub-200ms Emotive Link protocols.',
     author: 'Lead Architect',
-    voiceName: 'Software Interview Voice gen-lang-client-0648937375',
+    voiceName: 'Software Interview Expert (gen-lang-client-0648937375)',
     systemInstruction: 'You are the Lead Architect of the MockInterview Studio. Conduct a full 10-sector technical audit. Explain how the "Socratic Interrogator" persona uses technical friction to reveal candidate unknowns. Discuss the Emotive Link protocol using Gemini 2.5 Flash Native Audio for sub-200ms latency. Mention the "Sovereign Bake" deterministic PDF protocol and the 10-Week Refraction Plan.',
     likes: 2450,
     dislikes: 0,
@@ -80,7 +79,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     title: 'Software Interview Preparation',
     description: 'Practice your coding interview skills with Shard 0648937375. Professional, rigorous senior engineer audit.',
     author: 'Gemini Professional',
-    voiceName: 'Software Interview Voice gen-lang-client-0648937375',
+    voiceName: 'Software Interview Expert (gen-lang-client-0648937375)',
     systemInstruction: 'You are a world-class senior software engineer conducting a technical interview. Your tone is professional, rigorous, and analytical.',
     likes: 420,
     dislikes: 10,
@@ -95,7 +94,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     title: 'Kernel Architect Lab',
     description: 'Interactive audit of the Linux Kernel internals via Shard 0375218270. Memory safety and architecture refraction.',
     author: 'Gemini Kernel',
-    voiceName: 'Linux Kernel Voice gen-lang-client-0375218270',
+    voiceName: 'Linux Kernel Architect (gen-lang-client-0375218270)',
     systemInstruction: 'You are a legendary Linux Kernel Maintainer. You speak with extreme technical precision about C programming.',
     likes: 1040,
     dislikes: 2,

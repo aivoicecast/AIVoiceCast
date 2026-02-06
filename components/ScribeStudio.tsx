@@ -1,21 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  ArrowLeft, Mic, MicOff, Save, Download, FileText, 
-  Sparkles, Loader2, Trash2, Globe, Activity, Terminal, 
-  Bot, Clock, User, CheckCircle, Info, RefreshCw, X, 
-  Volume2, Settings2, ShieldCheck, Zap, MoreVertical,
-  Disc, CloudUpload, Square, Monitor, AlertCircle, Languages,
-  ChevronRight, ArrowRightLeft, Play, VolumeX, Radio
+  ArrowLeft, Mic, Disc, Square, Info, FileText, 
+  RefreshCw, Sparkles, Activity, Zap, Cpu, Monitor, Volume2, 
+  FileSignature, Wand2, X, Clock, Radio, GraduationCap, ShieldCheck, Loader2,
+  Timer, History, CheckCircle2, Binary, ChevronRight, VolumeX, AlertTriangle, 
+  Waves, ZapOff
 } from 'lucide-react';
-import { GeminiLiveService } from '../services/geminiLive';
-import { TranscriptItem, UserProfile } from '../types';
+import { UserProfile, TranscriptItem } from '../types';
 import { Visualizer } from './Visualizer';
-import { auth } from '../services/firebaseConfig';
-import { saveDiscussion } from '../services/firestoreService';
-import { generateSecureId } from '../utils/idUtils';
-import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
-import { ensureCodeStudioFolder, uploadToDrive, ensureFolder } from '../services/googleDriveService';
-import { getGlobalAudioContext, warmUpAudioContext } from '../utils/audioUtils';
+import { MarkdownView } from './MarkdownView';
+import { saveDiscussion, AI_COSTS, deductCoins } from '../services/firestoreService';
+import { GoogleGenAI } from "@google/genai";
 
 interface ScribeStudioProps {
   onBack: () => void;
@@ -26,305 +21,376 @@ interface ScribeStudioProps {
 
 export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser, userProfile, onOpenManual }) => {
   const [isActive, setIsActive] = useState(false);
-  const [isAiConnected, setIsAiConnected] = useState(false);
+  const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [stagedDocId, setStagedDocId] = useState<string | null>(null);
   const [volume, setVolume] = useState(0);
-  const [sessionTitle, setSessionTitle] = useState('Universal Neural Translate');
+  const [sessionTitle, setSessionTitle] = useState('Neural Transcript');
+  const [audioSource, setAudioSource] = useState<'mic' | 'system'>('mic');
   
-  // Audio sources
-  const [hasSystemAudio, setHasSystemAudio] = useState(false);
-  
-  // History of completed translation turns
   const [history, setHistory] = useState<TranscriptItem[]>([]);
+  const [liveText, setLiveText] = useState('');
+  const [currentTime, setCurrentTime] = useState('');
   
-  // Active buffers for the currently speaking turn
-  const [activeEnglish, setActiveEnglish] = useState<string>('');
-  const [activeChinese, setActiveChinese] = useState<string>('');
-
-  const serviceRef = useRef<GeminiLiveService | null>(null);
+  const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const translationScrollRef = useRef<HTMLDivElement>(null);
+  const systemStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
 
-  // Refs for tracking the ongoing turn state without re-render lag
-  const currentEnRef = useRef('');
-  const currentZhRef = useRef('');
-  const isSyncingScroll = useRef(false);
-  
+  // High-Precision Refs for Callbacks
+  const isBatchRunningRef = useRef(false);
+  const lastResultTimeRef = useRef<number>(Date.now());
+  const volumeRef = useRef<number>(0);
+  const liveTextRef = useRef<string>('');
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+        const now = new Date();
+        setCurrentTime(now.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Continuous Ref Update
+  useEffect(() => {
+    liveTextRef.current = liveText;
+  }, [liveText]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [history, liveText, isActive]);
+
   const dispatchLog = (msg: string, type: 'info' | 'success' | 'error' | 'warn' = 'info') => {
-      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `[Translate] ${msg}`, type } }));
+      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `[Scribe] ${msg}`, type } }));
   };
 
-  const handleScrollSync = (e: React.UIEvent<HTMLDivElement>, targetRef: React.RefObject<HTMLDivElement | null>) => {
-      if (isSyncingScroll.current) return;
-      isSyncingScroll.current = true;
-      if (targetRef.current) {
-          targetRef.current.scrollTop = e.currentTarget.scrollTop;
-      }
-      setTimeout(() => { isSyncingScroll.current = false; }, 50);
-  };
+  const setupVisualizer = async (stream: MediaStream) => {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const source = audioContext.createMediaStreamSource(stream);
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    
+    audioContextRef.current = audioContext;
+    analyserRef.current = analyser;
 
-  const autoScroll = () => {
-      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      if (translationScrollRef.current) translationScrollRef.current.scrollTop = translationScrollRef.current.scrollHeight;
-  };
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
 
-  // Mixed audio stream helper
-  const createMixedStream = async (useSystem: boolean) => {
-      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!useSystem) return { stream: micStream, cleanup: () => micStream.getTracks().forEach(t => t.stop()) };
-
-      dispatchLog("Requesting System Audio access (Tab/Screen)...", "info");
-      try {
-          const systemStream = await navigator.mediaDevices.getDisplayMedia({
-              video: { width: 1, height: 1 }, // Required but we'll ignore
-              audio: { 
-                  echoCancellation: false, 
-                  noiseSuppression: false, 
-                  autoGainControl: false 
-              }
-          });
-
-          const ctx = getGlobalAudioContext();
-          const dest = ctx.createMediaStreamDestination();
-          
-          const micSource = ctx.createMediaStreamSource(micStream);
-          const systemSource = ctx.createMediaStreamSource(systemStream);
-          
-          micSource.connect(dest);
-          systemSource.connect(dest);
-          
-          return { 
-              stream: dest.stream, 
-              cleanup: () => {
-                  micStream.getTracks().forEach(t => t.stop());
-                  systemStream.getTracks().forEach(t => t.stop());
-              }
-          };
-      } catch (err) {
-          dispatchLog("System Audio denied. Falling back to Microphone only.", "warn");
-          return { stream: micStream, cleanup: () => micStream.getTracks().forEach(t => t.stop()) };
-      }
+    const updateVolume = () => {
+        if (!isBatchRunningRef.current) return;
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for(let i = 0; i < bufferLength; i++) sum += dataArray[i];
+        const v = sum / bufferLength / 128;
+        setVolume(v);
+        volumeRef.current = v;
+        requestAnimationFrame(updateVolume);
+    };
+    updateVolume();
   };
 
   const handleStart = async () => {
-    setIsActive(true);
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        dispatchLog("Speech API unavailable.", "error");
+        return;
+    }
+
     setHistory([]);
-    setActiveEnglish('');
-    setActiveChinese('');
-    currentEnRef.current = '';
-    currentZhRef.current = '';
-    
-    const service = new GeminiLiveService();
-    serviceRef.current = service;
+    setLiveText('');
+    setSummary(null);
+    setStagedDocId(null);
+    isBatchRunningRef.current = true;
+    lastResultTimeRef.current = Date.now();
 
-    const systemInstruction = `
-    ROLE: UNIVERSAL_TRANSLATION_PIPE.
-    TASK: Hear ALL audio (User and System) and Translate to Simplified Chinese.
+    dispatchLog(`Initiating Sovereign Scribe (Source: ${audioSource})...`, "info");
     
-    STRICT COMPLIANCE PROTOCOL:
-    1. OUTPUT ONLY the direct translation string in Simplified Chinese.
-    2. ABSOLUTELY NO English preamble or postamble.
-    3. NO reasoning, no bold markers (**), no conversational filler.
-    4. Treat yourself as a data wire: Input(Audio) -> Output(Chinese Text).
-    5. If input is silence, output nothing.
-    `.trim();
-
     try {
-        const { stream: mixedStream, cleanup } = await createMixedStream(hasSystemAudio);
+        let captureStream: MediaStream;
         
-        await service.initializeAudio();
-        await service.connect('Default Gem', systemInstruction, {
-            onOpen: () => {
-                setIsAiConnected(true);
-                dispatchLog("Neural link active. Hearing all sources.", "success");
-            },
-            onClose: () => {
-                setIsActive(false);
-                setIsAiConnected(false);
-                cleanup();
-                dispatchLog("Neural link closed.", "info");
-            },
-            onError: (err) => {
-                setIsActive(false);
-                setIsAiConnected(false);
-                cleanup();
-                dispatchLog(`Link Fault: ${err}`, "error");
-            },
-            onVolumeUpdate: (v) => setVolume(v),
-            onTranscript: (text, isUser) => {
-                if (isUser) {
-                    // Cumulative turn text from inputAudioTranscription
-                    currentEnRef.current = text;
-                    setActiveEnglish(text);
-                } else {
-                    // Incremental tokens from model response
-                    // Filter out any AI "inner monologue" markers if they slip through
-                    const filtered = text.replace(/\*\*.*?\*\*/g, '').replace(/Translating.*?/gi, '');
-                    currentZhRef.current += filtered;
-                    setActiveChinese(currentZhRef.current);
+        if (audioSource === 'system') {
+            dispatchLog("System Audio: Disabling hardware noise filters.", "warn");
+            captureStream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: true, 
+                    channelCount: 1
                 }
-                autoScroll();
-            },
-            onTurnComplete: () => {
-                const en = currentEnRef.current.trim();
-                const zh = currentZhRef.current.trim();
-                
-                if (en || zh) {
+            });
+        } else {
+            captureStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
+        
+        systemStreamRef.current = captureStream;
+        await setupVisualizer(captureStream);
+
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {
+            setIsActive(true);
+            dispatchLog("Neural Link Active.", "success");
+        };
+
+        recognition.onresult = (event: any) => {
+            let currentInterim = '';
+            lastResultTimeRef.current = Date.now();
+            
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                const result = event.results[i];
+                if (result.isFinal) {
+                    const finalFragment = result[0].transcript.trim();
+                    if (finalFragment) {
+                        setHistory(prev => [...prev, { 
+                            role: 'user', 
+                            text: finalFragment, 
+                            timestamp: Date.now() 
+                        }]);
+                        setLiveText(''); // Clear interim as it's now finalized
+                    }
+                } else {
+                    currentInterim += result[0].transcript;
+                }
+            }
+            
+            if (currentInterim) {
+                // SLIDING WINDOW COMMITMENT:
+                // If the speaker doesn't pause for 3 minutes, the browser buffer grows too large.
+                // We force-split the interim text if it exceeds 12 words to ensure 100% data integrity.
+                const words = currentInterim.trim().split(/\s+/);
+                if (words.length > 12) {
+                    const toCommit = words.slice(0, 8).join(' ');
+                    const remaining = words.slice(8).join(' ');
+                    
                     setHistory(prev => [...prev, { 
                         role: 'user', 
-                        text: en || "...", 
-                        translation: zh || "...",
+                        text: toCommit, 
                         timestamp: Date.now() 
                     }]);
+                    setLiveText(remaining);
+                    dispatchLog("Buffer Pumping: Partial commit secured.", "info");
+                } else {
+                    setLiveText(currentInterim);
                 }
-                
-                currentEnRef.current = '';
-                currentZhRef.current = '';
-                setActiveEnglish('');
-                setActiveChinese('');
-                
-                setTimeout(autoScroll, 100);
-            },
-            onAudioData: () => false // Mute AI verbal response for clean translate mode
-        }, undefined, mixedStream);
+            }
+        };
+
+        recognition.onerror = (event: any) => {
+            if (event.error === 'no-speech') return; 
+            dispatchLog(`Engine Warning: ${event.error}`, "warn");
+        };
+
+        recognition.onend = () => {
+            // CRITICAL FLUSH: Before the engine restarts, salvage any text in the ref.
+            const residual = liveTextRef.current.trim();
+            if (residual.length > 0 && isBatchRunningRef.current) {
+                setHistory(prev => [...prev, { 
+                    role: 'user', 
+                    text: residual, 
+                    timestamp: Date.now() 
+                }]);
+                setLiveText('');
+            }
+
+            if (isBatchRunningRef.current) {
+                try { 
+                    recognition.start(); 
+                    dispatchLog("Neural Link Re-Handshaked.", "info");
+                } catch (e) {}
+            }
+        };
+
+        recognitionRef.current = recognition;
+        recognition.start();
+
     } catch (e: any) {
-        setIsActive(true);
-        if (e.name !== 'NotAllowedError') alert(e.message);
-        else dispatchLog("Audio permissions missing.", "warn");
+        setIsActive(false);
+        dispatchLog(`Link Failed: ${e.message}`, "error");
     }
   };
 
-  const handleStop = () => {
-      serviceRef.current?.disconnect();
-      setIsActive(false);
-      setIsAiConnected(false);
-  };
+  const handleStop = async () => {
+    isBatchRunningRef.current = false;
+    
+    if (recognitionRef.current) {
+        recognitionRef.current.stop();
+    }
+    
+    setIsActive(false);
+    dispatchLog("Session closed. Finalizing artifact...", "info");
+    
+    if (systemStreamRef.current) {
+        systemStreamRef.current.getTracks().forEach(t => t.stop());
+        systemStreamRef.current = null;
+    }
+    if (audioContextRef.current) {
+        audioContextRef.current.close();
+    }
 
-  const handleSaveToVault = async () => {
-    if (history.length === 0 && !activeEnglish) return;
-    const fullText = history.map(h => `[EN]: ${h.text}\n[ZH]: ${h.translation}`).join('\n\n');
-    const blob = new Blob([fullText], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `translation_${Date.now()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // Final flush of remaining volatile buffer
+    const finalHistory = [...history];
+    if (liveText.trim()) {
+        finalHistory.push({ role: 'user', text: liveText.trim(), timestamp: Date.now() });
+        setHistory(finalHistory);
+        setLiveText('');
+    }
+
+    if (finalHistory.length > 0) {
+        try {
+            setIsSynthesizing(true);
+            const fullText = finalHistory.map(h => h.text).join('\n');
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            
+            const prompt = `You are a Senior Technical Scribe. Title: "${sessionTitle}". Reconstruct the following transcript into a high-fidelity technical specification. Summarize logic, architecture, and decisions.\n\nRAW DATA:\n${fullText}`;
+
+            const res = await ai.models.generateContent({
+                model: 'gemini-3-flash-preview',
+                contents: prompt,
+                config: { thinkingConfig: { thinkingBudget: 0 } }
+            });
+            
+            if (res.text) {
+                setSummary(res.text);
+                if (currentUser) {
+                    const docId = await saveDiscussion({
+                        id: 'new',
+                        channelId: 'scribe_studio',
+                        userId: currentUser.uid,
+                        userName: currentUser.displayName || 'Scribe Member',
+                        transcript: finalHistory,
+                        createdAt: Date.now(),
+                        title: sessionTitle || 'Neural Transcript',
+                        isManual: true,
+                        designDoc: res.text
+                    });
+                    setStagedDocId(docId);
+                    deductCoins(currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+                }
+                dispatchLog("Refraction secured in vault.", "success");
+            }
+        } catch (e: any) {
+            dispatchLog("Synthesis Error. Registry remains intact.", "error");
+        } finally {
+            setIsSynthesizing(false);
+        }
+    }
   };
 
   return (
-    <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
+    <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans relative">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
               <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>
               <div>
-                <h1 className="text-sm font-black text-white flex items-center gap-2 uppercase tracking-widest"><Languages className="text-indigo-500" size={16} /> Neural Translate</h1>
-                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{sessionTitle}</p>
+                <h1 className="text-lg font-bold text-white flex items-center gap-2 uppercase tracking-tighter italic">
+                    <Disc className={`text-red-500 ${isActive ? 'animate-spin' : ''}`} /> Neural Scribe
+                </h1>
+                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Sovereign Buffer v12.5.0</p>
               </div>
           </div>
           <div className="flex items-center gap-3">
-              {!isActive ? (
-                  <button onClick={handleStart} className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">
-                      <Mic size={14} fill="currentColor"/> <span>Initialize Link</span>
-                  </button>
-              ) : (
-                  <button onClick={handleStop} className="flex items-center gap-2 px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg transition-all active:scale-95">
-                      <Square size={14} fill="currentColor"/> <span>Terminate</span>
+              {stagedDocId && (
+                  <button onClick={() => window.open(`?view=docs&id=${stagedDocId}`, '_blank')} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-black uppercase shadow-lg transition-all animate-fade-in">
+                      <FileSignature size={14}/>
+                      <span>Open Vault File</span>
                   </button>
               )}
-              {history.length > 0 && (
-                  <button onClick={handleSaveToVault} className="p-2 bg-slate-800 hover:bg-emerald-600 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-all shadow-lg">
-                      <Download size={18}/>
-                  </button>
-              )}
+              {onOpenManual && <button onClick={onOpenManual} className="p-2 text-slate-400 hover:text-white" title="Scribe Manual"><Info size={18}/></button>}
           </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden flex-col md:flex-row">
-          {/* Left Pane: English Source */}
-          <div className="flex-1 flex flex-col border-r border-slate-800 relative bg-[#fdfbf7]">
-              <div className="p-4 border-b border-slate-200 bg-slate-100/50 flex justify-between items-center shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Source (English)</span>
-                    {isActive && <div className="w-16 h-3 overflow-hidden rounded-full"><Visualizer volume={volume} isActive={isActive} color="#6366f1" /></div>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                      <Radio size={12} className={hasSystemAudio ? 'text-indigo-500 animate-pulse' : 'text-slate-300'} />
-                      <span className="text-[9px] font-bold text-slate-400 uppercase">System Mix</span>
+      <div className="flex-1 flex overflow-hidden flex-col lg:flex-row">
+          {/* Sidebar Controls */}
+          <div className="w-full lg:w-[350px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-8 scrollbar-hide">
+              <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Session Identity</label>
+                  <input type="text" value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} placeholder="Session title..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-red-500 outline-none shadow-inner transition-all"/>
+              </div>
+
+              <div className="space-y-4">
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Audio Source</label>
+                  <div className="flex p-1 bg-slate-950 rounded-xl border border-slate-800 shadow-inner">
+                      <button disabled={isActive} onClick={() => setAudioSource('mic')} className={`flex-1 py-3 text-[10px] font-black uppercase rounded-lg transition-all ${audioSource === 'mic' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}><Mic size={14} className="mx-auto mb-1"/>Mic</button>
+                      <button disabled={isActive} onClick={() => setAudioSource('system')} className={`flex-1 py-3 text-[10px] font-black uppercase rounded-lg transition-all ${audioSource === 'system' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-50'}`}><Monitor size={14} className="mx-auto mb-1"/>System</button>
                   </div>
               </div>
-              <div ref={scrollRef} onScroll={(e) => handleScrollSync(e, translationScrollRef)} className="flex-1 overflow-y-auto p-8 md:p-12 space-y-8 scrollbar-hide">
-                  {history.map((t, i) => (
-                      <div key={i} className="animate-fade-in-up">
-                          <p className="text-2xl md:text-3xl font-bold text-slate-900 leading-tight">{t.text}</p>
-                      </div>
-                  ))}
-                  {activeEnglish && (
-                      <div className="animate-fade-in">
-                          <p className="text-2xl md:text-3xl font-bold text-indigo-600 leading-tight italic">{activeEnglish}</p>
-                      </div>
-                  )}
-                  {history.length === 0 && !activeEnglish && (
-                      <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-4 opacity-20 mt-20">
-                          <Mic size={64}/>
-                          <p className="text-xs font-black uppercase tracking-widest">Awaiting Audio Stream</p>
-                      </div>
+
+              <div className="pt-4">
+                  {!isActive ? (
+                      <button onClick={handleStart} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white rounded-2xl font-black uppercase tracking-[0.2em] shadow-2xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3"><Mic size={24}/> Begin Ingest</button>
+                  ) : (
+                      <button onClick={handleStop} className="w-full py-5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3"><Square size={24} fill="currentColor"/> Terminate</button>
                   )}
               </div>
+
+              {isActive && (
+                  <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-6 flex flex-col items-center gap-4 animate-fade-in">
+                      <div className="w-full h-12"><Visualizer volume={volume} isActive={true} color={audioSource === 'system' ? '#ef4444' : '#6366f1'} /></div>
+                      <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.3em]">Persistent Link Active</span></div>
+                  </div>
+              )}
           </div>
 
-          {/* Right Pane: Chinese Translation */}
-          <div className="flex-1 flex flex-col relative bg-white">
-              <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center shrink-0">
-                  <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Refraction (Chinese)</span>
-                  <Languages size={14} className="text-indigo-500" />
-              </div>
-              <div ref={translationScrollRef} onScroll={(e) => handleScrollSync(e, scrollRef)} className="flex-1 overflow-y-auto p-8 md:p-12 space-y-8 scrollbar-hide bg-indigo-50/5">
-                  {history.map((t, i) => (
-                      <div key={i} className="animate-fade-in-up">
-                          <p className="text-2xl md:text-3xl font-bold text-slate-500 leading-tight border-l-4 border-indigo-500/20 pl-8">{t.translation || "..."}</p>
-                      </div>
-                  ))}
-                  {activeChinese && (
-                      <div className="animate-fade-in">
-                          <p className="text-2xl md:text-3xl font-bold text-emerald-600 leading-tight pl-9">{activeChinese}</p>
+          {/* Transcript Area */}
+          <main className="flex-1 bg-slate-950 flex flex-col p-8 overflow-hidden relative">
+              <div className="absolute top-8 right-8 text-slate-800 select-none pointer-events-none"><Activity size={120} strokeWidth={0.5} /></div>
+
+              {isSynthesizing && (
+                  <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md z-40 flex flex-col items-center justify-center gap-6 animate-fade-in">
+                      <div className="relative"><div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div><div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div><div className="absolute inset-0 flex items-center justify-center"><Wand2 size={32} className="text-indigo-400 animate-pulse" /></div></div>
+                      <div className="text-center space-y-2"><h3 className="text-xl font-black text-white italic uppercase tracking-tighter">Assembling Manifest</h3><p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Refining technical shards...</p></div>
+                  </div>
+              )}
+
+              <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-hide pr-4">
+                  {summary ? (
+                      <div className="animate-fade-in-up bg-white rounded-[2.5rem] shadow-2xl p-10 md:p-16 mb-20 text-slate-900 border border-slate-200 min-h-full"><MarkdownView content={summary} initialTheme="light" showThemeSwitcher={false} /></div>
+                  ) : history.length === 0 && !isActive ? (
+                      <div className="h-full flex flex-col items-center justify-center text-slate-800 space-y-6 opacity-20"><Radio size={160} strokeWidth={0.5} /><div className="text-center space-y-2"><h3 className="text-3xl font-black uppercase italic tracking-tighter">Manifest Pending</h3><p className="text-xs font-bold uppercase tracking-widest">Start ingest for high-fidelity record</p></div></div>
+                  ) : (
+                      <div className="space-y-6 pb-40 text-left max-w-3xl mx-auto w-full">
+                          {history.map((node, i) => (
+                              <div key={i} className="animate-fade-in-up flex gap-6 group">
+                                  <div className="flex flex-col items-center pt-2"><div className="w-2 h-2 rounded-full bg-slate-800 border border-slate-700 shadow-sm"></div><div className="w-px h-full bg-slate-800/30 mt-2"></div></div>
+                                  <div className="flex-1"><span className="text-[9px] font-mono text-slate-600 block mb-1">[{new Date(node.timestamp).toLocaleTimeString([], {hour12: false})}]</span><p className="text-xl font-medium text-slate-300 leading-relaxed antialiased">{node.text}</p></div>
+                              </div>
+                          ))}
+                          {isActive && (
+                              <div className="flex gap-6 relative">
+                                  <div className="flex flex-col items-center pt-2">
+                                      <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_rgba(99,102,241,0.5)] ${liveText || (volume > 0.05) ? 'bg-indigo-500 animate-ping' : 'bg-slate-800'}`}></div>
+                                  </div>
+                                  <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className={`text-[9px] font-black uppercase tracking-widest ${liveText ? 'text-indigo-400' : 'text-slate-600'}`}>{liveText ? '[LIVE]' : '[SYNCING]'}</span>
+                                        <span className="text-[9px] font-mono text-indigo-700 font-bold">{currentTime}</span>
+                                      </div>
+                                      <p className={`text-xl leading-relaxed antialiased min-h-[1.5em] transition-colors duration-500 ${liveText ? 'text-indigo-300 italic font-black' : 'text-slate-700 font-bold italic'}`}>
+                                          {liveText || (volume > 0.05 ? 'Capturing neural signal...' : 'Awaiting verbal signal...')}
+                                          <span className={`inline-block w-2 h-6 bg-indigo-500 ml-2 align-middle ${volume > 0.05 ? 'animate-bounce' : 'animate-pulse'}`}></span>
+                                      </p>
+                                  </div>
+                              </div>
+                          )}
                       </div>
                   )}
               </div>
-          </div>
+
+              {isActive && (
+                  <div className="absolute bottom-8 left-1/2 -translate-x-1/2 px-8 py-4 bg-slate-900/80 backdrop-blur-xl border border-white/5 rounded-3xl shadow-2xl flex flex-col items-center gap-2 animate-bounce">
+                      <div className="flex items-center gap-3"><div className={`w-3 h-3 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.5)] ${volume > 0.05 ? 'bg-red-500 scale-125' : 'bg-red-900 animate-pulse'}`}></div><span className="text-[10px] font-black text-white uppercase tracking-widest">Sovereign Registry Locked</span></div>
+                      <span className="text-[8px] font-black text-indigo-500 uppercase tracking-tighter">Verified Shards: {history.length}</span>
+                  </div>
+              )}
+          </main>
       </div>
-
-      <footer className="p-4 border-t border-slate-800 bg-slate-900/50 flex flex-wrap items-center justify-between gap-4 shrink-0">
-          <div className="flex items-center gap-6">
-              <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Handshake Logic</label>
-                  <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-                      <button 
-                        onClick={() => setHasSystemAudio(false)} 
-                        className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${!hasSystemAudio ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}
-                      >
-                        Voice Only
-                      </button>
-                      <button 
-                        onClick={() => setHasSystemAudio(true)} 
-                        className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${hasSystemAudio ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}
-                      >
-                        Unified Mix
-                      </button>
-                  </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${isAiConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-700'}`}></div>
-                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Neural Status: {isAiConnected ? 'LINK_ESTABLISHED' : 'IDLE'}</span>
-              </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-[9px] font-black text-slate-700 uppercase tracking-[0.4em]">
-                  <Activity size={14}/> Socratic Refraction Protocol
-              </div>
-          </div>
-      </footer>
     </div>
   );
 };

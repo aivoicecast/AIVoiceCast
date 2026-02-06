@@ -1,4 +1,3 @@
-
 import { ViewID } from '../types';
 
 export const MANUAL_CONTENT: Partial<Record<ViewID, string>> = {
@@ -199,15 +198,39 @@ A high-fidelity archive of ancient texts with cinematic AI visualizations and ne
 - **Cinema Mode**: Focus on the text with minimalist, ambient lighting.
   `,
   scribe_studio: `
-# ✍️ Neural Scribe: Real-time Refraction
+# ✍️ Neural Scribe: The Resilient Socratic Record
 
-**Transforming Speech into Structured Technical Artifacts.**
+**Refracting Speech into Permanent Technical Artifacts.**
 
-A dedicated low-latency studio for converting audio into Markdown or Text manuscripts.
+The Scribe Studio is a high-fidelity audio-to-markdown transcription engine engineered for architectural sessions.
 
-### Modes
-- **Transcription Only**: Pure audio-to-text without AI interjection.
-- **AI Interaction**: The AI acts as a recording partner, providing summaries and refinement.
-- **Sovereign Vault**: Transcripts are automatically notarized and saved to your Google Drive.
+## 🛠️ The Integrity Manifesto (v9.9.2)
+
+During the development of the Scribe Protocol, we encountered several "Neural Drift" challenges. Here are the architectural decisions we made to ensure 100% data integrity.
+
+### 1. The Formatting Paradox (The "Hang" Issue)
+**Problem**: In early versions, we asked the AI model to handle paragraph breaks and newlines in real-time. This caused the model to frequently "freeze" or stop outputting text entirely while it "thought" about where to place a break.
+**Final Decision**: We have stripped all formatting logic from the AI's system prompt. The model now acts as a **Zero-Format Verbatim Mirror**. It focuses purely on mirroring your speech at maximum speed, preventing stream halts.
+
+### 2. Temporal Gap Paragraphing
+**Problem**: Without breaks, the resulting transcript was a "Wall of Text," impossible to read or synthesize professionally.
+**Final Decision**: We offloaded formatting to the **Client-Side Refraction Engine**. The Studio monitors the timing of your speech. If it detects a gap greater than 2.5 seconds, it automatically injects a double newline (\`\\n\\n\`). This provides structural clarity without confusing the AI model.
+
+### 3. The 503 Congestion Protocol (Vault-First)
+**Problem**: Heavy AI models occasionally return a "503: Service Overloaded" error during the intensive summary generation phase. In standard apps, this results in the total loss of the transcript.
+**Final Decision**: We implement **Pre-emptive Vault Commitment**. The moment you click "Terminate," the raw transcript is notarized and saved to your **Sovereign Vault** (Documents) with a unique UUID. 
+- Even if the synthesis engine is overloaded, your data is already safe.
+- You can trigger "Retry Synthesis" manually at any time once the model congestion clears.
+
+### 4. Heuristic Recovery (Interim Audit)
+**Problem**: Network jitter can sometimes cause a delta between the raw Stt (Speech-to-Text) fragments and the AI's mirrored stream.
+**Final Decision**: At the end of every session, the Studio performs a **Parity Audit**. It compares the length of the AI stream against the raw interim text buffer. If the AI stream lagged behind, the system uses the raw buffer as the source of truth to ensure not a single word of your session is lost.
+
+## 🚀 Key Features
+- **Sovereign VFS**: Direct dispatch to your Google Drive or technicalspec.md.
+- **Low-Mass Mode**: Minimalist interface for maximum cognitive focus.
+- **One-Click Synthesis**: Refract hours of dialogue into a 3-paragraph executive brief.
+
+*Refracted by Neural Prism v9.9.2 // Stable Architecture Confirmed.*
   `
 };

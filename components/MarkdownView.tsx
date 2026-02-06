@@ -247,25 +247,25 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, initialThem
                 const bodyRows = tableBuffer.slice(2).map(row => row.split('|').filter(c => c.trim() !== '').map(c => c.trim()));
                 renderedElements.push(
                     <div key={`tbl-${index}-${renderedElements.length}`} className={`overflow-x-auto my-8 border-2 rounded-xl shadow-md ${
-                        theme === 'light' ? 'border-slate-200 bg-white' : 
+                        theme === 'light' ? 'border-slate-300 bg-white' : 
                         theme === 'sepia' ? 'border-[#dcd2ba] bg-[#f8f1e3]' : 
                         'border-white/10 bg-slate-900/40'
                     }`}>
-                        <table className="min-w-full text-sm text-left">
-                            <thead className={`text-[10px] uppercase font-black tracking-wider ${
-                                theme === 'light' ? 'bg-slate-50 text-slate-500 border-b-2 border-slate-200' : 
-                                theme === 'sepia' ? 'bg-[#ebe3cf] text-[#8a7565] border-b-2 border-[#dcd2ba]' : 
-                                'bg-slate-800 text-slate-400 border-b-2 border-white/5'
+                        <table className="min-w-full text-base text-left">
+                            <thead className={`text-[12px] uppercase font-black tracking-wider ${
+                                theme === 'light' ? 'bg-slate-100 text-slate-900 border-b-2 border-slate-300' : 
+                                theme === 'sepia' ? 'bg-[#ebe3cf] text-[#423328] border-b-2 border-[#dcd2ba]' : 
+                                'bg-slate-800 text-slate-100 border-b-2 border-white/5'
                             }`}>
                                 <tr>
-                                    {headers.map((h, i) => <th key={i} className="px-6 py-4">{formatInline(h)}</th>)}
+                                    {headers.map((h, i) => <th key={i} className="px-6 py-5">{formatInline(h)}</th>)}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100/10">
+                            <tbody className={`divide-y ${theme === 'light' ? 'divide-slate-200 text-slate-950' : 'divide-slate-100/10'}`}>
                                 {bodyRows.map((row, rI) => (
-                                    <tr key={rI} className="hover:bg-black/5 transition-colors">
-                                        {row.map((cell, cI) => <td key={cI} className="px-6 py-4 align-top leading-relaxed">{formatInline(cell)}</td>)}
-                                        {Array.from({ length: Math.max(0, headers.length - row.length) }).map((_, i) => <td key={`empty-${i}`} className="px-6 py-4"></td>)}
+                                    <tr key={rI} className={`${theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-black/5'} transition-colors`}>
+                                        {row.map((cell, cI) => <td key={cI} className={`px-6 py-5 align-top leading-relaxed font-semibold ${theme === 'light' ? 'text-slate-900' : ''}`}>{formatInline(cell)}</td>)}
+                                        {Array.from({ length: Math.max(0, headers.length - row.length) }).map((_, i) => <td key={`empty-${i}`} className="px-6 py-5"></td>)}
                                     </tr>
                                 ))}
                             </tbody>
@@ -290,9 +290,9 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, initialThem
                 } else if (line.startsWith('### ')) {
                     renderedElements.push(<h3 key={`${index}-${lineIdx}`} className={`text-xl font-bold mt-8 mb-3 ${theme === 'sepia' ? 'text-[#6d5644]' : theme === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>{formatInline(line.substring(4))}</h3>);
                 } else if (trimmed.startsWith('- ')) {
-                    renderedElements.push(<li key={`${index}-${lineIdx}`} className="ml-4 list-disc my-3 pl-2 marker:text-indigo-500 text-base leading-relaxed">{formatInline(trimmed.substring(2))}</li>);
+                    renderedElements.push(<li key={`${index}-${lineIdx}`} className="ml-4 list-disc my-3 pl-2 marker:text-indigo-50 marker:font-black text-base leading-relaxed">{formatInline(trimmed.substring(2))}</li>);
                 } else {
-                    renderedElements.push(<p key={`${index}-${lineIdx}`} className={`mb-5 leading-relaxed text-lg antialiased ${THEME_CONFIG[theme].textColor}`}>{formatInline(line)}</p>);
+                    renderedElements.push(<p key={`${index}-${lineIdx}`} className={`mb-5 leading-relaxed text-lg antialiased font-medium ${THEME_CONFIG[theme].textColor}`}>{formatInline(line)}</p>);
                 }
             }
         });

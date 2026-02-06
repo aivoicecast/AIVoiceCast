@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AgentMemory, TranscriptItem } from '../types';
 import { ArrowLeft, Sparkles, Wand2, Image as ImageIcon, Download, Share2, RefreshCw, Mic, MicOff, Gift, Loader2, ChevronRight, ChevronLeft, Upload, QrCode, X, Music, Play, Pause, Volume2, Camera, CloudUpload, Lock, Globe, Check, Edit, Package, ArrowDown, Type as TypeIcon, Minus, Plus, Edit3, Link, LayoutGrid, User, Calendar, MessageSquare, Bot, CheckCircle, Trash2, Info } from 'lucide-react';
@@ -77,7 +78,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isGeneratingBackImage, setIsGeneratingBackImage] = useState(false);
   const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
-  const [isGeneratingSong, setIsGeneratingSong] = useState(false);
+  const [isGeneratingSong, setIsGeneratingVoiceMessage] = useState(false); // Refined state naming in fix
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingPackage, setIsExportingPackage] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -170,11 +171,11 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
   };
 
   const handleGenLyrics = async () => {
-      setIsGeneratingSong(true);
+      setIsGeneratingVoiceMessage(true); // Sync with state name in fix
       try {
           const lyrics = await generateSongLyrics(memory);
           setMemory(prev => ({ ...prev, songLyrics: lyrics }));
-      } catch(e) { alert("Failed to generate lyrics"); } finally { setIsGeneratingSong(false); }
+      } catch(e) { alert("Failed to generate lyrics"); } finally { setIsGeneratingVoiceMessage(false); }
   };
 
   const handleGenImage = async (isBack = false) => {
@@ -188,7 +189,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
   };
 
   const handleGenAudio = async (type: 'message' | 'song') => {
-      const setter = type === 'song' ? setIsGeneratingSong : setIsGeneratingVoice;
+      const setter = type === 'song' ? setIsGeneratingVoiceMessage : setIsGeneratingVoice;
       setter(true);
       try {
           const text = type === 'song' ? (memory.songLyrics || await generateSongLyrics(memory)) : memory.cardMessage;
@@ -607,7 +608,7 @@ export const CardWorkshop: React.FC<CardWorkshopProps> = ({ onBack, cardId, isVi
                                 <button onClick={() => chatImageInputRef.current?.click()} className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-colors" title="Show Image to AI">
                                     <Camera size={18}/>
                                 </button>
-                                <input type="file" ref={chatImageInputRef} className="hidden" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const base64 = await resizeImage(e.target.files[0], 512, 0.7); liveServiceRef.current?.sendVideo(base64.split(',')[1], e.target.files[0].type); setTranscript(prev => [...prev, { role: 'user', text: '📷 [Shared Inspiration Image]', timestamp: Date.now() }]); } }}/>
+                                <input type="file" ref={chatImageInputRef} className="hidden" accept="image/*" onChange={async (e) => { if (e.target.files?.[0]) { const base64 = await resizeImage(e.target.files[0], 512, 0.7); /* Use sendMedia instead of sendVideo */ liveServiceRef.current?.sendMedia(base64.split(',')[1], e.target.files[0].type); setTranscript(prev => [...prev, { role: 'user', text: '📷 [Shared Inspiration Image]', timestamp: Date.now() }]); } }}/>
                             </div>
                         </div>
                     </div>
