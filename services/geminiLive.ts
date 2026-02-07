@@ -11,13 +11,13 @@ export interface LiveConnectionCallbacks {
   onToolCall?: (toolCall: any) => void;
   onToolResponse?: (response: any) => void;
   onTurnComplete?: () => void;
-  onAudioData?: (data: Uint8Array) => boolean; // Return false to suppress output
+  onAudioData?: (data: Uint8Array) => boolean; 
 }
 
 function getValidLiveVoice(voiceName: string): string {
   const name = voiceName || '';
-  if (name.includes('Software Interview') || name.includes('0648937375')) return 'Fenrir';
-  if (name.includes('Linux Kernel') || name.includes('0375218270')) return 'Puck';
+  if (name.includes('Software Interview')) return 'Fenrir';
+  if (name.includes('Linux Kernel')) return 'Puck';
   if (name.includes('Default Gem')) return 'Zephyr';
   
   const validGemini = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
@@ -76,14 +76,7 @@ export class GeminiLiveService {
 
       const validVoice = getValidLiveVoice(voiceName);
       const isScribeMode = systemInstruction.toLowerCase().includes("scribe") || systemInstruction.toLowerCase().includes("silent");
-      
-      let modelId = 'gemini-2.5-flash-native-audio-preview-12-2025';
-      
-      if (voiceName.includes('0648937375')) {
-          modelId = 'tunedModels/gen-lang-client-0648937375';
-      } else if (voiceName.includes('0375218270')) {
-          modelId = 'tunedModels/gen-lang-client-0375218270';
-      }
+      const modelId = 'gemini-2.5-flash-native-audio-preview-12-2025';
 
       const config: any = {
           responseModalities: [Modality.AUDIO],
@@ -116,13 +109,11 @@ export class GeminiLiveService {
             
             if (message.toolCall) callbacks.onToolCall?.(message.toolCall);
             
-            // 1. INPUT TRANSCRIPTION (Live STT Snapshot)
             const inTrans = message.serverContent?.inputTranscription;
             if (inTrans?.text) {
                 callbacks.onTranscript(inTrans.text, true);
             }
             
-            // 2. MODEL TURN (AI Speech/Text)
             const parts = message.serverContent?.modelTurn?.parts || [];
             for (const part of parts) {
                 const base64Audio = part.inlineData?.data;
@@ -203,7 +194,6 @@ export class GeminiLiveService {
 
   private startHeartbeat() {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
-    // Silent heartbeat every 10s to keep connection alive
     this.heartbeatInterval = setInterval(() => {
         if (this.session && this.isActive) {
             this.sessionPromise?.then((session) => {

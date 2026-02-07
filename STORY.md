@@ -58,7 +58,7 @@ We introduced **Secure Biometric Status**. A digital ID is only marked "Secure" 
 
 ### 1. Bypassing the 1MB Document Wall
 Firestore enforces a strict 1MB limit. High-fidelity neural audio fragments easily exceed this.
-- **Solution: Binary Chunking Protocol.** We shard raw binary data into 750,000-byte segments. A parent **Manifest Node** tracks the sequence, and our edge engine parallel-fetches and stitches them in memory in <150ms.
+- **Solution: The Binary Chunking Protocol.** We shard raw binary data into 750,000-byte segments. A parent **Manifest Node** tracks the sequence, and our edge engine parallel-fetches and stitches them in memory in <150ms.
 
 ### 2. Scribe Protocol: High-Fidelity Capture
 Standard browser recorders lose camera overlays when switching tabs.

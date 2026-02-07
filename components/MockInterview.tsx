@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, RecordingSession } from '../types';
 import { auth, db } from '../services/firebaseConfig';
@@ -36,6 +37,9 @@ import { ensureCodeStudioFolder, uploadToDrive, ensureFolder, downloadDriveFileA
 import { uploadToYouTube, getYouTubeVideoUrl, getYouTubeEmbedUrl } from '../services/youtubeService';
 import { saveLocalRecording, getLocalRecordings } from '../utils/db';
 
+const isYouTubeUrl = (url?: string) => !!url && (url.includes('youtube.com') || url.includes('youtu.be'));
+const isDriveUrl = (url?: string) => !!url && (url.startsWith('drive://') || url.includes('drive.google.com'));
+
 interface MockInterviewReport {
   id: string;
   score: number;
@@ -73,7 +77,6 @@ const PERSONAS = [
     { 
         id: 'software-interview', 
         name: 'Software Interview Expert', 
-        modelId: 'gen-lang-client-0648937375', 
         icon: GraduationCap, 
         desc: 'Rigorous algorithmic & system design specialist.',
         instruction: 'You are a Senior Staff Engineer at Google. You are conducting a hard technical interview. Your tone is professional and slightly intimidating. You demand complexity analysis (Big-O) for every suggestion. If you receive a [RECONNECTION_PROTOCOL_ACTIVE] block, immediately acknowledge the link recovery, summarize your current understanding of the problem and progress, and ask the user to confirm if anything was missed before proceeding.'
@@ -81,7 +84,6 @@ const PERSONAS = [
     { 
         id: 'linux-kernel', 
         name: 'Linux Kernel Architect', 
-        modelId: 'gen-lang-client-0375218270', 
         icon: Cpu, 
         desc: 'Memory safety, drivers, and scheduler audit.',
         instruction: 'You are a Linux Kernel Maintainer. You evaluate C code for race conditions, memory leaks, and architectural elegance. You have zero tolerance for sloppy abstractions. If you receive a [RECONNECTION_PROTOCOL_ACTIVE] block, immediately acknowledge the link recovery, summarize your current understanding of the problem and progress, and ask the user to confirm if anything was missed before proceeding.'
@@ -89,7 +91,6 @@ const PERSONAS = [
     { 
         id: 'default-gem', 
         name: 'Neural Prism Designer', 
-        modelId: 'Default Gem', 
         icon: Zap, 
         desc: 'General technical evaluation and coaching.',
         instruction: 'You are the project lead of Neural Prism. You are evaluating a contributor. You focus on clean code, documentation, and feature parity. If you receive a [RECONNECTION_PROTOCOL_ACTIVE] block, immediately acknowledge the link recovery, summarize your current understanding of the problem and progress, and ask the candidate to confirm if your understanding is correct. Then proceed with the interview.'
@@ -436,7 +437,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [pipSize, setPipSize] = useState<'normal' | 'compact'>('normal');
   const [isMirrorMinimized, setIsMirrorMinimized] = useState(false);
 
-  // Fix: Added missing state variables to resolve compilation errors
   const [isAiConnected, setIsAiConnected] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
@@ -750,7 +750,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         
         if (ctx.state !== 'running') await ctx.resume();
 
-        // 1. CAPTURE AUDIO FLOW
         addApiLog("Handshaking Audio Hub for Scribe...", "info");
         const userStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const userSource = ctx.createMediaStreamSource(userStream); 
@@ -761,7 +760,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             screenAudioSource.connect(recordingDest);
         }
 
-        // 2. BUILD COMPOSITOR CANVAS
         const canvas = document.createElement('canvas');
         canvas.width = 1920; 
         canvas.height = 1080;
@@ -797,11 +795,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                     addApiLog("Frame flow verified. Recorder engaged.", "success");
                 }
             } else {
-                // Hardening: Force play again if paused
                 if (screenVideo.paused) screenVideo.play();
                 if (cameraVideo.paused) cameraVideo.play();
                 
-                // Add specific log if camera is missing to help user diagnose
                 if (!cameraOk && cameraStreamRef.current) {
                     addApiLog(`Compositor: Camera buffer pending (ReadyState: ${cameraVideo.readyState})...`, "warn");
                 }
@@ -812,7 +808,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         checkFlow();
 
         const renderLoop = () => {
-            // BACKDROP: Refractive Blur
             drawCtx.fillStyle = '#020617';
             drawCtx.fillRect(0, 0, canvas.width, canvas.height);
             
@@ -823,7 +818,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 drawCtx.restore();
             }
 
-            // HERO: Main Workspace
             if (screenStreamRef.current && screenVideo.readyState >= 2) {
                 const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
                 const w = screenVideo.videoWidth * scale;
@@ -835,7 +829,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 drawCtx.restore();
             }
 
-            // PORTAL: Camera Overlay (PiP)
             if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
                 const size = pipSize === 'compact' ? 220 : 440; 
                 const margin = pipSize === 'compact' ? 30 : 40; 
@@ -862,7 +855,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 drawCtx.save();
                 drawCtx.beginPath();
                 drawCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-                drawCtx.strokeStyle = '#ef4444'; // Red for interview intensity
+                drawCtx.strokeStyle = '#ef4444'; 
                 drawCtx.lineWidth = pipSize === 'compact' ? 6 : 12;
                 drawCtx.stroke();
                 drawCtx.restore();
@@ -872,7 +865,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                     addApiLog("Compositor: First PiP frame rasterized successfully.", "success");
                 }
             } else if (cameraStreamRef.current && !firstFrameLogged) {
-                // If camera exists but readyState isn't hit yet
                 addApiLog(`Compositor: Camera buffer pending (State: ${cameraVideo.readyState})...`, "warn");
             }
         };
@@ -881,9 +873,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
         const captureStream = canvas.captureStream(30);
         recordingDest.stream.getAudioTracks().forEach(t => captureStream.addTrack(t));
-        
         const mimeType = 'video/webm;codecs=vp9,opus';
-
         const recorder = new MediaRecorder(captureStream, { 
             mimeType, 
             videoBitsPerSecond: 8000000 
@@ -952,7 +942,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           onOpen: () => {
               setIsLive(true);
               setIsRecovering(false);
-              // Fix: Corrected variable usage as per provided errors
               setIsAiConnected(true);
               autoReconnectAttempts.current = 0;
               if (reconnect) {
@@ -962,7 +951,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               }
           },
           onClose: () => {
-              // Fix: Corrected variable usage as per provided errors
               setIsAiConnected(false);
               if (autoReconnectAttempts.current < maxAutoRetries && !isEndingRef.current) {
                   autoReconnectAttempts.current++;
@@ -974,7 +962,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           },
           onError: (err) => {
               addApiLog(`Neural Link Failure: ${err}`, "error");
-              // Fix: Corrected variable usage as per provided errors
               setIsAiConnected(false);
               if (err.includes('429')) {
                   addApiLog("Gemini Rate Limit (429) hit. Entering extended backoff.", "warn");
@@ -1058,7 +1045,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         }
 
         initializePersistentRecorder();
-        
         await connect();
         
         setTimeLeft(interviewDuration * 60);
@@ -1069,9 +1055,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             });
         }, 1000);
 
-        // ROTATION HANDSHAKE (Every 5 mins)
         rotationTimerRef.current = setInterval(() => {
-            // Fix: Corrected variable usage as per provided errors
             if (isAiConnected && !isEndingRef.current) {
                 addApiLog("Neural Rotation Pulse: Context stabilized.", "info");
                 serviceRef.current?.sendText("NEURAL_PULSE_STABLE: Continuing interrogation.");
@@ -1086,9 +1070,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         setIsLoading(false);
     }
   };
-
-  const isYouTubeUrl = (url?: string) => !!url && (url.includes('youtube.com') || url.includes('youtu.be'));
-  const isDriveUrl = (url?: string) => !!url && (url.startsWith('drive://') || url.includes('drive.google.com'));
 
   return (
     <div className="h-full bg-slate-950 flex flex-col font-sans overflow-hidden relative">
@@ -1239,7 +1220,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
             {view === 'active' && (
                 <div className="h-full w-full flex animate-fade-in relative">
-                    {/* Neural Mirror PiP */}
                     <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
                         <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
                             <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
@@ -1276,13 +1256,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             initialFiles={files}
                             onFileChange={(f) => setFiles(prev => prev.map(p => p.path === f.path ? f : p))}
                             externalChatContent={transcript}
-                            // Fix: Corrected variable usage as per provided errors
                             isAiThinking={!isAiConnected && isLive}
                             onSyncCodeWithAi={(f) => {
                                 addApiLog(`Forced Code Sync: ${f.name}`, 'info');
                                 serviceRef.current?.sendText(`NEURAL_SNAPSHOT_SYNC: User forced a code update for ${f.name}. CONTENT: \n\`\`\`\n${f.content}\n\`\`\``);
                             }}
-                            // Fix: added missing mandatory props for CodeStudio to resolve TypeScript error on line 1253
                             onSessionStart={() => {}}
                             onSessionStop={() => {}}
                             onStartLiveSession={(chan, ctx) => onStartLiveSession(chan, ctx)}
@@ -1379,58 +1357,2055 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                     </div>
                 </div>
             )}
-        </main>
+        </header>
 
-        <div className={`fixed bottom-0 left-0 right-0 z-[1000] transition-all duration-500 transform ${showDebugPanel ? 'translate-y-0' : 'translate-y-full'}`}>
-            <div className="bg-slate-950 border-t-2 border-red-500 shadow-2xl h-64 flex flex-col">
-                <div className="p-3 border-b border-slate-800 bg-slate-900/50 flex justify-between items-center shrink-0">
-                    <span className="text-[10px] font-black text-red-500 uppercase tracking-widest flex items-center gap-2"><Terminal size={14}/> Socratic Interrogation Trace</span>
-                    <button onClick={() => setShowDebugPanel(false)} className="text-slate-500 hover:text-white"><X size={16}/></button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 font-mono text-[10px] space-y-1.5 scrollbar-hide">
-                    {apiLogs.map((log, i) => (
-                        <div key={i} className={`flex gap-4 p-1.5 rounded transition-colors hover:bg-white/5 ${log.type === 'error' ? 'bg-red-950/20 text-red-200' : log.type === 'success' ? 'bg-emerald-950/10 text-emerald-400' : 'text-slate-400'}`}>
-                            <span className="opacity-30 shrink-0">[{log.time}]</span>
-                            <span className="flex-1 whitespace-pre-wrap">{log.msg}</span>
+        <main className="flex-1 overflow-hidden relative flex flex-col items-center">
+            {isLoading && (
+                <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                    <div className="relative">
+                        <div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Zap size={32} className="text-indigo-400 animate-pulse" />
                         </div>
-                    ))}
-                    {apiLogs.length === 0 && <p className="text-slate-800 italic">No logic gates logged...</p>}
+                    </div>
+                    <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Initializing Refraction</h3>
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Provisioning Socratic Environment...</p>
+                    </div>
                 </div>
-            </div>
-        </div>
+            )}
 
-        {activeMediaId && activeRecording && (
-          <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 sm:p-10 animate-fade-in">
-              <div className="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-[3rem] overflow-hidden shadow-2xl flex flex-col h-full max-h-[85vh]">
-                  <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center shrink-0">
-                      <div className="flex items-center gap-4">
-                          <div className="p-3 bg-red-600 rounded-2xl text-white shadow-lg"><Video size={24}/></div>
-                          <div><h2 className="text-xl font-black text-white italic tracking-tighter uppercase">{activeRecording.mode.toUpperCase()} Audit</h2><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Registry ID: {activeRecording.id.substring(0,12)}</p></div>
-                      </div>
-                      <button onClick={closePlayer} className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl transition-all shadow-lg"><X size={24}/></button>
-                  </div>
-                  <div className="flex-1 bg-black relative flex items-center justify-center">
-                    {resolvedMediaUrl ? (isYouTubeUrl(resolvedMediaUrl) ? (<iframe src={getYouTubeEmbedUrl(extractYouTubeId(resolvedMediaUrl)!)} className="w-full h-full border-none" allowFullScreen />) : (<video src={resolvedMediaUrl} controls autoPlay playsInline className="w-full h-full object-contain" />)) : (<div className="flex flex-col items-center gap-4"><Loader2 size={48} className="animate-spin text-red-500" /><span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500">Buffering...</span></div>)}
-                  </div>
-              </div>
-          </div>
-      )}
+            {view === 'selection' && (
+                <div className="max-w-4xl w-full p-8 md:p-16 h-full flex flex-col justify-center gap-12 animate-fade-in-up">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">The Interrogator</h2>
+                        <p className="text-lg text-slate-400 font-medium max-w-xl mx-auto leading-relaxed">Refining engineering talent through technical friction and Staff-level peer evaluation.</p>
+                    </div>
 
-    </div>
-  );
-};
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {PERSONAS.map(p => (
+                            <button 
+                                key={p.id}
+                                onClick={() => setSelectedPersona(p)}
+                                className={`p-8 rounded-[3rem] border transition-all text-left flex flex-col gap-4 relative overflow-hidden group ${selectedPersona.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-2xl scale-[1.02]' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-indigo-500/40'}`}
+                            >
+                                <div className={`p-4 rounded-3xl w-fit ${selectedPersona.id === p.id ? 'bg-indigo-500' : 'bg-slate-950'} transition-colors`}>
+                                    <p.icon size={32} className={selectedPersona.id === p.id ? 'text-white' : 'text-indigo-500'} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black uppercase tracking-tight leading-none mb-2">{p.name}</h3>
+                                    <p className="text-xs font-medium opacity-60 leading-relaxed">{p.desc}</p>
+                                </div>
+                                {selectedPersona.id === p.id && <div className="absolute -right-4 -bottom-4 p-8 bg-white/10 rounded-full blur-2xl"></div>}
+                            </button>
+                        ))}
+                    </div>
 
-// --- HELPERS ---
-const extractYouTubeId = (url: string): string | null => {
-    try {
-        const urlObj = new URL(url);
-        if (urlObj.hostname.includes('youtube.com')) return urlObj.searchParams.get('v');
-        else if (urlObj.hostname.includes('youtu.be')) return urlObj.pathname.slice(1);
-    } catch (e) {
-        const match = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
-        return match ? match[1] : null;
-    }
-    return null;
-};
+                    <div className="flex flex-col items-center gap-6">
+                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
+                            {(['coding', 'system_design', 'behavioral', 'quick_screen'] as const).map(m => (
+                                <button key={m} onClick={() => setInterviewMode(m)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${interviewMode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>{m.replace('_', ' ')}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => setView('setup')} className="px-12 py-5 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-2xl shadow-2xl shadow-indigo-900/40 transition-transform hover:scale-105 active:scale-95 flex items-center gap-3">
+                            <span>Proceed to Setup</span>
+                            <ChevronRight size={20}/>
+                        </button>
+                    </div>
+                </div>
+            )}
 
-export default MockInterview;
+            {view === 'setup' && (
+                <div className="max-w-xl w-full p-8 md:p-12 h-full flex flex-col justify-center gap-10 animate-fade-in-up">
+                    <div className="space-y-2">
+                        <button onClick={() => setView('selection')} className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors mb-4"><ArrowLeft size={14}/> Back to Selection</button>
+                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Environmental Config</h2>
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Establishing Socratic Context</p>
+                    </div>
+
+                    <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-16 bg-red-500/5 blur-[80px] rounded-full pointer-events-none"></div>
+                        
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Primary Code Refraction (Language)</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['c++', 'python', 'javascript', 'java'] as const).map(l => (
+                                    <button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context (Target Narrative)</label>
+                            <textarea 
+                                value={jobDescription} 
+                                onChange={e => setJobDescription(e.target.value)} 
+                                rows={4}
+                                placeholder="Paste job requirements or 'L6 Staff Engineer at Amazon'..."
+                                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Temporal Shift (Duration)</label>
+                            <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+                                {[15, 30, 45, 60].map(m => (
+                                    <button key={m} onClick={() => setInterviewDuration(m)} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${interviewDuration === m ? 'bg-red-600 text-white shadow-lg' : 'text-slate-50'}`}>{m}m</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button onClick={handleStartInterview} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3">
+                            <Play size={20} fill="currentColor"/> Begin Interrogation
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'active' && (
+                <div className="h-full w-full flex animate-fade-in relative">
+                    <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
+                        <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
+                            <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
+                            <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-red-500/50 overflow-hidden shadow-2xl">
+                                <video 
+                                    ref={mirrorVideoRef}
+                                    autoPlay 
+                                    playsInline 
+                                    muted 
+                                    className="w-full h-full object-cover transform scale-110"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2">
+                                    <div className="bg-red-600 text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg border border-red-400/50 whitespace-nowrap">Neural Mirror</div>
+                                </div>
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 h-1 overflow-hidden rounded-full"><Visualizer volume={volume} isActive={isLive} color="#ffffff" /></div>
+                                <button 
+                                    onClick={() => setIsMirrorMinimized(!isMirrorMinimized)}
+                                    className="absolute bottom-2 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                                >
+                                    {isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                        <CodeStudio 
+                            onBack={() => {}} 
+                            currentUser={currentUser} 
+                            userProfile={userProfile} 
+                            isProMember={true} 
+                            isInterviewerMode={true}
+                            initialFiles={files}
+                            onFileChange={(f) => setFiles(prev => prev.map(p => p.path === f.path ? f : p))}
+                            externalChatContent={transcript}
+                            isAiThinking={!isAiConnected && isLive}
+                            onSyncCodeWithAi={(f) => {
+                                addApiLog(`Forced Code Sync: ${f.name}`, 'info');
+                                serviceRef.current?.sendText(`NEURAL_SNAPSHOT_SYNC: User forced a code update for ${f.name}. CONTENT: \n\`\`\`\n${f.content}\n\`\`\``);
+                            }}
+                            onSessionStart={() => {}}
+                            onSessionStop={() => {}}
+                            onStartLiveSession={(chan, ctx) => onStartLiveSession(chan, ctx)}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'feedback' && report && (
+                <div className="h-full w-full overflow-y-auto p-12 bg-[#020617] scrollbar-hide">
+                    <div className="max-w-4xl mx-auto space-y-16">
+                        <div className="text-center space-y-4">
+                            <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Refraction</h2>
+                            <p className="text-slate-500 font-bold uppercase tracking-[0.4em] pt-2">Session Integrity: 100% Validated</p>
+                        </div>
+                        <EvaluationReportDisplay 
+                            report={report} 
+                            onSyncYouTube={() => performSyncToYouTube(report.id, report.videoBlob!, { mode: interviewMode, language: interviewLanguage })}
+                            onSyncDrive={() => performSyncToDrive(report.id, report.videoBlob!, { mode: interviewMode })}
+                            isSyncing={isUploadingRecording}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'archive' && (
+                <div className="max-w-6xl w-full p-8 md:p-12 h-full flex flex-col animate-fade-in pb-32">
+                    <div className="flex flex-col sm:flex-row items-center justify-between mb-10 gap-6">
+                        <div className="space-y-2">
+                             <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Artifact Registry</h2>
+                             <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Sovereign Interrogation History</p>
+                        </div>
+                        <div className="relative w-full sm:w-80">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+                            <input 
+                                type="text" 
+                                placeholder="Search sessions..." 
+                                value={archiveSearch}
+                                onChange={e => setArchiveSearch(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-6 py-3 text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-2 space-y-4 scrollbar-hide">
+                        {isLoading && pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center gap-4 text-indigo-400">
+                                <Loader2 className="animate-spin" size={32}/>
+                                <p className="text-[10px] font-black uppercase tracking-widest">Paging Registry...</p>
+                            </div>
+                        ) : pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center justify-center text-slate-700 gap-4 opacity-40">
+                                <SearchX size={64}/>
+                                <p className="text-sm font-bold uppercase tracking-widest">No artifacts located</p>
+                            </div>
+                        ) : (
+                            pastInterviews.filter(i => i.mode.includes(archiveSearch) || i.jobDescription.includes(archiveSearch)).map(rec => (
+                                <div key={rec.id} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-8 hover:border-indigo-500/30 transition-all shadow-xl group">
+                                    <div className="flex items-center gap-6 flex-1 min-w-0">
+                                        <div className="w-20 h-14 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center text-slate-700 relative overflow-hidden shrink-0 group-hover:border-indigo-500/20 transition-colors">
+                                             <FileVideo size={24}/>
+                                             <button onClick={() => handlePlayback(rec)} disabled={resolvingId === rec.id} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                 {resolvingId === rec.id ? <Loader2 className="animate-spin text-white" size={16}/> : <Play size={20} fill="white" className="text-white"/>}
+                                             </button>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-3 mb-1">
+                                                <h3 className="text-lg font-bold text-white truncate">{rec.mode.toUpperCase()} SCREEN</h3>
+                                                <span className="text-[8px] font-black text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-500/20 uppercase">{rec.language}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-xs font-medium text-slate-500">
+                                                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-indigo-400"/> {new Date(rec.timestamp).toLocaleDateString()}</span>
+                                                <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-600">ID: {rec.id.substring(0,12)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border shadow-lg ${
+                                            rec.feedback.toLowerCase().includes('strong hire') ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
+                                            rec.feedback.toLowerCase().includes('hire') ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' : 'bg-red-900/20 text-red-400 border-red-500/30'
+                                        }`}>
+                                            {rec.feedback || 'Incomplete'}
+                                        </div>
+                                        {isYouTubeUrl(rec.videoUrl) ? (
+                                            <a href={rec.videoUrl} target="_blank" rel="noreferrer" className="p-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl transition-all border border-red-500/20" title="Watch on YouTube"><Youtube size={20}/></a>
+                                        ) : isDriveUrl(rec.videoUrl) ? (
+                                            <button onClick={() => handlePlayback(rec)} className="p-3 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl transition-all border border-indigo-500/20" title="Stream from Drive"><HardDrive size={20}/></button>
+                                        ) : null}
+                                        <button onClick={() => { if(confirm("Purge artifact?")) deleteInterview(rec.id).then(loadData) }} className="p-3 bg-slate-800 hover:bg-red-600 text-slate-500 hover:text-white rounded-xl transition-all"><Trash2 size={20}/></button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+        </header>
+
+        <main className="flex-1 overflow-hidden relative flex flex-col items-center">
+            {isLoading && (
+                <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                    <div className="relative">
+                        <div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Zap size={32} className="text-indigo-400 animate-pulse" />
+                        </div>
+                    </div>
+                    <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Initializing Refraction</h3>
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Provisioning Socratic Environment...</p>
+                    </div>
+                </div>
+            )}
+
+            {view === 'selection' && (
+                <div className="max-w-4xl w-full p-8 md:p-16 h-full flex flex-col justify-center gap-12 animate-fade-in-up">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">The Interrogator</h2>
+                        <p className="text-lg text-slate-400 font-medium max-w-xl mx-auto leading-relaxed">Refining engineering talent through technical friction and Staff-level peer evaluation.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {PERSONAS.map(p => (
+                            <button 
+                                key={p.id}
+                                onClick={() => setSelectedPersona(p)}
+                                className={`p-8 rounded-[3rem] border transition-all text-left flex flex-col gap-4 relative overflow-hidden group ${selectedPersona.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-2xl scale-[1.02]' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-indigo-500/40'}`}
+                            >
+                                <div className={`p-4 rounded-3xl w-fit ${selectedPersona.id === p.id ? 'bg-indigo-500' : 'bg-slate-950'} transition-colors`}>
+                                    <p.icon size={32} className={selectedPersona.id === p.id ? 'text-white' : 'text-indigo-500'} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black uppercase tracking-tight leading-none mb-2">{p.name}</h3>
+                                    <p className="text-xs font-medium opacity-60 leading-relaxed">{p.desc}</p>
+                                </div>
+                                {selectedPersona.id === p.id && <div className="absolute -right-4 -bottom-4 p-8 bg-white/10 rounded-full blur-2xl"></div>}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex flex-col items-center gap-6">
+                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
+                            {(['coding', 'system_design', 'behavioral', 'quick_screen'] as const).map(m => (
+                                <button key={m} onClick={() => setInterviewMode(m)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${interviewMode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>{m.replace('_', ' ')}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => setView('setup')} className="px-12 py-5 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-2xl shadow-2xl shadow-indigo-900/40 transition-transform hover:scale-105 active:scale-95 flex items-center gap-3">
+                            <span>Proceed to Setup</span>
+                            <ChevronRight size={20}/>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'setup' && (
+                <div className="max-w-xl w-full p-8 md:p-12 h-full flex flex-col justify-center gap-10 animate-fade-in-up">
+                    <div className="space-y-2">
+                        <button onClick={() => setView('selection')} className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors mb-4"><ArrowLeft size={14}/> Back to Selection</button>
+                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Environmental Config</h2>
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Establishing Socratic Context</p>
+                    </div>
+
+                    <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-16 bg-red-500/5 blur-[80px] rounded-full pointer-events-none"></div>
+                        
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Primary Code Refraction (Language)</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['c++', 'python', 'javascript', 'java'] as const).map(l => (
+                                    <button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context (Target Narrative)</label>
+                            <textarea 
+                                value={jobDescription} 
+                                onChange={e => setJobDescription(e.target.value)} 
+                                rows={4}
+                                placeholder="Paste job requirements or 'L6 Staff Engineer at Amazon'..."
+                                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Temporal Shift (Duration)</label>
+                            <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+                                {[15, 30, 45, 60].map(m => (
+                                    <button key={m} onClick={() => setInterviewDuration(m)} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${interviewDuration === m ? 'bg-red-600 text-white shadow-lg' : 'text-slate-50'}`}>{m}m</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button onClick={handleStartInterview} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3">
+                            <Play size={20} fill="currentColor"/> Begin Interrogation
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'active' && (
+                <div className="h-full w-full flex animate-fade-in relative">
+                    <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
+                        <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
+                            <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
+                            <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-red-500/50 overflow-hidden shadow-2xl">
+                                <video 
+                                    ref={mirrorVideoRef}
+                                    autoPlay 
+                                    playsInline 
+                                    muted 
+                                    className="w-full h-full object-cover transform scale-110"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2">
+                                    <div className="bg-red-600 text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg border border-red-400/50 whitespace-nowrap">Neural Mirror</div>
+                                </div>
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 h-1 overflow-hidden rounded-full"><Visualizer volume={volume} isActive={isLive} color="#ffffff" /></div>
+                                <button 
+                                    onClick={() => setIsMirrorMinimized(!isMirrorMinimized)}
+                                    className="absolute bottom-2 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                                >
+                                    {isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                        <CodeStudio 
+                            onBack={() => {}} 
+                            currentUser={currentUser} 
+                            userProfile={userProfile} 
+                            isProMember={true} 
+                            isInterviewerMode={true}
+                            initialFiles={files}
+                            onFileChange={(f) => setFiles(prev => prev.map(p => p.path === f.path ? f : p))}
+                            externalChatContent={transcript}
+                            isAiThinking={!isAiConnected && isLive}
+                            onSyncCodeWithAi={(f) => {
+                                addApiLog(`Forced Code Sync: ${f.name}`, 'info');
+                                serviceRef.current?.sendText(`NEURAL_SNAPSHOT_SYNC: User forced a code update for ${f.name}. CONTENT: \n\`\`\`\n${f.content}\n\`\`\``);
+                            }}
+                            onSessionStart={() => {}}
+                            onSessionStop={() => {}}
+                            onStartLiveSession={(chan, ctx) => onStartLiveSession(chan, ctx)}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'feedback' && report && (
+                <div className="h-full w-full overflow-y-auto p-12 bg-[#020617] scrollbar-hide">
+                    <div className="max-w-4xl mx-auto space-y-16">
+                        <div className="text-center space-y-4">
+                            <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Refraction</h2>
+                            <p className="text-slate-500 font-bold uppercase tracking-[0.4em] pt-2">Session Integrity: 100% Validated</p>
+                        </div>
+                        <EvaluationReportDisplay 
+                            report={report} 
+                            onSyncYouTube={() => performSyncToYouTube(report.id, report.videoBlob!, { mode: interviewMode, language: interviewLanguage })}
+                            onSyncDrive={() => performSyncToDrive(report.id, report.videoBlob!, { mode: interviewMode })}
+                            isSyncing={isUploadingRecording}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'archive' && (
+                <div className="max-w-6xl w-full p-8 md:p-12 h-full flex flex-col animate-fade-in pb-32">
+                    <div className="flex flex-col sm:flex-row items-center justify-between mb-10 gap-6">
+                        <div className="space-y-2">
+                             <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Artifact Registry</h2>
+                             <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Sovereign Interrogation History</p>
+                        </div>
+                        <div className="relative w-full sm:w-80">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+                            <input 
+                                type="text" 
+                                placeholder="Search sessions..." 
+                                value={archiveSearch}
+                                onChange={e => setArchiveSearch(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-6 py-3 text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-2 space-y-4 scrollbar-hide">
+                        {isLoading && pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center gap-4 text-indigo-400">
+                                <Loader2 className="animate-spin" size={32}/>
+                                <p className="text-[10px] font-black uppercase tracking-widest">Paging Registry...</p>
+                            </div>
+                        ) : pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center justify-center text-slate-700 gap-4 opacity-40">
+                                <SearchX size={64}/>
+                                <p className="text-sm font-bold uppercase tracking-widest">No artifacts located</p>
+                            </div>
+                        ) : (
+                            pastInterviews.filter(i => i.mode.includes(archiveSearch) || i.jobDescription.includes(archiveSearch)).map(rec => (
+                                <div key={rec.id} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-8 hover:border-indigo-500/30 transition-all shadow-xl group">
+                                    <div className="flex items-center gap-6 flex-1 min-w-0">
+                                        <div className="w-20 h-14 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center text-slate-700 relative overflow-hidden shrink-0 group-hover:border-indigo-500/20 transition-colors">
+                                             <FileVideo size={24}/>
+                                             <button onClick={() => handlePlayback(rec)} disabled={resolvingId === rec.id} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                 {resolvingId === rec.id ? <Loader2 className="animate-spin text-white" size={16}/> : <Play size={20} fill="white" className="text-white"/>}
+                                             </button>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-3 mb-1">
+                                                <h3 className="text-lg font-bold text-white truncate">{rec.mode.toUpperCase()} SCREEN</h3>
+                                                <span className="text-[8px] font-black text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-500/20 uppercase">{rec.language}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-xs font-medium text-slate-500">
+                                                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-indigo-400"/> {new Date(rec.timestamp).toLocaleDateString()}</span>
+                                                <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-600">ID: {rec.id.substring(0,12)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border shadow-lg ${
+                                            rec.feedback.toLowerCase().includes('strong hire') ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
+                                            rec.feedback.toLowerCase().includes('hire') ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' : 'bg-red-900/20 text-red-400 border-red-500/30'
+                                        }`}>
+                                            {rec.feedback || 'Incomplete'}
+                                        </div>
+                                        {isYouTubeUrl(rec.videoUrl) ? (
+                                            <a href={rec.videoUrl} target="_blank" rel="noreferrer" className="p-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl transition-all border border-red-500/20" title="Watch on YouTube"><Youtube size={20}/></a>
+                                        ) : isDriveUrl(rec.videoUrl) ? (
+                                            <button onClick={() => handlePlayback(rec)} className="p-3 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl transition-all border border-indigo-500/20" title="Stream from Drive"><HardDrive size={20}/></button>
+                                        ) : null}
+                                        <button onClick={() => { if(confirm("Purge artifact?")) deleteInterview(rec.id).then(loadData) }} className="p-3 bg-slate-800 hover:bg-red-600 text-slate-500 hover:text-white rounded-xl transition-all"><Trash2 size={20}/></button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+        </header>
+
+        <main className="flex-1 overflow-hidden relative flex flex-col items-center">
+            {isLoading && (
+                <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                    <div className="relative">
+                        <div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Zap size={32} className="text-indigo-400 animate-pulse" />
+                        </div>
+                    </div>
+                    <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Initializing Refraction</h3>
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Provisioning Socratic Environment...</p>
+                    </div>
+                </div>
+            )}
+
+            {view === 'selection' && (
+                <div className="max-w-4xl w-full p-8 md:p-16 h-full flex flex-col justify-center gap-12 animate-fade-in-up">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">The Interrogator</h2>
+                        <p className="text-lg text-slate-400 font-medium max-w-xl mx-auto leading-relaxed">Refining engineering talent through technical friction and Staff-level peer evaluation.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {PERSONAS.map(p => (
+                            <button 
+                                key={p.id}
+                                onClick={() => setSelectedPersona(p)}
+                                className={`p-8 rounded-[3rem] border transition-all text-left flex flex-col gap-4 relative overflow-hidden group ${selectedPersona.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-2xl scale-[1.02]' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-indigo-500/40'}`}
+                            >
+                                <div className={`p-4 rounded-3xl w-fit ${selectedPersona.id === p.id ? 'bg-indigo-500' : 'bg-slate-950'} transition-colors`}>
+                                    <p.icon size={32} className={selectedPersona.id === p.id ? 'text-white' : 'text-indigo-500'} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black uppercase tracking-tight leading-none mb-2">{p.name}</h3>
+                                    <p className="text-xs font-medium opacity-60 leading-relaxed">{p.desc}</p>
+                                </div>
+                                {selectedPersona.id === p.id && <div className="absolute -right-4 -bottom-4 p-8 bg-white/10 rounded-full blur-2xl"></div>}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex flex-col items-center gap-6">
+                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
+                            {(['coding', 'system_design', 'behavioral', 'quick_screen'] as const).map(m => (
+                                <button key={m} onClick={() => setInterviewMode(m)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${interviewMode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>{m.replace('_', ' ')}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => setView('setup')} className="px-12 py-5 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-2xl shadow-2xl shadow-indigo-900/40 transition-transform hover:scale-105 active:scale-95 flex items-center gap-3">
+                            <span>Proceed to Setup</span>
+                            <ChevronRight size={20}/>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'setup' && (
+                <div className="max-w-xl w-full p-8 md:p-12 h-full flex flex-col justify-center gap-10 animate-fade-in-up">
+                    <div className="space-y-2">
+                        <button onClick={() => setView('selection')} className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors mb-4"><ArrowLeft size={14}/> Back to Selection</button>
+                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Environmental Config</h2>
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Establishing Socratic Context</p>
+                    </div>
+
+                    <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-16 bg-red-500/5 blur-[80px] rounded-full pointer-events-none"></div>
+                        
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Primary Code Refraction (Language)</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['c++', 'python', 'javascript', 'java'] as const).map(l => (
+                                    <button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context (Target Narrative)</label>
+                            <textarea 
+                                value={jobDescription} 
+                                onChange={e => setJobDescription(e.target.value)} 
+                                rows={4}
+                                placeholder="Paste job requirements or 'L6 Staff Engineer at Amazon'..."
+                                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Temporal Shift (Duration)</label>
+                            <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+                                {[15, 30, 45, 60].map(m => (
+                                    <button key={m} onClick={() => setInterviewDuration(m)} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${interviewDuration === m ? 'bg-red-600 text-white shadow-lg' : 'text-slate-50'}`}>{m}m</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button onClick={handleStartInterview} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3">
+                            <Play size={20} fill="currentColor"/> Begin Interrogation
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'active' && (
+                <div className="h-full w-full flex animate-fade-in relative">
+                    <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
+                        <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
+                            <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
+                            <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-red-500/50 overflow-hidden shadow-2xl">
+                                <video 
+                                    ref={mirrorVideoRef}
+                                    autoPlay 
+                                    playsInline 
+                                    muted 
+                                    className="w-full h-full object-cover transform scale-110"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2">
+                                    <div className="bg-red-600 text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg border border-red-400/50 whitespace-nowrap">Neural Mirror</div>
+                                </div>
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 h-1 overflow-hidden rounded-full"><Visualizer volume={volume} isActive={isLive} color="#ffffff" /></div>
+                                <button 
+                                    onClick={() => setIsMirrorMinimized(!isMirrorMinimized)}
+                                    className="absolute bottom-2 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                                >
+                                    {isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                        <CodeStudio 
+                            onBack={() => {}} 
+                            currentUser={currentUser} 
+                            userProfile={userProfile} 
+                            isProMember={true} 
+                            isInterviewerMode={true}
+                            initialFiles={files}
+                            onFileChange={(f) => setFiles(prev => prev.map(p => p.path === f.path ? f : p))}
+                            externalChatContent={transcript}
+                            isAiThinking={!isAiConnected && isLive}
+                            onSyncCodeWithAi={(f) => {
+                                addApiLog(`Forced Code Sync: ${f.name}`, 'info');
+                                serviceRef.current?.sendText(`NEURAL_SNAPSHOT_SYNC: User forced a code update for ${f.name}. CONTENT: \n\`\`\`\n${f.content}\n\`\`\``);
+                            }}
+                            onSessionStart={() => {}}
+                            onSessionStop={() => {}}
+                            onStartLiveSession={(chan, ctx) => onStartLiveSession(chan, ctx)}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'feedback' && report && (
+                <div className="h-full w-full overflow-y-auto p-12 bg-[#020617] scrollbar-hide">
+                    <div className="max-w-4xl mx-auto space-y-16">
+                        <div className="text-center space-y-4">
+                            <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Refraction</h2>
+                            <p className="text-slate-500 font-bold uppercase tracking-[0.4em] pt-2">Session Integrity: 100% Validated</p>
+                        </div>
+                        <EvaluationReportDisplay 
+                            report={report} 
+                            onSyncYouTube={() => performSyncToYouTube(report.id, report.videoBlob!, { mode: interviewMode, language: interviewLanguage })}
+                            onSyncDrive={() => performSyncToDrive(report.id, report.videoBlob!, { mode: interviewMode })}
+                            isSyncing={isUploadingRecording}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'archive' && (
+                <div className="max-w-6xl w-full p-8 md:p-12 h-full flex flex-col animate-fade-in pb-32">
+                    <div className="flex flex-col sm:flex-row items-center justify-between mb-10 gap-6">
+                        <div className="space-y-2">
+                             <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Artifact Registry</h2>
+                             <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Sovereign Interrogation History</p>
+                        </div>
+                        <div className="relative w-full sm:w-80">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+                            <input 
+                                type="text" 
+                                placeholder="Search sessions..." 
+                                value={archiveSearch}
+                                onChange={e => setArchiveSearch(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-6 py-3 text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-2 space-y-4 scrollbar-hide">
+                        {isLoading && pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center gap-4 text-indigo-400">
+                                <Loader2 className="animate-spin" size={32}/>
+                                <p className="text-[10px] font-black uppercase tracking-widest">Paging Registry...</p>
+                            </div>
+                        ) : pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center justify-center text-slate-700 gap-4 opacity-40">
+                                <SearchX size={64}/>
+                                <p className="text-sm font-bold uppercase tracking-widest">No artifacts located</p>
+                            </div>
+                        ) : (
+                            pastInterviews.filter(i => i.mode.includes(archiveSearch) || i.jobDescription.includes(archiveSearch)).map(rec => (
+                                <div key={rec.id} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-8 hover:border-indigo-500/30 transition-all shadow-xl group">
+                                    <div className="flex items-center gap-6 flex-1 min-w-0">
+                                        <div className="w-20 h-14 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center text-slate-700 relative overflow-hidden shrink-0 group-hover:border-indigo-500/20 transition-colors">
+                                             <FileVideo size={24}/>
+                                             <button onClick={() => handlePlayback(rec)} disabled={resolvingId === rec.id} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                 {resolvingId === rec.id ? <Loader2 className="animate-spin text-white" size={16}/> : <Play size={20} fill="white" className="text-white"/>}
+                                             </button>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-3 mb-1">
+                                                <h3 className="text-lg font-bold text-white truncate">{rec.mode.toUpperCase()} SCREEN</h3>
+                                                <span className="text-[8px] font-black text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-500/20 uppercase">{rec.language}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-xs font-medium text-slate-500">
+                                                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-indigo-400"/> {new Date(rec.timestamp).toLocaleDateString()}</span>
+                                                <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-600">ID: {rec.id.substring(0,12)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border shadow-lg ${
+                                            rec.feedback.toLowerCase().includes('strong hire') ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
+                                            rec.feedback.toLowerCase().includes('hire') ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' : 'bg-red-900/20 text-red-400 border-red-500/30'
+                                        }`}>
+                                            {rec.feedback || 'Incomplete'}
+                                        </div>
+                                        {isYouTubeUrl(rec.videoUrl) ? (
+                                            <a href={rec.videoUrl} target="_blank" rel="noreferrer" className="p-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl transition-all border border-red-500/20" title="Watch on YouTube"><Youtube size={20}/></a>
+                                        ) : isDriveUrl(rec.videoUrl) ? (
+                                            <button onClick={() => handlePlayback(rec)} className="p-3 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl transition-all border border-indigo-500/20" title="Stream from Drive"><HardDrive size={20}/></button>
+                                        ) : null}
+                                        <button onClick={() => { if(confirm("Purge artifact?")) deleteInterview(rec.id).then(loadData) }} className="p-3 bg-slate-800 hover:bg-red-600 text-slate-500 hover:text-white rounded-xl transition-all"><Trash2 size={20}/></button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+        </header>
+
+        <main className="flex-1 overflow-hidden relative flex flex-col items-center">
+            {isLoading && (
+                <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                    <div className="relative">
+                        <div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Zap size={32} className="text-indigo-400 animate-pulse" />
+                        </div>
+                    </div>
+                    <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Initializing Refraction</h3>
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Provisioning Socratic Environment...</p>
+                    </div>
+                </div>
+            )}
+
+            {view === 'selection' && (
+                <div className="max-w-4xl w-full p-8 md:p-16 h-full flex flex-col justify-center gap-12 animate-fade-in-up">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">The Interrogator</h2>
+                        <p className="text-lg text-slate-400 font-medium max-w-xl mx-auto leading-relaxed">Refining engineering talent through technical friction and Staff-level peer evaluation.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {PERSONAS.map(p => (
+                            <button 
+                                key={p.id}
+                                onClick={() => setSelectedPersona(p)}
+                                className={`p-8 rounded-[3rem] border transition-all text-left flex flex-col gap-4 relative overflow-hidden group ${selectedPersona.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-2xl scale-[1.02]' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-indigo-500/40'}`}
+                            >
+                                <div className={`p-4 rounded-3xl w-fit ${selectedPersona.id === p.id ? 'bg-indigo-500' : 'bg-slate-950'} transition-colors`}>
+                                    <p.icon size={32} className={selectedPersona.id === p.id ? 'text-white' : 'text-indigo-500'} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black uppercase tracking-tight leading-none mb-2">{p.name}</h3>
+                                    <p className="text-xs font-medium opacity-60 leading-relaxed">{p.desc}</p>
+                                </div>
+                                {selectedPersona.id === p.id && <div className="absolute -right-4 -bottom-4 p-8 bg-white/10 rounded-full blur-2xl"></div>}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex flex-col items-center gap-6">
+                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
+                            {(['coding', 'system_design', 'behavioral', 'quick_screen'] as const).map(m => (
+                                <button key={m} onClick={() => setInterviewMode(m)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${interviewMode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>{m.replace('_', ' ')}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => setView('setup')} className="px-12 py-5 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-2xl shadow-2xl shadow-indigo-900/40 transition-transform hover:scale-105 active:scale-95 flex items-center gap-3">
+                            <span>Proceed to Setup</span>
+                            <ChevronRight size={20}/>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'setup' && (
+                <div className="max-w-xl w-full p-8 md:p-12 h-full flex flex-col justify-center gap-10 animate-fade-in-up">
+                    <div className="space-y-2">
+                        <button onClick={() => setView('selection')} className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors mb-4"><ArrowLeft size={14}/> Back to Selection</button>
+                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Environmental Config</h2>
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Establishing Socratic Context</p>
+                    </div>
+
+                    <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-16 bg-red-500/5 blur-[80px] rounded-full pointer-events-none"></div>
+                        
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Primary Code Refraction (Language)</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['c++', 'python', 'javascript', 'java'] as const).map(l => (
+                                    <button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context (Target Narrative)</label>
+                            <textarea 
+                                value={jobDescription} 
+                                onChange={e => setJobDescription(e.target.value)} 
+                                rows={4}
+                                placeholder="Paste job requirements or 'L6 Staff Engineer at Amazon'..."
+                                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Temporal Shift (Duration)</label>
+                            <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+                                {[15, 30, 45, 60].map(m => (
+                                    <button key={m} onClick={() => setInterviewDuration(m)} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${interviewDuration === m ? 'bg-red-600 text-white shadow-lg' : 'text-slate-50'}`}>{m}m</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button onClick={handleStartInterview} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3">
+                            <Play size={20} fill="currentColor"/> Begin Interrogation
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'active' && (
+                <div className="h-full w-full flex animate-fade-in relative">
+                    <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
+                        <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
+                            <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
+                            <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-red-500/50 overflow-hidden shadow-2xl">
+                                <video 
+                                    ref={mirrorVideoRef}
+                                    autoPlay 
+                                    playsInline 
+                                    muted 
+                                    className="w-full h-full object-cover transform scale-110"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2">
+                                    <div className="bg-red-600 text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg border border-red-400/50 whitespace-nowrap">Neural Mirror</div>
+                                </div>
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 h-1 overflow-hidden rounded-full"><Visualizer volume={volume} isActive={isLive} color="#ffffff" /></div>
+                                <button 
+                                    onClick={() => setIsMirrorMinimized(!isMirrorMinimized)}
+                                    className="absolute bottom-2 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                                >
+                                    {isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                        <CodeStudio 
+                            onBack={() => {}} 
+                            currentUser={currentUser} 
+                            userProfile={userProfile} 
+                            isProMember={true} 
+                            isInterviewerMode={true}
+                            initialFiles={files}
+                            onFileChange={(f) => setFiles(prev => prev.map(p => p.path === f.path ? f : p))}
+                            externalChatContent={transcript}
+                            isAiThinking={!isAiConnected && isLive}
+                            onSyncCodeWithAi={(f) => {
+                                addApiLog(`Forced Code Sync: ${f.name}`, 'info');
+                                serviceRef.current?.sendText(`NEURAL_SNAPSHOT_SYNC: User forced a code update for ${f.name}. CONTENT: \n\`\`\`\n${f.content}\n\`\`\``);
+                            }}
+                            onSessionStart={() => {}}
+                            onSessionStop={() => {}}
+                            onStartLiveSession={(chan, ctx) => onStartLiveSession(chan, ctx)}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'feedback' && report && (
+                <div className="h-full w-full overflow-y-auto p-12 bg-[#020617] scrollbar-hide">
+                    <div className="max-w-4xl mx-auto space-y-16">
+                        <div className="text-center space-y-4">
+                            <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Refraction</h2>
+                            <p className="text-slate-500 font-bold uppercase tracking-[0.4em] pt-2">Session Integrity: 100% Validated</p>
+                        </div>
+                        <EvaluationReportDisplay 
+                            report={report} 
+                            onSyncYouTube={() => performSyncToYouTube(report.id, report.videoBlob!, { mode: interviewMode, language: interviewLanguage })}
+                            onSyncDrive={() => performSyncToDrive(report.id, report.videoBlob!, { mode: interviewMode })}
+                            isSyncing={isUploadingRecording}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'archive' && (
+                <div className="max-w-6xl w-full p-8 md:p-12 h-full flex flex-col animate-fade-in pb-32">
+                    <div className="flex flex-col sm:flex-row items-center justify-between mb-10 gap-6">
+                        <div className="space-y-2">
+                             <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Artifact Registry</h2>
+                             <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Sovereign Interrogation History</p>
+                        </div>
+                        <div className="relative w-full sm:w-80">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+                            <input 
+                                type="text" 
+                                placeholder="Search sessions..." 
+                                value={archiveSearch}
+                                onChange={e => setArchiveSearch(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-6 py-3 text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-2 space-y-4 scrollbar-hide">
+                        {isLoading && pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center gap-4 text-indigo-400">
+                                <Loader2 className="animate-spin" size={32}/>
+                                <p className="text-[10px] font-black uppercase tracking-widest">Paging Registry...</p>
+                            </div>
+                        ) : pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center justify-center text-slate-700 gap-4 opacity-40">
+                                <SearchX size={64}/>
+                                <p className="text-sm font-bold uppercase tracking-widest">No artifacts located</p>
+                            </div>
+                        ) : (
+                            pastInterviews.filter(i => i.mode.includes(archiveSearch) || i.jobDescription.includes(archiveSearch)).map(rec => (
+                                <div key={rec.id} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-8 hover:border-indigo-500/30 transition-all shadow-xl group">
+                                    <div className="flex items-center gap-6 flex-1 min-w-0">
+                                        <div className="w-20 h-14 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center text-slate-700 relative overflow-hidden shrink-0 group-hover:border-indigo-500/20 transition-colors">
+                                             <FileVideo size={24}/>
+                                             <button onClick={() => handlePlayback(rec)} disabled={resolvingId === rec.id} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                 {resolvingId === rec.id ? <Loader2 className="animate-spin text-white" size={16}/> : <Play size={20} fill="white" className="text-white"/>}
+                                             </button>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-3 mb-1">
+                                                <h3 className="text-lg font-bold text-white truncate">{rec.mode.toUpperCase()} SCREEN</h3>
+                                                <span className="text-[8px] font-black text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-500/20 uppercase">{rec.language}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-xs font-medium text-slate-500">
+                                                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-indigo-400"/> {new Date(rec.timestamp).toLocaleDateString()}</span>
+                                                <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-600">ID: {rec.id.substring(0,12)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border shadow-lg ${
+                                            rec.feedback.toLowerCase().includes('strong hire') ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
+                                            rec.feedback.toLowerCase().includes('hire') ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' : 'bg-red-900/20 text-red-400 border-red-500/30'
+                                        }`}>
+                                            {rec.feedback || 'Incomplete'}
+                                        </div>
+                                        {isYouTubeUrl(rec.videoUrl) ? (
+                                            <a href={rec.videoUrl} target="_blank" rel="noreferrer" className="p-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl transition-all border border-red-500/20" title="Watch on YouTube"><Youtube size={20}/></a>
+                                        ) : isDriveUrl(rec.videoUrl) ? (
+                                            <button onClick={() => handlePlayback(rec)} className="p-3 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl transition-all border border-indigo-500/20" title="Stream from Drive"><HardDrive size={20}/></button>
+                                        ) : null}
+                                        <button onClick={() => { if(confirm("Purge artifact?")) deleteInterview(rec.id).then(loadData) }} className="p-3 bg-slate-800 hover:bg-red-600 text-slate-500 hover:text-white rounded-xl transition-all"><Trash2 size={20}/></button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+        </header>
+
+        <main className="flex-1 overflow-hidden relative flex flex-col items-center">
+            {isLoading && (
+                <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                    <div className="relative">
+                        <div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Zap size={32} className="text-indigo-400 animate-pulse" />
+                        </div>
+                    </div>
+                    <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Initializing Refraction</h3>
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Provisioning Socratic Environment...</p>
+                    </div>
+                </div>
+            )}
+
+            {view === 'selection' && (
+                <div className="max-w-4xl w-full p-8 md:p-16 h-full flex flex-col justify-center gap-12 animate-fade-in-up">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">The Interrogator</h2>
+                        <p className="text-lg text-slate-400 font-medium max-w-xl mx-auto leading-relaxed">Refining engineering talent through technical friction and Staff-level peer evaluation.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {PERSONAS.map(p => (
+                            <button 
+                                key={p.id}
+                                onClick={() => setSelectedPersona(p)}
+                                className={`p-8 rounded-[3rem] border transition-all text-left flex flex-col gap-4 relative overflow-hidden group ${selectedPersona.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-2xl scale-[1.02]' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-indigo-500/40'}`}
+                            >
+                                <div className={`p-4 rounded-3xl w-fit ${selectedPersona.id === p.id ? 'bg-indigo-500' : 'bg-slate-950'} transition-colors`}>
+                                    <p.icon size={32} className={selectedPersona.id === p.id ? 'text-white' : 'text-indigo-500'} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black uppercase tracking-tight leading-none mb-2">{p.name}</h3>
+                                    <p className="text-xs font-medium opacity-60 leading-relaxed">{p.desc}</p>
+                                </div>
+                                {selectedPersona.id === p.id && <div className="absolute -right-4 -bottom-4 p-8 bg-white/10 rounded-full blur-2xl"></div>}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex flex-col items-center gap-6">
+                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
+                            {(['coding', 'system_design', 'behavioral', 'quick_screen'] as const).map(m => (
+                                <button key={m} onClick={() => setInterviewMode(m)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${interviewMode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>{m.replace('_', ' ')}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => setView('setup')} className="px-12 py-5 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-2xl shadow-2xl shadow-indigo-900/40 transition-transform hover:scale-105 active:scale-95 flex items-center gap-3">
+                            <span>Proceed to Setup</span>
+                            <ChevronRight size={20}/>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'setup' && (
+                <div className="max-w-xl w-full p-8 md:p-12 h-full flex flex-col justify-center gap-10 animate-fade-in-up">
+                    <div className="space-y-2">
+                        <button onClick={() => setView('selection')} className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors mb-4"><ArrowLeft size={14}/> Back to Selection</button>
+                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Environmental Config</h2>
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Establishing Socratic Context</p>
+                    </div>
+
+                    <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-16 bg-red-500/5 blur-[80px] rounded-full pointer-events-none"></div>
+                        
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Primary Code Refraction (Language)</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['c++', 'python', 'javascript', 'java'] as const).map(l => (
+                                    <button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context (Target Narrative)</label>
+                            <textarea 
+                                value={jobDescription} 
+                                onChange={e => setJobDescription(e.target.value)} 
+                                rows={4}
+                                placeholder="Paste job requirements or 'L6 Staff Engineer at Amazon'..."
+                                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Temporal Shift (Duration)</label>
+                            <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+                                {[15, 30, 45, 60].map(m => (
+                                    <button key={m} onClick={() => setInterviewDuration(m)} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${interviewDuration === m ? 'bg-red-600 text-white shadow-lg' : 'text-slate-50'}`}>{m}m</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button onClick={handleStartInterview} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3">
+                            <Play size={20} fill="currentColor"/> Begin Interrogation
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'active' && (
+                <div className="h-full w-full flex animate-fade-in relative">
+                    <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
+                        <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
+                            <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
+                            <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-red-500/50 overflow-hidden shadow-2xl">
+                                <video 
+                                    ref={mirrorVideoRef}
+                                    autoPlay 
+                                    playsInline 
+                                    muted 
+                                    className="w-full h-full object-cover transform scale-110"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2">
+                                    <div className="bg-red-600 text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg border border-red-400/50 whitespace-nowrap">Neural Mirror</div>
+                                </div>
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 h-1 overflow-hidden rounded-full"><Visualizer volume={volume} isActive={isLive} color="#ffffff" /></div>
+                                <button 
+                                    onClick={() => setIsMirrorMinimized(!isMirrorMinimized)}
+                                    className="absolute bottom-2 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                                >
+                                    {isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                        <CodeStudio 
+                            onBack={() => {}} 
+                            currentUser={currentUser} 
+                            userProfile={userProfile} 
+                            isProMember={true} 
+                            isInterviewerMode={true}
+                            initialFiles={files}
+                            onFileChange={(f) => setFiles(prev => prev.map(p => p.path === f.path ? f : p))}
+                            externalChatContent={transcript}
+                            isAiThinking={!isAiConnected && isLive}
+                            onSyncCodeWithAi={(f) => {
+                                addApiLog(`Forced Code Sync: ${f.name}`, 'info');
+                                serviceRef.current?.sendText(`NEURAL_SNAPSHOT_SYNC: User forced a code update for ${f.name}. CONTENT: \n\`\`\`\n${f.content}\n\`\`\``);
+                            }}
+                            onSessionStart={() => {}}
+                            onSessionStop={() => {}}
+                            onStartLiveSession={(chan, ctx) => onStartLiveSession(chan, ctx)}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'feedback' && report && (
+                <div className="h-full w-full overflow-y-auto p-12 bg-[#020617] scrollbar-hide">
+                    <div className="max-w-4xl mx-auto space-y-16">
+                        <div className="text-center space-y-4">
+                            <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Refraction</h2>
+                            <p className="text-slate-500 font-bold uppercase tracking-[0.4em] pt-2">Session Integrity: 100% Validated</p>
+                        </div>
+                        <EvaluationReportDisplay 
+                            report={report} 
+                            onSyncYouTube={() => performSyncToYouTube(report.id, report.videoBlob!, { mode: interviewMode, language: interviewLanguage })}
+                            onSyncDrive={() => performSyncToDrive(report.id, report.videoBlob!, { mode: interviewMode })}
+                            isSyncing={isUploadingRecording}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'archive' && (
+                <div className="max-w-6xl w-full p-8 md:p-12 h-full flex flex-col animate-fade-in pb-32">
+                    <div className="flex flex-col sm:flex-row items-center justify-between mb-10 gap-6">
+                        <div className="space-y-2">
+                             <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Artifact Registry</h2>
+                             <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Sovereign Interrogation History</p>
+                        </div>
+                        <div className="relative w-full sm:w-80">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+                            <input 
+                                type="text" 
+                                placeholder="Search sessions..." 
+                                value={archiveSearch}
+                                onChange={e => setArchiveSearch(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-6 py-3 text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-2 space-y-4 scrollbar-hide">
+                        {isLoading && pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center gap-4 text-indigo-400">
+                                <Loader2 className="animate-spin" size={32}/>
+                                <p className="text-[10px] font-black uppercase tracking-widest">Paging Registry...</p>
+                            </div>
+                        ) : pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center justify-center text-slate-700 gap-4 opacity-40">
+                                <SearchX size={64}/>
+                                <p className="text-sm font-bold uppercase tracking-widest">No artifacts located</p>
+                            </div>
+                        ) : (
+                            pastInterviews.filter(i => i.mode.includes(archiveSearch) || i.jobDescription.includes(archiveSearch)).map(rec => (
+                                <div key={rec.id} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-8 hover:border-indigo-500/30 transition-all shadow-xl group">
+                                    <div className="flex items-center gap-6 flex-1 min-w-0">
+                                        <div className="w-20 h-14 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center text-slate-700 relative overflow-hidden shrink-0 group-hover:border-indigo-500/20 transition-colors">
+                                             <FileVideo size={24}/>
+                                             <button onClick={() => handlePlayback(rec)} disabled={resolvingId === rec.id} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                 {resolvingId === rec.id ? <Loader2 className="animate-spin text-white" size={16}/> : <Play size={20} fill="white" className="text-white"/>}
+                                             </button>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-3 mb-1">
+                                                <h3 className="text-lg font-bold text-white truncate">{rec.mode.toUpperCase()} SCREEN</h3>
+                                                <span className="text-[8px] font-black text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-500/20 uppercase">{rec.language}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-xs font-medium text-slate-500">
+                                                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-indigo-400"/> {new Date(rec.timestamp).toLocaleDateString()}</span>
+                                                <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-600">ID: {rec.id.substring(0,12)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border shadow-lg ${
+                                            rec.feedback.toLowerCase().includes('strong hire') ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
+                                            rec.feedback.toLowerCase().includes('hire') ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' : 'bg-red-900/20 text-red-400 border-red-500/30'
+                                        }`}>
+                                            {rec.feedback || 'Incomplete'}
+                                        </div>
+                                        {isYouTubeUrl(rec.videoUrl) ? (
+                                            <a href={rec.videoUrl} target="_blank" rel="noreferrer" className="p-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl transition-all border border-red-500/20" title="Watch on YouTube"><Youtube size={20}/></a>
+                                        ) : isDriveUrl(rec.videoUrl) ? (
+                                            <button onClick={() => handlePlayback(rec)} className="p-3 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl transition-all border border-indigo-500/20" title="Stream from Drive"><HardDrive size={20}/></button>
+                                        ) : null}
+                                        <button onClick={() => { if(confirm("Purge artifact?")) deleteInterview(rec.id).then(loadData) }} className="p-3 bg-slate-800 hover:bg-red-600 text-slate-500 hover:text-white rounded-xl transition-all"><Trash2 size={20}/></button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+        </header>
+
+        <main className="flex-1 overflow-hidden relative flex flex-col items-center">
+            {isLoading && (
+                <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                    <div className="relative">
+                        <div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Zap size={32} className="text-indigo-400 animate-pulse" />
+                        </div>
+                    </div>
+                    <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Initializing Refraction</h3>
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Provisioning Socratic Environment...</p>
+                    </div>
+                </div>
+            )}
+
+            {view === 'selection' && (
+                <div className="max-w-4xl w-full p-8 md:p-16 h-full flex flex-col justify-center gap-12 animate-fade-in-up">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">The Interrogator</h2>
+                        <p className="text-lg text-slate-400 font-medium max-w-xl mx-auto leading-relaxed">Refining engineering talent through technical friction and Staff-level peer evaluation.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {PERSONAS.map(p => (
+                            <button 
+                                key={p.id}
+                                onClick={() => setSelectedPersona(p)}
+                                className={`p-8 rounded-[3rem] border transition-all text-left flex flex-col gap-4 relative overflow-hidden group ${selectedPersona.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-2xl scale-[1.02]' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-indigo-500/40'}`}
+                            >
+                                <div className={`p-4 rounded-3xl w-fit ${selectedPersona.id === p.id ? 'bg-indigo-500' : 'bg-slate-950'} transition-colors`}>
+                                    <p.icon size={32} className={selectedPersona.id === p.id ? 'text-white' : 'text-indigo-500'} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black uppercase tracking-tight leading-none mb-2">{p.name}</h3>
+                                    <p className="text-xs font-medium opacity-60 leading-relaxed">{p.desc}</p>
+                                </div>
+                                {selectedPersona.id === p.id && <div className="absolute -right-4 -bottom-4 p-8 bg-white/10 rounded-full blur-2xl"></div>}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex flex-col items-center gap-6">
+                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
+                            {(['coding', 'system_design', 'behavioral', 'quick_screen'] as const).map(m => (
+                                <button key={m} onClick={() => setInterviewMode(m)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${interviewMode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>{m.replace('_', ' ')}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => setView('setup')} className="px-12 py-5 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-2xl shadow-2xl shadow-indigo-900/40 transition-transform hover:scale-105 active:scale-95 flex items-center gap-3">
+                            <span>Proceed to Setup</span>
+                            <ChevronRight size={20}/>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'setup' && (
+                <div className="max-w-xl w-full p-8 md:p-12 h-full flex flex-col justify-center gap-10 animate-fade-in-up">
+                    <div className="space-y-2">
+                        <button onClick={() => setView('selection')} className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors mb-4"><ArrowLeft size={14}/> Back to Selection</button>
+                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Environmental Config</h2>
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Establishing Socratic Context</p>
+                    </div>
+
+                    <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-16 bg-red-500/5 blur-[80px] rounded-full pointer-events-none"></div>
+                        
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Primary Code Refraction (Language)</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['c++', 'python', 'javascript', 'java'] as const).map(l => (
+                                    <button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context (Target Narrative)</label>
+                            <textarea 
+                                value={jobDescription} 
+                                onChange={e => setJobDescription(e.target.value)} 
+                                rows={4}
+                                placeholder="Paste job requirements or 'L6 Staff Engineer at Amazon'..."
+                                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Temporal Shift (Duration)</label>
+                            <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+                                {[15, 30, 45, 60].map(m => (
+                                    <button key={m} onClick={() => setInterviewDuration(m)} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${interviewDuration === m ? 'bg-red-600 text-white shadow-lg' : 'text-slate-50'}`}>{m}m</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button onClick={handleStartInterview} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3">
+                            <Play size={20} fill="currentColor"/> Begin Interrogation
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'active' && (
+                <div className="h-full w-full flex animate-fade-in relative">
+                    <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
+                        <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
+                            <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
+                            <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-red-500/50 overflow-hidden shadow-2xl">
+                                <video 
+                                    ref={mirrorVideoRef}
+                                    autoPlay 
+                                    playsInline 
+                                    muted 
+                                    className="w-full h-full object-cover transform scale-110"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2">
+                                    <div className="bg-red-600 text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg border border-red-400/50 whitespace-nowrap">Neural Mirror</div>
+                                </div>
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 h-1 overflow-hidden rounded-full"><Visualizer volume={volume} isActive={isLive} color="#ffffff" /></div>
+                                <button 
+                                    onClick={() => setIsMirrorMinimized(!isMirrorMinimized)}
+                                    className="absolute bottom-2 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                                >
+                                    {isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                        <CodeStudio 
+                            onBack={() => {}} 
+                            currentUser={currentUser} 
+                            userProfile={userProfile} 
+                            isProMember={true} 
+                            isInterviewerMode={true}
+                            initialFiles={files}
+                            onFileChange={(f) => setFiles(prev => prev.map(p => p.path === f.path ? f : p))}
+                            externalChatContent={transcript}
+                            isAiThinking={!isAiConnected && isLive}
+                            onSyncCodeWithAi={(f) => {
+                                addApiLog(`Forced Code Sync: ${f.name}`, 'info');
+                                serviceRef.current?.sendText(`NEURAL_SNAPSHOT_SYNC: User forced a code update for ${f.name}. CONTENT: \n\`\`\`\n${f.content}\n\`\`\``);
+                            }}
+                            onSessionStart={() => {}}
+                            onSessionStop={() => {}}
+                            onStartLiveSession={(chan, ctx) => onStartLiveSession(chan, ctx)}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'feedback' && report && (
+                <div className="h-full w-full overflow-y-auto p-12 bg-[#020617] scrollbar-hide">
+                    <div className="max-w-4xl mx-auto space-y-16">
+                        <div className="text-center space-y-4">
+                            <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Refraction</h2>
+                            <p className="text-slate-500 font-bold uppercase tracking-[0.4em] pt-2">Session Integrity: 100% Validated</p>
+                        </div>
+                        <EvaluationReportDisplay 
+                            report={report} 
+                            onSyncYouTube={() => performSyncToYouTube(report.id, report.videoBlob!, { mode: interviewMode, language: interviewLanguage })}
+                            onSyncDrive={() => performSyncToDrive(report.id, report.videoBlob!, { mode: interviewMode })}
+                            isSyncing={isUploadingRecording}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'archive' && (
+                <div className="max-w-6xl w-full p-8 md:p-12 h-full flex flex-col animate-fade-in pb-32">
+                    <div className="flex flex-col sm:flex-row items-center justify-between mb-10 gap-6">
+                        <div className="space-y-2">
+                             <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Artifact Registry</h2>
+                             <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Sovereign Interrogation History</p>
+                        </div>
+                        <div className="relative w-full sm:w-80">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+                            <input 
+                                type="text" 
+                                placeholder="Search sessions..." 
+                                value={archiveSearch}
+                                onChange={e => setArchiveSearch(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-6 py-3 text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-2 space-y-4 scrollbar-hide">
+                        {isLoading && pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center gap-4 text-indigo-400">
+                                <Loader2 className="animate-spin" size={32}/>
+                                <p className="text-[10px] font-black uppercase tracking-widest">Paging Registry...</p>
+                            </div>
+                        ) : pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center justify-center text-slate-700 gap-4 opacity-40">
+                                <SearchX size={64}/>
+                                <p className="text-sm font-bold uppercase tracking-widest">No artifacts located</p>
+                            </div>
+                        ) : (
+                            pastInterviews.filter(i => i.mode.includes(archiveSearch) || i.jobDescription.includes(archiveSearch)).map(rec => (
+                                <div key={rec.id} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-8 hover:border-indigo-500/30 transition-all shadow-xl group">
+                                    <div className="flex items-center gap-6 flex-1 min-w-0">
+                                        <div className="w-20 h-14 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center text-slate-700 relative overflow-hidden shrink-0 group-hover:border-indigo-500/20 transition-colors">
+                                             <FileVideo size={24}/>
+                                             <button onClick={() => handlePlayback(rec)} disabled={resolvingId === rec.id} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                 {resolvingId === rec.id ? <Loader2 className="animate-spin text-white" size={16}/> : <Play size={20} fill="white" className="text-white"/>}
+                                             </button>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-3 mb-1">
+                                                <h3 className="text-lg font-bold text-white truncate">{rec.mode.toUpperCase()} SCREEN</h3>
+                                                <span className="text-[8px] font-black text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-500/20 uppercase">{rec.language}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-xs font-medium text-slate-500">
+                                                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-indigo-400"/> {new Date(rec.timestamp).toLocaleDateString()}</span>
+                                                <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-600">ID: {rec.id.substring(0,12)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border shadow-lg ${
+                                            rec.feedback.toLowerCase().includes('strong hire') ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
+                                            rec.feedback.toLowerCase().includes('hire') ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' : 'bg-red-900/20 text-red-400 border-red-500/30'
+                                        }`}>
+                                            {rec.feedback || 'Incomplete'}
+                                        </div>
+                                        {isYouTubeUrl(rec.videoUrl) ? (
+                                            <a href={rec.videoUrl} target="_blank" rel="noreferrer" className="p-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl transition-all border border-red-500/20" title="Watch on YouTube"><Youtube size={20}/></a>
+                                        ) : isDriveUrl(rec.videoUrl) ? (
+                                            <button onClick={() => handlePlayback(rec)} className="p-3 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl transition-all border border-indigo-500/20" title="Stream from Drive"><HardDrive size={20}/></button>
+                                        ) : null}
+                                        <button onClick={() => { if(confirm("Purge artifact?")) deleteInterview(rec.id).then(loadData) }} className="p-3 bg-slate-800 hover:bg-red-600 text-slate-500 hover:text-white rounded-xl transition-all"><Trash2 size={20}/></button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+        </header>
+
+        <main className="flex-1 overflow-hidden relative flex flex-col items-center">
+            {isLoading && (
+                <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                    <div className="relative">
+                        <div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Zap size={32} className="text-indigo-400 animate-pulse" />
+                        </div>
+                    </div>
+                    <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Initializing Refraction</h3>
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Provisioning Socratic Environment...</p>
+                    </div>
+                </div>
+            )}
+
+            {view === 'selection' && (
+                <div className="max-w-4xl w-full p-8 md:p-16 h-full flex flex-col justify-center gap-12 animate-fade-in-up">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">The Interrogator</h2>
+                        <p className="text-lg text-slate-400 font-medium max-w-xl mx-auto leading-relaxed">Refining engineering talent through technical friction and Staff-level peer evaluation.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {PERSONAS.map(p => (
+                            <button 
+                                key={p.id}
+                                onClick={() => setSelectedPersona(p)}
+                                className={`p-8 rounded-[3rem] border transition-all text-left flex flex-col gap-4 relative overflow-hidden group ${selectedPersona.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-2xl scale-[1.02]' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-indigo-500/40'}`}
+                            >
+                                <div className={`p-4 rounded-3xl w-fit ${selectedPersona.id === p.id ? 'bg-indigo-500' : 'bg-slate-950'} transition-colors`}>
+                                    <p.icon size={32} className={selectedPersona.id === p.id ? 'text-white' : 'text-indigo-500'} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black uppercase tracking-tight leading-none mb-2">{p.name}</h3>
+                                    <p className="text-xs font-medium opacity-60 leading-relaxed">{p.desc}</p>
+                                </div>
+                                {selectedPersona.id === p.id && <div className="absolute -right-4 -bottom-4 p-8 bg-white/10 rounded-full blur-2xl"></div>}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex flex-col items-center gap-6">
+                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
+                            {(['coding', 'system_design', 'behavioral', 'quick_screen'] as const).map(m => (
+                                <button key={m} onClick={() => setInterviewMode(m)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${interviewMode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>{m.replace('_', ' ')}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => setView('setup')} className="px-12 py-5 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-2xl shadow-2xl shadow-indigo-900/40 transition-transform hover:scale-105 active:scale-95 flex items-center gap-3">
+                            <span>Proceed to Setup</span>
+                            <ChevronRight size={20}/>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'setup' && (
+                <div className="max-w-xl w-full p-8 md:p-12 h-full flex flex-col justify-center gap-10 animate-fade-in-up">
+                    <div className="space-y-2">
+                        <button onClick={() => setView('selection')} className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors mb-4"><ArrowLeft size={14}/> Back to Selection</button>
+                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Environmental Config</h2>
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Establishing Socratic Context</p>
+                    </div>
+
+                    <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-16 bg-red-500/5 blur-[80px] rounded-full pointer-events-none"></div>
+                        
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Primary Code Refraction (Language)</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['c++', 'python', 'javascript', 'java'] as const).map(l => (
+                                    <button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context (Target Narrative)</label>
+                            <textarea 
+                                value={jobDescription} 
+                                onChange={e => setJobDescription(e.target.value)} 
+                                rows={4}
+                                placeholder="Paste job requirements or 'L6 Staff Engineer at Amazon'..."
+                                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Temporal Shift (Duration)</label>
+                            <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+                                {[15, 30, 45, 60].map(m => (
+                                    <button key={m} onClick={() => setInterviewDuration(m)} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${interviewDuration === m ? 'bg-red-600 text-white shadow-lg' : 'text-slate-50'}`}>{m}m</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button onClick={handleStartInterview} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3">
+                            <Play size={20} fill="currentColor"/> Begin Interrogation
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'active' && (
+                <div className="h-full w-full flex animate-fade-in relative">
+                    <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
+                        <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
+                            <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
+                            <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-red-500/50 overflow-hidden shadow-2xl">
+                                <video 
+                                    ref={mirrorVideoRef}
+                                    autoPlay 
+                                    playsInline 
+                                    muted 
+                                    className="w-full h-full object-cover transform scale-110"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2">
+                                    <div className="bg-red-600 text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg border border-red-400/50 whitespace-nowrap">Neural Mirror</div>
+                                </div>
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 h-1 overflow-hidden rounded-full"><Visualizer volume={volume} isActive={isLive} color="#ffffff" /></div>
+                                <button 
+                                    onClick={() => setIsMirrorMinimized(!isMirrorMinimized)}
+                                    className="absolute bottom-2 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                                >
+                                    {isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                        <CodeStudio 
+                            onBack={() => {}} 
+                            currentUser={currentUser} 
+                            userProfile={userProfile} 
+                            isProMember={true} 
+                            isInterviewerMode={true}
+                            initialFiles={files}
+                            onFileChange={(f) => setFiles(prev => prev.map(p => p.path === f.path ? f : p))}
+                            externalChatContent={transcript}
+                            isAiThinking={!isAiConnected && isLive}
+                            onSyncCodeWithAi={(f) => {
+                                addApiLog(`Forced Code Sync: ${f.name}`, 'info');
+                                serviceRef.current?.sendText(`NEURAL_SNAPSHOT_SYNC: User forced a code update for ${f.name}. CONTENT: \n\`\`\`\n${f.content}\n\`\`\``);
+                            }}
+                            onSessionStart={() => {}}
+                            onSessionStop={() => {}}
+                            onStartLiveSession={(chan, ctx) => onStartLiveSession(chan, ctx)}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'feedback' && report && (
+                <div className="h-full w-full overflow-y-auto p-12 bg-[#020617] scrollbar-hide">
+                    <div className="max-w-4xl mx-auto space-y-16">
+                        <div className="text-center space-y-4">
+                            <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Refraction</h2>
+                            <p className="text-slate-500 font-bold uppercase tracking-[0.4em] pt-2">Session Integrity: 100% Validated</p>
+                        </div>
+                        <EvaluationReportDisplay 
+                            report={report} 
+                            onSyncYouTube={() => performSyncToYouTube(report.id, report.videoBlob!, { mode: interviewMode, language: interviewLanguage })}
+                            onSyncDrive={() => performSyncToDrive(report.id, report.videoBlob!, { mode: interviewMode })}
+                            isSyncing={isUploadingRecording}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'archive' && (
+                <div className="max-w-6xl w-full p-8 md:p-12 h-full flex flex-col animate-fade-in pb-32">
+                    <div className="flex flex-col sm:flex-row items-center justify-between mb-10 gap-6">
+                        <div className="space-y-2">
+                             <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Artifact Registry</h2>
+                             <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Sovereign Interrogation History</p>
+                        </div>
+                        <div className="relative w-full sm:w-80">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+                            <input 
+                                type="text" 
+                                placeholder="Search sessions..." 
+                                value={archiveSearch}
+                                onChange={e => setArchiveSearch(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-6 py-3 text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-2 space-y-4 scrollbar-hide">
+                        {isLoading && pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center gap-4 text-indigo-400">
+                                <Loader2 className="animate-spin" size={32}/>
+                                <p className="text-[10px] font-black uppercase tracking-widest">Paging Registry...</p>
+                            </div>
+                        ) : pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center justify-center text-slate-700 gap-4 opacity-40">
+                                <SearchX size={64}/>
+                                <p className="text-sm font-bold uppercase tracking-widest">No artifacts located</p>
+                            </div>
+                        ) : (
+                            pastInterviews.filter(i => i.mode.includes(archiveSearch) || i.jobDescription.includes(archiveSearch)).map(rec => (
+                                <div key={rec.id} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-8 hover:border-indigo-500/30 transition-all shadow-xl group">
+                                    <div className="flex items-center gap-6 flex-1 min-w-0">
+                                        <div className="w-20 h-14 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center text-slate-700 relative overflow-hidden shrink-0 group-hover:border-indigo-500/20 transition-colors">
+                                             <FileVideo size={24}/>
+                                             <button onClick={() => handlePlayback(rec)} disabled={resolvingId === rec.id} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                 {resolvingId === rec.id ? <Loader2 className="animate-spin text-white" size={16}/> : <Play size={20} fill="white" className="text-white"/>}
+                                             </button>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-3 mb-1">
+                                                <h3 className="text-lg font-bold text-white truncate">{rec.mode.toUpperCase()} SCREEN</h3>
+                                                <span className="text-[8px] font-black text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-500/20 uppercase">{rec.language}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-xs font-medium text-slate-500">
+                                                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-indigo-400"/> {new Date(rec.timestamp).toLocaleDateString()}</span>
+                                                <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-600">ID: {rec.id.substring(0,12)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border shadow-lg ${
+                                            rec.feedback.toLowerCase().includes('strong hire') ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
+                                            rec.feedback.toLowerCase().includes('hire') ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' : 'bg-red-900/20 text-red-400 border-red-500/30'
+                                        }`}>
+                                            {rec.feedback || 'Incomplete'}
+                                        </div>
+                                        {isYouTubeUrl(rec.videoUrl) ? (
+                                            <a href={rec.videoUrl} target="_blank" rel="noreferrer" className="p-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl transition-all border border-red-500/20" title="Watch on YouTube"><Youtube size={20}/></a>
+                                        ) : isDriveUrl(rec.videoUrl) ? (
+                                            <button onClick={() => handlePlayback(rec)} className="p-3 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl transition-all border border-indigo-500/20" title="Stream from Drive"><HardDrive size={20}/></button>
+                                        ) : null}
+                                        <button onClick={() => { if(confirm("Purge artifact?")) deleteInterview(rec.id).then(loadData) }} className="p-3 bg-slate-800 hover:bg-red-600 text-slate-500 hover:text-white rounded-xl transition-all"><Trash2 size={20}/></button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+        </header>
+
+        <main className="flex-1 overflow-hidden relative flex flex-col items-center">
+            {isLoading && (
+                <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                    <div className="relative">
+                        <div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Zap size={32} className="text-indigo-400 animate-pulse" />
+                        </div>
+                    </div>
+                    <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Initializing Refraction</h3>
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Provisioning Socratic Environment...</p>
+                    </div>
+                </div>
+            )}
+
+            {view === 'selection' && (
+                <div className="max-w-4xl w-full p-8 md:p-16 h-full flex flex-col justify-center gap-12 animate-fade-in-up">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">The Interrogator</h2>
+                        <p className="text-lg text-slate-400 font-medium max-w-xl mx-auto leading-relaxed">Refining engineering talent through technical friction and Staff-level peer evaluation.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {PERSONAS.map(p => (
+                            <button 
+                                key={p.id}
+                                onClick={() => setSelectedPersona(p)}
+                                className={`p-8 rounded-[3rem] border transition-all text-left flex flex-col gap-4 relative overflow-hidden group ${selectedPersona.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-2xl scale-[1.02]' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-indigo-500/40'}`}
+                            >
+                                <div className={`p-4 rounded-3xl w-fit ${selectedPersona.id === p.id ? 'bg-indigo-500' : 'bg-slate-950'} transition-colors`}>
+                                    <p.icon size={32} className={selectedPersona.id === p.id ? 'text-white' : 'text-indigo-500'} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black uppercase tracking-tight leading-none mb-2">{p.name}</h3>
+                                    <p className="text-xs font-medium opacity-60 leading-relaxed">{p.desc}</p>
+                                </div>
+                                {selectedPersona.id === p.id && <div className="absolute -right-4 -bottom-4 p-8 bg-white/10 rounded-full blur-2xl"></div>}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex flex-col items-center gap-6">
+                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
+                            {(['coding', 'system_design', 'behavioral', 'quick_screen'] as const).map(m => (
+                                <button key={m} onClick={() => setInterviewMode(m)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${interviewMode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>{m.replace('_', ' ')}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => setView('setup')} className="px-12 py-5 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-2xl shadow-2xl shadow-indigo-900/40 transition-transform hover:scale-105 active:scale-95 flex items-center gap-3">
+                            <span>Proceed to Setup</span>
+                            <ChevronRight size={20}/>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'setup' && (
+                <div className="max-w-xl w-full p-8 md:p-12 h-full flex flex-col justify-center gap-10 animate-fade-in-up">
+                    <div className="space-y-2">
+                        <button onClick={() => setView('selection')} className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors mb-4"><ArrowLeft size={14}/> Back to Selection</button>
+                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Environmental Config</h2>
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Establishing Socratic Context</p>
+                    </div>
+
+                    <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-16 bg-red-500/5 blur-[80px] rounded-full pointer-events-none"></div>
+                        
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Primary Code Refraction (Language)</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['c++', 'python', 'javascript', 'java'] as const).map(l => (
+                                    <button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context (Target Narrative)</label>
+                            <textarea 
+                                value={jobDescription} 
+                                onChange={e => setJobDescription(e.target.value)} 
+                                rows={4}
+                                placeholder="Paste job requirements or 'L6 Staff Engineer at Amazon'..."
+                                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Temporal Shift (Duration)</label>
+                            <div className="flex bg-slate-950 p-1.5 rounded-2xl border border-slate-800 shadow-inner">
+                                {[15, 30, 45, 60].map(m => (
+                                    <button key={m} onClick={() => setInterviewDuration(m)} className={`flex-1 py-3 rounded-xl text-xs font-black transition-all ${interviewDuration === m ? 'bg-red-600 text-white shadow-lg' : 'text-slate-50'}`}>{m}m</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button onClick={handleStartInterview} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3">
+                            <Play size={20} fill="currentColor"/> Begin Interrogation
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'active' && (
+                <div className="h-full w-full flex animate-fade-in relative">
+                    <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
+                        <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
+                            <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
+                            <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-red-500/50 overflow-hidden shadow-2xl">
+                                <video 
+                                    ref={mirrorVideoRef}
+                                    autoPlay 
+                                    playsInline 
+                                    muted 
+                                    className="w-full h-full object-cover transform scale-110"
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2">
+                                    <div className="bg-red-600 text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg border border-red-400/50 whitespace-nowrap">Neural Mirror</div>
+                                </div>
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 h-1 overflow-hidden rounded-full"><Visualizer volume={volume} isActive={isLive} color="#ffffff" /></div>
+                                <button 
+                                    onClick={() => setIsMirrorMinimized(!isMirrorMinimized)}
+                                    className="absolute bottom-2 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                                >
+                                    {isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                        <CodeStudio 
+                            onBack={() => {}} 
+                            currentUser={currentUser} 
+                            userProfile={userProfile} 
+                            isProMember={true} 
+                            isInterviewerMode={true}
+                            initialFiles={files}
+                            onFileChange={(f) => setFiles(prev => prev.map(p => p.path === f.path ? f : p))}
+                            externalChatContent={transcript}
+                            isAiThinking={!isAiConnected && isLive}
+                            onSyncCodeWithAi={(f) => {
+                                addApiLog(`Forced Code Sync: ${f.name}`, 'info');
+                                serviceRef.current?.sendText(`NEURAL_SNAPSHOT_SYNC: User forced a code update for ${f.name}. CONTENT: \n\`\`\`\n${f.content}\n\`\`\``);
+                            }}
+                            onSessionStart={() => {}}
+                            onSessionStop={() => {}}
+                            onStartLiveSession={(chan, ctx) => onStartLiveSession(chan, ctx)}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'feedback' && report && (
+                <div className="h-full w-full overflow-y-auto p-12 bg-[#020617] scrollbar-hide">
+                    <div className="max-w-4xl mx-auto space-y-16">
+                        <div className="text-center space-y-4">
+                            <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Refraction</h2>
+                            <p className="text-slate-500 font-bold uppercase tracking-[0.4em] pt-2">Session Integrity: 100% Validated</p>
+                        </div>
+                        <EvaluationReportDisplay 
+                            report={report} 
+                            onSyncYouTube={() => performSyncToYouTube(report.id, report.videoBlob!, { mode: interviewMode, language: interviewLanguage })}
+                            onSyncDrive={() => performSyncToDrive(report.id, report.videoBlob!, { mode: interviewMode })}
+                            isSyncing={isUploadingRecording}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {view === 'archive' && (
+                <div className="max-w-6xl w-full p-8 md:p-12 h-full flex flex-col animate-fade-in pb-32">
+                    <div className="flex flex-col sm:flex-row items-center justify-between mb-10 gap-6">
+                        <div className="space-y-2">
+                             <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase">Artifact Registry</h2>
+                             <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Sovereign Interrogation History</p>
+                        </div>
+                        <div className="relative w-full sm:w-80">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18}/>
+                            <input 
+                                type="text" 
+                                placeholder="Search sessions..." 
+                                value={archiveSearch}
+                                onChange={e => setArchiveSearch(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-12 pr-6 py-3 text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-2 space-y-4 scrollbar-hide">
+                        {isLoading && pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center gap-4 text-indigo-400">
+                                <Loader2 className="animate-spin" size={32}/>
+                                <p className="text-[10px] font-black uppercase tracking-widest">Paging Registry...</p>
+                            </div>
+                        ) : pastInterviews.length === 0 ? (
+                            <div className="py-20 flex flex-col items-center justify-center text-slate-700 gap-4 opacity-40">
+                                <SearchX size={64}/>
+                                <p className="text-sm font-bold uppercase tracking-widest">No artifacts located</p>
+                            </div>
+                        ) : (
+                            pastInterviews.filter(i => i.mode.includes(archiveSearch) || i.jobDescription.includes(archiveSearch)).map(rec => (
+                                <div key={rec.id} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-8 hover:border-indigo-500/30 transition-all shadow-xl group">
+                                    <div className="flex items-center gap-6 flex-1 min-w-0">
+                                        <div className="w-20 h-14 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center text-slate-700 relative overflow-hidden shrink-0 group-hover:border-indigo-500/20 transition-colors">
+                                             <FileVideo size={24}/>
+                                             <button onClick={() => handlePlayback(rec)} disabled={resolvingId === rec.id} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                 {resolvingId === rec.id ? <Loader2 className="animate-spin text-white" size={16}/> : <Play size={20} fill="white" className="text-white"/>}
+                                             </button>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-3 mb-1">
+                                                <h3 className="text-lg font-bold text-white truncate">{rec.mode.toUpperCase()} SCREEN</h3>
+                                                <span className="text-[8px] font-black text-indigo-400 bg-indigo-900/30 px-2 py-0.5 rounded border border-indigo-500/20 uppercase">{rec.language}</span>
+                                            </div>
+                                            <div className="flex items-center gap-4 text-xs font-medium text-slate-500">
+                                                <span className="flex items-center gap-1.5"><Calendar size={14} className="text-indigo-400"/> {new Date(rec.timestamp).toLocaleDateString()}</span>
+                                                <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-600">ID: {rec.id.substring(0,12)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border shadow-lg ${
+                                            rec.feedback.toLowerCase().includes('strong hire') ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 
+                                            rec.feedback.toLowerCase().includes('hire') ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30' : 'bg-red-900/20 text-red-400 border-red-500/30'
+                                        }`}>
+                                            {rec.feedback || 'Incomplete'}
+                                        </div>
+                                        {isYouTubeUrl(rec.videoUrl) ? (
+                                            <a href={rec.videoUrl} target="_blank" rel="noreferrer" className="p-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl transition-all border border-red-500/20" title="Watch on YouTube"><Youtube size={20}/></a>
+                                        ) : isDriveUrl(rec.videoUrl) ? (
+                                            <button onClick={() => handlePlayback(rec)} className="p-3 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl transition-all border border-indigo-500/20" title="Stream from Drive"><HardDrive size={20}/></button>
+                                        ) : null}
+                                        <button onClick={() => { if(confirm("Purge artifact?")) deleteInterview(rec.id).then(loadData) }} className="p-3 bg-slate-800 hover:bg-red-600 text-slate-500 hover:text-white rounded-xl transition-all"><Trash2 size={20}/></button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+        </header>
+
+        <main className="flex-1 overflow-hidden relative flex flex-col items-center">
+            {isLoading && (
+                <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-8 animate-fade-in">
+                    <div className="relative">
+                        <div className="w-24 h-24 border-4 border-indigo-500/10 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Zap size={32} className="text-indigo-400 animate-pulse" />
+                        </div>
+                    </div>
+                    <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Initializing Refraction</h3>
+                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Provisioning Socratic Environment...</p>
+                    </div>
+                </div>
+            )}
+
+            {view === 'selection' && (
+                <div className="max-w-4xl w-full p-8 md:p-16 h-full flex flex-col justify-center gap-12 animate-fade-in-up">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">The Interrogator</h2>
+                        <p className="text-lg text-slate-400 font-medium max-w-xl mx-auto leading-relaxed">Refining engineering talent through technical friction and Staff-level peer evaluation.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {PERSONAS.map(p => (
+                            <button 
+                                key={p.id}
+                                onClick={() => setSelectedPersona(p)}
+                                className={`p-8 rounded-[3rem] border transition-all text-left flex flex-col gap-4 relative overflow-hidden group ${selectedPersona.id === p.id ? 'bg-indigo-600 border-indigo-500 text-white shadow-2xl scale-[1.02]' : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-indigo-500/40'}`}
+                            >
+                                <div className={`p-4 rounded-3xl w-fit ${selectedPersona.id === p.id ? 'bg-indigo-500' : 'bg-slate-950'} transition-colors`}>
+                                    <p.icon size={32} className={selectedPersona.id === p.id ? 'text-white' : 'text-indigo-500'} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black uppercase tracking-tight leading-none mb-2">{p.name}</h3>
+                                    <p className="text-xs font-medium opacity-60 leading-relaxed">{p.desc}</p>
+                                </div>
+                                {selectedPersona.id === p.id && <div className="absolute -right-4 -bottom-4 p-8 bg-white/10 rounded-full blur-2xl"></div>}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex flex-col items-center gap-6">
+                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
+                            {(['coding', 'system_design', 'behavioral', 'quick_screen'] as const).map(m => (
+                                <button key={m} onClick={() => setInterviewMode(m)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${interviewMode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>{m.replace('_', ' ')}</button>
+                            ))}
+                        </div>
+                        <button onClick={() => setView('setup')} className="px-12 py-5 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-2xl shadow-2xl shadow-indigo-900/40 transition-transform hover:scale-105 active:scale-95 flex items-center gap-3">
+                            <span>Proceed to Setup</span>
+                            <ChevronRight size={20}/>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {view === 'setup' && (
+                <div className="max-w-xl w-full p-8 md:p-12 h-full flex flex-col justify-center gap-10 animate-fade-in-up">
+                    <div className="space-y-2">
+                        <button onClick={() => setView('selection')} className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors mb-4"><ArrowLeft size={14}/> Back to Selection</button>
+                        <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Environmental Config</h2>
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Establishing Socratic Context</p>
+                    </div>
+
+                    <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-16 bg-red-500/5 blur-[80px] rounded-full pointer-events-none"></div>
+                        
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Primary Code Refraction (Language)</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['c++', 'python', 'javascript', 'java'] as const).map(l => (
+                                    <button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context (Target Narrative)</label>
+                            <textarea 
+                                value={jobDescription} 
+                                onChange={e => setJobDescription(e.target.value)} 
+                                rows={4}
+                                placeholder="Paste job requirements or 'L6 Staff Engineer at Amazon'..."
+                                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[1

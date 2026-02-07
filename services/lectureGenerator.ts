@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from '@google/genai';
 import { GeneratedLecture, TranscriptItem } from '../types';
 import { getCloudCachedLecture, saveCloudCachedLecture, deductCoins, AI_COSTS, incrementApiUsage } from './firestoreService';
@@ -27,30 +28,13 @@ export async function generateLectureScript(
     }
 
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    // RESOLVE TUNED MODELS
-    let modelName = 'gemini-3-pro-preview';
-    if (voiceName) {
-        if (voiceName.includes('0648937375')) {
-            modelName = 'tunedModels/gen-lang-client-0648937375';
-            window.dispatchEvent(new CustomEvent('neural-log', { 
-                detail: { text: `[Shard] Redirecting logic to Socratic Core (0648937375)...`, type: 'info' } 
-            }));
-        } else if (voiceName.includes('0375218270')) {
-            modelName = 'tunedModels/gen-lang-client-0375218270';
-            window.dispatchEvent(new CustomEvent('neural-log', { 
-                detail: { text: `[Shard] Redirecting logic to Systems Core (0375218270)...`, type: 'info' } 
-            }));
-        }
-    }
+    const modelName = 'gemini-3-pro-preview';
 
     window.dispatchEvent(new CustomEvent('neural-log', { 
         detail: { text: `[Neural Core] ${force ? 'FORCING' : 'INITIALIZING'} Handshake with ${modelName}...`, type: force ? 'warn' : 'info' } 
     }));
 
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
-    
-    // Inject the specific channel persona if provided
     const personaInstruction = customSystemInstruction ? `\n\nPERSONA CONTEXT:\n${customSystemInstruction}` : "";
 
     const systemInstruction = `

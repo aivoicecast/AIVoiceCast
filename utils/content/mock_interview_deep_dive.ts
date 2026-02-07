@@ -228,7 +228,7 @@ export const MOCK_INTERVIEW_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelDa
         professorName: "Cloud Architect",
         studentName: "Database Judge",
         sections: [
-          { speaker: "Teacher", text: "The speed of BCP is achieved through 'Multiplexed Hydration.' Because modern browsers support HTTP/2 multiplexing, we don't fetch shards sequentially (which would multiply latency). Instead, we fire N parallel requests. The Firestore CDN handles this massive burst without penalty. The 'Stitching' event is a zero-copy memory operation using \`TypedArray.set()\`. This means loading a 50MB technical manuscript takes almost exactly the same time as loading a 10KB text file. We have achieved 'Mass-Agnostic Latency.' This is critical for the 'Author Studio' where we synthesize 100-page technical books. We turned a database limitation into an architectural advantage. We proved that NoSQL is not a wall; it is a substrate for innovation. Refraction complete." }
+          { speaker: "Teacher", text: "The speed of BCP is achieved through 'Multiplexed Hydration.' Because modern browsers support HTTP/2 multiplexing, we don't fetch shards sequentially (which would multiply latency). Instead, we fire N parallel requests. The Firestore CDN handles this massive burst without penalty. The 'Stitching' event is an optimized parallel memory operation. This is critical for the 'Author Studio' where we synthesize 100-page technical books. We turned a database limitation into an architectural advantage. We proved that NoSQL is not a wall; it is a substrate for innovation. Refraction complete." }
         ]
       },
       "Pro-Level Synthesis of Study Plans": {

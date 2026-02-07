@@ -1,3 +1,4 @@
+
 export const STORY_VISION_PITCH_MD = `
 # 🌈 2036: The Post-Hype Equilibrium
 
@@ -143,4 +144,4 @@ Neural Prism is the final bridge between superhuman AI capacity and daily human 
 **Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things.**
 
 *2036 Vision Finalized // Distributed Mesh Enabled.*
-`
+`;

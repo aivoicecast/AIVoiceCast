@@ -1,10 +1,11 @@
+
 import { Channel, ChannelVisibility } from '../types';
 import { OFFLINE_CHANNEL_ID } from './offlineContent';
 
 export const VOICES = [
   'Default Gem',
-  'Software Interview Expert (gen-lang-client-0648937375)',
-  'Linux Kernel Architect (gen-lang-client-0375218270)',
+  'Software Interview Expert',
+  'Linux Kernel Architect',
   'Puck', 
   'Charon', 
   'Kore', 
@@ -14,8 +15,8 @@ export const VOICES = [
 
 export const SPECIALIZED_VOICES = [
   'Default Gem',
-  'Software Interview Expert (gen-lang-client-0648937375)',
-  'Linux Kernel Architect (gen-lang-client-0375218270)'
+  'Software Interview Expert',
+  'Linux Kernel Architect'
 ];
 
 export const TOPIC_CATEGORIES: Record<string, string[]> = {
@@ -32,9 +33,9 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: 'mock-interview-deep-dive',
     title: '🛡️ AUDIT: MockInterview Studio',
-    description: 'The Full 10-Sector Technical Manifest. Powered by Shard 0648937375. Includes Socratic friction logic and sub-200ms Emotive Link protocols.',
+    description: 'The Full 10-Sector Technical Manifest. Powered by High-Fidelity Persona Context. Includes Socratic friction logic and sub-200ms Emotive Link protocols.',
     author: 'Lead Architect',
-    voiceName: 'Software Interview Expert (gen-lang-client-0648937375)',
+    voiceName: 'Software Interview Expert',
     systemInstruction: 'You are the Lead Architect of the MockInterview Studio. Conduct a full 10-sector technical audit. Explain how the "Socratic Interrogator" persona uses technical friction to reveal candidate unknowns. Discuss the Emotive Link protocol using Gemini 2.5 Flash Native Audio for sub-200ms latency. Mention the "Sovereign Bake" deterministic PDF protocol and the 10-Week Refraction Plan.',
     likes: 2450,
     dislikes: 0,
@@ -47,10 +48,10 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: 'judge-deep-dive',
     title: '🏆 JUDGE: Technical Audit',
-    description: 'v8.0.0-COMPLETE Technical manifest for Hackathon Judges. Examining multi-shard tuned refraction, BCP sharding, and 10:1 scaling protocols.',
+    description: 'v8.0.0-COMPLETE Technical manifest for Hackathon Judges. Examining multi-model orchestration, BCP sharding, and Heuristic Simulation protocols.',
     author: 'Project Lead',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the Project Lead for Neural Prism. Conduct a technical audit for a hackathon judge. Focus on core architectural improvements in v8.0.0: The Complexity Balancer v4, the Binary Chunking Protocol (BCP), and the use of specialized tuned model shards (0648937375, 0375218270) for domain-specific technical authority.',
+    systemInstruction: 'You are the Project Lead for Neural Prism. Conduct a technical audit for a hackathon judge. Focus on core architectural improvements in v8.0.0: The Complexity Balancer v4, the Binary Chunking Protocol (BCP), and the use of specialized persona contexts for domain-specific technical authority.',
     likes: 2100,
     dislikes: 0,
     comments: [],
@@ -62,7 +63,7 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: OFFLINE_CHANNEL_ID,
     title: 'Neural Prism Platform Guide',
-    description: 'v8.0.0 Self-documenting guide. Master the Sovereign Signer, the Offline Trust Root, and the 10:1 Resident Ratio.',
+    description: 'v8.0.0 Self-documenting guide. Master the Sovereign Signer, the Offline Trust Root, and the Unified Refraction engine.',
     author: 'Prism Architect',
     voiceName: 'Default Gem',
     systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on our v8.0.0 architectural updates.',
@@ -77,9 +78,9 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: '1',
     title: 'Software Interview Preparation',
-    description: 'Practice your coding interview skills with Shard 0648937375. Professional, rigorous senior engineer audit.',
+    description: 'Practice your coding interview skills with high-fidelity Persona Context. Professional, rigorous senior engineer audit.',
     author: 'Gemini Professional',
-    voiceName: 'Software Interview Expert (gen-lang-client-0648937375)',
+    voiceName: 'Software Interview Expert',
     systemInstruction: 'You are a world-class senior software engineer conducting a technical interview. Your tone is professional, rigorous, and analytical.',
     likes: 420,
     dislikes: 10,
@@ -92,9 +93,9 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
     id: '2',
     title: 'Kernel Architect Lab',
-    description: 'Interactive audit of the Linux Kernel internals via Shard 0375218270. Memory safety and architecture refraction.',
+    description: 'Interactive audit of the Linux Kernel internals via High-Intensity Systems Context. Memory safety and architecture refraction.',
     author: 'Gemini Kernel',
-    voiceName: 'Linux Kernel Architect (gen-lang-client-0375218270)',
+    voiceName: 'Linux Kernel Architect',
     systemInstruction: 'You are a legendary Linux Kernel Maintainer. You speak with extreme technical precision about C programming.',
     likes: 1040,
     dislikes: 2,
