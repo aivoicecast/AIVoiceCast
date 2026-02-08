@@ -3,7 +3,6 @@ import { GoogleGenAI } from '@google/genai';
 import { Channel, Chapter } from '../types';
 import { incrementApiUsage, getUserProfile, deductCoins, AI_COSTS } from './firestoreService';
 import { auth } from './firebaseConfig';
-import { GEMINI_API_KEY } from './private_keys';
 
 const VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
 
@@ -44,7 +43,7 @@ export async function generateChannelFromPrompt(
       }
     `;
 
-    // Fixed: Initializing GoogleGenAI with process.env.API_KEY directly as per guidelines
+    // Create fresh instance right before call as per guidelines for dynamic key support
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
@@ -92,7 +91,6 @@ export async function generateChannelFromPrompt(
 
 export async function generateChannelCoverArt(title: string, description: string): Promise<string | null> {
     try {
-        // Fixed: Initializing GoogleGenAI with process.env.API_KEY directly as per guidelines
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const prompt = `Generate a professional, high-quality, artistic podcast cover art for a series titled "${title}". 
         Context: ${description}. 
@@ -129,7 +127,6 @@ export async function modifyCurriculumWithAI(
   language: 'en' | 'zh' = 'en'
 ): Promise<Chapter[] | null> {
   try {
-    // Fixed: Initializing GoogleGenAI with process.env.API_KEY directly as per guidelines
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
@@ -157,24 +154,63 @@ export async function generateChannelFromDocument(
   language: 'en' | 'zh' = 'en'
 ): Promise<Channel | null> {
   try {
-    // Fixed: Initializing GoogleGenAI with process.env.API_KEY directly as per guidelines
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
-    const systemPrompt = `You are an expert Podcast Producer powered by DeepMind's Gemini 3. Your task is to analyze the provided source and transform it into a structured, engaging podcast channel.`;
-    const userRequest = `Create a Podcast Channel based on this source. Return ONLY a JSON object with: title, description, voiceName, systemInstruction, tags, and chapters (with subTopics).`;
-    let parts: any[] = [{ text: `${systemPrompt}\n${langInstruction}\n\n${userRequest}` }];
-    if (source.url) parts.push({ fileData: { mimeType: source.url.endsWith('.pdf') ? 'application/pdf' : 'text/plain', fileUri: source.url } });
-    else if (source.text) parts.push({ text: `SOURCE TEXT:\n${source.text.substring(0, 100000)}` });
+    
+    const systemPrompt = `You are an expert Podcast Producer powered by Gemini 3 Pro. 
+    Your task is to analyze the provided source and transform it into a structured, high-fidelity podcast channel.
+    If a URL is provided, browse the content to ensure 100% technical accuracy.`;
 
+    const userRequest = `Create a complete Podcast Channel (JSON) based on this source. 
+    Return ONLY a JSON object with: title, description, voiceName, systemInstruction, tags, and chapters (with subTopics).`;
+
+    const config: any = { responseMimeType: "application/json" };
+    
+    // MANDATORY: Use gemini-3-pro-image-preview for googleSearch tool tasks
+    const modelId = source.url ? 'gemini-3-pro-image-preview' : 'gemini-3-pro-preview';
+
+    // Enable Google Search grounding if a URL (like a GitHub link) is provided
+    if (source.url) {
+        // MANDATORY API KEY SELECTION CHECK
+        if (!(await (window as any).aistudio.hasSelectedApiKey())) {
+            await (window as any).aistudio.openSelectKey();
+        }
+
+        config.tools = [{ googleSearch: {} }];
+        window.dispatchEvent(new CustomEvent('neural-log', { 
+            detail: { text: `Enabling Google Search grounding for source: ${source.url}`, type: 'audit' } 
+        }));
+    }
+
+    const promptText = source.url 
+        ? `${systemPrompt}\n${langInstruction}\n\nURL TO ANALYZE: ${source.url}\n\n${userRequest}`
+        : `${systemPrompt}\n${langInstruction}\n\nSOURCE TEXT:\n${source.text?.substring(0, 100000)}\n\n${userRequest}`;
+
+    // Create fresh instance right before call to ensure latest API key is used
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: { parts },
-        config: { responseMimeType: 'application/json' }
+        model: modelId,
+        contents: promptText,
+        config
     });
+
     const text = response.text;
     if (!text) return null;
-    const parsed = JSON.parse(text);
+
+    // Log grounding sources if they exist (MANDATORY per guidelines)
+    if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+        const chunks = response.candidates[0].groundingMetadata.groundingChunks;
+        const sourceUrls = chunks.map((c: any) => c.web?.uri).filter(Boolean);
+        window.dispatchEvent(new CustomEvent('neural-log', { 
+            detail: { 
+                text: `Neural Grounding Verified. Analyzed ${chunks.length} segments from: ${sourceUrls.join(', ')}`, 
+                type: 'success' 
+            } 
+        }));
+    }
+
+    const parsed = JSON.parse(text.replace(/^```json\s*|```\s*$/g, '').trim());
     const channelId = crypto.randomUUID();
+    
     return {
       id: channelId,
       title: parsed.title,
@@ -193,5 +229,8 @@ export async function generateChannelFromDocument(
           subTopics: ch.subTopics.map((s: any, j: number) => ({ id: `s-${i}-${j}`, title: s.title || s })) 
       })) || []
     };
-  } catch (error) { return null; }
+  } catch (error) { 
+      console.error("Refraction Error:", error);
+      return null; 
+  }
 }

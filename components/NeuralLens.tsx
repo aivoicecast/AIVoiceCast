@@ -7,11 +7,11 @@ import {
   ArrowLeft, Search, RefreshCw, Loader2, Info, Star, X,
   FileText, Wand2, Layers, Cpu, Sparkles, FileSearch,
   Filter, ZapOff, Fingerprint, SearchCode, Beaker, Terminal, Download, FileCode, FileDown,
-  Layout, BookOpen, ChevronDown, Signal, Library, BookText
+  Layout, BookOpen, ChevronDown, Signal, Library, BookText, Gauge, BarChart, History
 } from 'lucide-react';
 import { collection, query, getDocs, limit, orderBy, where } from 'firebase/firestore';
 import { db } from '../services/firebaseConfig';
-import { GeneratedLecture, Channel, SubTopic } from '../types';
+import { GeneratedLecture, Channel, SubTopic, NeuralLensAudit } from '../types';
 import { SYSTEM_AUDIT_NODES } from '../utils/auditContent';
 import { generateLectureScript, performNeuralLensAudit, summarizeLectureForContext } from '../services/lectureGenerator';
 import { generateCurriculum } from '../services/curriculumGenerator';
@@ -40,12 +40,16 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
   const [cloudAudits, setCloudAudits] = useState<GeneratedLecture[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Selection State
   const [selectedNode, setSelectedNode] = useState<any | null>(null);
+  const [selectedSector, setSelectedSector] = useState<HierarchyNode | null>(null);
   const [activeAudit, setActiveAudit] = useState<GeneratedLecture | null>(null);
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [isAuditing, setIsAuditing] = useState(false);
   const [isDemoRunning, setIsDemoRunning] = useState(false);
-  const [activeTab, setActiveTab] = useState<'audit' | 'script'>('audit');
+  const [activeTab, setActiveTab] = useState<'audit' | 'script' | 'holistic'>('holistic');
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [expandedSectors, setExpandedSectors] = useState<Record<string, boolean>>({
       'platform-core': true,
@@ -84,97 +88,26 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
 
   const formatScore = (score: number) => {
       if (score === undefined || score === null) return '0';
-      // Normalize decimal scores (0.98) to percentage (98)
       const val = score <= 1 ? Math.round(score * 100) : Math.round(score);
       return val.toString();
-  };
-
-  const handleFullSpectrumDemo = async () => {
-      if (isDemoRunning) return;
-      setIsDemoRunning(true);
-      setActiveAudit(null);
-      setSelectedNode(null);
-      setActiveTab('audit');
-      
-      const topic = "Self-Documenting AI Orchestration";
-      const description = "A deep technical exploration of the Neural Prism architecture and Gemini 3.0 multi-agent loops.";
-      dispatchLog(">>> INITIALIZING STATEFUL REFRACTION LOOP <<<", 'warn');
-
-      try {
-          // PHASE 1: Curriculum Synthesis
-          dispatchLog("PHASE 1: Core Curriculum Synthesis...", 'info');
-          const chapters = await generateCurriculum(topic, description, 'en');
-          if (!chapters || chapters.length === 0) throw new Error("Curriculum Refraction Failed.");
-          dispatchLog(`Index synthesized: ${chapters.length} chapters identified. Sharding spectrum...`, 'success');
-
-          // PHASE 2: Sequential Synthesis Loop with Cumulative Context
-          let cumulativeContext = "";
-          const demoNodes = chapters[0].subTopics.slice(0, 3);
-          
-          for (let i = 0; i < demoNodes.length; i++) {
-              const node = demoNodes[i];
-              dispatchLog(`PHASE 2 [Node ${i+1}/${demoNodes.length}]: Refracting [${node.title}]...`, 'info', { nodeId: node.id });
-              
-              const lecture = await generateLectureScript(
-                  node.title, 
-                  description, 
-                  'en', 
-                  'demo-session', 
-                  'Zephyr', 
-                  true, 
-                  undefined, 
-                  cumulativeContext
-              );
-
-              if (!lecture) throw new Error(`Synthesis failed at node: ${node.title}`);
-              
-              // Extract summary context for next node in loop
-              const nodeSummary = await summarizeLectureForContext(lecture);
-              cumulativeContext += `\nSection ${i+1} [${node.title}] Summary: ${nodeSummary}\n`;
-              dispatchLog(`Node ${i+1} SECURED. Knowledge Shard added to cumulative buffer.`, 'success', { 
-                  inputSizeBytes: new TextEncoder().encode(cumulativeContext).length,
-                  outputSizeBytes: new TextEncoder().encode(nodeSummary).length
-              });
-
-              // Final Phase: Audit the resulting technical artifact
-              if (i === demoNodes.length - 1) {
-                  dispatchLog("PHASE 3: Dispatching Final Shard to Shadow Agent for Reasoning Audit...", 'info');
-                  const audit = await performNeuralLensAudit(lecture);
-                  if (audit) {
-                      const finalized = { ...lecture, audit };
-                      setActiveAudit(finalized);
-                      setSelectedNode({ ...finalized, status: 'audited' });
-                      dispatchLog(`Verification Finalized. Coherence Score: ${formatScore(audit.coherenceScore)}%`, 'success');
-                      dispatchLog(">>> STATEFUL REFRACTION CYCLE COMPLETE <<<", 'success');
-                  }
-              }
-          }
-      } catch (e: any) {
-          dispatchLog(`Refraction Interrupted: ${e.message}`, 'error');
-      } finally {
-          setIsDemoRunning(false);
-      }
   };
 
   const hierarchy = useMemo(() => {
     const sectors: Record<string, HierarchyNode> = {};
     const getChan = (id: string) => channels.find(c => c.id === id) || HANDCRAFTED_CHANNELS.find(c => c.id === id);
 
-    // Initialize all Sectors from Podcasts
     [...HANDCRAFTED_CHANNELS, ...channels].forEach(c => {
         if (!sectors[c.id]) {
             sectors[c.id] = { id: c.id, title: c.title, description: c.description, shards: [], type: 'podcast', priority: c.id === 'judge-deep-dive' ? 100 : 0 };
         }
     });
 
-    // Initialize Sectors from Books
     SYSTEM_BOOKS.forEach(b => {
         if (!sectors[b.id]) {
             sectors[b.id] = { id: b.id, title: b.title, description: b.subtitle, shards: [], type: 'book', priority: b.id === 'platform-core' ? 100 : 0 };
         }
     });
 
-    // 1. Audited Nodes: Group by their parent identity
     [...SYSTEM_AUDIT_NODES, ...cloudAudits].forEach(item => {
         if (!item?.topic) return;
         const parentId = (item as any).channelId || (item as any).bookId || 'system-artifacts';
@@ -184,7 +117,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
         sectors[parentId].shards.push({ ...item, status: 'audited' });
     });
 
-    // 2. Staged Content: Group by spotlight channel
     Object.entries(SPOTLIGHT_DATA).forEach(([chanId, data]) => {
         if (!sectors[chanId]) {
             const chan = getChan(chanId);
@@ -196,7 +128,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
         });
     });
 
-    // 3. Ghost Nodes from Books
     SYSTEM_BOOKS.forEach(book => {
         book.pages.forEach(page => {
             const alreadyIn = sectors[book.id].shards.some(s => s.topic === page.title);
@@ -204,7 +135,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
         });
     });
 
-    // 4. Ghost Nodes from Podcasts
     [...HANDCRAFTED_CHANNELS, ...channels].forEach(chan => {
         chan.chapters?.forEach(chapter => {
             chapter.subTopics.forEach(sub => {
@@ -215,10 +145,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
     });
 
     const results = Object.values(sectors).filter(s => s.shards.length > 0);
-    
-    // SOVEREIGN PRIORITY SORTING:
-    // Books first, then Podcasts.
-    // Within each, sort by priority descending (pinned items first), then title.
     return results.sort((a, b) => {
         if (a.type !== b.type) return a.type === 'book' ? -1 : 1;
         if (a.priority !== b.priority) return b.priority - a.priority;
@@ -235,12 +161,53 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
     })).filter(sector => sector.shards.length > 0 || sector.title.toLowerCase().includes(q));
   }, [hierarchy, searchQuery]);
 
+  // Aggregated Sector View
+  const sectorIntegrity = useMemo(() => {
+      if (!selectedSector) return null;
+      const audited = selectedSector.shards.filter(s => s.status === 'audited' && s.audit);
+      if (audited.length === 0) return { score: 0, drift: 'Unknown', robustness: 'Unknown', total: selectedSector.shards.length, audited: 0 };
+      
+      const sum = audited.reduce((acc, curr) => acc + (curr.audit.coherenceScore <= 1 ? curr.audit.coherenceScore * 100 : curr.audit.coherenceScore), 0);
+      const avg = Math.round(sum / audited.length);
+      
+      const risks = audited.map(s => s.audit.driftRisk);
+      const worstRisk = risks.includes('High') ? 'High' : risks.includes('Medium') ? 'Medium' : 'Low';
+      
+      const robustness = audited.map(s => s.audit.robustness);
+      const avgRobustness = robustness.filter(r => r === 'High').length > audited.length / 2 ? 'High' : 'Medium';
+
+      // Combined Mesh
+      const allNodes = Array.from(new Set(audited.flatMap(a => a.audit.graph.nodes.map((n: any) => JSON.stringify(n))))).map(s => JSON.parse(s));
+      const allLinks = Array.from(new Set(audited.flatMap(a => a.audit.graph.links.map((l: any) => JSON.stringify(l))))).map(s => JSON.parse(s));
+
+      return {
+          score: avg,
+          drift: worstRisk,
+          robustness: avgRobustness,
+          total: selectedSector.shards.length,
+          audited: audited.length,
+          mesh: { nodes: allNodes, links: allLinks },
+          history: audited.map(s => ({ topic: s.topic, score: s.audit.coherenceScore }))
+      };
+  }, [selectedSector]);
+
+  const handleSelectSector = (sector: HierarchyNode) => {
+      setSelectedSector(sector);
+      setSelectedNode(null);
+      setActiveAudit(null);
+      setActiveTab('holistic');
+      setExpandedSectors(prev => ({ ...prev, [sector.id]: true }));
+  };
+
   const handleSelectNode = (node: any) => {
     setSelectedNode(node);
+    setSelectedSector(null);
     if (node.status === 'audited' && node.audit) {
         setActiveAudit(node);
+        setActiveTab('audit');
     } else {
         setActiveAudit(null);
+        setActiveTab('audit');
     }
   };
 
@@ -251,20 +218,12 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
       
       try {
           let lecture: GeneratedLecture | null = null;
-          
-          // CORE FIX: Check for pre-existing logic shards before triggering refraction
-          if (node.status === 'audited') {
-              lecture = node;
-          } 
-          else if (node.status === 'staged' && node.lecture) {
-              lecture = node.lecture;
-          }
+          if (node.status === 'audited') lecture = node;
+          else if (node.status === 'staged' && node.lecture) lecture = node.lecture;
           else {
-              // SEARCH STATIC REGISTRIES (Spotlight & Books)
               const spotlightMatch = Object.values(SPOTLIGHT_DATA).find(data => data.lectures[node.topic]);
-              if (spotlightMatch) {
-                  lecture = spotlightMatch.lectures[node.topic];
-              } else {
+              if (spotlightMatch) lecture = spotlightMatch.lectures[node.topic];
+              else {
                   const bookMatch = SYSTEM_BOOKS.find(b => b.pages.some(p => p.title === node.topic));
                   if (bookMatch) {
                       const page = bookMatch.pages.find(p => p.title === node.topic);
@@ -278,18 +237,14 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
               }
           }
 
-          // ONLY REFRACT IF NOT FOUND IN STATIC REGISTRY
           if (!lecture) {
               const chan = channels.find(c => c.chapters?.some(ch => ch.subTopics.some(st => st.title === node.topic))) ||
                            HANDCRAFTED_CHANNELS.find(c => c.chapters?.some(ch => ch.subTopics.some(st => st.title === node.topic)));
-              if (!chan) throw new Error("Node context missing in local and handcrafted registries.");
-              
+              if (!chan) throw new Error("Node context missing.");
               lecture = await generateLectureScript(node.topic, chan.description, 'en', chan.id, chan.voiceName);
           }
 
           if (!lecture) throw new Error("AI Refraction failed.");
-          
-          // PERFORM SHADOW AUDIT
           const audit = await performNeuralLensAudit(lecture);
           if (audit) {
               const finalized = { ...lecture, audit };
@@ -305,26 +260,9 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
       }
   };
 
-  const handleDownloadScript = () => {
-    if (!activeAudit) return;
-    const content = activeAudit.sections
-      .map(s => `${s.speaker === 'Teacher' ? activeAudit.professorName : activeAudit.studentName}: ${s.text}`)
-      .join('\n\n');
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${activeAudit.topic.replace(/\s+/g, '_')}_Transcript.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    dispatchLog(`Technical Transcript Exported: ${activeAudit.topic}`, 'success');
-  };
-
   const handleExportPDF = async () => {
     const el = document.getElementById('pdf-export-content');
-    if (!activeAudit || !el) return;
+    if (!el) return;
     setIsExportingPDF(true);
     try {
         const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
@@ -332,7 +270,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
         const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: 'a4' });
         const imgWidth = pdf.internal.pageSize.getWidth();
         pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, (canvas.height * imgWidth) / canvas.width);
-        pdf.save(`${activeAudit.topic.replace(/\s+/g, '_')}_Artifact.pdf`);
+        pdf.save(`Neural_Lens_Report.pdf`);
     } catch (e: any) {
         dispatchLog(`PDF Fault: ${e.message}`, 'error');
     } finally {
@@ -359,28 +297,9 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
       <div className="flex-1 flex overflow-hidden flex-col lg:flex-row">
           <aside className="w-full lg:w-96 border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0">
               <div className="p-4 border-b border-slate-800 space-y-4 bg-slate-950/40">
-                  <button onClick={handleFullSpectrumDemo} disabled={isDemoRunning || isAuditing} className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-50 group">
-                      {isDemoRunning ? <Loader2 size={18} className="animate-spin" /> : <Wand2 size={18} className="group-hover:rotate-12 transition-transform" />}
-                      Stateful Refraction Demo
-                  </button>
                   <div className="relative group">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-indigo-400" size={14}/>
                       <input type="text" placeholder="Search sectors or shards..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-8 py-2.5 text-[10px] text-white outline-none focus:ring-1 focus:ring-indigo-500 shadow-inner"/>
-                  </div>
-                  
-                  <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-inner relative overflow-hidden group/counter">
-                      <div className="flex items-center justify-between relative z-10">
-                          <div className="space-y-1">
-                              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                                  <Library size={12} className="text-indigo-400"/> Discovery Spectrum
-                              </p>
-                              <p className="text-2xl font-black text-white italic tracking-tighter uppercase">{filteredHierarchy.length} <span className="text-[10px] text-slate-600 not-italic ml-1">Sectors</span></p>
-                          </div>
-                          <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-400 border border-indigo-500/20 group-hover/counter:scale-110 transition-transform">
-                              <Signal size={20} className="animate-pulse" />
-                          </div>
-                      </div>
-                      <div className="absolute top-0 right-0 p-12 bg-indigo-500/5 blur-2xl rounded-full"></div>
                   </div>
               </div>
 
@@ -391,90 +310,50 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                       </div>
                   ) : (
                       <>
-                        {/* SECTION: BOOKS */}
-                        <div className="space-y-2">
-                            <h3 className="px-3 text-[9px] font-black text-slate-500 uppercase tracking-[0.4em] flex items-center gap-2"><BookText size={12} className="text-emerald-500"/> Technical Manuscripts</h3>
-                            {filteredHierarchy.filter(s => s.type === 'book').map((sector) => (
-                                <div key={sector.id} className="space-y-1">
+                        {/* SECTION: DISCOVERY SPECTRUM */}
+                        <div className="space-y-4">
+                            <h3 className="px-3 text-[9px] font-black text-slate-500 uppercase tracking-[0.4em] flex items-center gap-2 border-b border-slate-800/50 pb-2"> Discovery Spectrum</h3>
+                            {filteredHierarchy.map((sector) => {
+                                const isFocused = selectedSector?.id === sector.id;
+                                const isExpanded = expandedSectors[sector.id];
+                                return (
+                                <div key={sector.id} className="space-y-1 px-1">
                                     <button 
-                                      onClick={() => setExpandedSectors(prev => ({ ...prev, [sector.id]: !prev[sector.id] }))}
-                                      className={`w-full text-left flex items-center justify-between px-3 py-2 rounded-lg group transition-all ${expandedSectors[sector.id] ? 'bg-slate-800/40 border border-white/5' : 'hover:bg-slate-800/50'}`}
+                                      onClick={() => handleSelectSector(sector)}
+                                      className={`w-full text-left flex items-center justify-between px-3 py-3 rounded-2xl group transition-all border ${isFocused ? 'bg-indigo-600 border-indigo-400 text-white shadow-xl' : 'bg-slate-900/40 border-transparent hover:bg-slate-800/50'}`}
                                     >
                                         <div className="flex items-center gap-3">
-                                            <Layers size={14} className="text-emerald-400"/>
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-white transition-colors truncate max-w-[180px]">{sector.title}</span>
+                                            {sector.type === 'book' ? <BookText size={16} className={isFocused ? 'text-white' : 'text-emerald-400'}/> : <Layout size={16} className={isFocused ? 'text-white' : 'text-indigo-400'}/>}
+                                            <span className="text-[11px] font-black uppercase tracking-widest truncate max-w-[160px]">{sector.title}</span>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[8px] font-black text-slate-600 uppercase">{sector.shards.length}</span>
-                                            <ChevronDown size={14} className={`text-slate-600 transition-transform ${expandedSectors[sector.id] ? 'rotate-180' : ''}`} />
+                                            <span className="text-[8px] font-mono font-bold opacity-60">{sector.shards.length} Nodes</span>
+                                            <ChevronRight size={14} className={`text-slate-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                                         </div>
                                     </button>
                                     
-                                    {expandedSectors[sector.id] && (
-                                        <div className="pl-4 space-y-1 animate-fade-in">
+                                    {isExpanded && (
+                                        <div className="pl-6 space-y-1 animate-fade-in border-l border-slate-800 ml-5 mt-1">
                                             {sector.shards.map((shard, i) => {
-                                                const isFocused = selectedNode?.topic === shard.topic;
+                                                const isNodeFocused = selectedNode?.topic === shard.topic;
                                                 return (
                                                     <button 
                                                       key={i} 
                                                       onClick={() => handleSelectNode(shard)}
-                                                      className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${isFocused ? 'bg-emerald-600 border-emerald-400 text-white shadow-lg' : 'bg-slate-900 border-transparent text-slate-500 hover:bg-slate-800'}`}
+                                                      className={`w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between ${isNodeFocused ? 'bg-slate-800 border-indigo-500 text-white shadow-lg' : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-800/40'}`}
                                                     >
-                                                        <div className="flex items-center gap-2">
-                                                            <div className={`w-1.5 h-1.5 rounded-full ${shard.status === 'audited' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : 'bg-slate-800'}`}></div>
-                                                            <span className={`text-[10px] font-bold uppercase truncate max-w-[140px] ${isFocused ? 'text-white' : 'text-slate-300'}`}>{shard.topic}</span>
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${shard.status === 'audited' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : shard.status === 'staged' ? 'bg-amber-500' : 'bg-slate-800'}`}></div>
+                                                            <span className="text-[10px] font-bold uppercase truncate">{shard.topic}</span>
                                                         </div>
-                                                        {shard.status === 'audited' && <span className="text-[8px] font-mono font-bold opacity-60">{formatScore(shard.audit?.coherenceScore || shard.score)}%</span>}
+                                                        {shard.status === 'audited' && <span className="text-[8px] font-mono font-bold opacity-60 ml-2">{formatScore(shard.audit?.coherenceScore || shard.score)}%</span>}
                                                     </button>
                                                 );
                                             })}
                                         </div>
                                     )}
                                 </div>
-                            ))}
-                        </div>
-
-                        {/* SECTION: PODCASTS */}
-                        <div className="space-y-2">
-                            <h3 className="px-3 text-[9px] font-black text-slate-500 uppercase tracking-[0.4em] flex items-center gap-2"><Activity size={12} className="text-indigo-500"/> Activity Sectors</h3>
-                            {filteredHierarchy.filter(s => s.type === 'podcast').map((sector) => (
-                                <div key={sector.id} className="space-y-1">
-                                    <button 
-                                      onClick={() => setExpandedSectors(prev => ({ ...prev, [sector.id]: !prev[sector.id] }))}
-                                      className={`w-full text-left flex items-center justify-between px-3 py-2 rounded-lg group transition-all ${expandedSectors[sector.id] ? 'bg-slate-800/40 border border-white/5' : 'hover:bg-slate-800/50'}`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <Layout size={14} className="text-indigo-400"/>
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-white transition-colors truncate max-w-[180px]">{sector.title}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[8px] font-black text-slate-600 uppercase">{sector.shards.length}</span>
-                                            <ChevronDown size={14} className={`text-slate-600 transition-transform ${expandedSectors[sector.id] ? 'rotate-180' : ''}`} />
-                                        </div>
-                                    </button>
-                                    
-                                    {expandedSectors[sector.id] && (
-                                        <div className="pl-4 space-y-1 animate-fade-in">
-                                            {sector.shards.map((shard, i) => {
-                                                const isFocused = selectedNode?.topic === shard.topic;
-                                                return (
-                                                    <button 
-                                                      key={i} 
-                                                      onClick={() => handleSelectNode(shard)}
-                                                      className={`w-full text-left p-3 rounded-xl border transition-all flex items-center justify-between ${isFocused ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-slate-900 border-transparent text-slate-500 hover:bg-slate-800'}`}
-                                                    >
-                                                        <div className="flex items-center gap-2">
-                                                            <div className={`w-1.5 h-1.5 rounded-full ${shard.status === 'audited' ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.5)]' : shard.status === 'staged' ? 'bg-amber-500' : 'bg-slate-800'}`}></div>
-                                                            <span className={`text-[10px] font-bold uppercase truncate max-w-[140px] ${isFocused ? 'text-white' : 'text-slate-300'}`}>{shard.topic}</span>
-                                                        </div>
-                                                        {shard.status === 'audited' && <span className="text-[8px] font-mono font-bold opacity-60">{formatScore(shard.audit?.coherenceScore || shard.score)}%</span>}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
+                            )})}
                         </div>
                       </>
                   )}
@@ -483,25 +362,83 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
 
           <main className="flex-1 bg-black/20 overflow-y-auto scrollbar-hide p-8 lg:p-12 relative flex flex-col items-center">
               {(isAuditing || isDemoRunning) && (
-                  <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex flex-col items-center justify-center gap-10 animate-fade-in">
+                  <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-[100] flex flex-col items-center justify-center gap-10 animate-fade-in">
                       <div className="relative">
                           <div className="w-28 h-28 border-4 border-indigo-500/10 rounded-full"></div>
                           <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                           <div className="absolute inset-0 flex items-center justify-center"><Activity size={40} className="text-indigo-400 animate-pulse" /></div>
                       </div>
-                      <div className="text-center space-y-4">
-                          <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Shadow Handshake Active</h3>
-                          <p className="text-xs text-slate-500 font-bold uppercase tracking-[0.2em] max-w-xs leading-relaxed">{isDemoRunning ? 'Synthesizing Spectrum Loop with Cumulative Knowledge...' : 'Auditing reasoning chains...'}</p>
-                          <div className="flex justify-center gap-2">
-                             <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce"></div>
-                             <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce delay-75"></div>
-                             <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce delay-150"></div>
-                          </div>
-                      </div>
+                      <div className="text-center space-y-2"><h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Handshaking Shadow Agent</h3><p className="text-xs text-slate-500 font-bold uppercase tracking-[0.2em]">Verifying logic gates against structural invariants...</p></div>
                   </div>
               )}
 
-              {activeAudit?.audit ? (
+              {selectedSector && sectorIntegrity ? (
+                  <div className="max-w-5xl w-full mx-auto space-y-12 animate-fade-in-up">
+                      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-800 pb-10">
+                          <div className="space-y-4 text-left">
+                              <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-900/30 border border-indigo-500/30 rounded-full text-indigo-400 text-[9px] font-black uppercase tracking-widest">
+                                  <Signal size={12} className="animate-pulse"/> Holistic Architectural Verification
+                              </div>
+                              <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">{selectedSector.title}</h2>
+                              <p className="text-slate-400 text-lg max-w-xl">{selectedSector.description}</p>
+                          </div>
+                          <div className="bg-slate-900 border border-slate-800 p-8 rounded-[3.5rem] shadow-2xl text-center relative overflow-hidden group">
+                              <div className="absolute top-0 right-0 p-12 bg-emerald-500/5 blur-3xl rounded-full"></div>
+                              <p className="text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest relative z-10">Spectrum Integrity</p>
+                              <p className="text-7xl font-black text-emerald-400 italic tracking-tighter relative z-10">{sectorIntegrity.score}%</p>
+                              <div className="w-full h-1 bg-slate-800 rounded-full mt-6 overflow-hidden relative z-10">
+                                  <div className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] transition-all duration-1000" style={{ width: `${sectorIntegrity.score}%` }}></div>
+                              </div>
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] flex flex-col items-center text-center gap-4">
+                              <div className="p-3 bg-indigo-900/20 text-indigo-400 rounded-2xl"><BarChart size={24}/></div>
+                              <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Audited Depth</h4>
+                              <p className="text-2xl font-black text-white italic">{sectorIntegrity.audited} <span className="text-xs text-slate-600 not-italic">/ {sectorIntegrity.total} Nodes</span></p>
+                          </div>
+                          <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] flex flex-col items-center text-center gap-4">
+                              <div className="p-3 bg-red-900/20 text-red-400 rounded-2xl"><Activity size={24}/></div>
+                              <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Aggregate Drift Risk</h4>
+                              <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${sectorIntegrity.drift === 'Low' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-950/20 text-amber-400 border-amber-500/30'}`}>{sectorIntegrity.drift} Risk</div>
+                          </div>
+                          <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] flex flex-col items-center text-center gap-4">
+                              <div className="p-3 bg-purple-900/20 text-purple-400 rounded-2xl"><ShieldCheck size={24}/></div>
+                              <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Spectral Robustness</h4>
+                              <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${sectorIntegrity.robustness === 'High' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-950/20 text-amber-400'}`}>{sectorIntegrity.robustness} Rank</div>
+                          </div>
+                      </div>
+
+                      <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-12 shadow-2xl relative overflow-hidden group">
+                          <div className="absolute top-0 right-0 p-24 bg-indigo-500/5 blur-[100px] rounded-full"></div>
+                          <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] mb-12 flex items-center gap-3">
+                              <Network size={18} className="text-indigo-400"/> Holistic Dependency Mesh
+                          </h4>
+                          <div className="flex flex-wrap gap-6 justify-center items-center py-6 relative z-10">
+                              {sectorIntegrity.mesh?.nodes.slice(0, 15).map((node: any) => (
+                                  <div key={node.id} className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-[1.5rem] shadow-xl flex flex-col items-center hover:border-indigo-500 transition-all group/node">
+                                      <span className="text-[8px] font-black text-slate-600 uppercase mb-1 group-hover/node:text-indigo-400 transition-colors">{node.type}</span>
+                                      <span className="text-xs font-bold text-white uppercase">{node.label}</span>
+                                  </div>
+                              ))}
+                          </div>
+                          <div className="mt-12 pt-8 border-t border-slate-800 grid grid-cols-2 md:grid-cols-4 gap-4">
+                              {sectorIntegrity.history?.map((h, i) => (
+                                  <div key={i} className="bg-black/20 p-4 rounded-2xl border border-white/5 space-y-2">
+                                      <p className="text-[9px] font-bold text-slate-500 truncate uppercase">{h.topic}</p>
+                                      <div className="flex items-end gap-2">
+                                          <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+                                              <div className="h-full bg-indigo-500" style={{ width: `${formatScore(h.score)}%` }}></div>
+                                          </div>
+                                          <span className="text-[10px] font-mono font-black text-indigo-400">{formatScore(h.score)}%</span>
+                                      </div>
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
+                  </div>
+              ) : activeAudit?.audit ? (
                   <div className="max-w-4xl w-full mx-auto space-y-12 animate-fade-in-up">
                       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-800 pb-8">
                           <div className="space-y-3 text-left">
@@ -530,7 +467,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                                 <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 shadow-xl flex flex-col items-center text-center gap-4 group hover:border-purple-500/20 transition-all">
                                     <div className="p-3 bg-purple-900/30 text-purple-400 rounded-2xl"><ShieldCheck size={24}/></div>
                                     <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Model Robustness</h4>
-                                    {/* Fix: use activeAudit.audit.robustness instead of GeneratedLecture.robustness */}
                                     <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${activeAudit.audit.robustness === 'High' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-950/20 text-amber-400'}`}>{activeAudit.audit.robustness} Rank</div>
                                 </div>
                             </div>
@@ -556,7 +492,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                                     <div><h3 className="font-bold text-white uppercase tracking-tight">Technical Transcript</h3><p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Logic sequence archive</p></div>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <button onClick={handleDownloadScript} className="flex items-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95"><Download size={14}/> <span>Text Export</span></button>
                                     <button onClick={handleExportPDF} disabled={isExportingPDF} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50">{isExportingPDF ? <Loader2 size={14} className="animate-spin"/> : <FileDown size={14}/>} <span>PDF Export</span></button>
                                 </div>
                             </div>
@@ -596,29 +531,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                       <h3 className="text-4xl font-black uppercase italic tracking-tighter">Observability Portal</h3>
                   </div>
               )}
-
-              {/* HIDDEN EXPORT CONTAINER FOR PDF CAPTURE */}
-              <div style={{ position: 'fixed', left: '-9999px', top: 0 }}>
-                  <div id="pdf-export-content" style={{ width: '800px', padding: '60px', backgroundColor: '#ffffff', color: '#0f172a', fontFamily: 'serif' }}>
-                      <div style={{ borderBottom: '4px solid #f1f5f9', paddingBottom: '20px', marginBottom: '40px', display: 'flex', justifySelf: 'space-between', alignItems: 'center' }}>
-                          <div style={{ fontSize: '10px', fontWeight: 900, color: '#6366f1', textTransform: 'uppercase', letterSpacing: '0.2em' }}>Neural Prism Technical Record</div>
-                          <div style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8' }}>{new Date().toLocaleDateString()}</div>
-                      </div>
-                      <h1 style={{ fontSize: '36px', fontWeight: 900, marginBottom: '10px', textTransform: 'uppercase', color: '#000' }}>{activeAudit?.topic}</h1>
-                      <div style={{ marginBottom: '40px' }}>
-                          {activeAudit?.sections.map((s, i) => (
-                              <div key={i} style={{ marginBottom: '20px' }}>
-                                  <div style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', color: s.speaker === 'Teacher' ? '#4338ca' : '#475569', marginBottom: '4px' }}>{s.speaker === 'Teacher' ? activeAudit.professorName : activeAudit.studentName}</div>
-                                  <div style={{ fontSize: '14px', lineHeight: '1.6', color: '#334155' }}>{s.text}</div>
-                              </div>
-                          ))}
-                      </div>
-                      <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '2px solid #f1f5f9', display: 'flex', justifySelf: 'space-between', alignItems: 'center' }}>
-                          <div style={{ fontSize: '8px', fontWeight: 900, color: '#cbd5e1', letterSpacing: '0.1em' }}>BOUND BY NEURAL PRISM // v12.0.0-ABUNDANCE</div>
-                          <div style={{ fontSize: '10px', fontWeight: 900, color: '#64748b' }}>PAGE 1</div>
-                      </div>
-                  </div>
-              </div>
           </main>
       </div>
     </div>

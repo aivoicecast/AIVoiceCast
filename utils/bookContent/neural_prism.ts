@@ -1,10 +1,9 @@
-
 import { BookData } from '../bookContent';
 
 export const NEURAL_PRISM_BOOK: BookData = {
   id: 'platform-core',
   title: "Neural Prism: The Architectural Truth",
-  subtitle: "Technical Manifest: v12.0.0-ABUNDANCE",
+  subtitle: "Technical Manifest: v12.2.0-N-FACTOR",
   author: "Chief Architect",
   version: "SYNTHESIS",
   category: "Architecture",
@@ -54,12 +53,12 @@ We sharded our logic to match the Gemini Flash native window size. This ensures 
 2. **Indexing**: A parent 'Manifest Node' is registered in the Firestore ledger. It contains SHA-256 hashes for all child shards, ensuring content integrity during re-hydration.
 3. **Re-hydration**: Our edge engine parallel-fetches the shards and reconstructs the data URI in the user's browser buffer.
 
-This allows us to handle terabytes of binary technical data while maintaining the speed and real-time consistency of a NoSQL control plane. We scale to zero (no idle tax) without sacrificing the mass of our technical artifacts. It is a "Liar's File System" that makes NoSQL behave like a high-performance block store. This protocol is what enables the **Author Studio** to bind 50-page books without crashing the browser's memory management or hitting database transaction limits.
+This allows us to handle terabytes of binary technical data while maintaining the speed and real-time consistency of a NoSQL control plane. We scale to zero (no idle tax) without sacrificing the mass of our technical artifacts. It is a "Liar's File System" that 北京 making NoSQL behave like a high-performance block store. This protocol is what enables the **Author Studio** to bind 50-page books without crashing the browser's memory management or hitting database transaction limits.
       `
     },
     {
-        title: "3. Case Study: Hallucinated Deletion",
-        content: String.raw`
+      title: "3. Case Study: Hallucinated Deletion",
+      content: String.raw`
 # ⚠️ Chapter 3: The Refactoring Entropy Event
 
 During the development of v12.0, a critical logic regression occurred. We call it **'The Hallucinated Deletion.'** While requesting a minimal update to the sidebar hierarchy, the primary AI model silently purged the entire 'Generate Book' and 'Text Export' logic—over 500 lines of production code.
@@ -72,41 +71,43 @@ We now implement **Functional Mass Comparison**. Before every code refraction is
         `
     },
     {
-      title: "4. The 18x Efficiency Proof",
+      title: "4. The 18x Efficiency Proof & N-Factor",
       content: String.raw`
-# ⚖️ Chapter 4: KV Cache Thermodynamics
+# ⚖️ Chapter 4: The Economics of Abundance
 
 In the realm of large-scale intelligence, we must confront the **KV Cache Tax**. Every concurrent user of a transformer model occupies a specific slice of TPU memory. For high-reasoning models like **Gemini 3 Pro**, this footprint is massive—typically 18x larger than the high-speed **Gemini 3 Flash** variant.
 
-### The Math of Abundance
-- **Pro Model RAM Usage**: Physically occupies 2.4TB of TPU memory in a standard cluster.
-- **Flash Model RAM Usage**: Occupies only 150GB.
+### The N-Factor Breakthrough
+To drive marginal logic costs toward zero, we implement the **N-Factor Refraction Protocol**. 
+1. **Refactor Once**: A technical problem (e.g., a specific kernel bug or architectural pattern) is refracted once by a member.
+2. **Share N Times**: The resulting logic shard is notarized and stored in the **Community Cache**. 
+3. **Cost Collapse**: If N members share this refraction, the total energy cost is divided by N. For N > 100, a $300 annual compute tax collapses to less than $3.
 
-By routing the 90% of user activity—conversations, real-time typing, visual canvas interactions—to the Flash layer, we can support 18x more concurrent users on the same hardware footprint. We reserve the Pro model strictly for the **Neural Lens Audit**, where it verifies the structural integrity of the Flash-generated artifacts. This "Complexity Balancer" is the engine of our sustainability.
-
-### The Community Ledger Economy
-This efficiency is passed directly to the member through the **VoiceCoin Ledger**. In the old world, a 4,000-word refraction would cost $5.00 in cloud credits. In the Neural Prism, by using community knowledge deduplication and the Flash/Pro dyad, we drive that cost toward the **Thermodynamic Floor** of sub-$0.05. This is the only way to achieve universal access to elite-level intelligence. We are no longer building for the few; we are building for the spectrum of humanity.
+By routing activity to Flash and auditing via Pro, and leveraging the N-Factor through deduplication, we support 18x more concurrent users on the same hardware footprint. This "Complexity Balancer" is the engine of our sustainability.
       `
     },
     {
-        title: "5. Conclusion: See you in the Landscape",
-        content: String.raw`
-# 🙏 Chapter 5: Refraction Complete
+      title: "5. Technical Truth & Sovereign Silos",
+      content: String.raw`
+# 🔍 Chapter 5: Sovereign Persistence
 
-The Neural Prism v12.0 is the culmination of a decade of architectural drift. We have proven that by refracting super-intelligence into a spectrum of 24 specialized human tools, we can make complexity invisible and intelligence colorful. 
+Architectural truth in v12.2 is grounded in the **SHA-256 Grounding Bridge** and the principle of **Sovereign Silos**. We have eliminated documentation lag and state divergence while protecting user privacy.
 
-### The shift from Survival to Discovery
-Our vision for 2036 is the **10:1 Resident/Hub ratio**. We believe that intelligence is a fundamental right, like clean water or electricity. By shortening the gap between the blinding light of the AI core and the daily needs of a human architect, we create a **Joy Dividend**. 
+### Explicit Siloing
+We intentionally maintain three independent storage backends:
+- **Ledger (Firebase)**: Metadata, social fabric, and the N-Factor cache.
+- **Vault (Drive)**: User-owned binary artifacts and generated PDFs.
+- **Workflow (GitHub)**: Developer source code and repository state.
 
-In the Abundance Equilibrium:
-1. **Survival is automated**: Heuristic simulation and humanoid labor handle the drudgery of the physical and digital worlds.
-2. **Logic is sovereign**: You own your private keys, your source code, and your technical history. The VFS layer ensures you can take your work to any hardware cell in the mesh.
-3. **Discovery is primary**: Freed from the entropy of survival, humanity can focus on uncovering the deeper mysteries of the universe. We work one day for charity and spend six days on the joy of refraction.
+We NEVER auto-sync between these silos. Each environment acts as a discrete drive, ensuring that a compromise in one does not spill into the other. 
 
-**Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things. The spectrum is now complete. We will see you in the landscape of the new world.**
+### Parity Enforcement
+When the platform refracts a project, it generates a **Hash Manifest**. The VFS compares local hashes against the Ledger manifest. If a mismatch is detected, the "Truth Lens" forces an atomic re-hydration from the sovereign vault (GitHub/Drive). This ensures absolute architectural parity across our 24-app spectrum while maintaining the sanctity of user-controlled storage.
+
+**Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things.**
 
 *Refracting Super-Intelligence into Human Utility.*
-*Neural Prism v12.0.0-ABUNDANCE*
+*Neural Prism v12.2.0-N-FACTOR*
         `
     }
   ]

@@ -35,7 +35,8 @@ async function runWithDeepTelemetry(
                 logger.error(`Critical Circuit Breaker triggered for ${context}. Node terminated.`, e, { category, retryCount: attempts });
                 throw e;
             }
-            await new Promise(r => setTimeout(r, Math.pow(2, attempts) * 1000));
+            // Exponential backoff with jitter
+            await new Promise(r => setTimeout(r, Math.pow(2, attempts) * 1000 + Math.random() * 1000));
         }
     }
     throw new Error("Handshake timeout: Max retries exceeded.");
@@ -135,13 +136,12 @@ export async function performNeuralLensAudit(lecture: GeneratedLecture, language
 
         if (!response.text) throw new Error("Null reasoning shard.");
         
-        const usage = response.usageMetadata;
         const audit = JSON.parse(response.text.replace(/^```json\s*|```\s*$/g, '').trim());
         
         logger.audit(`Shadow Audit Verified: ${lecture.topic}`, { 
             category, latency, model, retryCount: attempts,
-            inputTokens: usage?.promptTokenCount,
-            outputTokens: usage?.candidatesTokenCount,
+            inputTokens: response.usageMetadata?.promptTokenCount,
+            outputTokens: response.usageMetadata?.candidatesTokenCount,
             inputSizeBytes: inputSize, 
             outputSizeBytes: new TextEncoder().encode(response.text).length
         });
@@ -196,7 +196,29 @@ export async function generateLectureScript(
             contents: prompt,
             config: { 
                 systemInstruction: customSystemInstruction || "You are an expert technical educator. Respond in JSON format.",
-                responseMimeType: 'application/json'
+                responseMimeType: 'application/json',
+                thinkingConfig: { thinkingBudget: 8000 },
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        professorName: { type: Type.STRING },
+                        studentName: { type: Type.STRING },
+                        sections: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    speaker: { type: Type.STRING, enum: ["Teacher", "Student"] },
+                                    text: { type: Type.STRING }
+                                },
+                                required: ["speaker", "text"]
+                            }
+                        },
+                        readingMaterial: { type: Type.STRING },
+                        homework: { type: Type.STRING }
+                    },
+                    required: ["professorName", "studentName", "sections"]
+                }
             }
         });
     }, "Node Refraction", category, prompt);
@@ -204,14 +226,30 @@ export async function generateLectureScript(
     const text = response.text;
     if (!text) return null;
 
-    const usage = response.usageMetadata;
-    const parsed = JSON.parse(text.replace(/^```json\s*|```\s*$/g, '').trim());
+    let parsed;
+    try {
+        parsed = JSON.parse(text.replace(/^```json\s*|```\s*$/g, '').trim());
+    } catch (e) {
+        logger.error("JSON parse failure in refraction", e);
+        return null;
+    }
     
+    // GUARANTEE: Ensure sections array is never missing
     const result: GeneratedLecture = {
-      uid: contentUid, topic, professorName: parsed.professorName || "Professor",
-      studentName: parsed.studentName || "Student", sections: parsed.sections || [],
-      readingMaterial: parsed.readingMaterial, homework: parsed.homework
+      uid: contentUid, 
+      topic, 
+      professorName: parsed.professorName || "Professor",
+      studentName: parsed.studentName || "Student", 
+      sections: Array.isArray(parsed.sections) ? parsed.sections : [],
+      readingMaterial: parsed.readingMaterial, 
+      homework: parsed.homework
     };
+
+    if (result.sections.length === 0) {
+        logger.warn(`Zero-Section Fragment detected for ${topic}. Attempting heuristic repair...`);
+        // Basic repair: inject a placeholder so the Neural Lens doesn't crash
+        result.sections = [{ speaker: 'Teacher', text: "Logical synchronization in progress. Please refresh the node." }];
+    }
     
     // Automatic reasoning verification
     const audit = await performNeuralLensAudit(result, language);
@@ -225,14 +263,15 @@ export async function generateLectureScript(
 
     logger.success(`Refactor Step Secured: ${topic}`, { 
         category, latency, model, retryCount: attempts,
-        inputTokens: usage?.promptTokenCount,
-        outputTokens: usage?.candidatesTokenCount,
+        inputTokens: response.usageMetadata?.promptTokenCount,
+        outputTokens: response.usageMetadata?.candidatesTokenCount,
         inputSizeBytes: inputSize, 
         outputSizeBytes: new TextEncoder().encode(text).length
     });
 
     return result;
   } catch (error: any) {
+    logger.error(`Refactor Logic Fault for ${topic}`, error, { category });
     return null;
   }
 }

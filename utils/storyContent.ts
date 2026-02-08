@@ -1,6 +1,5 @@
-
 /**
- * NEURAL LENS: THE ARCHITECTURAL TRUTH (v12.0.0-ABUNDANCE)
+ * NEURAL LENS: THE ARCHITECTURAL TRUTH (v12.2.0-N-FACTOR)
  * Primary technical and philosophical source of truth.
  */
 
@@ -40,40 +39,51 @@ export const STORY_VISION_SPEAKER_SCRIPT = [
 
 // --- Story 2: Hackathon Pitch (Meta-Refraction) ---
 export const STORY_HACKATHON_PITCH_MD = `
-# 🏆 Hackathon Pitch: The Meta-Refraction Manifest
+# 🏆 Hackathon Pitch: The N-Factor Equilibrium
 
-**Refracting Gemini 3 into a Spectrum of Utility.**
+**Refracting Gemini 3 into a Spectrum of Global Utility.**
 
 Good afternoon, judges.
 
-Most AI applications today are just wrappers. They are "Agreeable Assistants" that prioritize user comfort over technical truth. 
-
-Today, we present **Neural Prism**—a sovereign intelligence hub built using 100% Google Gemini orchestration with **Deep Telemetry.**
+Most AI applications today are just wrappers. They are "Agreeable Assistants" that prioritize user comfort over technical truth. Today, we present **Neural Prism**—a sovereign intelligence hub built using 100% Google Gemini orchestration.
 
 ---
 
-### The Refractive Engine
+### The N-Factor Breakthrough
 
-We don't just prompt a model; we **instrument** it. 
+Our key innovation isn't just a UI; it's the **N-Factor Protocol.** We enable a community to **Refactor Once and Share N Times.** 
+*   **Marginal Cost Collapse**: By notarizing deterministic refractions in our global ledger, we divide the compute tax by the community density.
+*   **The Abundance Math**: A $300 annual compute tax collapses to **less than $3** when N > 100. We are trading massive redundant compute for intelligent caching.
 
-Our core architecture uses **Gemini 3 Pro** for high-dimensional reasoning and **Gemini 3 Flash** for heuristic logic simulation. 
-*   **API Observability**: Every call is traced. We extract exact token counts and raw byte sizes from the lowest API layer.
-*   **Ledger Sovereignty**: We track the VoiceCoin balance before and after every operation, providing deterministic accounting for intelligence.
-*   **Infrastructure-Bypass**: We "imagine" code execution, achieving a 10x energy saving over physical containers.
+### Dual-Layer Trust: "Gold Standard" Artifacts
+
+We don't trust fluently. Every artifact is verified by the **Neural Lens** and then validated by the community.
+*   **Neural Lens**: Extracts a logic mesh and runs adversarial probes via Gemini 3 Pro.
+*   **Gold Trust Layer**: Members vote and comment on verified shards, adding human intuition to AI-verified logic.
+
+### Sovereign Storage Silos
+
+Privacy is built into the physics of the platform. We maintain three independent storage drives:
+1.  **Registry (Firebase)**: Social metadata and N-Factor cache.
+2.  **Vault (Drive)**: User-owned binary artifacts and PDFs.
+3.  **Workflow (GitHub)**: Developer source code.
+
+We **never auto-sync** between these backends. Each environment remains a discrete silo under user control.
 
 ### The Impact
 
-We have collapsed 24 fragmented app verticals into a single refractive substrate. Neural Prism is a **Sovereign Operating Plane** for the next decade of human activity.
+We have collapsed 24 fragmented app verticals into a single refractive substrate. Neural Prism is a **Sovereign Operating Plane** that scales intelligence to zero marginal cost.
 
 Thank you.
 `;
 
 export const STORY_HACKATHON_SPEAKER_SCRIPT = [
     "Good afternoon, judges. Most AI applications today are just wrappers. They are 'Agreeable Assistants' that prioritize user comfort over technical truth.",
-    "Today, we present Neural Prism—a sovereign intelligence hub built using 100% Google Gemini orchestration with deep telemetry.",
-    "We don't just prompt a model; we instrument it. Every call is traced at the lowest API layer to extract exact token counts and raw byte sizes. We track the VoiceCoin ledger before and after every operation to ensure deterministic accounting.",
-    "Our core architecture uses Gemini 3 Pro for reasoning and Gemini 3 Flash for heuristic simulation. This allows for our Infrastructure-Bypass IDE, which achieves a 10x energy saving over traditional physical containers.",
-    "We have collapsed 24 fragmented app verticals into a single refractive substrate. Neural Prism is not an app; it is a Sovereign Operating Plane for the next decade of human activity. Thank you."
+    "Today, we present Neural Prism—a sovereign intelligence hub built using 100% Google Gemini orchestration. Our key innovation is the N-Factor Protocol.",
+    "We enable a community to Refactor Once and Share N Times. By notarizing deterministic refractions in our global ledger, we collapse the marginal cost of intelligence. When N exceeds 100, a 300-dollar annual compute tax drops to less than 3 dollars.",
+    "Trust is enforced via a dual-layer handshake. Every artifact is first verified by our Neural Lens, and then validated by the community through votes and comments. This creates what we call the 'Gold Trust' layer.",
+    "Privacy is protected by our Sovereign Silo architecture. We utilize Firebase for metadata, Google Drive for artifacts, and GitHub for code. Crucially, we never auto-sync between these backends, keeping your data siloed and secure.",
+    "We have collapsed 24 fragmented app verticals into a single refractive substrate. Neural Prism is not just an app; it is a Sovereign Operating Plane that scales intelligence to zero marginal cost. Thank you."
 ];
 
 // --- Story 3: Researcher / Epistemology (The "40 Days" Story) ---
@@ -93,9 +103,9 @@ But this revealed a critical architectural gap: **Structural Inconsistency.** Wh
 ### Deep Instrumentation
 
 To solve the "Silent Drift" observed during our build, we engineered the **Neural Telemetry Layer.** 
-1.  **Bit-by-Bit Tracing**: We log input and output sizes in bytes and tokens for 100% auditability.
-2.  **Ledger Snapshots**: We see the VoiceCoin impact before and after every refraction.
-3.  **Circuit Breaker Logic**: Deterministic retry logic with exponential backoff prevents the "Forever Error Loop."
+1.  **Live Source Grounding**: We use the googleSearch tool to verify documentation against the actual codebase in real-time.
+2.  **Bit-by-Bit Tracing**: We log input and output sizes in bytes and tokens for 100% auditability.
+3.  **Ledger Snapshots**: We see the VoiceCoin impact before and after every refraction.
 
 ### The Neural Lens Solution
 
@@ -112,9 +122,9 @@ Thank you. Refraction complete.
 
 export const STORY_REASONING_SPEAKER_SCRIPT = [
     "Good afternoon. Over the past 40 days, I built 20 Gemini-native applications. Gemini helped me accelerate beyond what I could build alone, generating over 30,000 lines of production code.",
-    "But this Revealed a critical architectural gap: Structural Inconsistency. To solve the 'Silent Drift' problem, we engineered the Neural Telemetry Layer.",
-    "We implement bit-by-bit tracing, logging input and output sizes in both bytes and tokens for 100% auditability. We capture ledger snapshots to see the exact VoiceCoin impact before and after every refraction.",
-    "Our circuit breaker logic prevents the 'Forever Error Loop' with deterministic retries and exponential backoff. We then use the Neural Lens to turn Gemini from a generator into a formal verifier of its own understanding.",
+    "But this Revealed a critical architectural gap: Structural Inconsistency. To solve the 'Silent Drift' problem, we engineered the Neural Telemetry Layer with Live Source Grounding.",
+    "We use the googleSearch tool to verify documentation against the actual codebase. We log input and output sizes in both bytes and tokens for 100% auditability. We capture ledger snapshots to see the exact VoiceCoin impact.",
+    "Our circuit breaker logic prevents the 'Forever Error Loop' with deterministic retries. We then use the Neural Lens to turn Gemini from a generator into a formal verifier of its own understanding.",
     "By extracting a dependency mesh and launching adversarial probes via a Shadow Agent, we can calculate a numeric Coherence Score. We don't just ask Gemini to think; we instrument the reasoning to ensure technical truth.",
     "Neural Lens turns AI outputs from fluent text into provably coherent knowledge artifacts. Thank you. Refraction complete."
 ];
@@ -131,11 +141,11 @@ In v12.0-ABUNDANCE, we have achieved the **Stateful Refraction Loop.**
 
 Most AI systems treat long-context tasks as a series of isolated prompts. This leads to logical fragmentation. Neural Prism implements a **3-Phase Multi-Agent Orchestration**:
 
-1.  **Curriculum Ingestion**: We map the conceptual terrain first.
+1.  **Live Grounding Ingestion**: We crawl the live GitHub repository using the googleSearch tool to map the technical terrain.
 2.  **Stateful Sequential Synthesis**: Each logic node is refracted with a rolling **Cumulative Knowledge Shard**. This ensures the system never repeats code and builds logically on previous conclusions.
 3.  **Shadow Audit**: A secondary reasoning agent verifies the final artifact for structural integrity.
 
-We have collapsed 24 fragmented verticals into a single cohesive interface, driven by sub-millisecond API telemetry.
+We have collapsed 24 fragmented verticals into one cohesive interface, driven by sub-millisecond API telemetry.
 
 Thank you.
 `;
@@ -143,7 +153,7 @@ Thank you.
 export const STORY_JUDGE_SPEAKER_SCRIPT = [
     "Good afternoon. In version 12 point 0 ABUNDANCE, we have achieved the Stateful Refraction Loop.",
     "Most AI systems treat long-context tasks as isolated prompts, leading to logical fragmentation. Neural Prism implements a 3-Phase Multi-Agent Orchestration.",
-    "First, we perform Curriculum Ingestion to map the terrain. Second, we execute Stateful Sequential Synthesis, where each node is refracted with a rolling Cumulative Knowledge Shard. This ensures the system never repeats code.",
+    "First, we perform Live Grounding Ingestion, crawling our GitHub repository to map the technical terrain. Second, we execute Stateful Sequential Synthesis, where each node is refracted with a rolling Cumulative Knowledge Shard.",
     "Finally, we perform a Shadow Audit where a secondary reasoning agent verifies the artifact for structural integrity. We have collapsed 24 verticals into one cohesive interface, driven by sub-millisecond API telemetry. Thank you."
 ];
 
@@ -158,9 +168,9 @@ The greatest risk of autonomous AI is **Silent Drift.** A model can remain perfe
 ### The Verification Protocol
 Neural Prism implements the **Shadow-Critic Handshake.**
 
+- **Grounding Bridge**: We use live search to verify documentation against the source repository at https://github.com/aivoicecast/AIVoiceCast.
 - **Recursive Extraction**: We extract concepts into a high-dimensional Dependency Graph.
 - **Adversarial Probing**: A second, independent "Shadow" instance probes every logic gate for contradictions.
-- **Structural Coherence**: We compute a numeric score representing the mathematical integrity of the reasoning.
 
 This isn't just about outputting text. It's about providing a **Verifiable Chain of Thought.**
 
@@ -169,8 +179,8 @@ Refraction complete.
 
 export const STORY_VERIFICATION_SPEAKER_SCRIPT = [
     "The greatest risk of autonomous AI is Silent Drift. A model can remain perfectly fluent while its internal logic begins to diverge from technical truth.",
-    "Neural Prism implements the Shadow-Critic Handshake to ensure logical invariants. We perform recursive extraction of concepts into a high-dimensional Dependency Graph.",
-    "A second, independent Shadow instance then probes every logic gate for contradictions. We compute a numeric score representing the mathematical integrity of the reasoning.",
+    "Neural Prism implements the Shadow-Critic Handshake and Grounding Bridge to ensure logical invariants. We use live search to verify our documentation against the actual source code.",
+    "We perform recursive extraction of concepts into a high-dimensional Dependency Graph. A second, independent Shadow instance then probes every logic gate for contradictions.",
     "This isn't just about outputting text. It's about providing a Verifiable Chain of Thought. Refraction complete."
 ];
 

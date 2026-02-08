@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -509,7 +508,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Sovereignty Protocols Active (v10.0.0-ABUNDANCE).", "info");
+    addSystemLog("Sovereignty Protocols Active (v12.2.0-N-FACTOR).", "info");
     if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
         if (u) { setCurrentUser(u); syncUserProfile(u).catch(console.error); }
@@ -632,7 +631,7 @@ const App: React.FC = () => {
     else setIsPricingModalOpen(true);
   }, [isProMember]);
 
-  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Abundance Spectrum (v10.0.0)...</span></div>;
+  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Abundance Spectrum (v12.2.0)...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} onResumeClick={() => handleSetViewState('resume')} />;
 
   const getLogColor = (type: SystemLogMsg['type']) => {
@@ -717,7 +716,7 @@ const App: React.FC = () => {
                 {activeViewID === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} language={language} initialContext={liveSessionParams.context} recordingEnabled={liveSessionParams.recordingEnabled} lectureId={liveSessionParams.bookingId} recordScreen={liveSessionParams.recordScreen} recordCamera={liveSessionParams.recordCamera} activeSegment={liveSessionParams.activeSegment} recordingDuration={liveSessionParams.recordingDuration} interactionEnabled={liveSessionParams.interactionEnabled} recordingTarget={liveSessionParams.recordingTarget} sessionTitle={liveSessionParams.sessionTitle} /> )}
                 {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('docs')} /></div> )}
                 {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={(chan, ctx) => handleStartLiveSession(chan, ctx)} isProMember={isProMember} onOpenManual={() => setManualViewId('code_studio')} /> )}
-                {activeViewID === 'whiteboard' && ( <Whiteboard onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('whiteboard')} /> )}
+                {activeViewID === 'whiteboard' && ( <div className="h-full overflow-hidden flex flex-col"><div className="flex-1"><Whiteboard onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('whiteboard')} /></div></div> )}
                 {activeViewID === 'blog' && ( <div className="h-full overflow-y-auto"><BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('blog')} /></div> )}
                 {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} onOpenManual={() => setManualViewId('chat')} /> )}
                 {activeViewID === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} jobId={activeItemId || undefined} onOpenManual={() => setManualViewId('careers')} /> )}
@@ -788,7 +787,7 @@ const App: React.FC = () => {
                                     <div className="flex items-center gap-2"><Terminal size={14} className="text-red-400"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Log Trace (RAW)</span></div>
                                     <div className="flex items-center gap-4">
                                         <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-950 border border-slate-800 rounded-lg text-[8px] font-black text-indigo-400 uppercase tracking-widest">
-                                            <Signal size={10} className="text-emerald-500 animate-pulse"/> v10.8-ABUNDANCE
+                                            <Signal size={10} className="text-emerald-500 animate-pulse"/> v12.1-INTEGRITY
                                         </div>
                                         <button onClick={() => setIsLogPaused(!isLogPaused)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${isLogPaused ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}>{isLogPaused ? <PlayIcon size={12}/> : <Pause size={12}/>}{isLogPaused ? 'Resume' : 'Pause'}</button>
                                     </div>
@@ -841,7 +840,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v10.0.0-ABUNDANCE</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v12.1.0-INTEGRITY</p></div>
             </div>
         </div>
 
