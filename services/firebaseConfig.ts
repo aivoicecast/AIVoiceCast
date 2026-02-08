@@ -1,9 +1,8 @@
-
 import { initializeApp, getApps, getApp } from "@firebase/app";
 import type { FirebaseApp } from "@firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
 import type { Auth } from "@firebase/auth";
-import { initializeFirestore, getFirestore, enableIndexedDbPersistence, CACHE_SIZE_UNLIMITED, terminate } from "@firebase/firestore";
+import { initializeFirestore, getFirestore, enableIndexedDbPersistence, CACHE_SIZE_UNLIMITED } from "@firebase/firestore";
 import type { Firestore } from "@firebase/firestore";
 import { getStorage } from "@firebase/storage";
 import type { FirebaseStorage } from "@firebase/storage";
@@ -47,7 +46,7 @@ const initDb = (): Firestore | null => {
     try {
         console.log("[Firestore] Initializing refractive data plane with Enhanced Long-Polling...");
         // Use experimentalForceLongPolling to handle environments where WebSockets are blocked/unstable
-        firestore = initializeFirestore(appInstance as any, {
+        firestore = initializeFirestore(appInstance, {
             experimentalForceLongPolling: true,
             experimentalAutoDetectLongPolling: true,
             cacheSizeBytes: CACHE_SIZE_UNLIMITED
@@ -58,7 +57,6 @@ const initDb = (): Firestore | null => {
     }
 
     // Persistence initialization shouldn't block the connection.
-    // In some environments, IndexedDB persistence can hang the initial connection if storage is full or restricted.
     enableIndexedDbPersistence(firestore).catch((err) => {
         if (err.code === 'failed-precondition') {
             console.debug("[Firestore] Persistence: Multiple tabs open. Local cache active.");

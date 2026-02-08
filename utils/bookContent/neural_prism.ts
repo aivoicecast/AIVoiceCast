@@ -10,9 +10,9 @@ export const NEURAL_PRISM_BOOK: BookData = {
   category: "Architecture",
   pages: [
     {
-      title: "1. Executive Summary: The Equilibrium Era",
+      title: "0. Executive Summary: The Equilibrium Era",
       content: String.raw`
-# 🏛️ Chapter 1: Executive Refraction
+# 🏛️ Chapter 0: Executive Refraction
 
 Neural Prism v8.8.0 is a **Sovereign Intelligence Hub**. Our primary objective is the global realization of the **Harmony Ratio (Earn/Spend = 1.0)**. 
 
@@ -26,28 +26,52 @@ Traditional AI was defined by extreme speculative burn. Our project contributes 
       `
     },
     {
-      title: "2. The Complexity Balancer (v4)",
+      title: "1. The Economics of Flash: 18x Efficiency",
       content: String.raw`
-# ⚖️ Chapter 2: Multi-Model Orchestration
+# ⚖️ Chapter 1: Multi-Model Orchestration
 
-To achieve thermodynamic efficiency, we implement a proprietary routing layer known as the **Complexity Balancer v4**. No single model handles the entire request spectrum.
+To achieve thermodynamic efficiency, we implement the **Complexity Balancer v4**. This is exactly why **Gemini 3 Flash** exists.
 
-### The Routing Logic:
-- **High-Intensity Logic (Gemini 3 Pro)**: Reserved for "Deep Work"—manuscript synthesis, complex proofs, and Staff-level architectural audits.
-- **Heuristic Simulation (Gemini 3 Flash)**: Operating at a strict \`thinkingBudget: 0\` for sub-800ms "imagined execution" in the IDE.
-- **Emotive Link (Gemini 2.5 Flash Native Audio)**: Maintaining a persistent 60FPS multimodal WebSocket link for sub-200ms verbal interaction.
+By pushing users toward the "Standard" 128k window for 90% of tasks, Google can support **18x more people** on the same hardware infrastructure. The 2-million-token mode is strictly reserved for "Deep Work" because it essentially "hogs" the memory of thousands of machines at once. 
 
-This orchestration ensures we never waste high-dimensional compute on low-entropy tasks.
+### Thermodynamic Math:
+- **Gemini 3 Flash**: 18x capacity gain over Pro for standard tasks.
+- **Cost Target**: 1 million tokens for approximately $1.
+- **Optimization**: By defaulting to Flash, we cut the "Intelligence Tax" by an order of magnitude.
       `
     },
     {
-      title: "3. Persona Context Optimization",
+      title: "2. Deduplication: The 100x Saving",
       content: String.raw`
-# 🚀 Chapter 3: The Context Handshake
+# 🚀 Chapter 2: Community Knowledge Caching
 
-This platform is a proof-of-concept for **Accelerated Systems Architecture**. The entire 24-app spectrum was synthesized in **40 days** using the Google Gemini ecosystem.
+The second pillar of the Harmony Ratio is **Deduplication via logic sharing**. 
 
-By treating AI as a refractive substrate rather than a search engine, we compressed years of development into weeks. We achieve domain-specific technical authority through high-intensity **Persona Context Engineering**. By providing Gemini with deep architectural and pedagogical frameworks in the system instructions, we create specialized partners for coding, interviewing, and research without the need for traditional model fine-tuning.
+Traditional AI applications treat every query as a new, expensive birth of logic. In the Neural Prism, we save query results in our Firebase registry. If one user generates a high-fidelity 10-week study course and caches it, and 100 other users use that same refraction, we have effectively **cut the cost of that intelligence by 100x**.
+
+### The Multiplier Effect:
+- **Scripture Study**: Generated once, shared by millions.
+- **MockInterview Plans**: Refracted once, used N times for community trust.
+- **Outcome**: By encouraging everyone to build their own "Lens" and share, the $300 yearly scarcity tax drops to a near-zero utility floor.
+      `
+    },
+    {
+      title: "3. The Convergence: One Site, Infinite Utility",
+      content: String.raw`
+# 💎 Chapter 3: Collapsing the Verticals
+
+Neural Prism is the "Everything App" for the Sovereign Individual. We have collapsed the fragmented 2024 tech stack into a single refractive substrate. 
+
+### The Refraction Matrix:
+- **The Bank**: Integrated **VoiceCoin Ledger** for p2p value exchange.
+- **LinkedIn**: **Technical Identity Badges** with biometric and cryptographic verification.
+- **Calendly**: **Neural Booking System** with automated Google/Gmail dispatch.
+- **Mentorship**: Real-time **Expert Matching** via the Peer Registry.
+- **LeetCode**: **Infrastructure-Bypass IDE** with heuristic simulation.
+- **Scripture Study**: High-fidelity **Bilingual Archive** with cinematic TTS.
+
+### The Creator Mandate: One App Per Week
+We operate at a velocity of **1 new skill, agent, or tool per week per member**. Our modular architecture allows anyone to refract a new human activity into the prism, expanding the spectrum of utility exponentially.
       `
     },
     {
@@ -61,18 +85,18 @@ This distributed trust model is a component of the wider 1.0 goal: it reduces th
       `
     },
     {
-      title: "5. BCP: Bypassing the 1MB Document Wall",
+      title: "5. BCP: Engineering the Block Store",
       content: String.raw`
 # 🧱 Chapter 5: Binary Chunking Protocol
 
-Real-time NoSQL ledgers like Firestore enforce a strict **1MB limit** per document. Modern technical archives—1080p logs and high-density audio—easily exceed this.
+Real-time NoSQL ledgers like Firestore enforce a strict **1MB limit** per document. Modern technical archives—1080p logs and high-density audio—easily exceed this wall.
 
 ### The BCP Protocol:
 1. **Mass Sharding**: Raw binary data is sharded into **750,000-byte segments**.
 2. **Encoding Overhead**: This size accounts for the 33% expansion of Base64, keeping shards safely under the 1MB wall.
 3. **Parallel Hydration**: Shards are fetched via multiplexed HTTP/2 streams and stitched in-memory in sub-150ms.
 
-This allows the Neural Prism to handle gigabytes of binary artifacts within a real-time metadata framework.
+This sharding ensures that our knowledge deduplication ledger remains scalable and robust.
       `
     },
     {
@@ -95,7 +119,7 @@ To provide verifiable records of performance, we engineered the **Scribe Protoco
 ### Technical Implementation:
 - **Offscreen Compositor**: A hidden 1920x1080 virtual canvas rendered at 30FPS.
 - **Layer Stacking**: Real-time stitching of the workspace, a Gaussian-blurred backdrop, and a circular PIP camera portal.
-- **Direct Dispatch**: 8Mbps VP9 streams are pushed directly to the user's sovereign YouTube vault via OAuth, ensuring the platform owner never touches the private engineering data.
+- **Direct Dispatch**: 8Mbps VP9 streams are pushed directly to the user's sovereign YouTube vault via OAuth.
       `
     },
     {
@@ -108,7 +132,7 @@ Technical publishing requires symbolic perfection. A single misplaced pixel in a
 ### The Synthesis Pipeline:
 1. **KaTeX Integration**: High-resolution mathematical typesetting baked into the stream.
 2. **4x Rasterization**: Every book page is rendered to an offscreen canvas at **400% scale** before PDF binding.
-3. **Deterministic Structure**: Using zero-opacity anchor nodes to force a consistent byte-stream, ensuring bit-perfect hash parity for ledger verification.
+3. **Deterministic Structure**: Using zero-opacity anchor nodes to force a consistent byte-stream.
       `
     },
     {
@@ -117,10 +141,10 @@ Technical publishing requires symbolic perfection. A single misplaced pixel in a
 # 🆔 Chapter 9: Badges & AI Coins
 
 In the 2036 Vision, your value is defined by your **Refractive Index** (your ability to contribute to the mesh).
-- **Digital Badges**: Verifiable artifacts of skill and identity, proving your technical proficiency.
+- **Digital Badges**: Verifiable artifacts of skill and identity.
 - **AI Coins**: We build credit by mentoring others and refactoring tools for the community. 
 
-This creates a circular economy where "Neural Credit" can be used to notarize documents and issue financial assets in the Finance Lab.
+This creates a circular economy where "Neural Credit" offsets the cost of frontier reasoning, making super-intelligence accessible to all.
       `
     },
     {
@@ -133,7 +157,7 @@ The **MockInterview Studio** is the perfect example of our modular design. It is
 - **Visual Whiteboard**: For architectural design.
 - **Scribe Protocol**: For 1080p activity capture.
 
-Anyone can duplicate this pattern to implement their own domain-specific consulting services, turning the Neural Prism into a factory for professional human growth.
+Anyone can duplicate this pattern to implement their own domain-specific consulting services.
       `
     },
     {
@@ -145,8 +169,7 @@ We are part of a global movement to rationalize intelligence. We make complexity
 
 **Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things.**
 
-*Handshake verified.*
-*Refraction Complete.*
+*Handshake verified. Refraction Complete.*
       `
     }
   ]

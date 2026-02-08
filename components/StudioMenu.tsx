@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, SubscriptionTier, GlobalStats, Channel } from '../types';
 import { getGlobalStats, isUserAdmin, ADMIN_GROUP } from '../services/firestoreService';
-import { Sparkles, BarChart2, Plus, Wand2, Crown, Settings, Book, Users, LogIn, Terminal, Cloud, Globe, Mic, LayoutGrid, HardDrive, AlertCircle, Gift, CreditCard, Languages, MousePointer2, Rocket, Shield, LogOut, ShieldCheck, Lock, Activity, UserCircle, Github } from 'lucide-react';
+import { Sparkles, BarChart2, Plus, Wand2, Crown, Settings, Book, Users, LogIn, Terminal, Cloud, Globe, Mic, LayoutGrid, HardDrive, AlertCircle, Gift, CreditCard, Languages, MousePointer2, Rocket, Shield, LogOut, ShieldCheck, Lock, Activity, UserCircle, Github, BookOpen, BookText } from 'lucide-react';
 import { VOICES } from '../utils/initialData';
 import { signOut } from '../services/authService';
 
@@ -20,7 +20,7 @@ interface StudioMenuProps {
   setIsSyncModalOpen: (open: boolean) => void;
   setIsSettingsModalOpen: (open: boolean) => void;
   onOpenUserGuide: () => void;
-  onNavigate: (view: string) => void;
+  onNavigate: (view: string, params?: Record<string, string>) => void;
   onOpenPrivacy: () => void;
   t: any;
   className?: string;
@@ -89,6 +89,30 @@ export const StudioMenu: React.FC<StudioMenuProps> = ({
          <div className="p-2 space-y-1 flex-1">
             <button onClick={() => { onUpgradeClick(); setIsUserMenuOpen(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-white hover:bg-slate-800 rounded-lg transition-colors bg-gradient-to-r from-indigo-900/20 to-purple-900/20 border border-indigo-500/30 mb-2">
                <div className="p-1.5 bg-amber-500 text-white rounded-md shadow-lg"><Crown size={14} fill="currentColor"/></div><span className="font-bold text-amber-200">Upgrade Membership</span>
+            </button>
+
+            <button 
+                onClick={() => { onNavigate('mission'); setIsUserMenuOpen(false); }} 
+                className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-indigo-600/20 rounded-lg transition-colors group"
+            >
+               <div className="p-1.5 bg-slate-800 text-slate-400 rounded-md group-hover:text-indigo-400"><Rocket size={16}/></div>
+               <span className="font-bold">Vision</span>
+            </button>
+
+            <button 
+                onClick={() => { onNavigate('story'); setIsUserMenuOpen(false); }} 
+                className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-indigo-600/20 rounded-lg transition-colors group"
+            >
+               <div className="p-1.5 bg-slate-800 text-slate-400 rounded-md group-hover:text-indigo-400"><BookOpen size={16}/></div>
+               <span className="font-bold">Story</span>
+            </button>
+
+            <button 
+                onClick={() => { onNavigate('book_studio', { id: 'platform-core' }); setIsUserMenuOpen(false); }} 
+                className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-slate-300 hover:text-white hover:bg-indigo-600/20 rounded-lg transition-colors group"
+            >
+               <div className="p-1.5 bg-slate-800 text-slate-400 rounded-md group-hover:text-indigo-400"><BookText size={16}/></div>
+               <span className="font-bold">Tech Manifest</span>
             </button>
 
             <button 

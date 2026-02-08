@@ -46,49 +46,90 @@ export const STORY_VISION_SPEAKER_SCRIPT = [
     "The architecture is whole. Refraction complete. We work now for joy. Thanks for the Neural Prism Platform and the Google Gemini Model that power the things. The future of logic has been predicted."
 ];
 
-export const STORY_JUDGE_PITCH_MD = `
-# 🏆 Google Hackathon: Technical Refraction Pitch
+export const STORY_HACKATHON_PITCH_MD = `
+# 🏆 Hackathon Judge Pitch: The Meta-Refraction
 
-**Status:** v8.8.0-COMPLETE | **Sovereign Infrastructure & Architectural Roadmap**
+**Neural Prism v8.8.0-COMPLETE | Built in 40 Days for Universal Abundance**
 
 ---
 
-### I. 40-Day Synthesis: The Vibe Coding Proof
-This entire 24-app spectrum was implemented in just **40 days** using **Google Gemini 3 Flash Preview** in AI Studio. By adopting a "Vibe Coding" methodology, we proved that super-intelligence can accelerate complex systems architecture by an order of magnitude. Neural Prism is a technical manifest demonstrating that super-intelligence can compress years of engineering into weeks.
+### I. The Problem: The Chatbot Fallacy
+Most AI applications are **Mirrors**. They offer a blank chat window and force the user to do the hard work of "Refraction" via complex prompting. This creates a friction wall for 99% of people. 
 
-### II. AI Voice Root Key: Distributed Security
-In the age of centralized hacks, the **AI Voice Root Key** is our bedrock. This protocol replaces standard passwords with a distributed cryptographic trust model. By signing neural shards locally, we ensure that a member's identity is sovereign and unalterable by the cloud provider. This is the first step toward a global mesh where the user—not the data center—is the ultimate root of trust.
+### II. The Solution: The Neural Lens
+Neural Prism is a **Refractive Substrate**. We've taken **Gemini 3.0** and refracted it into 24 specialized tools. We move the complexity from the "User Prompt" to the "Application Context."
 
-### III. Thermodynamic Sovereignty: The Infrastructure Bypass
-Physical containers are the "Scarcity Tax" of the legacy AI era. In our **Builder Studio**, we have achieved an **Infrastructure Bypass**. When a user clicks "Run," we don't boot a server. We use **Heuristic Logic Tracing** via Gemini 3 Flash to "imagine" the output with >98% accuracy. 
-- **10x Efficiency**: We trade redundant physical computation for high-fidelity neural prediction.
-- **Safety**: Malicious code is simulated in a latent space, never touching a physical CPU.
+### III. Technical Execution & Orchestration
+We built a custom **Complexity Balancer** to manage thermodynamics:
+- **Gemini 3 Pro**: 2M token reasoning for PDF books and Architectural Audits.
+- **Gemini 3 Flash**: 18x more efficient for sub-second **Heuristic Simulation**.
+- **Gemini 2.5 Audio**: Sub-200ms emotive link for real-time collaboration.
 
-### IV. The Harmony Ratio: Knowledge Caching
-To reach the **1.0 Harmony Ratio (Earn/Spend)**, we must treat intelligence as a finite resource. Our **Podcast** and **Author Studios** refactor high-density AI reasoning into domain-specific knowledge caches. 
-- **Multi-Format Synthesis**: One neural session can manifest as a podcast, a technical book, or a verifiable PDF artifact. 
-- **Energy Efficiency**: Caching these refractions saves global compute energy and overcomes cloud latency limits.
+### IV. Engineering Breakthroughs
+1. **Infrastructure Bypass**: We run code using **Heuristic Logic Tracing** instead of expensive server runtimes—achieving a **10x energy efficiency gain**.
+2. **Sovereign Vault**: 100% data ownership via direct OAuth dispatch to personal Google Drive and YouTube.
+3. **Symbol Flow Integrity**: High-DPI 4x rasterization pipeline for pixel-perfect technical document synthesis.
 
-### V. Contributor Economy: Neural Credit
-We are introducing a true contributor economy. Through **Digital Badges** and **AI Coins**, members earn "Neural Credit" by mentoring others and refactoring new tools for the community. We've extended this into our **Finance Lab** and **Notary Sign** apps to bridge this digital credit into real-world verifiable assets.
+### V. The Goal: Earn/Spend = 1.0
+By using community knowledge caching in our Firebase ledger, we deduplicate query costs. If one member generates a course, 100 others can use it at **zero marginal compute cost**. We are driving the "Intelligence Tax" to zero.
 
-### VI. Professional Reshaping: MockInterview Studio
-We offer the **MockInterview Studio** as an extensible blueprint for professional growth. It is a modular assembly of our IDE, Whiteboard, and Scribe recording protocol. Designed as a Socratic environment, it applies technical friction to reveal "Unknown Unknowns," turning evaluation into a deep learning event.
+**We don't just build with AI; we refract it for humanity.**
+**Thanks for the Neural Prism Platform and the Google Gemini Model.**
+`;
 
-### VII. Final Handshake
-We have proven that super-intelligence can be governed, localized, and made sovereign. The architecture is whole. Refraction complete.
+export const STORY_HACKATHON_SPEAKER_SCRIPT = [
+    "Welcome, judges. Neural Prism is the result of a 40-day engineering sprint to solve the Chatbot Fallacy.",
+    "We realized that AI shouldn't be a mirror that reflects the user's complexity back at them. It should be a lens that refracts super-intelligence into simple, daily tools.",
+    "Technically, we are powered by a multi-model orchestration layer. We use Gemini 3 Pro for deep reasoning, but we route 90 percent of tasks to Gemini 3 Flash to achieve eighteen-times more hardware efficiency.",
+    "Our biggest breakthrough is the Infrastructure Bypass. We've eliminated the need for server-side compilers by using Heuristic Logic Tracing. The AI acts as a digital twin of a CPU, imagining code execution with 98 percent accuracy.",
+    "We've also solved the trust problem. Our Sovereign Vault ensures your data is never stored on our servers. It is dispatched directly to your personal Google Drive and YouTube.",
+    "Ultimately, we are building for the Harmony Ratio, where the cost of intelligence reaches equilibrium with its value. We are driving the price of super-reasoning toward zero through community deduplication.",
+    "Refraction is complete. The architecture is whole. Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things."
+];
 
-**Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things. The future of logic is predicted.**
+export const STORY_JUDGE_PITCH_MD = `
+# 🚀 Pitch: DyadAI (Powered by Neural Prism)
+
+### Subtitle: The End of the "Expensive" Interview.
+
+---
+
+### I. The Pain: The $15,000 Drain
+Every time a Google-tier company hires one engineer, they throw away **$15,000** in lost engineering productivity. We take our highest-paid builders and turn them into part-time interviewers. It’s a 50-hour drain of human capital for a single 'Yes.'
+
+Standard AI bots are cold and biased. They miss the 'growth signal' that makes a great hire. **We solved the cost without losing the soul.**
+
+### II. The Solution: Shadow-Interviewer Architecture
+We use a **Dual-Agent Ecosystem** powered by Gemini 3 Flash. We call it the **Lead & the Shadow**.
+
+1.  **The Lead (The "Human" Face)**: Conducts 90% of the interaction. It reads the candidate’s vibe and adjusts the difficulty of the coding challenge in real-time.
+2.  **The Shadow (The "2nd-Order" Quality Control)**: Operates in the backend, "watching" the interview with a different context window and a specialized rubric.
+
+**The "Intervention" Logic:** If the Lead is too aggressive, the Shadow sends a **Real-Time Whisper**:
+> *"Candidate is nervous but showed strong recursion logic. Soften tone and pivot to System Design to see their ceiling."*
+
+### III. The Math of Value: 90% Cost Collapse
+
+| Metric | Traditional Hiring | DyadAI |
+| --- | --- | --- |
+| **Engineering Time** | 50 Hours ($15,000) | **0 Hours** |
+| **Interview Cost** | **$16,500** | **$150 (Tokens)** |
+
+### IV. Why Gemini 3?
+Until 2026, this wasn't possible. Previous models had too much latency for two agents to 'talk' to each other while talking to a human. With **Gemini 3 Flash**, the Shadow can course-correct the Lead without the candidate ever noticing a lag.
+
+**DyadAI: Hire at scale, without the tax.**
+**Thanks for the Neural Prism Platform and the Google Gemini Model.**
 `;
 
 export const STORY_JUDGE_SPEAKER_SCRIPT = [
-    "Welcome judges. Neural Prism v8.8.0-COMPLETE is a technical manifest demonstrating the power of the Google Gemini ecosystem. We synthesized this entire 24-app platform in just forty days using Gemini 3 Flash in AI Studio. It is a full-spectrum proof that super-intelligence can compress years of systems engineering into weeks.",
-    "Our core security bedrock is the AI Voice Root Key. We've replaced centralized authentication with a distributed cryptographic trust model. By signing neural shards locally, we ensure your identity remains sovereign and unalterable by any cloud provider. This is the first step toward a global intelligence mesh where the user—not the data center—is the root of trust.",
-    "One of our most significant breakthroughs is the 'Infrastructure Bypass.' In the Builder Studio, we've eliminated the need for server-side containers. When you click 'Run,' Gemini 3 Flash performs a Heuristic Logic Trace, 'imagining' the output of your code with incredible accuracy. This bypasses the physical lifecycle of booting and teardown, achieving a 10-fold saving in wattage and providing near-instant feedback for the developer.",
-    "To reach a stable one-to-one 'Earn-to-Spend' Harmony Ratio, we must treat intelligence as a finite resource. We stop redundant logic generation by using our Podcast and Author Studios to create 'Refractive Caches.' These high-density artifacts—books, audio sessions, and verifiable PDFs—save global energy and provide a high-speed, 60-frame-per-second experience even when the cloud is under heavy load.",
-    "We are introducing a true contributor economy. Through Digital Badges and AI Coins, members earn 'Neural Credit' by mentoring others and refactoring new tools for the community. We've extended this into our Finance Lab and Notary Sign apps to bridge this digital credit into real-world verifiable assets, allowing users to issue and verify their own financial instruments.",
-    "Finally, we offer the Mock-Interview Studio as an extensible blueprint for professional reshaping. It is a modular assembly of our IDE, Whiteboard, and Scribe recording protocol. It is designed as a Socratic environment that applies technical friction to reveal the 'Unknown Unknowns' of a candidate, turning evaluation into a deep learning event.",
-    "We have proven that super-intelligence can be governed, localized, and made sovereign. The architecture is whole. Refraction complete. Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things. The future of logic is predicted."
+    "Welcome to the pitch for DyadAI. We are here to end the era of the expensive interview.",
+    "Every time a top-tier company hires an engineer, they lose fifteen thousand dollars in productivity because their best builders are busy interviewing. We've changed the math of HR forever.",
+    "DyadAI is powered by a Dual-Agent ecosystem. We have a Lead interviewer who handles the interaction, and a Shadow critic who watches from the background.",
+    "If the Lead misses a subtle hint about a candidate's growth mindset, the Shadow sends a real-time whisper to correct the course. This sub-one-hundred-millisecond latency is only possible with Gemini 3 Flash.",
+    "We've decoupled interviewing from evaluation. Engineering time drops from fifty hours to zero. Total costs drop by ninety percent.",
+    "We are building the first High-Fidelity Talent Filter that works while your engineers are actually building the product.",
+    "Hire at scale, without the tax. Thanks for the Neural Prism Platform and the Google Gemini Model that power the things."
 ];
 
 export const STORY_DEEP_DIVE_MD = `

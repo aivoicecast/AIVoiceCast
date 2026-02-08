@@ -37,8 +37,8 @@ export async function generateContentUid(topic: string, context: string, lang: s
 /**
  * Deep Atomic Cloner:
  * Manually clones objects to a maximum depth while stripping all non-serializable 
- * and circular references. Hardened for v8.0.0 to prevent circularity errors
- * from minified SDK internal constructors (like 'Y', 'Ka', etc).
+ * and circular references. Hardened for v8.8.0 to prevent circularity errors
+ * from minified SDK internal constructors (specifically 'Y' and 'Ka').
  */
 function atomicClone(val: any, depth: number = 0, maxDepth: number = 5, seen = new WeakSet()): any {
     // 1. Primitives and Null
@@ -51,73 +51,73 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 5, seen = n
         return `[DOM_NODE: ${val.nodeName || 'Unknown'}]`;
     }
 
-    // 3. Depth Guard
-    if (depth >= maxDepth) {
-        return '[Deep Object Truncated]';
-    }
-
-    // 4. Circular Reference Guard
+    // 3. Circular Reference Guard
     if (seen.has(val)) {
         return '[Circular Ref Truncated]';
     }
     
-    // Register as seen for circular check early before any recursive traversal
-    seen.add(val);
+    // Register as seen for circular check early
+    try {
+        seen.add(val);
+    } catch (e) {
+        // Fallback for non-extensible objects
+        return '[Non-Extensible Ref Truncated]';
+    }
+
+    // 4. Depth Guard
+    if (depth >= maxDepth) {
+        return '[Deep Object Truncated]';
+    }
 
     // 5. Specialized Type Normalization
     if (val instanceof Date) return val.toISOString();
-    if (val instanceof Error) return { message: val.message, name: val.name, stack: val.stack?.substring(0, 200) };
+    if (val instanceof Error) return { message: val.message, name: val.name };
     if (val instanceof Blob || val instanceof File) return `[Binary Asset: ${val.constructor.name}(${(val as any).size} bytes)]`;
     if (ArrayBuffer.isView(val)) return `[TypedArray]`;
     if (val instanceof ArrayBuffer) return `[ArrayBuffer]`;
 
     // 6. Prototype Guard (Prune Instances/SDK Internals/DOM)
-    // Only allow plain objects {} and arrays []
-    const toStringTag = Object.prototype.toString.call(val);
-    const isPlainObject = toStringTag === '[object Object]';
-    const isArray = Array.isArray(val);
-
-    // Hardened check for Firebase/GCP minified internal constructors (Y, Ka, Ra, etc.)
     const constructorName = val.constructor?.name;
+    
+    // Hardened check for Firebase/GCP minified internal constructors known to be circular (Y, Ka, Ra, etc)
     const isInternalInstance = constructorName && (
         constructorName === 'Y' || 
         constructorName === 'Ka' || 
         constructorName === 'Ra' || 
         constructorName === 'Fa' ||
-        constructorName === 'Va'
+        constructorName === 'Va' ||
+        constructorName.length < 3 // Very short minified names are high risk for internal circularity
     );
 
-    if ((!isPlainObject && !isArray) || isInternalInstance) {
-        return `[Instance: ${constructorName || 'Unknown'}]`;
+    if (isInternalInstance) {
+        return `[Internal_SDK_Instance: ${constructorName}]`;
     }
 
     // 7. Recursive Clone
-    if (isArray) {
+    if (Array.isArray(val)) {
         return val.map(item => atomicClone(item, depth + 1, maxDepth, seen));
     }
 
     const result: any = {};
     try {
-        // Use Object.keys to only iterate over own enumerable properties
         const keys = Object.keys(val);
         for (const key of keys) {
             const lowerKey = key.toLowerCase();
-            // Blacklisted keys that often cause circularity or contain sensitive/large internal state
+            // Blacklisted keys that frequently close circular loops or point to heavy SDK internals
             if (key.startsWith('_') || 
-                ['auth', 'app', 'firestore', 'storage', 'parent', 'window', 'document', 'navigator', 'location', 'client', 'session', 'src', 'target'].includes(lowerKey)) {
-                result[key] = `[Filtered: ${key}]`;
+                ['auth', 'app', 'firestore', 'storage', 'parent', 'window', 'document', 'navigator', 'location', 'client', 'session', 'src', 'target', 'i', 'v'].includes(lowerKey)) {
+                result[key] = `[Filtered_Property: ${key}]`;
                 continue;
             }
             
-            // Try to get value safely to avoid triggering side-effect getters that might crash
             try {
                 result[key] = atomicClone(val[key], depth + 1, maxDepth, seen);
             } catch (e) {
-                result[key] = '[Access Error]';
+                result[key] = '[Access_Error]';
             }
         }
     } catch (e) {
-        return '[Serialization Access Error]';
+        return '[Serialization_Access_Error]';
     }
     return result;
 }
@@ -132,7 +132,6 @@ export function safeJsonStringify(obj: any, indent: number = 2): string {
         const safeObj = atomicClone(obj);
         return JSON.stringify(safeObj, null, indent);
     } catch (err) {
-        // Final fallback if the clone logic itself fails - MUST return valid JSON string
         return JSON.stringify({
             error: "Unserializable Artifact",
             message: err instanceof Error ? err.message : "Internal Logic Fault"

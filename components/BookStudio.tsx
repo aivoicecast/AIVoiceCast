@@ -19,7 +19,6 @@ import { GoogleGenAI } from "@google/genai";
 
 interface BookStudioProps {
   onBack: () => void;
-  // Added onOpenManual prop to fix type error in App.tsx
   onOpenManual?: () => void;
 }
 
@@ -57,14 +56,9 @@ const STYLE_CONFIGS: Record<BookStyle, {
     }
 };
 
-/**
- * Robust Markdown-to-HTML converter for PDF Capture.
- * Optimized for High legibility (16px) and clean page structure.
- */
 const processMarkdownForPdf = (text: string, currentStyle: BookStyle) => {
     if (!text) return '';
     
-    // Pre-process Math
     let html = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, tex) => {
         try {
             return `<div class="pdf-atomic" style="margin: 15px 0; text-align: center; color: #4338ca;">${(window as any).katex.renderToString(tex, { displayMode: true, throwOnError: false })}</div>`;
@@ -77,7 +71,6 @@ const processMarkdownForPdf = (text: string, currentStyle: BookStyle) => {
         } catch (e) { return tex; }
     });
 
-    // Code Blocks (Atomic)
     const codeBlocks: string[] = [];
     html = html.replace(/```(\w*)\n([\s\S]+?)```/g, (match, lang, code) => {
         const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
@@ -97,7 +90,6 @@ const processMarkdownForPdf = (text: string, currentStyle: BookStyle) => {
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/`([^`]+)`/g, '<code style="background: #f1f5f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; font-size: 0.95em; color: #4338ca;">$1</code>');
 
-    // PROFESSIONAL TYPESETTING: 16px font, generous spacing for readability
     let finalHtml = html.split('\n').map(line => {
         const trimmed = line.trim();
         if (line.startsWith('# ')) return `<h2 class="pdf-atomic" style="font-size: 28px; margin-top: 30px; margin-bottom: 15px; font-weight: 900; color: #000; border-bottom: 4px solid #f1f5f9; padding-bottom: 8px; text-transform: uppercase; letter-spacing: -0.02em;">${line.substring(2)}</h2>`;
@@ -146,6 +138,20 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
     setIsHydrating(false);
   }, []);
 
+  // Neural Prism Deep Link Support
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const bookId = params.get('id');
+    if (bookId && !isHydrating) {
+        const target = allBooks.find(b => b.id === bookId);
+        if (target) {
+            setActiveBook(target);
+            setViewState('studio');
+            setActivePageIndex(0);
+        }
+    }
+  }, [isHydrating, allBooks]);
+
   useEffect(() => { loadBooks(); }, [loadBooks]);
 
   const handleGenerateCover = async (e: React.MouseEvent, book: BookData) => {
@@ -193,6 +199,11 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
       setActivePageIndex(0);
       setViewState('studio');
       setSynthesisSteps([]);
+      
+      // Update URL without reload to support browser back button and deep linking
+      const url = new URL(window.location.href);
+      url.searchParams.set('id', book.id);
+      window.history.pushState({}, '', url.toString());
   };
 
   const handleExportPDF = async () => {
@@ -214,7 +225,6 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
 
       const fontStack = currentStyle === 'academic' ? SERIF_FONT_STACK : (currentStyle === 'brutalist' ? 'monospace' : 'sans-serif');
 
-      // --- PAGE 1: COVER ---
       addStep("Synthesizing Cover...");
       const coverHtml = `
         <div style="width: 800px; height: 1131px; background: #020617; color: white; padding: 140px 100px; font-family: ${style.font}; display: flex; flex-direction: column; justify-content: space-between; border: 40px solid #0f172a; box-sizing: border-box; position: relative;">
@@ -240,7 +250,6 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
       const coverCanvas = await html2canvas(captureHost, { scale: 3, useCORS: true });
       pdf.addImage(coverCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pageWidth, pageHeight);
 
-      // --- PAGES 2 to N: CHAPTERS (ONE CHAPTER PER PAGE) ---
       for (let i = 0; i < activeBook.pages.length; i++) {
           const pageData = activeBook.pages[i];
           addStep(`Printing Sector ${i + 1}: ${pageData.title.substring(0, 20)}...`);
@@ -279,7 +288,6 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
           pdf.addImage(canvas.toDataURL('image/jpeg', 0.94), 'JPEG', 0, 0, pageWidth, pageHeight);
       }
 
-      // --- FINAL PAGE: ARTIFACT (CENTERED) ---
       addStep("Generating Artifact Summary...");
       const barcodeUrl = `https://barcodeapi.org/api/128/NP-${sessionHash}`;
       captureHost.innerHTML = `

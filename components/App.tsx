@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -506,7 +505,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Sovereignty Protocols Active.", "info");
+    addSystemLog("Sovereignty Protocols Active (v8.8.0-COMPLETE).", "info");
     if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
         if (u) { setCurrentUser(u); syncUserProfile(u).catch(console.error); }
@@ -628,7 +627,7 @@ const App: React.FC = () => {
     else setIsPricingModalOpen(true);
   }, [isProMember]);
 
-  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Spectrum...</span></div>;
+  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Spectrum (v8.8.0)...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} onResumeClick={() => handleSetViewState('resume')} />;
 
   return (
@@ -769,7 +768,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v8.0.0-COMPLETE</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v8.8.0-COMPLETE</p></div>
             </div>
         </div>
 

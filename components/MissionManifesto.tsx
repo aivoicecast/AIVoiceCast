@@ -1,7 +1,6 @@
 
 import React from 'react';
-// Added Lock and CheckCircle2 to imports
-import { ArrowLeft, Zap, Heart, Users, BrainCircuit, Rocket, Code, Palette, Wallet, Truck, Box, Sparkles, TrendingUp, ShieldCheck, Target, Globe, Library, Smartphone, Database, Scale, ArrowRight, Star, History, TrendingDown, Layers, Map, Lock, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Zap, Heart, Users, BrainCircuit, Rocket, Code, Palette, Wallet, Truck, Box, Sparkles, TrendingUp, ShieldCheck, Target, Globe, Library, Smartphone, Database, Scale, ArrowRight, Star, History, TrendingDown, Layers, Map, Lock, CheckCircle2, DollarSign, Calendar, Briefcase, Video, BookText } from 'lucide-react';
 
 interface MissionManifestoProps {
   onBack: () => void;
@@ -34,6 +33,44 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
             </p>
           </section>
 
+          {/* The Vertical Collapse Matrix */}
+          <section className="space-y-12">
+            <div className="flex flex-col items-center text-center space-y-4">
+                <h3 className="text-xs font-black text-indigo-400 uppercase tracking-[0.4em]">The Architecture of Convergence</h3>
+                <h2 className="text-4xl font-black text-white italic uppercase tracking-tighter">One Prism, Infinite Tools</h2>
+                <p className="text-slate-500 max-w-xl mx-auto">We have collapsed the fragmented subscription era into a single refractive substrate.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[
+                    { icon: DollarSign, label: "The Bank", sub: "AIVoiceCoin Ledger", color: "text-amber-400" },
+                    { icon: Briefcase, label: "LinkedIn", sub: "Sovereign technical identity", color: "text-blue-400" },
+                    { icon: Calendar, label: "Calendly", sub: "Neural handshake scheduling", color: "text-emerald-400" },
+                    { icon: Users, label: "Mentorship", sub: "Human expert matching", color: "text-purple-400" },
+                    { icon: Code, label: "LeetCode", sub: "Infrastructure-bypass IDE", color: "text-indigo-400" },
+                    { icon: BookText, label: "Scripture", sub: "Bilingual knowledge archive", color: "text-orange-400" }
+                ].map((vertical, i) => (
+                    <div key={i} className="bg-slate-900/50 border border-slate-800 p-6 rounded-3xl flex items-center gap-4 group hover:border-indigo-500/30 transition-all">
+                        <div className={`p-3 rounded-2xl bg-slate-950 border border-slate-800 ${vertical.color} group-hover:scale-110 transition-transform`}>
+                            <vertical.icon size={24}/>
+                        </div>
+                        <div>
+                            <h4 className="font-black text-white uppercase tracking-tight">{vertical.label}</h4>
+                            <p className="text-[10px] text-slate-500 uppercase font-bold">{vertical.sub}</p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="bg-indigo-600 rounded-[2.5rem] p-10 text-center shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-24 bg-white/10 blur-[100px] rounded-full"></div>
+                <div className="relative z-10 space-y-4">
+                    <h4 className="text-3xl font-black text-white italic tracking-tighter uppercase">The Creator Velocity</h4>
+                    <p className="text-xl text-indigo-100 font-medium">Members contribute at a rate of <span className="text-white font-black underline decoration-indigo-400 underline-offset-8">one new skill, agent, or tool per week.</span></p>
+                </div>
+            </div>
+          </section>
+
           {/* Comparative Roadmap */}
           <section className="space-y-12">
             <div className="flex flex-col items-center text-center space-y-4">
@@ -53,12 +90,12 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
                     </div>
                     <div>
                         <h4 className="text-4xl font-black text-white italic tracking-tighter uppercase">Scarcity Era</h4>
-                        <p className="text-indigo-400 font-black text-xs uppercase mt-2">$300/yr Subscription</p>
+                        <p className="text-indigo-400 font-black text-xs uppercase mt-2">$300/yr Subscriptions</p>
                     </div>
                     <ul className="space-y-4 text-sm text-slate-400 font-medium">
                         <li className="flex items-center gap-2"><Lock size={14} className="text-slate-600"/> High Marginal Cost per Logic</li>
                         <li className="flex items-center gap-2"><Lock size={14} className="text-slate-600"/> Data-Center Cluster Dependency</li>
-                        <li className="flex items-center gap-2"><Lock size={14} className="text-slate-600"/> 40-Hour Scarcity Labor Cycle</li>
+                        <li className="flex items-center gap-2"><Lock size={14} className="text-slate-600"/> Fragmented App Verticals</li>
                         <li className="flex items-center gap-2"><Lock size={14} className="text-slate-600"/> Fragile Centralized Privacy</li>
                     </ul>
                 </div>
@@ -74,9 +111,9 @@ export const MissionManifesto: React.FC<MissionManifestoProps> = ({ onBack }) =>
                         <p className="text-indigo-200 font-black text-xs uppercase mt-2">$0 Cost Intelligence</p>
                     </div>
                     <ul className="space-y-4 text-sm text-white/80 font-medium relative z-10">
-                        <li className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-300"/> 100x Cheaper Silicon Hubs</li>
-                        <li className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-300"/> Local Sovereignty for 10B Humans</li>
-                        <li className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-300"/> 100x Productivity Dividend</li>
+                        <li className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-300"/> 100x Efficiency via Community Cache</li>
+                        <li className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-300"/> 18x Hardware Capacity (Gemini Flash)</li>
+                        <li className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-300"/> Unified Sovereign App Substrate</li>
                         <li className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-300"/> Post-Scarcity Social Fabric</li>
                     </ul>
                 </div>

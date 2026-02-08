@@ -1,10 +1,11 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { 
   Terminal, Code, Video, LayoutGrid, FileText, Wallet, MessageSquare, 
   Briefcase, Truck, AppWindow, Book, PenTool, Rss, Gift, Rocket, BookOpen, 
   Activity, Scroll, GraduationCap, Cpu, Star, Coins, Zap, ShieldCheck,
   Globe, Users, Clock, Sparkles, ChevronRight, Crown, Lock, Radio,
-  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard, Info, TrendingUp, BarChart3, Binary, Github, Scale, Thermometer, Shield, Play
+  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard, Info, TrendingUp, BarChart3, Binary, Github, Scale, Thermometer, Shield, Play, Layout, UserCircle, Target
 } from 'lucide-react';
 import { ViewID, UserProfile, PlatformMetrics } from '../types';
 import { Visualizer } from './Visualizer';
@@ -39,8 +40,12 @@ const UI_TEXT = {
     metricsEfficiency: "Distributed Index",
     thermoFloor: "Cost-to-Zero Floor",
     judgeHeroTitle: "🏆 Hackathon Auditor's Portal",
-    judgeHeroDesc: "Launch the v8.0.0-COMPLETE Technical Audit for an interactive project evaluation.",
+    judgeHeroDesc: "Launch the v8.8.0-COMPLETE Technical Audit for an interactive project evaluation.",
     judgeAction: "Run Audit",
+    pitchAction: "Startup Pitch",
+    judgePitchAction: "Judge Pitch",
+    visionAction: "Vision",
+    techBookAction: "Tech Book",
     featuredTitle: "Featured Lab",
     featuredDesc: "Socratic Interrogation Studio"
   },
@@ -64,8 +69,12 @@ const UI_TEXT = {
     metricsEfficiency: "分布式指数",
     thermoFloor: "成本归零底线",
     judgeHeroTitle: "🏆 参赛审计门户",
-    judgeHeroDesc: "启动 v8.0.0-COMPLETE 技术审计，进行交互式项目评估。",
+    judgeHeroDesc: "启动 v8.8.0-COMPLETE 技术审计，进行交互式项目评估。",
     judgeAction: "运行审计",
+    pitchAction: "启动推介",
+    judgePitchAction: "评委推介",
+    visionAction: "愿景",
+    techBookAction: "技术书籍",
     featuredTitle: "精选实验室",
     featuredDesc: "苏格拉底式面试工作室"
   }
@@ -152,7 +161,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
       apps: [
         { id: 'scribe_studio', label: 'Neural Scribe', sub: 'Audio to MD', description: 'Minimalist real-time audio-to-markdown transcription.', icon: Disc, color: 'text-red-500', bg: 'bg-red-900/30', restricted: true },
         { id: 'chat', label: 'Team Space', sub: 'Neural Messaging', description: 'Secure real-time workspace messaging and code sharing.', icon: MessageSquare, color: 'text-blue-400', bg: 'bg-blue-900/30', restricted: true },
-        { id: 'blog', label: 'Voice Feed', sub: 'Community Blog', description: 'Publish technical insights to the community stream.', icon: Rss, color: 'text-orange-400', bg: 'bg-orange-900/30', restricted: true },
+        { id: 'blog', label: 'Voice Feed', sub: 'Community Blog', description: 'Publish technical insights to the community stream.', icon: Rss, color: 'text-orange-400', bg: 'bg-blue-900/30', restricted: true },
         { id: 'recordings', label: 'Recordings', sub: 'Archive', description: 'Sovereign vault for video logs and neural artifacts.', icon: Video, color: 'text-red-400', bg: 'bg-red-900/30', restricted: true },
         { id: 'docs', label: 'Paperwork', sub: 'Docs', description: 'Professional specification registry for managing design docs.', icon: FileText, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true },
         { id: 'calendar', label: 'Schedule', sub: 'Activity', description: 'Scheduler for bookings and platform activities.', icon: Calendar, color: 'text-cyan-400', bg: 'bg-cyan-900/30', restricted: true },
@@ -248,18 +257,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
             <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
                 <div className="space-y-4 text-center md:text-left flex-1">
                     <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded-full text-emerald-400 text-[9px] font-black uppercase tracking-widest">
-                        <Shield size={10} fill="currentColor"/> v8.0.0-COMPLETE Manifest
+                        <Shield size={10} fill="currentColor"/> v8.8.0-COMPLETE Manifest
                     </div>
                     <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">{t.judgeHeroTitle}</h2>
                     <p className="text-slate-400 text-lg leading-relaxed font-medium">{t.judgeHeroDesc}</p>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-4 shrink-0">
-                    <button onClick={() => onNavigate('podcast_detail', { channelId: 'judge-deep-dive' })} className="px-10 py-5 bg-white text-slate-900 font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3">
-                        {/* Fix: Play icon component was used but not imported */}
-                        <Play size={20} fill="currentColor"/> {t.judgeAction}
+                <div className="flex flex-wrap gap-4 shrink-0 justify-center">
+                    <button onClick={() => onNavigate('mission')} className="px-6 py-5 bg-indigo-900/40 hover:bg-indigo-900/60 text-indigo-100 font-black uppercase tracking-[0.2em] rounded-2xl border border-indigo-500/30 shadow-xl transition-all hover:scale-105 active:scale-95 flex items-center justify-center gap-3">
+                        <Rocket size={20} className="text-indigo-400"/> {t.visionAction}
                     </button>
-                    <button onClick={() => onNavigate('book_studio')} className="px-10 py-5 bg-slate-950 text-white font-black uppercase tracking-[0.2em] rounded-2xl border border-white/10 shadow-xl transition-all hover:bg-slate-800 active:scale-95 flex items-center justify-center gap-3">
-                        <BookOpen size={20}/> Technical Book
+                    <button onClick={() => onNavigate('story')} className="px-8 py-5 bg-red-600 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl transition-all hover:bg-red-500 active:scale-95 flex items-center justify-center gap-3">
+                        <Target size={20} fill="currentColor"/> {t.judgePitchAction}
+                    </button>
+                    <button onClick={() => onNavigate('book_studio', { id: 'platform-core' })} className="px-8 py-5 bg-slate-800 text-white font-black uppercase tracking-[0.2em] rounded-2xl border border-white/10 shadow-xl transition-all hover:bg-slate-700 active:scale-95 flex items-center justify-center gap-3">
+                        <BookText size={20} className="text-indigo-400"/> {t.techBookAction}
+                    </button>
+                    <button onClick={() => onNavigate('podcast_detail', { channelId: 'judge-deep-dive' })} className="px-8 py-5 bg-indigo-600 text-white font-black uppercase tracking-[0.2em] rounded-2xl border border-white/10 shadow-xl transition-all hover:bg-indigo-500 active:scale-95 flex items-center justify-center gap-3">
+                        <Play size={20} fill="currentColor"/> {t.judgeAction}
                     </button>
                 </div>
             </div>
@@ -333,17 +347,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
             </section>
         ))}
 
-        <footer className="pt-20 flex flex-col items-center gap-8 border-t border-slate-900/50">
+        <footer className="pt-20 flex flex-col items-center gap-8 border-t border-slate-800/50">
             <div className="flex flex-wrap justify-center items-center gap-12 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                <button onClick={() => onNavigate('mission')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
+                    <Rocket size={16}/> Vision
+                </button>
+                <button onClick={() => onNavigate('story')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
+                    <BookOpen size={16}/> Story
+                </button>
+                <button onClick={() => onNavigate('resume')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
+                    <UserCircle size={16}/> Architect
+                </button>
                 <a href="https://github.com/aivoicecast/AIVoiceCast" target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
-                    <Github size={16}/> Open Source
+                    <Github size={16}/> Source
                 </a>
-                <div className="flex items-center gap-2">
-                    <Scale size={16}/> MIT License
-                </div>
-                <div className="flex items-center gap-2">
-                    <Sparkles size={16}/> Refracted by Neural Prism v8.0.0
-                </div>
+                <button onClick={() => onNavigate('privacy')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
+                    <Shield size={16}/> Privacy
+                </button>
             </div>
             <div className="text-center space-y-2">
                 <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.5em]">Sovereign 2036 Hub • 10:1 Resident/Hub Ratio Enabled</p>

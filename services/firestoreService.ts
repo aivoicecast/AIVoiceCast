@@ -59,31 +59,25 @@ export const AI_COSTS = {
 
 /**
  * Robust Data Sanitizer for Firestore:
- * Uses safeJsonStringify to prune circular references and then parses back 
- * to a clean object. This is the most reliable way to handle minified SDK 
- * internal objects (constructors 'Y', 'Ka') that cause stringification errors.
+ * Prunes circular references and internal SDK structures before write.
  */
 export const sanitizeData = (data: any): any => {
     if (data === null || data === undefined) return null;
-    // For non-objects, no sanitization needed
     if (typeof data !== 'object') return data;
     
     try {
-        // We use the hardened utility to break circularity and prune instances
+        // Use the hardened safeJsonStringify to strip circularity
         const json = safeJsonStringify(data);
         const parsed = JSON.parse(json);
         
-        // Ensure we actually return an object for Firestore set/add methods,
-        // as setDoc/addDoc require a plain JavaScript object.
+        // Ensure we actually return an object for Firestore set/add methods
         if (typeof parsed !== 'object' || parsed === null) {
             return { __refracted_value: String(parsed) };
         }
         
         return parsed;
     } catch (e) {
-        console.warn("[Firestore] Sanitization fault, engaging emergency recovery:", e);
-        // Emergency fallback: return a shallow copy of known safe primitives
-        // to prevent total session failure while stripping the circular culprit.
+        console.warn("[Firestore] Sanitization fault:", e);
         return { 
             __sanitization_error: String(e),
             __serialized_at: Date.now()
@@ -218,7 +212,6 @@ export function subscribeToChannelStats(id: string, callback: (stats: any) => vo
 
 /**
  * Ensures a channel document exists in Firestore before updating it.
- * This handles "Lazy Hydration" for handcrafted channels.
  */
 async function ensureChannelExists(id: string) {
     if (!db) return;
@@ -240,7 +233,6 @@ export async function shareChannel(id: string) {
 export async function voteChannel(id: string, type: 'like' | 'dislike') {
     if (!db) return;
     
-    // Ensure base channel exists first
     await ensureChannelExists(id);
 
     const statsRef = doc(db, 'channel_stats', id);
@@ -248,7 +240,6 @@ export async function voteChannel(id: string, type: 'like' | 'dislike') {
     
     const delta = type === 'like' ? 1 : -1;
     
-    // Atomic update for both documents
     await setDoc(statsRef, { likes: increment(delta) }, { merge: true });
     await updateDoc(channelRef, { likes: increment(delta) });
 }
@@ -256,13 +247,11 @@ export async function voteChannel(id: string, type: 'like' | 'dislike') {
 export async function addCommentToChannel(id: string, comment: Comment) {
     if (!db) return;
     
-    // Ensure base channel exists first
     await ensureChannelExists(id);
 
     const channelRef = doc(db, CHANNELS_COLLECTION, id);
     const statsRef = doc(db, 'channel_stats', id);
 
-    // Run as transaction to ensure both counts stay in sync
     await runTransaction(db, async (transaction) => {
         transaction.update(channelRef, {
             comments: arrayUnion(sanitizeData(comment))
@@ -316,9 +305,6 @@ export async function seedDatabase(): Promise<void> {
 }
 
 // --- COINS & TRANSACTIONS ---
-/**
- * Initiates a mediated coin transfer.
- */
 export async function transferCoins(toUid: string, toName: string, toEmail: string, amount: number, memo: string) {
     if (!db || !auth.currentUser) return;
     const fromUid = auth.currentUser.uid;
@@ -724,17 +710,14 @@ export async function ensureUserBlog(user: any): Promise<Blog> {
 export async function getCommunityPosts(): Promise<BlogPost[]> {
     if (!db) return [];
     try {
-        // PRIMARY HANDSHAKE: Requires composite index in Firebase Console
         const q = query(collection(db, BLOG_POSTS_COLLECTION), where('status', '==', 'published'), orderBy('publishedAt', 'desc'), limit(50));
         const snap = await getDocs(q);
         return snap.docs.map(d => d.data() as BlogPost);
     } catch (e) {
         console.warn("[Firestore] Index likely missing. Falling back to simple query and client-side sort.", e);
-        // FALLBACK HANDSHAKE: No ordering (avoids index requirement)
         const qSimple = query(collection(db, BLOG_POSTS_COLLECTION), where('status', '==', 'published'), limit(50));
         const snap = await getDocs(qSimple);
         const data = snap.docs.map(d => d.data() as BlogPost);
-        // Sort in memory to preserve user experience
         return data.sort((a, b) => (b.publishedAt || b.createdAt) - (a.publishedAt || a.createdAt));
     }
 }
