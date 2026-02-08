@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, MessageCircle, FileText, Loader2, Edit2, Save, Sparkles, Cloud, Trash2, RefreshCw, Info, Lock, Globe, Users, ChevronDown, Check, Download, Image as ImageIcon, FileCode, Type, Play, Pause, Speaker, Volume2 } from 'lucide-react';
 import { CommunityDiscussion, Group, ChannelVisibility, UserProfile, TtsProvider } from '../types';
 import { getDiscussionById, subscribeToDiscussion, saveDiscussionDesignDoc, saveDiscussion, deleteDiscussion, updateDiscussionVisibility, getUserGroups, getUserProfile, isUserAdmin } from '../services/firestoreService';
-import { generateDesignDocFromTranscript, generateDesignDocFromTranscript as generateDoc } from '../services/lectureGenerator';
+// Fix: removed redundant aliased import of generateDesignDocFromTranscript
+import { generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { MarkdownView } from './MarkdownView';
 import { connectGoogleDrive } from '../services/authService';
 import { createGoogleDoc } from '../services/googleDriveService';
@@ -101,7 +102,7 @@ export const DiscussionModal: React.FC<DiscussionModalProps> = ({
         stopAudio();
         return;
     }
-    const contentToRead = viewMode === 'doc' ? editedDocContent : activeDiscussion?.transcript?.map(t => `${t.role}: ${t.text}`).join('\n');
+    const contentToRead = viewMode === 'doc' ? editedDocContent : activeDiscussion?.transcript?.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n');
     if (!contentToRead) return;
 
     const MY_TOKEN = `DocReader:${discussionId}`;

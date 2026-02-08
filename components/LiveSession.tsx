@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, GeneratedLecture, CommunityDiscussion, RecordingSession, Attachment, UserProfile, ViewID } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -9,7 +10,7 @@ import { ensureCodeStudioFolder, uploadToDrive, uploadToDriveWithProgress } from
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
 // Fix: removed non-existent updateDiscussion from imports
 import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, syncUserProfile, getUserProfile, uploadFileToStorage } from '../services/firestoreService';
-import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
+// Fix: removed unused imports summarizeDiscussionAsSection and generateDesignDocFromTranscript
 import { FunctionDeclaration, Type } from '@google/genai';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext, stopAllPlatformAudio } from '../utils/audioUtils';
 import { Visualizer } from './Visualizer';
@@ -546,7 +547,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       {hasStarted && propRecordCamera && (
         <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
             <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
-                <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
+                <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
                 <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-indigo-500/50 overflow-hidden shadow-2xl">
                     <video 
                       ref={mirrorVideoRef}

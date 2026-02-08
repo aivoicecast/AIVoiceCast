@@ -6,17 +6,18 @@ import {
   Sparkles, Play, Pause, Volume2, 
   RefreshCw, X, AlertTriangle, PlayCircle, 
   CheckCircle, Gauge, Speaker, Zap, BrainCircuit, SkipBack, SkipForward,
-  Database, Languages, FileDown, ShieldCheck, Printer, Bookmark, CloudDownload, CloudCheck, HardDrive, BookText, CloudUpload, Archive, FileText, FileOutput, QrCode, Activity, Terminal, Check, Trash2
+  Database, Languages, FileDown, ShieldCheck, Printer, Bookmark, CloudDownload, CloudCheck, HardDrive, BookText, CloudUpload, Archive, FileText, FileOutput, QrCode, Activity, Terminal, Check, Trash2, Network, Target, Shield, Ghost, BarChart3, Download
 } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { synthesizeSpeech, speakSystem } from '../services/tts';
+import { getCloudCachedLecture } from '../services/firestoreService';
 import { getCachedLectureScript, cacheLectureScript, deleteDebugEntry } from '../utils/db';
 import { getGlobalAudioContext, registerAudioOwner, warmUpAudioContext, connectOutput, syncPrimeSpeech, SPEECH_REGISTRY } from '../utils/audioUtils';
-import { getCloudCachedLecture, saveCloudCachedLecture, updateUserProfile } from '../services/firestoreService';
 import { Visualizer } from './Visualizer';
 import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
-import { generateSecureId, generateContentUid } from '../utils/idUtils';
+import { generateContentUid } from '../utils/idUtils';
 import { synthesizePodcastBook } from '../utils/bookSynthesis';
+import { MarkdownView } from './MarkdownView';
 
 interface PodcastDetailProps {
   channel: Channel;
@@ -30,6 +31,7 @@ interface PodcastDetailProps {
 }
 
 type NodeStatus = 'local' | 'cloud' | 'none' | 'checking' | 'static';
+type ContentTab = 'transcript' | 'audit' | 'notes';
 
 export const PodcastDetail: React.FC<PodcastDetailProps> = ({ 
   channel, onBack, onStartLiveSession, language, currentUser, userProfile, onUpdateChannel, isProMember 
@@ -40,8 +42,8 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isSyncingContent, setIsSyncingContent] = useState(false);
-  const [playedSubTopicIds, setPlayedSubTopicIds] = useState<Set<string>>(new Set());
   const [liveVolume, setLiveVolume] = useState(0);
+  const [activeTab, setActiveTab] = useState<ContentTab>('transcript');
   
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({});
   const [currentProvider, setCurrentProvider] = useState<TtsProvider>(userProfile?.preferredTtsProvider || 'system');
@@ -59,12 +61,10 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: text, type } }));
   }, []);
 
-  // Reset error when channel changes
   useEffect(() => {
     setImageError(false);
   }, [channel.id]);
 
-  // Sync provider with user profile changes
   useEffect(() => {
     if (userProfile?.preferredTtsProvider) {
         setCurrentProvider(userProfile.preferredTtsProvider);
@@ -72,10 +72,8 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   }, [userProfile?.preferredTtsProvider]);
 
   const chapters = useMemo(() => {
-      // PRIORITY: Spotlight data for system channels to prevent local cache from hiding new sectors
       const spotlight = SPOTLIGHT_DATA[channel.id];
       if (spotlight && spotlight.curriculum) return spotlight.curriculum;
-      
       if (channel.chapters && channel.chapters.length > 0) return channel.chapters;
       return [];
   }, [channel.id, channel.chapters]);
@@ -126,79 +124,38 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       activeSourcesRef.current.forEach(s => { try { s.stop(); s.disconnect(); } catch(e) {} });
       activeSourcesRef.current.clear();
       if (window.speechSynthesis) window.speechSynthesis.cancel();
-      
-      const activeTopic = activeSubTopicId ? flatCurriculum.find(s => s.id === activeSubTopicId)?.title : 'None';
-      dispatchLog(`[Playback] Stopped (Context: ${context} | Last Node: ${activeTopic})`, 'info');
-  }, [dispatchLog, activeSubTopicId, flatCurriculum]);
+  }, []);
 
   const hydrateLectureLean = useCallback(async (sub: SubTopic, force: boolean = false): Promise<GeneratedLecture | null> => {
       const spotlight = SPOTLIGHT_DATA[channel.id];
       const cacheKey = `lecture_${channel.id}_${sub.id}_${language}`;
       
-      // CONTENT-AWARE SECURITY SCAN: Purge nodes that contain outdated placeholder terms
-      const BANNED_TERMS = /BERT|GPT-4o|Claude|Llama-3|Groq|Placeholder Sector/i;
-      const containsBanned = (text: string) => BANNED_TERMS.test(text);
-
-      // 1. Static Priority (Directly from code/manifest)
       if (spotlight && spotlight.lectures[sub.title]) {
-          dispatchLog(`[Registry] Hydrating "${sub.title}" from STATIC_MANIFEST.`, 'success');
           return spotlight.lectures[sub.title];
       }
 
-      // 2. Force Eviction (Only for dynamic nodes)
-      if (force) {
-          dispatchLog(`[Security] Evicting node "${sub.title}" from local/cloud cache for re-synthesis...`, 'warn');
-          await deleteDebugEntry('lecture_scripts', cacheKey);
-      }
+      if (force) await deleteDebugEntry('lecture_scripts', cacheKey);
       
       try {
-          // 3. Local Cache Verification
           let lecture = force ? null : await getCachedLectureScript(cacheKey);
           
-          if (lecture) {
-              const fullText = lecture.sections.map((s: any) => s.text).join(' ');
-              if (containsBanned(fullText)) {
-                  dispatchLog(`[Security] Stale/Placeholder artifact detected in local vault for "${sub.title}". Purging...`, 'warn');
-                  await deleteDebugEntry('lecture_scripts', cacheKey);
-                  lecture = null;
-              } else {
-                  dispatchLog(`[Registry] Hydrating "${sub.title}" from LOCAL_VAULT. Key: ${cacheKey}`, 'success');
-              }
-          }
-
           if (!lecture) {
-              // 4. Cloud Handshake
               const contentUid = await generateContentUid(sub.title, channel.description, language);
               lecture = force ? null : await getCloudCachedLecture(channel.id, contentUid, language);
               
-              if (lecture) {
-                  const fullText = lecture.sections.map((s: any) => s.text).join(' ');
-                  if (containsBanned(fullText)) {
-                      dispatchLog(`[Security] Stale artifact detected in cloud ledger for "${sub.title}". Forcing re-synthesis...`, 'warn');
-                      lecture = null;
-                  } else {
-                      dispatchLog(`[Registry] Hydrating "${sub.title}" from CLOUD_LEDGER. UID: ${contentUid}`, 'success');
-                  }
-              }
-
               if (!lecture) {
-                  // 5. Final Neural Refraction
-                  dispatchLog(`[Neural Core] No cached artifact for "${sub.title}". Initiating live synthesis...`, 'info');
                   lecture = await generateLectureScript(sub.title, channel.description, language, channel.id, channel.voiceName, force, channel.systemInstruction);
               }
               if (lecture) await cacheLectureScript(cacheKey, lecture);
           }
           return lecture;
       } catch (e) { return null; }
-  }, [channel.id, channel.description, channel.voiceName, channel.systemInstruction, language, dispatchLog]);
+  }, [channel.id, channel.description, channel.voiceName, channel.systemInstruction, language]);
 
   const handleSelectSubTopic = async (sub: SubTopic, shouldStop = true, force: boolean = false) => {
       if (!force && activeSubTopicId === sub.id && activeLecture) return activeLecture;
+      if (shouldStop) stopAllAudio(`Switch Topic`);
       
-      const prevTopic = activeSubTopicId ? flatCurriculum.find(s => s.id === activeSubTopicId)?.title : 'Start';
-      if (shouldStop) stopAllAudio(`Switch Topic: ${prevTopic} -> ${sub.title}`);
-      
-      dispatchLog(`[Registry] Selecting Node: ${sub.title} (ID: ${sub.id})`, 'info');
       setActiveSubTopicId(sub.id);
       setIsSyncingContent(true);
       try {
@@ -211,18 +168,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
           }
       } finally { setIsSyncingContent(false); }
       return null;
-  };
-
-  const handlePurgeNode = async () => {
-      if (!activeSubTopicId) return;
-      const sub = flatCurriculum.find(s => s.id === activeSubTopicId);
-      if (!sub) return;
-      
-      if (confirm(`Permanently purge node "${sub.title}" from local/cloud ledger? This forces immediate neural re-synthesis.`)) {
-          stopAllAudio(`Node Purge: ${sub.title}`);
-          await handleSelectSubTopic(sub, true, true);
-          dispatchLog(`[Purge] Node ${sub.id} destroyed and refracted.`, 'success');
-      }
   };
 
   const handlePlayActiveLecture = async (startIndex = 0) => {
@@ -240,16 +185,14 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
 
         while (currentIndex < flatCurriculum.length && localSession === playbackSessionRef.current) {
             const currentSub = flatCurriculum[currentIndex];
-            const currentLecture: GeneratedLecture | null = await hydrateLectureLean(currentSub);
+            const currentLecture = await hydrateLectureLean(currentSub);
             
             if (!currentLecture) {
-                dispatchLog(`[Engine] Node ${currentSub.title} unreachable. Skipping.`, 'warn');
                 currentIndex++; continue;
             }
 
             setActiveSubTopicId(currentSub.id);
             setActiveLecture(currentLecture);
-            setPlayedSubTopicIds(prev => new Set(prev).add(currentSub.id));
             
             for (let i = startIndex; i < currentLecture.sections.length; i++) {
                 if (localSession !== playbackSessionRef.current || !mountedRef.current) break;
@@ -265,10 +208,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                 } else {
                     setIsBuffering(true);
                     const voice = section.speaker === 'Teacher' ? (channel.voiceName || 'Zephyr') : 'Puck';
-                    const res = await synthesizeSpeech(section.text, voice, ctx, currentProvider, language, {
-                        channelId: channel.id, topicId: currentSub.id, 
-                        nodeId: `node_${channel.id}_${currentSub.id}_${i}_${language}`
-                    });
+                    const res = await synthesizeSpeech(section.text, voice, ctx, currentProvider, language);
                     setIsBuffering(false);
 
                     if (res.buffer && localSession === playbackSessionRef.current) {
@@ -285,9 +225,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                             };
                             source.start(0);
                         });
-                    } else if (localSession === playbackSessionRef.current) {
-                        dispatchLog(`[API Fault] Audio buffer missing for section ${i}. Advancing text.`, 'warn');
-                        await new Promise(r => setTimeout(r, 2000));
                     }
                 }
                 
@@ -298,100 +235,181 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
             if (localSession === playbackSessionRef.current && mountedRef.current) {
                 currentIndex++; 
                 startIndex = 0;
-                syncPrimeSpeech();
-                await warmUpAudioContext(ctx);
                 await new Promise(r => setTimeout(r, 1200));
             } else { break; }
         }
 
         if (localSession === playbackSessionRef.current) {
             setIsPlaying(false);
-            dispatchLog(`[Session] Curriculum refraction complete.`, 'success');
         }
     } catch (e: any) { 
-        dispatchLog(`[Engine Fault] ${e.message}`, 'error'); 
         stopAllAudio('Error Trace'); 
     }
   };
 
-  const handleGenerateBook = async () => {
+  const handleDownloadFullTranscript = async () => {
+    setIsExportingText(true);
+    dispatchLog(`Aggregating full technical corpus for "${channel.title}"...`, 'info');
+    
+    try {
+        let fullMarkdown = `# ${channel.title}\n\n`;
+        fullMarkdown += `**Author:** @${channel.author}\n`;
+        fullMarkdown += `**Description:** ${channel.description}\n\n`;
+        fullMarkdown += `--- \n\n`;
+
+        for (let i = 0; i < chapters.length; i++) {
+            const chapter = chapters[i];
+            fullMarkdown += `## Sector 0${i + 1}: ${chapter.title}\n\n`;
+            
+            for (const sub of chapter.subTopics) {
+                dispatchLog(`Syncing Sector Fragment: ${sub.title}`, 'info');
+                const lecture = await hydrateLectureLean(sub);
+                if (lecture) {
+                    fullMarkdown += `### ${sub.title}\n\n`;
+                    lecture.sections.forEach(s => {
+                        const name = s.speaker === 'Teacher' ? lecture.professorName : lecture.studentName;
+                        fullMarkdown += `**${name}**: ${s.text}\n\n`;
+                    });
+                }
+            }
+            fullMarkdown += `---\n\n`;
+        }
+
+        const blob = new Blob([fullMarkdown], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${channel.title.replace(/\s+/g, '_')}_Complete_Manifest.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        dispatchLog(`Corpus aggregation successful. Artifact dispatched.`, 'success');
+    } catch (e: any) {
+        dispatchLog(`Export interrupted: ${e.message}`, 'error');
+    } finally {
+        setIsExportingText(false);
+    }
+  };
+
+  const handleGenerateBookPdf = async () => {
+    if (isExportingBook) return;
     setIsExportingBook(true);
-    setBookProgress("Initializing Publishing Engine...");
+    setBookProgress("Mapping Full Curriculum...");
     try {
         await synthesizePodcastBook(
-            channel, 
-            chapters, 
-            language, 
-            hydrateLectureLean, 
-            setBookProgress, 
-            dispatchLog
+            channel,
+            chapters, // Pass all chapters for full synthesis
+            language,
+            async (sub) => await hydrateLectureLean(sub),
+            (msg) => setBookProgress(msg),
+            (msg, type) => dispatchLog(msg, type)
         );
-    } catch (e: any) { 
-        dispatchLog(`Book failure: ${e.message}`, 'error'); 
-    } finally { 
-        setIsExportingBook(false); 
-        setBookProgress(""); 
+    } catch (e) {
+        dispatchLog("Book synthesis failed.", "error");
+    } finally {
+        setIsExportingBook(false);
+        setBookProgress("");
     }
   };
 
-  const handleBatchSynthesize = async () => {
-    if (isBatchSynthesizing) return;
-    setIsBatchSynthesizing(true);
-    setBatchProgress({ current: 0, total: flatCurriculum.length });
+  const renderAuditPanel = () => {
+    if (!activeLecture?.audit) return (
+        <div className="flex flex-col items-center justify-center p-20 text-slate-500 opacity-40">
+            <ShieldCheck size={48} className="mb-4" />
+            <p className="text-sm font-black uppercase tracking-widest">Awaiting Verification Shards</p>
+        </div>
+    );
+
+    const audit = activeLecture.audit;
+    const formatScore = (s: number) => (s < 1 ? Math.round(s * 100) : Math.round(s)).toString();
     
-    const shouldForce = confirm("Force re-synthesis of all nodes? This will refresh all content using the latest persona settings.");
+    return (
+        <div className="space-y-10 animate-fade-in pb-20">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] flex flex-col items-center text-center shadow-xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-12 bg-indigo-500/5 blur-3xl rounded-full"></div>
+                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Structural Coherence</span>
+                    <div className="text-6xl font-black text-white italic tracking-tighter">{formatScore(audit.coherenceScore)}<span className="text-xl text-slate-600">%</span></div>
+                    <div className="w-full h-1 bg-slate-800 rounded-full mt-6 overflow-hidden">
+                        <div className="h-full bg-indigo-500" style={{ width: `${formatScore(audit.coherenceScore)}%` }}></div>
+                    </div>
+                </div>
+                <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] flex flex-col items-center text-center shadow-xl">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Logical Drift Risk</span>
+                    <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${
+                        audit.driftRisk === 'Low' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 
+                        audit.driftRisk === 'Medium' ? 'bg-amber-950/20 text-amber-400 border-amber-500/30' : 'bg-red-950/20 text-red-400 border-red-500/30'
+                    }`}>{audit.driftRisk} Risk</div>
+                    <p className="text-[9px] text-slate-600 mt-4 leading-relaxed font-bold uppercase">Consistency: Outline → Conversation → PDF</p>
+                </div>
+                <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] flex flex-col items-center text-center shadow-xl">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Adversarial Robustness</span>
+                    <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${
+                        audit.robustness === 'High' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 
+                        audit.robustness === 'Medium' ? 'bg-amber-950/20 text-amber-400 border-amber-500/30' : 'bg-red-950/20 text-red-400 border-red-500/30'
+                    }`}>{audit.robustness} Defense</div>
+                    <p className="text-[9px] text-slate-600 mt-4 leading-relaxed font-bold uppercase">Boundary condition stability verified.</p>
+                </div>
+            </div>
 
-    try {
-        for (let i = 0; i < flatCurriculum.length; i++) {
-            const sub = flatCurriculum[i];
-            dispatchLog(`Synthesizing Manuscript Segment ${i+1}/${flatCurriculum.length}: ${sub.title}`, 'info');
-            
-            const lecture = await hydrateLectureLean(sub, shouldForce);
-            
-            // If background synthesis finishes the one the user is looking at, update the view
-            if (activeSubTopicId === sub.id && lecture) {
-                setActiveLecture(lecture);
-            }
+            <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-24 bg-indigo-500/5 blur-[100px] rounded-full group-hover:bg-indigo-500/10 transition-colors"></div>
+                <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] mb-8 flex items-center gap-2">
+                    <Network size={16} className="text-indigo-400"/> Refractive Logic Mesh
+                </h4>
+                <div className="flex flex-wrap gap-8 justify-center items-center py-10">
+                    {audit.graph.nodes.map(node => (
+                        <div key={node.id} className="relative group/node">
+                            <div className="absolute -inset-2 bg-indigo-500 opacity-0 group-hover/node:opacity-10 blur-xl rounded-full transition-opacity"></div>
+                            <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-[1.5rem] shadow-xl flex flex-col items-center relative z-10 hover:border-indigo-500/50 transition-all">
+                                <span className="text-[8px] font-black text-slate-600 uppercase mb-1 tracking-widest">{node.type}</span>
+                                <span className="text-xs font-bold text-white uppercase">{node.label}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div className="border-t border-slate-800 pt-8 mt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {audit.graph.links.map((link, i) => (
+                            <div key={i} className="flex items-center gap-3 text-[10px] font-bold text-slate-500 bg-black/20 p-3 rounded-xl border border-white/5">
+                                <span className="text-indigo-400 uppercase">{link.source}</span>
+                                <ChevronRight size={10}/>
+                                <span className="px-2 py-0.5 bg-slate-800 text-[8px] rounded uppercase">{link.label}</span>
+                                <ChevronRight size={10}/>
+                                <span className="text-emerald-400 uppercase">{link.target}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
 
-            setBatchProgress({ current: i + 1, total: flatCurriculum.length });
-        }
-        dispatchLog(`Batch Refraction Complete.`, 'success');
-        updateRegistryStatus();
-    } catch (e: any) { 
-        dispatchLog(`Batch failed: ${e.message}`, 'error'); 
-    } finally { 
-        setIsBatchSynthesizing(false); 
-    }
+            <div className="space-y-6">
+                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] flex items-center gap-2 px-2">
+                    <Ghost size={16} className="text-purple-500"/> Adversarial Boundary Audit
+                </h4>
+                <div className="grid grid-cols-1 gap-4">
+                    {audit.probes.map((probe, i) => (
+                        <div key={i} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-8 flex flex-col gap-4 shadow-xl group">
+                            <div className="flex justify-between items-start">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-red-900/20 text-red-500 rounded-xl"><Target size={16}/></div>
+                                    <h5 className="text-sm font-black text-white uppercase tracking-tight leading-relaxed">{probe.question}</h5>
+                                </div>
+                                <div className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase ${
+                                    probe.status === 'passed' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-amber-900/30 text-amber-400'
+                                }`}>{probe.status}</div>
+                            </div>
+                            <p className="text-sm text-slate-400 italic leading-relaxed border-l-2 border-slate-800 pl-4 py-2 group-hover:border-indigo-500 transition-colors">
+                                "{probe.answer}"
+                            </p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
   };
-
-  const handleDownloadTextScript = async () => {
-    setIsExportingText(true);
-    dispatchLog("Collating Text Manuscript...", "info");
-    try {
-        let fullScript = `# ${channel.title}\n\n> ${channel.description}\n\n--- \n\n`;
-        for (let i = 0; i < flatCurriculum.length; i++) {
-            const sub = flatCurriculum[i];
-            const lecture = await hydrateLectureLean(sub);
-            if (lecture) {
-                fullScript += `## SECTION ${i + 1}: ${sub.title}\n\n`;
-                lecture.sections.forEach(s => {
-                    fullScript += `**${s.speaker}**: ${s.text}\n\n`;
-                });
-                fullScript += `\n`;
-            }
-        }
-        const blob = new Blob([fullScript], { type: 'text/markdown' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = `${channel.title.replace(/\s+/g, '_')}_Script.md`; a.click();
-        URL.revokeObjectURL(url);
-        dispatchLog("Text Manuscript Downloaded.", "success");
-    } finally { setIsExportingText(false); }
-  };
-
-  const handleNext = () => currentSubTopicIndex < flatCurriculum.length - 1 && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex + 1]);
-  const handlePrev = () => currentSubTopicIndex > 0 && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex - 1]);
-
-  const activeNodeStatus = activeSubTopicId ? nodeStatuses[activeSubTopicId] : null;
 
   return (
     <div className="h-full flex bg-slate-950 overflow-hidden font-sans relative">
@@ -427,19 +445,14 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
               <div className="flex gap-4">
                   <div className="w-16 h-16 shrink-0 relative">
                     {!imageError && channel.imageUrl ? (
-                        <img 
-                            src={channel.imageUrl} 
-                            onError={() => setImageError(true)}
-                            className="w-full h-full rounded-2xl object-cover shadow-xl border border-white/5" 
-                            alt=""
-                        />
+                        <img src={channel.imageUrl} onError={() => setImageError(true)} className="w-full h-full rounded-2xl object-cover shadow-xl border border-white/5" alt="" />
                     ) : (
                         <div className="w-full h-full rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-indigo-400 font-black text-xl shadow-xl">
                             {channel.title.substring(0, 1).toUpperCase()}
                         </div>
                     )}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-0">
                       <h2 className="text-white font-black uppercase tracking-tighter italic text-xl leading-none truncate">{channel.title}</h2>
                       <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Audit Registry</p>
                   </div>
@@ -469,17 +482,11 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
           </div>
           <div className="p-4 border-t border-slate-800 bg-slate-950/40 space-y-3">
               <div className="grid grid-cols-2 gap-2">
-                  <button onClick={handleBatchSynthesize} disabled={isBatchSynthesizing} className="py-3 bg-slate-800 hover:bg-indigo-600 text-slate-400 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2">
-                      {isBatchSynthesizing ? <Loader2 size={14} className="animate-spin" /> : <CloudUpload size={14}/>}
-                      {isBatchSynthesizing ? `Refracting ${batchProgress.current}` : 'Refract Vault'}
+                  <button onClick={handleDownloadFullTranscript} disabled={isExportingText} className="flex items-center justify-center gap-2 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:opacity-30">
+                    {isExportingText ? <Loader2 size={14} className="animate-spin"/> : <Download size={14}/>} Text
                   </button>
-                  <button onClick={handleDownloadTextScript} disabled={isExportingText} className="py-3 bg-slate-800 hover:bg-blue-600 text-slate-400 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2">
-                      {isExportingText ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14}/>}
-                      Export Text
-                  </button>
-                  <button onClick={handleGenerateBook} disabled={isExportingBook} className="col-span-2 py-3 bg-slate-800 hover:bg-emerald-600 text-slate-400 hover:text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2">
-                      {isExportingBook ? <Loader2 size={14} className="animate-spin" /> : <BookText size={14}/>}
-                      {isExportingBook ? bookProgress : 'Synthesize Full PDF Book'}
+                  <button onClick={handleGenerateBookPdf} disabled={isExportingBook} className="flex items-center justify-center gap-2 py-3 bg-slate-800 hover:bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:opacity-30">
+                    {isExportingBook ? <Loader2 size={14} className="animate-spin"/> : <FileDown size={14}/>} Book
                   </button>
               </div>
               <button onClick={() => handlePlayActiveLecture(currentSectionIndex === -1 ? 0 : currentSectionIndex)} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2">
@@ -490,56 +497,81 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
       </aside>
 
       <main className="flex-1 flex flex-col min-0 relative bg-slate-950">
-          {isSyncingContent && (
+          {(isSyncingContent || isExportingText) && (
                <div className="absolute inset-0 z-[100] bg-slate-950/60 backdrop-blur-md flex flex-col items-center justify-center gap-6 animate-fade-in">
                   <div className="relative">
                       <div className="w-16 h-16 border-4 border-indigo-500/10 rounded-full"></div>
                       <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                   </div>
-                  <span className="text-xs font-black text-indigo-400 uppercase tracking-[0.3em] animate-pulse">Syncing Knowledge Node...</span>
+                  <span className="text-xs font-black text-indigo-400 uppercase tracking-[0.3em] animate-pulse">{isExportingText ? "Aggregating Corpus..." : "Syncing Knowledge Node..."}</span>
                </div>
+          )}
+
+          {isExportingBook && (
+              <div className="absolute inset-0 z-[110] bg-slate-950/90 backdrop-blur-xl flex flex-col items-center justify-center gap-8 animate-fade-in text-center p-10">
+                  <div className="relative">
+                      <div className="w-32 h-32 border-4 border-indigo-500/10 rounded-full"></div>
+                      <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                      <div className="absolute inset-0 flex items-center justify-center"><BookText size={48} className="text-indigo-400 animate-pulse" /></div>
+                  </div>
+                  <div className="space-y-4">
+                      <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Manifesting Neural Book</h3>
+                      <p className="text-xs text-slate-500 font-bold uppercase tracking-[0.2em] animate-pulse">{bookProgress || 'Synchronizing Sector Fragments...'}</p>
+                      <div className="max-w-xs mx-auto text-[9px] text-slate-600 font-black uppercase leading-relaxed mt-4">
+                          Protocol: DO NOT CLOSE TAB. Binding deep technical dialogue shards into high-fidelity PDF manuscript.
+                      </div>
+                  </div>
+              </div>
           )}
 
           {activeLecture ? (
               <div className="h-full flex flex-col animate-fade-in pb-32">
                   <header className="h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-8 backdrop-blur-xl shrink-0 z-20">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-600/10 rounded-lg"><BrainCircuit size={20} className="text-indigo-400" /></div>
-                        <div>
-                            <h2 className="text-sm font-black text-white uppercase tracking-widest">{activeLecture.topic}</h2>
-                            <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-[0.2em]">Node 0${currentSubTopicIndex + 1} • Handshake Active</p>
+                    <div className="flex items-center gap-8">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-indigo-600/10 rounded-lg"><BrainCircuit size={20} className="text-indigo-400" /></div>
+                            <div>
+                                {/* Fix: used activeLecture.topic instead of undefined activeAudit */}
+                                <h2 className="text-sm font-black text-white uppercase tracking-widest">{activeLecture.topic}</h2>
+                                <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-[0.2em]">Node 0${currentSubTopicIndex + 1} • Handshake Active</p>
+                            </div>
+                        </div>
+                        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner">
+                            <button onClick={() => setActiveTab('transcript')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${activeTab === 'transcript' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Dialogue</button>
+                            <button onClick={() => setActiveTab('audit')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${activeTab === 'audit' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Neural Lens</button>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        {activeNodeStatus !== 'static' && (
-                            <>
-                                <button onClick={() => activeSubTopicId && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex], true, true)} className="p-2 hover:bg-indigo-600/20 text-slate-500 hover:text-indigo-400 rounded-xl transition-all" title="Force Node Refresh"><RefreshCw size={18}/></button>
-                                <button onClick={handlePurgeNode} className="p-2 hover:bg-red-600/20 text-slate-500 hover:text-red-400 rounded-xl transition-all" title="Purge Stale Cache"><Trash2 size={18}/></button>
-                            </>
-                        )}
+                        <button onClick={() => handleSelectSubTopic(flatCurriculum[currentSubTopicIndex], true, true)} className="p-2 hover:bg-indigo-600/20 text-slate-500 hover:text-indigo-400 rounded-xl transition-all" title="Force Node Refresh"><RefreshCw size={18}/></button>
                         <button onClick={() => stopAllAudio('Close View')} className="p-2 hover:bg-red-600/20 text-slate-500 hover:text-red-400 rounded-xl transition-all"><X size={20}/></button>
                     </div>
                   </header>
+                  
                   <div className="flex-1 overflow-y-auto p-10 scrollbar-hide">
-                      <div className="max-w-3xl mx-auto space-y-16 pb-[30vh]">
-                          {activeLecture.sections.map((section, idx) => {
-                              const isCurrent = idx === currentSectionIndex;
-                              const isTeacher = section.speaker === 'Teacher';
-                              return (
-                                  <div key={idx} ref={el => { sectionRefs.current[idx] = el; }} className={`flex flex-col ${isTeacher ? 'items-start' : 'items-end'} transition-all duration-1000 ${currentSectionIndex === -1 || isCurrent ? 'opacity-100 scale-100' : 'opacity-40 scale-95'}`}>
-                                      <div className="flex items-center gap-2 mb-3 px-6"><span className={`text-[10px] font-black uppercase tracking-widest ${isTeacher ? 'text-indigo-400' : 'text-slate-400'}`}>{isTeacher ? activeLecture.professorName : activeLecture.studentName}</span>{isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping"></div>}</div>
-                                      <div className={`max-w-[90%] px-10 py-8 rounded-[3rem] text-2xl leading-relaxed shadow-2xl relative transition-all duration-700 ${isCurrent ? 'ring-2 ring-indigo-500/50 bg-slate-900 border border-indigo-500/20' : 'bg-slate-900/40'} ${isTeacher ? 'text-white rounded-tl-sm font-semibold' : 'text-indigo-300 rounded-tr-sm font-bold bg-slate-800/20'}`}><p className="whitespace-pre-wrap">{section.text}</p></div>
-                                  </div>
-                              );
-                          })}
-                      </div>
+                      {activeTab === 'transcript' ? (
+                        <div className="max-w-3xl mx-auto space-y-8 pb-[30vh]">
+                            {activeLecture.sections.map((section, idx) => {
+                                const isCurrent = idx === currentSectionIndex;
+                                const isTeacher = section.speaker === 'Teacher';
+                                return (
+                                    <div key={idx} ref={el => { sectionRefs.current[idx] = el; }} className={`flex flex-col ${isTeacher ? 'items-start' : 'items-end'} transition-all duration-1000 ${currentSectionIndex === -1 || isCurrent ? 'opacity-100 scale-100' : 'opacity-40 scale-95'}`}>
+                                        <div className="flex items-center gap-2 mb-2 px-4"><span className={`text-[10px] font-black uppercase tracking-widest ${isTeacher ? 'text-indigo-400' : 'text-slate-400'}`}>{isTeacher ? activeLecture.professorName : activeLecture.studentName}</span>{isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping"></div>}</div>
+                                        <div className={`max-w-[90%] px-8 py-6 rounded-3xl shadow-xl relative transition-all duration-700 ${isCurrent ? 'ring-1 ring-indigo-500/50 bg-slate-900 border border-indigo-500/20' : 'bg-slate-900/40'} ${isTeacher ? 'text-white rounded-tl-sm' : 'text-indigo-100 rounded-tr-sm bg-slate-800/20'}`}>
+                                            <MarkdownView content={section.text} compact={true} initialTheme={isTeacher ? 'slate' : 'dark'} />
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                      ) : renderAuditPanel()}
                   </div>
+
                   <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xl px-4 z-50">
                       <div className="bg-slate-900/80 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-4 flex items-center justify-between shadow-2xl">
                           <div className="flex items-center gap-4">
-                              <button onClick={handlePrev} disabled={currentSubTopicIndex <= 0} className="p-3 hover:bg-white/10 rounded-full text-slate-400 disabled:opacity-20 transition-all"><SkipBack size={20}/></button>
+                              <button onClick={() => currentSubTopicIndex > 0 && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex - 1])} disabled={currentSubTopicIndex <= 0} className="p-3 hover:bg-white/10 rounded-full text-slate-400 disabled:opacity-20 transition-all"><SkipBack size={20}/></button>
                               <button onClick={() => handlePlayActiveLecture(currentSectionIndex === -1 ? 0 : currentSectionIndex)} className="w-14 h-14 bg-white text-slate-950 rounded-full flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all">{isBuffering ? <Loader2 size={24} className="animate-spin" /> : isPlaying ? <Pause size={24} fill="currentColor"/> : <Play size={24} fill="currentColor" className="ml-1"/>}</button>
-                              <button onClick={handleNext} disabled={currentSubTopicIndex >= flatCurriculum.length - 1} className="p-3 hover:bg-white/10 rounded-full text-slate-400 disabled:opacity-20 transition-all"><SkipForward size={20}/></button>
+                              <button onClick={() => currentSubTopicIndex < flatCurriculum.length - 1 && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex + 1])} disabled={currentSubTopicIndex >= flatCurriculum.length - 1} className="p-3 hover:bg-white/10 rounded-full text-slate-400 disabled:opacity-20 transition-all"><SkipForward size={20}/></button>
                           </div>
                           <div className="flex-1 px-6 min-w-0 text-center">
                                 <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest truncate">{flatCurriculum[currentSubTopicIndex]?.title}</p>

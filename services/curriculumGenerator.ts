@@ -1,50 +1,29 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
 import { Chapter } from '../types';
-import { incrementApiUsage, deductCoins, AI_COSTS } from './firestoreService';
+import { incrementApiUsage, deductCoins, AI_COSTS, getUserProfile } from './firestoreService';
 import { auth } from './firebaseConfig';
-import { GEMINI_API_KEY } from './private_keys';
+import { logger } from './logger';
 
-/**
- * Generates a structured learning curriculum based on a podcast's title and description.
- */
 export async function generateCurriculum(
   topic: string, 
   context: string,
   language: 'en' | 'zh' = 'en'
 ): Promise<Chapter[] | null> {
+  const category = 'CURRICULUM_SYNTHESIS';
+  const model = 'gemini-3-flash-preview';
+  const startTime = performance.now();
+
   try {
-    // Fixed: Initializing GoogleGenAI with process.env.API_KEY directly as per guidelines
+    const preProfile = auth.currentUser ? await getUserProfile(auth.currentUser.uid) : null;
+    const preBalance = preProfile?.coinBalance || 0;
+
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-    const langInstruction = language === 'zh' 
-      ? 'Output Language: Simplified Chinese (Mandarin). Use professional academic terminology.'
-      : 'Output Language: English.';
-
-    const prompt = `
-      You are an expert curriculum designer for the Neural Prism Platform. 
-      Design a 10-chapter learning path for an educational podcast about: "${topic}".
-      Context: ${context}
-      ${langInstruction}
-      
-      Requirements:
-      1. Exactly 10 chapters.
-      2. Each chapter should have 3-5 specific sub-topics (lessons).
-      3. Topics should progress logically from fundamentals to advanced concepts.
-      
-      Return ONLY a JSON array with this structure:
-      [
-        {
-          "title": "Chapter 1: ...",
-          "subTopics": [
-            { "title": "Lesson 1.1: ..." }
-          ]
-        }
-      ]
-    `;
+    const prompt = `Design a 10-chapter learning path for topic: "${topic}". Context: ${context}`;
+    const inputSizeBytes = new TextEncoder().encode(prompt).length;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model,
       contents: prompt,
       config: { 
         responseMimeType: 'application/json',
@@ -56,13 +35,7 @@ export async function generateCurriculum(
               title: { type: Type.STRING },
               subTopics: {
                 type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    title: { type: Type.STRING }
-                  },
-                  required: ["title"]
-                }
+                items: { type: Type.OBJECT, properties: { title: { type: Type.STRING } }, required: ["title"] }
               }
             },
             required: ["title", "subTopics"]
@@ -72,13 +45,27 @@ export async function generateCurriculum(
     });
 
     const text = response.text;
-    if (!text) throw new Error("Empty AI response");
+    if (!text) throw new Error("Null refraction.");
 
+    const usage = response.usageMetadata;
+    const outputSizeBytes = new TextEncoder().encode(text).length;
     const parsed = JSON.parse(text);
+
+    let postBalance = preBalance;
     if (auth.currentUser) {
         incrementApiUsage(auth.currentUser.uid);
-        deductCoins(auth.currentUser.uid, AI_COSTS.CURRICULUM_SYNTHESIS);
+        await deductCoins(auth.currentUser.uid, AI_COSTS.CURRICULUM_SYNTHESIS);
+        const postProfile = await getUserProfile(auth.currentUser.uid);
+        postBalance = postProfile?.coinBalance || 0;
     }
+
+    logger.success(`Curriculum Refraction Secured`, { 
+        category, latency: performance.now() - startTime, model,
+        inputTokens: usage?.promptTokenCount,
+        outputTokens: usage?.candidatesTokenCount,
+        inputSizeBytes, outputSizeBytes,
+        preBalance, postBalance
+    });
 
     return parsed.map((ch: any, cIdx: number) => ({
       id: `ch-${Date.now()}-${cIdx}`,
@@ -88,8 +75,8 @@ export async function generateCurriculum(
         title: sub.title
       }))
     }));
-  } catch (error) {
-    console.error("Failed to generate curriculum:", error);
+  } catch (error: any) {
+    logger.error(`Curriculum Refraction Fault`, error, { category });
     return null;
   }
 }

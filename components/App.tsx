@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video, User, ArrowLeft, Play, Gift, 
-  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Lock, Crown, ShieldCheck, Flame, Zap, RefreshCcw, Bug, ChevronUp, Fingerprint, Database, CheckCircle, Pause, PlayCircle as PlayIcon, Copy, BookText, Send, MessageCircle, FileUp, FileSignature, IdCard, Info
+  Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Lock, Crown, ShieldCheck, Flame, Zap, RefreshCcw, Bug, ChevronUp, Fingerprint, Database, CheckCircle, Pause, PlayCircle as PlayIcon, Copy, BookText, Send, MessageCircle, FileUp, FileSignature, IdCard, Info, BarChart3, Target, Beaker, Ghost, Signal,
+  ShieldAlert, ChevronRight, ChevronLeft, ArrowDownRight, ArrowUpRight
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewID, TranscriptItem, CodeFile, UserFeedback, Comment, Attachment } from '../types';
@@ -58,10 +60,11 @@ import { BadgeViewer } from './BadgeViewer';
 import { ManualModal } from './ManualModal';
 import { ResumeView } from './ResumeView';
 import { ScribeStudio } from './ScribeStudio';
+import { NeuralLens } from './NeuralLens';
 
 import { auth, db } from '../services/firebaseConfig';
-import { onAuthStateChanged } from '@firebase/auth';
-import { onSnapshot, doc } from '@firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import { onSnapshot, doc } from 'firebase/firestore';
 import { getUserChannels, saveUserChannel } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { stopAllPlatformAudio } from '../utils/audioUtils';
@@ -221,7 +224,8 @@ interface SystemLogMsg {
     id: string;
     time: string;
     text: string;
-    type: 'info' | 'error' | 'success' | 'warn';
+    type: 'info' | 'error' | 'success' | 'warn' | 'shadow' | 'audit' | 'input' | 'output' | 'trace';
+    meta?: any;
 }
 
 const App: React.FC = () => {
@@ -269,7 +273,7 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [isLogPaused]);
 
-  const addSystemLog = useCallback((text: any, type: SystemLogMsg['type'] = 'info') => {
+  const addSystemLog = useCallback((text: any, type: SystemLogMsg['type'] = 'info', meta?: any) => {
       let cleanText = "";
       try {
           if (typeof text === 'string') {
@@ -286,13 +290,13 @@ const App: React.FC = () => {
       }
 
       if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText) return;
-      logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type });
+      logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type, meta });
   }, []);
 
   useEffect(() => {
     const handleGlobalLog = (e: any) => {
-        const { text, type } = e.detail || {};
-        if (text) addSystemLog(text, type || 'info');
+        const { text, type, meta } = e.detail || {};
+        if (text) addSystemLog(text, type || 'info', meta);
     };
     window.addEventListener('neural-log', handleGlobalLog);
     return () => window.removeEventListener('neural-log', handleGlobalLog);
@@ -480,8 +484,8 @@ const App: React.FC = () => {
     context?: string, 
     recordingEnabled?: boolean, 
     bookingId?: string, 
-    videoEnabled?: boolean, 
-    cameraEnabled?: boolean, 
+    recordScreen?: boolean, 
+    recordCamera?: boolean, 
     activeSegment?: any, 
     recordingDuration?: number, 
     interactionEnabled?: boolean,
@@ -493,7 +497,7 @@ const App: React.FC = () => {
         setIsPricingModalOpen(true);
         return;
     }
-    setLiveSessionParams({ channel, context, recordingEnabled, bookingId, recordScreen: !!recordingEnabled, recordCamera: !!cameraEnabled, activeSegment, recordingDuration, interactionEnabled, recordingTarget, sessionTitle, returnTo: activeViewID });
+    setLiveSessionParams({ channel, context, recordingEnabled, bookingId, recordScreen, recordCamera, activeSegment, recordingDuration, interactionEnabled, recordingTarget, sessionTitle, returnTo: activeViewID });
     handleSetViewState('live_session');
   }, [activeViewID, handleSetViewState, isProMember]);
 
@@ -505,7 +509,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Abundance Protocols Active (v10.0.0-ABUNDANCE).", "info");
+    addSystemLog("Sovereignty Protocols Active (v10.0.0-ABUNDANCE).", "info");
     if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
         if (u) { setCurrentUser(u); syncUserProfile(u).catch(console.error); }
@@ -609,6 +613,7 @@ const App: React.FC = () => {
         { id: 'mission', label: 'Vision', icon: Rocket, action: () => handleSetViewState('mission'), color: 'text-orange-500', restricted: false },
         { id: 'story', label: 'Story', icon: BookOpen, action: () => handleSetViewState('story'), color: 'text-cyan-400', restricted: false },
         { id: 'book_studio', label: 'Author', icon: BookText, action: () => handleSetViewState('book_studio'), color: 'text-indigo-500', restricted: false },
+        { id: 'neural_lens', label: 'Neural Lens', icon: ShieldCheck, action: () => handleSetViewState('neural_lens'), color: 'text-indigo-400', restricted: false },
         { id: 'mock_interview', label: 'Career', icon: Video, action: () => handleSetViewState('mock_interview'), color: 'text-red-500', restricted: true },
         { id: 'coin_wallet', label: 'Wallet', icon: Coins, action: () => handleSetViewState('coin_wallet'), color: 'text-amber-400', restricted: true },
         { id: 'docs', label: 'Docs', icon: FileText, action: () => handleSetViewState('docs'), color: 'text-emerald-400', restricted: true },
@@ -630,9 +635,37 @@ const App: React.FC = () => {
   if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Abundance Spectrum (v10.0.0)...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} onResumeClick={() => handleSetViewState('resume')} />;
 
+  const getLogColor = (type: SystemLogMsg['type']) => {
+      switch(type) {
+          case 'error': return 'text-red-400 bg-red-950/20 border-red-500/20';
+          case 'success': return 'text-emerald-400 bg-emerald-950/20 border-emerald-500/20';
+          case 'warn': return 'text-amber-400 bg-amber-950/20 border-amber-500/20';
+          case 'shadow': return 'text-purple-400 bg-purple-950/20 border-purple-500/20';
+          case 'audit': return 'text-cyan-400 bg-cyan-950/20 border-cyan-500/20';
+          case 'input': return 'text-indigo-400 bg-indigo-950/10 border-indigo-500/10';
+          case 'output': return 'text-blue-300 bg-blue-950/10 border-blue-500/10';
+          case 'trace': return 'text-slate-200 bg-slate-800/40 border-slate-700/40';
+          default: return 'text-slate-400 bg-slate-900/40 border-slate-800/40';
+      }
+  };
+
+  const getLogIcon = (type: SystemLogMsg['type']) => {
+      switch(type) {
+          case 'error': return <ShieldAlert size={10}/>;
+          case 'success': return <CheckCircle size={10}/>;
+          case 'shadow': return <Ghost size={10}/>;
+          case 'audit': return <ShieldCheck size={10}/>;
+          case 'input': return <ChevronRight size={10}/>;
+          case 'output': return <ChevronLeft size={10}/>;
+          case 'warn': return <AlertTriangle size={10}/>;
+          case 'trace': return <Activity size={10}/>;
+          default: return <Info size={10}/>;
+      }
+  };
+
   return (
     <ErrorBoundary>
-      <div className="h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative border-b border-white/5">
+      <div className="h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans relative border-b border-white/5">
         <header className="min-h-[4rem] pt-[env(safe-area-inset-top)] border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 shrink-0 z-50 backdrop-blur-xl">
            <div className="flex items-center gap-3">
               <div className="relative">
@@ -700,6 +733,7 @@ const App: React.FC = () => {
                 {activeViewID === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
                 {activeViewID === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('dashboard')} user={userProfile} onOpenManual={() => setManualViewId('coin_wallet')} /> )}
                 {activeViewID === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} isProMember={isProMember} onOpenManual={() => setManualViewId('mock_interview')} /> )}
+                {activeViewID === 'neural_lens' && ( <NeuralLens onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('neural_lens')} /> )}
                 {activeViewID === 'firestore_inspector' && ( <FirestoreInspector onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
                 {activeViewID === 'public_channel_inspector' && ( <PublicChannelInspector onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'my_channel_inspector' && ( <MyChannelInspector onBack={() => handleSetViewState('dashboard')} /> )}
@@ -729,7 +763,7 @@ const App: React.FC = () => {
                     <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 group-hover:text-white transition-colors">Neural Diagnostics Console</span>
                     {showConsole ? <ChevronDown size={14} className="text-slate-500"/> : <ChevronUp size={14} className="text-slate-500"/>}
                 </button>
-                <div className="h-96 overflow-hidden flex flex-col md:flex-row">
+                <div className="h-[500px] overflow-hidden flex flex-col md:flex-row">
                     <div className="w-full md:w-80 border-r border-white/5 p-6 space-y-6 overflow-y-auto shrink-0 bg-black/60 scrollbar-hide">
                         <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
                             <button onClick={() => setConsoleTab('trace')} className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${consoleTab === 'trace' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Trace</button>
@@ -743,16 +777,55 @@ const App: React.FC = () => {
                                 <div className="flex justify-between items-center py-1 border-b border-white/5"><span className="text-slate-500 uppercase">Clearance:</span><span className="text-indigo-400 font-bold uppercase">{userProfile?.subscriptionTier || 'LEVEL_0'}</span></div>
                             </div>
                         </div>
-                        <div className="pt-4 flex flex-col gap-2"><button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-2 bg-slate-800 text-slate-400 text-[9px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all shadow-lg active:scale-95">Clear Buffer</button></div>
+                        <div className="pt-4 flex flex-col gap-2">
+                            <button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-2 bg-slate-800 text-slate-400 text-[9px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all shadow-lg active:scale-95">Clear Buffer</button>
+                        </div>
                     </div>
                     <div className="flex-1 flex flex-col min-w-0 bg-black/80">
                         {consoleTab === 'trace' ? (
                             <>
                                 <div className="px-6 py-3 border-b border-white/5 flex items-center justify-between bg-slate-900/40">
                                     <div className="flex items-center gap-2"><Terminal size={14} className="text-red-400"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Log Trace (RAW)</span></div>
-                                    <button onClick={() => setIsLogPaused(!isLogPaused)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${isLogPaused ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}>{isLogPaused ? <PlayIcon size={12}/> : <Pause size={12}/>}{isLogPaused ? 'Resume' : 'Pause'}</button>
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-950 border border-slate-800 rounded-lg text-[8px] font-black text-indigo-400 uppercase tracking-widest">
+                                            <Signal size={10} className="text-emerald-500 animate-pulse"/> v10.8-ABUNDANCE
+                                        </div>
+                                        <button onClick={() => setIsLogPaused(!isLogPaused)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${isLogPaused ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}>{isLogPaused ? <PlayIcon size={12}/> : <Pause size={12}/>}{isLogPaused ? 'Resume' : 'Pause'}</button>
+                                    </div>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-6 space-y-2 scrollbar-thin scrollbar-thumb-white/10 text-left">{visibleLogs.length === 0 && (<p className="text-slate-700 italic text-xs">Awaiting neural activity...</p>)}{visibleLogs.map(log => (<div key={log.id} className={`flex gap-4 text-[11px] font-mono p-2 rounded ${log.type === 'error' ? 'bg-red-950/40 text-red-200 border border-red-500/30' : log.type === 'success' ? 'bg-emerald-950/20 text-emerald-400' : log.type === 'warn' ? 'bg-amber-950/20 text-amber-400' : 'text-slate-400'}`}><span className="opacity-40 shrink-0">[{log.time}]</span><span className="flex-1 whitespace-pre-wrap">{log.text}</span></div>))}</div>
+                                <div className="flex-1 overflow-y-auto p-4 space-y-1.5 scrollbar-thin scrollbar-thumb-white/10 text-left">
+                                    {visibleLogs.length === 0 && (<p className="text-slate-700 italic text-xs py-20 text-center">Awaiting neural activity...</p>)}
+                                    {visibleLogs.map(log => (
+                                        <div key={log.id} className={`flex items-start gap-4 text-[11px] font-mono p-2.5 rounded-lg border border-transparent transition-all ${getLogColor(log.type)}`}>
+                                            <span className="opacity-40 shrink-0 mt-0.5">[{log.time}]</span>
+                                            <div className="flex-1 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="shrink-0">{getLogIcon(log.type)}</span>
+                                                    <span className="font-black uppercase text-[8px] tracking-[0.2em] px-1.5 rounded bg-black/30">{log.type}</span>
+                                                    {log.meta?.category && <span className="font-black uppercase text-[8px] tracking-[0.1em] text-white/40 italic">//{log.meta.category}</span>}
+                                                </div>
+                                                <p className="whitespace-pre-wrap leading-relaxed">{log.text}</p>
+                                                
+                                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[8px] font-black uppercase tracking-tighter text-white/30 mt-1.5 border-t border-white/5 pt-1">
+                                                    {log.meta?.inputTokens && <span>In: {log.meta.inputTokens} tkn</span>}
+                                                    {log.meta?.outputTokens && <span>Out: {log.meta.outputTokens} tkn</span>}
+                                                    {log.meta?.inputSizeBytes && <span>In-Mass: {Math.round(log.meta.inputSizeBytes/1024)} KB</span>}
+                                                    {log.meta?.outputSizeBytes && <span>Out-Mass: {Math.round(log.meta.outputSizeBytes/1024)} KB</span>}
+                                                    {log.meta?.latency && <span>Sync: {log.meta.latency.toFixed(1)}ms</span>}
+                                                    {log.meta?.retryCount > 1 && <span className="text-amber-500 font-bold">Retries: {log.meta.retryCount}</span>}
+                                                    {log.meta?.model && <span>Core: {log.meta.model}</span>}
+                                                    {log.meta?.preBalance !== undefined && (
+                                                        <div className="flex items-center gap-2 ml-auto">
+                                                            <span className="flex items-center gap-1 opacity-60"><ArrowUpRight size={8}/> {log.meta.preBalance} VC</span>
+                                                            <ChevronRight size={8} className="opacity-20"/>
+                                                            <span className="flex items-center gap-1 text-emerald-400"><ArrowDownRight size={8}/> {log.meta.postBalance} VC</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </>
                         ) : (
                             <div className="flex-1 flex flex-col p-8 space-y-6 animate-fade-in">

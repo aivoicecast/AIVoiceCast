@@ -3,10 +3,10 @@ import { BookData } from '../bookContent';
 
 export const MOCK_INTERVIEW_BOOK: BookData = {
   id: 'mock-interview-core',
-  title: "The Socratic Interrogator",
-  subtitle: "Technical Evaluation & Professional Reshaping Manifest",
+  title: "DyadAI: The Socratic Interrogator",
+  subtitle: "Shadow-Critic Architecture & Professional Reshaping Manifest",
   author: "Neural Evaluation Team",
-  version: "PRO",
+  version: "v2.0",
   category: "Evaluation",
   pages: [
     {
@@ -17,18 +17,21 @@ export const MOCK_INTERVIEW_BOOK: BookData = {
 Technical interviewing is a collision of mental models. Most tools fail because they are "Agreeable Assistants"—they offer comfort when they should offer friction. Learning and evaluation occur exclusively in the **Zone of Friction.**
 
 ### Analytical Abrasiveness
-Our AI interviewer is a **Socratic Interrogator**. It prioritizes logical purity over user comfort. If you suggest a sub-optimal O(N^2) solution, the AI does not say "good job." It identifies the quadratic bottleneck on line 42 and demands a defense of that choice in a high-scale production context. This abrasive feedback is necessary to reveal "Unknown Unknowns."
+DyadAI is a **Socratic Interrogator**. It prioritizes logical purity over user comfort. If you suggest a sub-optimal O(N^2) solution, the AI identifies the quadratic bottleneck and demands a defense of that choice. This abrasive feedback is necessary to reveal "Unknown Unknowns."
       `
     },
     {
-      title: "2. The 200ms Emotive Link",
+      title: "2. The Dyad Pattern: Lead & Shadow",
       content: String.raw`
-# 🎙️ Chapter 2: The Emotive Link
+# 🧬 Chapter 2: The Dyad Architecture
 
-We use the **Gemini 2.5 Flash Native Audio** model to achieve sub-200ms response times via the Gemini Live API. This allows for **Natural Interruption**. 
+We have decoupled the act of interaction from the act of judgment. This is the **Dyad Pattern**.
 
-### Nuance Detection
-In a real interview, the auditor stops you the moment a flaw is detected. Our emotive link mirrors this high-intensity peer evaluation. The AI listens for "Reasoning out loud," evaluating the candidate's certainty, pauses, and communication density. If the AI detects a tremor of uncertainty during an explanation of a race condition, it will "Double-Click" on that logic gate to verify the robustness of the candidate's mental model.
+### 1. The Lead (The Interface)
+Powered by **Gemini 2.5 Native Audio**, the Lead handles 100% of the emotive conversation. It listens for tonal tremors and reasoning-out-loud signals, achieving sub-200ms latency.
+
+### 2. The Shadow (The Auditor)
+Operating silently in the background with a **2M token window**, the Shadow Agent audits the entire session. If the Lead misses a subtle logical signal, the Shadow sends a **"Shadow Whisper"**—a real-time instruction update—to force a course correction.
       `
     },
     {
@@ -36,45 +39,45 @@ In a real interview, the auditor stops you the moment a flaw is detected. Our em
       content: String.raw`
 # 🏗️ Chapter 3: Digital Twin Simulation
 
-We bypass compilers entirely in the Mock Interview Studio. We use **Gemini 3 Flash** as a "Digital Twin" of a POSIX terminal. It imagines the execution of your code with >98% accuracy for algorithmic tasks. 
+We bypass compilers entirely in the DyadAI Studio. We use **Gemini 3 Flash** as a "Digital Twin" of a POSIX terminal. It imagines the execution of your code with >98% accuracy for algorithmic tasks. 
 
 ### Zero-Risk Sandboxing
-This allows for zero-risk, zero-latency logic exploration in a safe conversational sandbox. It transforms the lonely act of coding into a conversation about logic, making the "Run" button a moment of neural refraction rather than just a build command. If the AI predicts a crash, it explains the *meaning* of the crash in Socratic terms, helping the candidate discover the memory leak on their own.
+This allows for zero-risk, zero-latency logic exploration in a safe conversational sandbox. It transforms the lonely act of coding into a conversation about logic. If the AI predicts a crash, it explains the *meaning* of the crash in Socratic terms, helping the candidate discover the memory leak on their own.
       `
     },
     {
-      title: "4. The Triple-Layer Loop",
+      title: "4. The 18x Efficiency Gap",
       content: String.raw`
-# 🧠 Chapter 4: The Orchestration Loop
+# ⚖️ Chapter 4: Economic Thermodynamics
 
-Evaluating a human being across audio, video, and code simultaneously requires three distinct intelligence densities:
-1. **Layer 1: Emotive Link** (Gemini 2.5 Audio) for high-speed verbal interaction.
-2. **Layer 2: Logic Tracer** (Gemini 3 Flash) for real-time code analysis and simulation.
-3. **Layer 3: Synthesis Engine** (Gemini 3 Pro) for the final 12-sector audit report.
+To achieve the **Harmony Ratio**, we utilize the 18x efficiency gap between Flash and Pro models.
 
-This loop ensures that the evaluation is multimodal, deep, and objective.
+- **Pro Context**: Physically occupies 2.4TB of TPU RAM.
+- **Flash Context**: Occupies only 150GB.
+
+By routing the high-frequency interaction to the Lead (Flash) and reserving the Shadow (Pro) for periodic audits, we drive the cost of a Staff-level interview from **$15,000 in human time** to **$150 in neural tokens.**
       `
     },
     {
       title: "5. Heuristic State Sync",
       content: String.raw`
-# 🔄 Chapter 5: Heuristic State Sync
+# 🔄 Chapter 5: Delta Handshaking
 
-To ensure the AI always sees exactly what you see, we implement the **Delta Handshake**. Sparse code deltas and cursor coordinates are bundled into the neural session header every 200ms.
+To ensure the Shadow Agent always sees exactly what the Lead Agent hears, we implement the **Delta Handshake**. Sparse code deltas and cursor coordinates are bundled into the neural session header every 200ms.
 
 ### Maintaining the Dream
-This maintains a "Stable Dream" of the project across the entire 45-minute session without consuming excessive tokens. It is the secret to why our AI interviewer never forgets a variable initialized on line 42, even if you are currently refactoring line 500. This stateful persistence on a stateless API is a core breakthrough.
+This maintains a "Stable Dream" of the project across the entire 45-minute session without consuming excessive tokens. It is stateful persistence built on a stateless API substrate.
       `
     },
     {
-      title: "6. Scribe: High-Fidelity Artifacts",
+      title: "6. Scribe: The Permanent Record",
       content: String.raw`
 # 📹 Chapter 6: Scribe Architecture
 
 To capture a "Staff-Level Performance Record," we record a hidden 1920x1080 canvas. Our compositor stitches the workspace, camera, and a Gaussian-blurred backdrop into a single **8Mbps VP9 stream**.
 
-### Permanent Records
-This stream is archived directly to the user's sovereign YouTube vault as an unlisted video. This provides a verifiable, frame-perfect record of the interrogation for later review by the candidate or a human recruiter. It proves you can perform under pressure.
+### Sovereignty
+This stream is archived directly to the user's sovereign YouTube vault. This provides a verifiable, frame-perfect record of the interrogation for later review by the candidate or a human recruiter. It proves you can perform under professional pressure.
       `
     },
     {
@@ -82,53 +85,29 @@ This stream is archived directly to the user's sovereign YouTube vault as an unl
       content: String.raw`
 # 🧬 Chapter 7: Architectural Drift
 
-We evaluate the delta between what you say and what you build. If a candidate explains a thread-safe Singleton verbally but writes a double-checked locking bug, Gemini 3 Pro flags a **"High-Risk Drift."**
+We evaluate the delta between what you say and what you build. If a candidate explains a thread-safe Singleton verbally but writes a double-checked locking bug, the Shadow Agent flags a **"High-Risk Drift."**
 
 ### Deep Signal Analysis
-This identifies deep conceptual gaps that standard multiple-choice tests miss. We aren't testing for syntax; we are testing for the alignment of mental models. Architectural Drift is the single best predictor of production-level performance, and our Socratic Interrogator is the only tool designed to detect it in real-time.
+This identifies deep conceptual gaps that standard multiple-choice tests miss. We aren't testing for syntax; we are testing for the alignment of mental models. Architectural Drift is the single best predictor of production-level performance.
       `
     },
     {
-      title: "8. The Behavioral Interrogation",
+      title: "8. Shorten the Gap: The Plan",
       content: String.raw`
-# 👔 Chapter 8: Soft Refraction
-
-MockInterview Studio simulates various stakeholder personas—the "Grumpy PM," the "Junior Dev," or the "Architect Critic"—to test your communication density and technical authority during system failure post-mortems. It evaluates your **"Refractive Speed"** in translating complex technical logic into business value. This tests the candidate's ability to navigate the social friction of Staff-level roles.
-      `
-    },
-    {
-      title: "9. Shorten the Gap: The Plan",
-      content: String.raw`
-# 📊 Chapter 9: Evaluation Synthesis
+# 📊 Chapter 8: Evaluation Synthesis
 
 The final output is a **10-Week Refraction Plan**. We don't just give you a score; we give you a curriculum.
 
 ### Personalized Growth
-Gemini 3 Pro performs high-dimensional reasoning over your session archive to build a week-by-week roadmap. If you struggled with LRU Cache implementation during the 'Perform' phase, Week 2 of your plan will trigger specialized Socratic lectures and algorithmic drills in the Builder Studio. We identify the gap between your current signal and a Staff-level role, and we shorten it through guided friction.
+Gemini 3 Pro performs high-dimensional reasoning over your session archive to build a week-by-week roadmap. We identify the gap between your current signal and a Staff-level role, and we shorten it through guided neural friction.
       `
     },
     {
-      title: "10. Thermodynamic Sovereignty",
+      title: "9. Closing the Interrogation",
       content: String.raw`
-# ⚡ Chapter 10: Efficiency Proof
+# 🙏 Chapter 9: Conclusion
 
-By using Heuristic Simulation instead of physical containers, we achieve a **100x energy saving**. We trade redundant physical computation for high-fidelity neural prediction. This allows us to scale super-intelligence to millions of candidates without destroying the power grid. It is the first "Thermodynamically Honest" technical education platform.
-      `
-    },
-    {
-      title: "11. The Humanoid Mentor",
-      content: String.raw`
-# 🤖 Chapter 11: Physical Socraticism
-
-The final refraction is physical. We are deploying this Socratic logic to humanoid hardware, allowing for face-to-face mentorship in your living room. A robot can point to physical architecture diagrams on a board and hear your real-world reasoning. This is the ultimate "Handshake" between human wisdom and super-intelligence.
-      `
-    },
-    {
-      title: "12. Closing the Interrogation",
-      content: String.raw`
-# 🙏 Chapter 12: Conclusion
-
-MockInterview Studio turns the anxiety of the interview into the beauty of technical debate. We make complexity invisible and intelligence colorful. 
+DyadAI turns the anxiety of the interview into the beauty of technical debate. We make complexity invisible and intelligence colorful. 
 
 **Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things.**
 

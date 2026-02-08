@@ -45,6 +45,7 @@ const BIBLE_LEDGER_COLLECTION = 'bible_ledger';
 const MOCK_INTERVIEWS_COLLECTION = 'mock_interviews';
 const BADGES_COLLECTION = 'badges';
 const SIGNED_DOCS_COLLECTION = 'signed_documents';
+const CLOUD_FILES_COLLECTION = 'user_cloud_files';
 
 // --- CONSTANTS ---
 export const ADMIN_GROUP = 'architects';
@@ -862,7 +863,7 @@ export async function createBooking(booking: Booking) {
 export async function getPendingBookings(uid: string, email: string): Promise<Booking[]> {
     if (!db) return [];
     const q1 = query(collection(db, 'bookings'), where('mentorId', '==', uid), where('status', '==', 'pending'));
-    const q2 = query(collection(db, 'bookings'), where('invitedEmail', '==', email), where('status', '==', 'pending'));
+    const q2 = query(collection(db, 'bookings'), where('toEmail', '==', email), where('status', '==', 'pending'));
     const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
     const all = [...(s1 as any).docs, ...(s2 as any).docs].map((d: any) => ({ ...d.data() as any, id: d.id } as Booking));
     return Array.from(new Map(all.map(item => [item.id, item])).values());
@@ -1126,7 +1127,7 @@ export async function updateAllChannelDatesToToday() {
 
 export async function deleteFirestoreDoc(col: string, id: string) {
     if (!db) return;
-    await deleteDoc(doc(db, col, id));
+    await deleteDoc(doc(col, id));
 }
 
 export async function getDebugCollectionDocs(col: string, l: number = 50): Promise<any[]> {
@@ -1141,38 +1142,144 @@ export async function setUserSubscriptionTier(uid: string, tier: SubscriptionTie
     await updateDoc(doc(db, USERS_COLLECTION, uid), { subscriptionTier: tier });
 }
 
-// --- Missing for CodeStudio ---
+// --- CLOUD FILE SYSTEM (VFS) ---
 
 /**
- * Lists items in a cloud directory (Stub)
+ * Lists items in a cloud directory, filtered by sessionId.
  */
-export async function listCloudDirectory(path: string): Promise<CloudItem[]> {
+export async function listCloudDirectory(path: string, sessionId: string): Promise<CloudItem[]> {
     if (!db) return [];
-    // Stub implementation
-    return [];
+    
+    // VFS Sector: Filter exclusively by sessionId to group project files
+    const q = query(collection(db, CLOUD_FILES_COLLECTION), where('sessionId', '==', sessionId));
+    const snap = await getDocs(q);
+    const files = snap.docs.map(d => d.data() as any);
+    
+    // Simple path-based filtering for directory simulation
+    return files.filter(f => {
+        const parentPath = f.fullPath.includes('/') ? f.fullPath.substring(0, f.fullPath.lastIndexOf('/')) : '';
+        return parentPath === path;
+    }).map(f => ({
+        name: f.name,
+        fullPath: f.fullPath,
+        isFolder: f.isFolder,
+        size: f.size,
+        contentType: f.contentType,
+        status: f.status
+    }));
 }
 
 /**
- * Saves a code project to the cloud vault
+ * Saves a code file to the cloud vault with a 128KB sharding threshold.
+ * Matches standard Gemini Flash context window (128K tokens).
  */
-export async function saveProjectToCloud(project: CodeProject) {
-    await saveCodeProject(project);
+export async function saveProjectToCloud(path: string, name: string, content: string, sessionId: string) {
+    if (!db) throw new Error("Database offline");
+    const fullPath = path ? `${path}/${name}` : name;
+    
+    // SHARED ID: Deriving file ID from Session ID + Path
+    const fileId = btoa(sessionId + fullPath).replace(/=/g, '');
+    
+    // REFRATION LIMIT: 128KB. 
+    // Matches Gemini Flash standard context window for zero-overflow inference.
+    const CHUNK_SIZE = 128000; 
+    const chunks = [];
+    if (content.length > CHUNK_SIZE) {
+        for (let i = 0; i < content.length; i += CHUNK_SIZE) {
+            chunks.push(content.substring(i, i + CHUNK_SIZE));
+        }
+    }
+
+    const batch = writeBatch(db);
+    const mainDocRef = doc(db, CLOUD_FILES_COLLECTION, fileId);
+
+    const fileMeta = {
+        userId: auth?.currentUser?.uid || 'guest',
+        sessionId: sessionId,
+        name,
+        fullPath,
+        isFolder: false,
+        lastModified: Date.now(),
+        size: content.length,
+        isSharded: chunks.length > 0,
+        chunkCount: chunks.length
+    };
+
+    if (chunks.length > 0) {
+        batch.set(mainDocRef, { ...fileMeta, content: "[SHARDED_CONTENT]" }, { merge: true });
+        chunks.forEach((chunk, idx) => {
+            batch.set(doc(db, CLOUD_FILES_COLLECTION, `${fileId}_chunk_${idx}`), { 
+                data: chunk, 
+                sessionId: sessionId
+            });
+        });
+    } else {
+        batch.set(mainDocRef, { ...fileMeta, content }, { merge: true });
+    }
+    
+    await batch.commit();
 }
 
 /**
- * Deletes an item from the cloud (Stub)
+ * Re-hydrates sharded content from the cloud vault using the session-derived ID.
  */
-export async function deleteCloudItem(path: string) {
+export async function getCloudFileContent(fullPath: string, sessionId: string): Promise<string> {
+    if (!db) throw new Error("Database offline");
+    const fileId = btoa(sessionId + fullPath).replace(/=/g, '');
+    
+    const snap = await getDoc(doc(db, CLOUD_FILES_COLLECTION, fileId));
+    if (!snap.exists()) throw new Error("File not found in session registry.");
+    
+    const data = snap.data() as any;
+    if (!data.isSharded) return data.content || '';
+
+    // Sequential Re-hydration (Bypassing network burst limits)
+    let fullContent = "";
+    for (let i = 0; i < data.chunkCount; i++) {
+        const chunkSnap = await getDoc(doc(db, CLOUD_FILES_COLLECTION, `${fileId}_chunk_${i}`));
+        if (chunkSnap.exists()) {
+            fullContent += chunkSnap.data()?.data || '';
+        }
+    }
+    return fullContent;
+}
+
+/**
+ * Deletes an item from the cloud (and its shards)
+ */
+export async function deleteCloudItem(path: string, sessionId: string) {
     if (!db) return;
-    // Stub implementation
+    const fileId = btoa(sessionId + path).replace(/=/g, '');
+    const snap = await getDoc(doc(db, CLOUD_FILES_COLLECTION, fileId));
+    
+    const batch = writeBatch(db);
+    batch.delete(doc(db, CLOUD_FILES_COLLECTION, fileId));
+
+    if (snap.exists()) {
+        const data = snap.data() as any;
+        if (data.isSharded) {
+            for (let i = 0; i < data.chunkCount; i++) {
+                batch.delete(doc(db, CLOUD_FILES_COLLECTION, `${fileId}_chunk_${i}`));
+            }
+        }
+    }
+    await batch.commit();
 }
 
 /**
- * Creates a folder in the cloud (Stub)
+ * Creates a folder in the cloud
  */
-export async function createCloudFolder(path: string) {
+export async function createCloudFolder(path: string, sessionId: string) {
     if (!db) return;
-    // Stub implementation
+    const fileId = btoa(sessionId + path).replace(/=/g, '');
+    await setDoc(doc(db, CLOUD_FILES_COLLECTION, fileId), {
+        userId: auth?.currentUser?.uid || 'guest',
+        sessionId: sessionId,
+        name: path.split('/').pop(),
+        fullPath: path,
+        isFolder: true,
+        lastModified: Date.now()
+    }, { merge: true });
 }
 
 /**
@@ -1202,14 +1309,14 @@ export async function moveCloudFile(projectId: string, oldPath: string, newPath:
 /**
  * Sends a share notification to users (via invitations)
  */
-export async function sendShareNotification(uids: string[], docName: string, link: string) {
+export async function sendShareNotification(uids: string[], docName: string, link: string, fromName: string) {
     if (!db || !auth.currentUser) return;
     for (const uid of uids) {
         const inviteId = generateSecureId();
         await setDoc(doc(db, 'invitations', inviteId), sanitizeData({
             id: inviteId,
             fromUserId: auth.currentUser.uid,
-            fromName: auth.currentUser.displayName,
+            fromName: fromName,
             toUserId: uid,
             groupName: docName,
             status: 'pending',

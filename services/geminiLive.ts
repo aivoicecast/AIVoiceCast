@@ -16,15 +16,14 @@ export interface LiveConnectionCallbacks {
 
 function getValidLiveVoice(voiceName: string): string {
   const name = voiceName || '';
-  if (name.includes('Software Interview')) return 'Fenrir';
-  if (name.includes('Linux Kernel')) return 'Puck';
-  if (name.includes('Default Gem')) return 'Zephyr';
+  if (name.includes('0648937375')) return 'Fenrir';
+  if (name.includes('0375218270')) return 'Puck';
   
   const validGemini = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
   for (const v of validGemini) {
       if (name.toLowerCase().includes(v.toLowerCase())) return v;
   }
-  return 'Puck';
+  return 'Zephyr';
 }
 
 export class GeminiLiveService {
@@ -43,6 +42,10 @@ export class GeminiLiveService {
   private isActive: boolean = false;
   private heartbeatInterval: any = null;
 
+  private dispatchLog(text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') {
+      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `[LiveAPI] ${text}`, type } }));
+  }
+
   public async initializeAudio() {
     if (!this.inputAudioContext) {
       this.inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -60,6 +63,7 @@ export class GeminiLiveService {
   async connect(voiceName: string, systemInstruction: string, callbacks: LiveConnectionCallbacks, tools?: any, externalStream?: MediaStream) {
     try {
       this.isActive = true;
+      this.dispatchLog(`Initiating Handshake for ID: ${this.id}`, 'info');
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -100,6 +104,7 @@ export class GeminiLiveService {
         callbacks: {
           onopen: () => {
             if (!this.isActive) return;
+            this.dispatchLog(`WebSocket Tunnel Open: ${modelId}`, 'success');
             this.startAudioInput(callbacks.onVolumeUpdate);
             this.startHeartbeat();
             callbacks.onOpen();
@@ -107,7 +112,10 @@ export class GeminiLiveService {
           onmessage: async (message: LiveServerMessage) => {
             if (!this.isActive) return;
             
-            if (message.toolCall) callbacks.onToolCall?.(message.toolCall);
+            if (message.toolCall) {
+                this.dispatchLog(`Tool Call Received: ${message.toolCall.functionCalls.map(f => f.name).join(', ')}`, 'info');
+                callbacks.onToolCall?.(message.toolCall);
+            }
             
             const inTrans = message.serverContent?.inputTranscription;
             if (inTrans?.text) {
@@ -146,7 +154,8 @@ export class GeminiLiveService {
                         source.start(this.nextStartTime);
                         this.sources.add(source);
                         this.nextStartTime += audioBuffer.duration;
-                    } catch (e) {
+                    } catch (e: any) {
+                        this.dispatchLog(`Audio Processing Fault: ${e.message}`, 'error');
                         console.error("[LiveService] Audio processing error", e);
                     }
                 }
@@ -157,6 +166,7 @@ export class GeminiLiveService {
             }
 
             if (message.serverContent?.interrupted) {
+                this.dispatchLog(`Signal Interruption Detected. Flushing buffer.`, 'warn');
                 this.stopAllSources();
                 this.nextStartTime = 0;
                 this.isPlayingResponse = false;
@@ -169,6 +179,7 @@ export class GeminiLiveService {
           onclose: (e: any) => {
             if (!this.isActive) return;
             const wasIntentional = !this.session;
+            this.dispatchLog(`WebSocket Tunnel Closed. Reason: ${e?.reason || 'Unknown'}`, wasIntentional ? 'info' : 'error');
             this.cleanup();
             if (!wasIntentional) {
                callbacks.onClose(e?.reason || "WebSocket closed unexpectedly", e?.code);
@@ -176,6 +187,7 @@ export class GeminiLiveService {
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
+            this.dispatchLog(`Critical Transport Error: ${e?.message || String(e)}`, 'error');
             this.cleanup();
             const errMsg = e?.message || String(e);
             callbacks.onError(errMsg);
@@ -186,6 +198,7 @@ export class GeminiLiveService {
       this.session = await this.sessionPromise;
     } catch (error: any) {
       this.isActive = false;
+      this.dispatchLog(`Handshake Terminal Fault: ${error?.message || String(error)}`, 'error');
       callbacks.onError(error?.message || String(error));
       this.cleanup();
       throw error;
@@ -194,6 +207,7 @@ export class GeminiLiveService {
 
   private startHeartbeat() {
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    // Increased frequency for better session stability
     this.heartbeatInterval = setInterval(() => {
         if (this.session && this.isActive) {
             this.sessionPromise?.then((session) => {
@@ -202,7 +216,7 @@ export class GeminiLiveService {
                 });
             });
         }
-    }, 10000); 
+    }, 5000); 
   }
 
   public sendToolResponse(functionResponses: any) {

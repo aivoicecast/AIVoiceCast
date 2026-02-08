@@ -1,5 +1,4 @@
 
-
 export type SubscriptionTier = 'free' | 'pro';
 export type ChannelVisibility = 'public' | 'private' | 'group';
 export type ReaderTheme = 'slate' | 'light' | 'dark' | 'sepia';
@@ -21,7 +20,48 @@ export interface TranscriptItem {
   timestamp: number;
 }
 
-// Added Comment interface to resolve multiple file errors
+export interface DependencyNode {
+  id: string;
+  label: string;
+  type: 'concept' | 'metric' | 'component';
+}
+
+export interface DependencyLink {
+  source: string;
+  target: string;
+  label: string;
+}
+
+export interface AdversarialProbe {
+  question: string;
+  answer: string;
+  status: 'passed' | 'failed' | 'warning';
+}
+
+export interface NeuralLensAudit {
+  graph: {
+    nodes: DependencyNode[];
+    links: DependencyLink[];
+  };
+  probes: AdversarialProbe[];
+  coherenceScore: number;
+  driftRisk: 'Low' | 'Medium' | 'High';
+  robustness: 'Low' | 'Medium' | 'High';
+  timestamp: number;
+}
+
+export interface GeneratedLecture {
+  uid?: string;
+  topic: string;
+  professorName: string;
+  studentName: string;
+  sections: { speaker: string; text: string }[];
+  readingMaterial?: string;
+  homework?: string;
+  audit?: NeuralLensAudit;
+}
+
+// ... remaining interfaces ...
 export interface Comment {
   id: string;
   userId: string;
@@ -106,16 +146,6 @@ export interface DualVerse {
   audioZhUrl?: string;
 }
 
-export interface GeneratedLecture {
-  uid?: string;
-  topic: string;
-  professorName: string;
-  studentName: string;
-  sections: { speaker: string; text: string }[];
-  readingMaterial?: string;
-  homework?: string;
-}
-
 export interface Channel {
   id: string;
   title: string;
@@ -140,7 +170,6 @@ export interface Channel {
   shares?: number;
 }
 
-// Added ChannelStats interface to fix ChannelCard error
 export interface ChannelStats {
   likes: number;
   dislikes: number;
@@ -176,7 +205,6 @@ export interface CommunityDiscussion {
   groupIds?: string[];
 }
 
-// Added Booking interface to resolve multiple file errors
 export interface Booking {
   id: string;
   userId: string;
@@ -196,7 +224,6 @@ export interface Booking {
   recordingUrl?: string;
 }
 
-// Added Invitation interface to resolve multiple file errors
 export interface Invitation {
   id: string;
   fromUserId: string;
@@ -237,7 +264,7 @@ export interface Attachment {
   name?: string;
 }
 
-export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view' | 'pdf_signer' | 'badge_studio' | 'badge_viewer' | 'resume' | 'scribe_studio' | 'cloud_sql_inspector';
+export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view' | 'pdf_signer' | 'badge_studio' | 'badge_viewer' | 'resume' | 'scribe_studio' | 'cloud_sql_inspector' | 'mock_interview' | 'neural_lens';
 
 export interface Group {
   id: string;
@@ -248,7 +275,6 @@ export interface Group {
   visibility: 'public' | 'private';
 }
 
-// Added ChatChannel interface for WorkplaceChat
 export interface ChatChannel {
   id: string;
   name: string;
@@ -257,14 +283,13 @@ export interface ChatChannel {
   createdAt: number;
 }
 
-// Added RealTimeMessage interface for WorkplaceChat
 export interface RealTimeMessage {
   id: string;
   text: string;
   senderId: string;
   senderName: string;
   senderImage?: string;
-  timestamp: any; // Firestore Timestamp
+  timestamp: any;
   replyTo?: any;
   attachments?: any[];
 }
@@ -281,7 +306,6 @@ export interface CodeFile {
   treeSha?: string;
   childrenFetched?: boolean;
   driveId?: string;
-  // Added isModified to fix CodeStudio errors
   isModified?: boolean;
 }
 
@@ -291,6 +315,8 @@ export interface CursorPosition {
   line: number;
   ch: number;
   timestamp: number;
+  color: string;
+  fileName: string;
 }
 
 export interface WhiteboardElement {
@@ -410,7 +436,6 @@ export interface GeneratedIcon {
   ownerId: string;
 }
 
-// Added AgentMemory interface to resolve multiple file errors
 export interface AgentMemory {
   id?: string;
   ownerId?: string;
@@ -466,7 +491,6 @@ export interface InsurancePolicy {
   recipientUid?: string;
 }
 
-// Added DigitalReceipt interface for firestoreService
 export interface DigitalReceipt {
   id: string;
   senderId: string;
@@ -546,9 +570,7 @@ export interface MockInterviewRecording {
   transcript: TranscriptItem[];
   visibility: ChannelVisibility;
   language: string;
-  // Support for local video blobs and resolving type errors in MockInterview component
   blob?: Blob;
-  // Store structured report data directly in the record for instant high-fidelity history
   report?: any;
 }
 
@@ -593,7 +615,7 @@ export interface BookPage {
   content: string;
 }
 
-export type BookCategory = 'Platform' | 'Methodology' | 'Evaluation' | 'Architecture' | 'Daily';
+export type BookCategory = 'Platform' | 'Methodology' | 'Architecture' | 'Daily' | 'Evaluation';
 
 export interface BookData {
   id: string;
@@ -608,7 +630,6 @@ export interface BookData {
   isCustom?: boolean;
 }
 
-// Added CloudItem interface to fix CodeStudio errors
 export interface CloudItem {
   name: string;
   fullPath: string;
@@ -628,15 +649,14 @@ export interface CodeProject {
   accessLevel?: 'public' | 'restricted';
   allowedUserIds?: string[];
   activeClientId?: string;
+  ownerId?: string;
   github?: {
     owner: string;
     repo: string;
     branch: string;
     sha: string;
   };
-  // Added layoutMode and activeSlots to fix CodeStudio errors
   layoutMode?: 'single' | 'split-v' | 'split-h' | 'quad';
   activeSlots?: (CodeFile | null)[];
   cursors?: Record<string, CursorPosition>;
 }
-

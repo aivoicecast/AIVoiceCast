@@ -8,7 +8,8 @@ import {
   deductCoins, 
   AI_COSTS,
   uploadFileToStorage,
-  saveRecordingReference
+  saveRecordingReference,
+  saveProjectToCloud
 } from '../services/firestoreService';
 import { doc, updateDoc } from '@firebase/firestore';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -33,10 +34,36 @@ import {
 import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput, getGlobalMediaStreamDest } from '../utils/audioUtils';
 import { getDriveToken, signInWithGoogle, connectGoogleDrive, isJudgeSession } from '../services/authService';
 import { ensureCodeStudioFolder, ensureFolder, uploadToDrive, getDriveFileSharingLink, getDriveFileStreamUrl } from '../services/googleDriveService';
-import { uploadToYouTube, getYouTubeVideoUrl, getYouTubeEmbedUrl } from '../services/youtubeService';
+import { uploadToYouTube, getYouTubeVideoUrl, getYouTubeEmbedUrl, deleteYouTubeVideo } from '../services/youtubeService';
 
+// --- Global Context Helpers ---
 const isYouTubeUrl = (url?: string) => !!url && (url.includes('youtube.com') || url.includes('youtu.be'));
 const isDriveUrl = (url?: string) => !!url && (url.startsWith('drive://') || url.includes('drive.google.com'));
+
+const extractYouTubeId = (url: string): string | null => {
+    try {
+        const urlObj = new URL(url);
+        if (urlObj.hostname.includes('youtube.com')) return urlObj.searchParams.get('v');
+        else if (urlObj.hostname.includes('youtu.be')) return urlObj.pathname.slice(1);
+    } catch (e: any) {
+        const match = url.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
+        return match ? match[1] : null;
+    }
+    return null;
+};
+
+const getCleanVerdict = (raw: string) => {
+    if (!raw) return 'ARCHIVED';
+    if (raw.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(raw);
+            return (parsed.verdict || parsed.sentiment || 'EVALUATED').toUpperCase();
+        } catch (e) {
+            return 'EVALUATED';
+        }
+    }
+    return raw.toUpperCase();
+};
 
 interface MockInterviewReport {
   id: string;
@@ -84,7 +111,7 @@ const getLanguageFromExt = (path: string): any => {
     if (['js', 'jsx'].includes(ext || '')) language = 'javascript';
     else if (['ts', 'tsx'].includes(ext || '')) language = 'typescript';
     else if (ext === 'py') language = 'python';
-    else if (['cpp', 'c', 'h', 'hpp', 'cc', 'hh', 'cxx'].includes(ext || '')) language = 'c++';
+    else if (['cpp', 'c', 'h', 'hpp', 'cc', 'hh', 'cxx'].includes(ext || '')) language = 'cpp';
     else if (ext === 'java') language = 'java';
     else if (ext === 'go') language = 'go';
     else if (ext === 'rs') language = 'rs';
@@ -163,19 +190,6 @@ const createInterviewNoteTool: any = {
     },
     required: ["title", "content"]
   }
-};
-
-const getCleanVerdict = (raw: string) => {
-    if (!raw) return 'ARCHIVED';
-    if (raw.startsWith('{')) {
-        try {
-            const parsed = JSON.parse(raw);
-            return (parsed.verdict || parsed.sentiment || 'EVALUATED').toUpperCase();
-        } catch (e) {
-            return 'EVALUATED';
-        }
-    }
-    return raw.toUpperCase();
 };
 
 const EvaluationReportDisplay = ({ 
@@ -377,7 +391,7 @@ const EvaluationReportDisplay = ({
 export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfile, onStartLiveSession, isProMember, onOpenManual }) => {
   const [view, setView] = useState<'selection' | 'setup' | 'active' | 'feedback' | 'archive'>('selection');
   const [interviewMode, setInterviewMode] = useState<'coding' | 'system_design' | 'behavioral' | 'quick_screen'>('coding');
-  const [interviewLanguage, setInterviewLanguage] = useState<'c++' | 'python' | 'javascript' | 'java'>('c++');
+  const [interviewLanguage, setInterviewLanguage] = useState<'cpp' | 'python' | 'javascript' | 'java'>('cpp');
   const [jobDescription, setJobDescription] = useState('');
   const [selectedPersona, setSelectedPersona] = useState(PERSONAS[0]);
   const [sessionUuid, setSessionUuid] = useState('');
@@ -525,40 +539,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         loadData();
     }
   }, [view, currentUser, loadData]);
-
-  const handlePlayback = async (rec: MockInterviewRecording) => {
-      if (resolvedMediaUrl?.startsWith('blob:')) { URL.revokeObjectURL(resolvedMediaUrl); }
-      if (isYouTubeUrl(rec.videoUrl)) {
-          setResolvedMediaUrl(rec.videoUrl); setActiveMediaId(rec.id); setActiveRecording(rec);
-          return;
-      }
-      if (isDriveUrl(rec.videoUrl)) {
-          setResolvingId(rec.id);
-          try {
-              const token = getDriveToken() || await connectGoogleDrive();
-              const driveUri = rec.videoUrl!;
-              const fileId = driveUri.replace('drive://', '').split('&')[0];
-              const streamUrl = getDriveFileStreamUrl(token, fileId);
-              setResolvedMediaUrl(streamUrl); setActiveMediaId(rec.id); setActiveRecording(rec);
-          } catch (e: any) {
-              window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: "Drive Access Denied: " + e.message, type: 'error' } }));
-          } finally {
-              setResolvingId(null);
-          }
-      } else {
-          if ((rec as any).blob instanceof Blob) {
-              const freshUrl = URL.createObjectURL((rec as any).blob);
-              setResolvedMediaUrl(freshUrl); setActiveMediaId(rec.id); setActiveRecording(rec);
-          } else {
-              setResolvedMediaUrl(rec.videoUrl); setActiveMediaId(rec.id); setActiveRecording(rec);
-          }
-      }
-  };
-
-  const closePlayer = () => {
-    if (resolvedMediaUrl?.startsWith('blob:')) URL.revokeObjectURL(resolvedMediaUrl);
-    setActiveMediaId(null); setResolvedMediaUrl(null); setActiveRecording(null);
-  };
 
   const performSyncToYouTube = async (id: string, blob: Blob, meta: { mode: string, language: string }) => {
     if (!currentUser) return;
@@ -880,7 +860,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 drawCtx.save();
                 drawCtx.beginPath();
                 drawCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-                drawCtx.strokeStyle = '#ef4444';
+                drawCtx.strokeStyle = '#red-500';
                 drawCtx.lineWidth = pipSize === 'compact' ? 6 : 10;
                 drawCtx.stroke();
                 drawCtx.restore();
@@ -961,6 +941,11 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               updateSetupStep('neural', 'done');
               updateSetupStep('dyad', 'active');
               
+              // Completion Handshake: Mark Dyad Lead as verified once socket is healthy
+              setTimeout(() => {
+                  updateSetupStep('dyad', 'done');
+              }, 800);
+
               if (reconnect) service.sendText(`[RECONNECTION_PROTOCOL_ACTIVE] Neural link recovered. Continuing evaluation.`);
               else {
                   const startMsg = vfsAuditActive ? "VFS AUDIT TRIGGERED. Lead Agent, begin pre-flight diagnostics now." : "DyadAI Handshake Verified. Candidate is ready. Begin the evaluation. Use write_file to give the candidate the challenge now.";
@@ -984,9 +969,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
           },
           onVolumeUpdate: (v) => {
               setVolume(v);
-              if (v > 0.1 && setupSteps.find(s => s.id === 'dyad')?.status === 'active') {
-                  updateSetupStep('dyad', 'done');
-              }
           },
           onTranscript: (text, isUser) => {
               const role = isUser ? 'user' : 'ai';
@@ -1014,6 +996,12 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       });
                       setActiveFilePath(args.path); 
                       service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: `Success. ${args.path} Manifested.` } });
+                      
+                      // VFS Persist: Tag the generated file with the current sessionUuid for grouping
+                      if (currentUser) {
+                          saveProjectToCloud('', args.path, args.content, sessionUuidRef.current);
+                      }
+
                       addApiLog(`[AI TOOL] write_file SUCCESS: ${args.path}`, 'success');
                       
                       if (vfsAuditActive) {
@@ -1050,6 +1038,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       setFiles(prev => [...prev, newNote]);
                       setActiveFilePath(newNote.path); 
                       service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: "Note created." } });
+                      
+                      if (currentUser) {
+                          saveProjectToCloud('', args.title, args.content, sessionUuidRef.current);
+                      }
                   }
               }
           }
@@ -1059,7 +1051,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         setIsLive(false); 
         updateSetupStep('neural', 'error');
     }
-  }, [jobDescription, interviewMode, interviewLanguage, selectedPersona, triggerShadowWhisper, addApiLog, updateSetupStep, setupSteps, vfsAuditActive, updateAuditStep]);
+  }, [jobDescription, interviewMode, interviewLanguage, selectedPersona, triggerShadowWhisper, addApiLog, updateSetupStep, vfsAuditActive, updateAuditStep, currentUser]);
 
   const handleStartInterview = async () => {
     setIsLoading(true);
@@ -1074,7 +1066,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setSessionUuid(uuid);
     setTranscript([]);
     setReport(null);
-    const startFile: CodeFile = { name: 'workspace.cpp', path: 'workspace.cpp', language: 'c++', content: '// Neural Workspace Ready...\n', loaded: true };
+    const startFile: CodeFile = { name: 'workspace.cpp', path: 'workspace.cpp', language: 'cpp', content: '// Neural Workspace Ready...\n', loaded: true };
     setFiles([startFile]);
     setActiveFileIndex(0);
     setActiveFilePath(startFile.path);
@@ -1098,7 +1090,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         timerRef.current = setInterval(() => { setTimeLeft(prev => { if (prev <= 1) { handleEndInterview(); return 0; } return prev - 1; }); }, 1000);
         
         // Final transition wait
-        setTimeout(() => setView('active'), 1000);
+        setTimeout(() => {
+            setView('active');
+            setIsLoading(false);
+        }, 1000);
     } catch (e: any) { 
         updateSetupStep('scopes', 'error');
         alert("Permissions refused or Hardware handshake failed."); 
@@ -1112,9 +1107,16 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   const filteredHistory = useMemo(() => {
-    if (!archiveSearch.trim()) return pastInterviews;
+    const list = pastInterviews || [];
+    if (!archiveSearch.trim()) return list;
     const q = archiveSearch.toLowerCase();
-    return pastInterviews.filter(p => p.mode.toLowerCase().includes(q) || p.jobDescription.toLowerCase().includes(q) || p.feedback.toLowerCase().includes(q));
+    return list.filter(p => {
+        if (!p) return false;
+        const modeMatch = (p.mode || '').toLowerCase().includes(q);
+        const jdMatch = (p.jobDescription || '').toLowerCase().includes(q);
+        const feedbackMatch = (p.feedback || '').toLowerCase().includes(q);
+        return modeMatch || jdMatch || feedbackMatch;
+    });
   }, [pastInterviews, archiveSearch]);
 
   const handleOpenArchivedReport = async (rec: MockInterviewRecording) => {
@@ -1219,7 +1221,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             </div>
         </header>
 
-        <main className="flex-1 overflow-hidden relative flex flex-col items-center">
+        <main className="flex-1 overflow-hidden relative flex flex-col items-center w-full">
             {isLoading && (
                 <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-12 animate-fade-in p-8">
                     <div className="relative">
@@ -1232,7 +1234,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                             <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Handshaking Dyad Link</h3>
                             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Orchestrating Lead & Shadow Agents</p>
                         </div>
-                        <div className="space-y-2 bg-black/40 border border-white/5 rounded-3xl p-6 shadow-inner">
+                        <div className="space-y-2 bg-black/40 border border-white/5 rounded-3xl p-6 shadow-inner text-left">
                             {setupSteps.map(step => (
                                 <div key={step.id} className="flex items-center justify-between group">
                                     <div className="flex items-center gap-3">
@@ -1242,9 +1244,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                     <span className={`text-[8px] font-black font-mono px-2 py-0.5 rounded ${step.status === 'active' ? 'bg-indigo-600 text-white animate-pulse' : step.status === 'done' ? 'text-emerald-500' : 'text-slate-700'}`}>{step.status.toUpperCase()}</span>
                                 </div>
                             ))}
-                        </div>
-                        <div className="p-4 bg-indigo-900/10 border border-indigo-500/10 rounded-2xl">
-                             <p className="text-[9px] text-slate-500 leading-relaxed font-medium uppercase italic text-center">Protocol Tip: Ensure you allow both Screen and Camera access in the browser prompts to initiate high-fidelity capture.</p>
                         </div>
                     </div>
                 </div>
@@ -1289,16 +1288,15 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
 
             {view === 'setup' && (
                 <div className="max-w-2xl w-full p-8 md:p-12 h-full flex flex-col justify-center gap-10 animate-fade-in-up">
-                    <div className="space-y-2">
+                    <div className="space-y-2 text-left">
                         <button onClick={() => setView('selection')} className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors mb-4"><ArrowLeft size={14}/> Back to Selection</button>
                         <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Interrogation Config</h2>
                         <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Refining Evaluation Metadata</p>
                     </div>
-                    <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden">
-                        <div className="space-y-3"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Target Language</label><div className="grid grid-cols-2 gap-2">{(['c++', 'python', 'javascript', 'java'] as const).map(l => (<button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l}</button>))}</div></div>
+                    <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden text-left">
+                        <div className="space-y-3"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Target Language</label><div className="grid grid-cols-2 gap-2">{(['cpp', 'python', 'javascript', 'java'] as const).map(l => (<button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l === 'cpp' ? 'C++' : l}</button>))}</div></div>
                         <div className="space-y-3"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context</label><textarea value={jobDescription} onChange={e => setJobDescription(e.target.value)} rows={4} placeholder="Paste JD or Seniority Level..." className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"/></div>
                         
-                        {/* VFS AUDIT TOGGLE */}
                         <div className="p-6 bg-slate-950 border border-slate-800 rounded-3xl space-y-4">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -1307,16 +1305,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                 </div>
                                 <button onClick={() => setVfsAuditActive(!vfsAuditActive)} className={`w-12 h-6 rounded-full relative transition-all ${vfsAuditActive ? 'bg-indigo-600' : 'bg-slate-700'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${vfsAuditActive ? 'right-1' : 'left-1'}`}></div></button>
                             </div>
-                            {vfsAuditActive && (
-                                <div className="space-y-2 animate-fade-in-up">
-                                    {auditResults.map(step => (
-                                        <div key={step.id} className="flex items-center gap-3 text-[9px] font-bold uppercase tracking-widest">
-                                            {step.status === 'success' ? <CheckCircle2 size={12} className="text-emerald-500"/> : step.status === 'active' ? <Loader2 size={12} className="text-indigo-400 animate-spin"/> : <div className="w-1 h-1 rounded-full bg-slate-700 ml-1"/>}
-                                            <span className={step.status === 'success' ? 'text-slate-400' : 'text-slate-500'}>{step.label}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
                         </div>
 
                         <button onClick={handleStartInterview} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3"><Play size={20} fill="currentColor"/> Begin Interrogation</button>
@@ -1328,7 +1316,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 <div className="h-full w-full flex animate-fade-in relative">
                     <div className={`fixed bottom-24 right-6 z-[100] transition-all duration-500 transform ${isMirrorMinimized ? 'translate-x-20 scale-50 opacity-20' : 'translate-x-0 scale-100'}`}>
                         <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
-                            <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000"></div>
+                            <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
                             <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-red-500/50 overflow-hidden shadow-2xl">
                                 <video ref={mirrorVideoRef} autoPlay playsInline muted className="w-full h-full object-cover transform scale-110"/>
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
@@ -1339,38 +1327,20 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                   onClick={() => setIsMirrorMinimized(!isMirrorMinimized)}
                                   className="absolute top-8 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
                                 >
-                                    {isMirrorMinimized ? <Maximize size={12}/> : <Minimize2 size={12}/>}
+                                    {isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
                                 </button>
                                 <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 h-1 overflow-hidden rounded-full">
                                     <Visualizer volume={volume} isActive={isLive} color="#ffffff" />
                                 </div>
-                            </div>
-                            <div className="absolute -right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2">
-                                <button onClick={() => setPipSize(pipSize === 'normal' ? 'compact' : 'normal')} className="p-2 bg-slate-900 border border-slate-700 rounded-xl text-white shadow-xl hover:bg-indigo-600">
-                                    {pipSize === 'normal' ? <Minimize2 size={14}/> : <Maximize2 size={14}/>}
-                                </button>
                             </div>
                         </div>
                     </div>
                     <div className="flex-1 min-w-0">
                         <CodeStudio 
                             onBack={() => {}} currentUser={currentUser} userProfile={userProfile} isProMember={true} isInterviewerMode={true} 
+                            sessionId={sessionUuidRef.current} // Bind studio to the interview session
                             initialFiles={files} onFileChange={(f) => {
-                                setFiles(prev => {
-                                    const next = prev.map(p => p.path === f.path ? f : p);
-                                    // Audit Hook: Editor Mutation
-                                    if (vfsAuditActive && f.name === 'audit_code.cpp' && f.content.includes('43')) {
-                                        updateAuditStep('code-mutate', 'success');
-                                    }
-                                    // Audit Hook: Whiteboard Delete
-                                    if (vfsAuditActive && f.name === 'audit_design.wb') {
-                                        try {
-                                            const els = JSON.parse(f.content);
-                                            if (Array.isArray(els) && els.length === 2) updateAuditStep('wb-delete', 'success');
-                                        } catch(e) {}
-                                    }
-                                    return next;
-                                });
+                                setFiles(prev => prev.map(p => p.path === f.path ? f : p));
                             }} 
                             externalChatContent={transcript} isAiThinking={!isAiConnected && isLive}
                             onSyncCodeWithAi={(f) => { addApiLog(`Forced Code Sync: ${f.name}`, 'info'); serviceRef.current?.sendText(`NEURAL_SNAPSHOT_SYNC: Code updated for ${f.name}.`); }}
@@ -1381,44 +1351,22 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                 if (idx >= 0) {
                                     setActiveFileIndex(idx);
                                     setActiveFilePath(path);
-                                    if (vfsAuditActive && path === 'audit_code.cpp') updateAuditStep('code-focus', 'success');
-                                    if (vfsAuditActive && path === 'audit_design.wb') updateAuditStep('wb-focus', 'success');
                                 }
                             }}
                         />
                     </div>
                     {showDebugPanel && (
-                        <div className="w-80 border-l border-slate-800 bg-slate-950 flex flex-col shrink-0 animate-fade-in-right">
+                        <div className="w-80 border-l border-slate-800 bg-slate-950 flex flex-col shrink-0 animate-fade-in-right text-left">
                              <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
                                  <div className="flex items-center gap-3">
-                                     <div className="relative">
-                                         <Bot className="text-red-500" size={20}/>
-                                         <div className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 animate-ping"></div>
-                                     </div>
+                                     <Bot className="text-red-500" size={20}/>
                                      <span className="font-bold text-sm uppercase tracking-tight">Shadow Monitor</span>
                                  </div>
                                  <button onClick={() => setShowDebugPanel(false)} className="text-slate-500 hover:text-white"><X size={14}/></button>
                              </div>
-                             
-                             {vfsAuditActive && (
-                                 <div className="p-4 bg-indigo-900/10 border-b border-indigo-500/20 space-y-3">
-                                     <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><Beaker size={12}/> VFS Pre-flight Results</h4>
-                                     <div className="space-y-2">
-                                         {auditResults.map(step => (
-                                             <div key={step.id} className="flex items-center justify-between group">
-                                                 <span className="text-[9px] font-bold text-slate-400 uppercase truncate pr-4">{step.label}</span>
-                                                 <div className={`px-2 py-0.5 rounded text-[8px] font-black ${step.status === 'success' ? 'bg-emerald-900/40 text-emerald-400 border border-emerald-500/30' : step.status === 'active' ? 'bg-indigo-600 text-white animate-pulse' : 'bg-slate-800 text-slate-600 border border-slate-700'}`}>
-                                                     {step.status.toUpperCase()}
-                                                 </div>
-                                             </div>
-                                         ))}
-                                     </div>
-                                 </div>
-                             )}
-
                              <div className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide">
                                  {apiLogs.map((l, i) => (
-                                     <div key={i} className={`p-3 rounded-xl border text-[10px] font-mono leading-relaxed ${l.type === 'shadow' ? 'bg-purple-900/20 border-purple-500/30 text-purple-300' : l.type === 'warn' ? 'bg-amber-900/20 border-amber-500/30 text-amber-300' : l.type === 'audit' ? 'bg-indigo-900/20 border-indigo-500/30 text-indigo-300' : 'bg-slate-900 border border-slate-800 text-slate-400'}`}>
+                                     <div key={i} className={`p-3 rounded-xl border text-[10px] font-mono leading-relaxed ${l.type === 'shadow' ? 'bg-purple-900/20 border-purple-500/30 text-purple-300' : l.type === 'warn' ? 'bg-amber-900/20 border-amber-500/30 text-amber-300' : 'bg-slate-900 border-slate-800 text-slate-400'}`}>
                                          <div className="flex justify-between mb-1"><span className="opacity-40">{l.time}</span><span className="font-bold uppercase">{l.type}</span></div>
                                          {l.msg}
                                      </div>
@@ -1431,7 +1379,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             )}
 
             {view === 'archive' && (
-                <div className="max-w-6xl w-full p-8 md:p-12 h-full flex flex-col animate-fade-in overflow-hidden">
+                <div className="max-w-6xl w-full p-8 md:p-12 h-full flex flex-col animate-fade-in overflow-hidden text-left">
                     <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-slate-800 pb-8 mb-8 shrink-0">
                         <div>
                             <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">Registry History</h2>
@@ -1485,7 +1433,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                                                         )}
                                                     </div>
                                                 </div>
-                                                <h3 className="text-xl font-bold text-white uppercase tracking-tight line-clamp-1 mb-2">{rec.mode.replace('_', ' ')}</h3>
+                                                <h3 className="text-xl font-bold text-white uppercase tracking-tight line-clamp-1 mb-2">{String(rec.mode || '').replace('_', ' ')}</h3>
                                                 <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-6 italic">"{rec.jobDescription || 'Standard interrogation context.'}"</p>
                                             </div>
                                             <div className="space-y-4">
@@ -1507,7 +1455,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             )}
 
             {view === 'feedback' && report && (
-                <div className="h-full w-full overflow-y-auto p-12 bg-[#020617] scrollbar-hide">
+                <div className="h-full w-full overflow-y-auto p-12 bg-[#020617] scrollbar-hide text-left">
                     <div className="max-w-4xl mx-auto space-y-16">
                         <div className="text-center space-y-4">
                             <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">Evaluation Refraction</h2>

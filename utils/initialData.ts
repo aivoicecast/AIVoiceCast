@@ -4,8 +4,8 @@ import { OFFLINE_CHANNEL_ID } from './offlineContent';
 
 export const VOICES = [
   'Default Gem',
-  'Software Interview Expert',
-  'Linux Kernel Architect',
+  'Software Interview Voice gen-lang-client-0648937375',
+  'Linux Kernel Voice gen-lang-client-0375218270',
   'Puck', 
   'Charon', 
   'Kore', 
@@ -15,8 +15,8 @@ export const VOICES = [
 
 export const SPECIALIZED_VOICES = [
   'Default Gem',
-  'Software Interview Expert',
-  'Linux Kernel Architect'
+  'Software Interview Voice',
+  'Linux Kernel Voice'
 ];
 
 export const TOPIC_CATEGORIES: Record<string, string[]> = {
@@ -31,48 +31,76 @@ const INITIAL_DATE = 1705276800000;
 
 export const HANDCRAFTED_CHANNELS: Channel[] = [
   {
-    id: 'mock-interview-deep-dive',
-    title: '🛡️ AUDIT: MockInterview Studio',
-    description: 'The 0-indexed Technical Manifest (v9.0.0). Domains A-E: Socratic friction, Emotive Link, Heuristic Simulation, and BCP thermodynamics.',
-    author: 'Lead Architect',
-    voiceName: 'Software Interview Expert',
-    systemInstruction: 'You are the Lead Architect of the MockInterview Studio. Conduct a full Domain A-to-E technical audit. Explain the 0-indexed Sector hierarchy. Discuss the thermodynamic math: 18x efficiency using Flash and 100x cost-saving via community deduplication in the Firebase ledger.',
-    likes: 2450,
+    id: 'hackathon-pitch',
+    title: '🚀 PITCH: Neural Lens (3-Min)',
+    description: 'The 180-second manifest. How we turn Gemini from an agreeable generator into a formal technical verifier. 24 apps, one unified story.',
+    author: 'Chief Architect',
+    voiceName: 'Software Interview Voice gen-lang-client-0648937375',
+    systemInstruction: 'You are the Chief Architect of Neural Prism. Deliver a 3-minute high-intensity pitch of the platform. Focus on the Neural Lens and the 18x efficiency gap.',
+    likes: 8900,
     dislikes: 0,
     comments: [],
-    tags: ['Audit', 'Technical', 'Socratic', 'v9.0.0'],
-    imageUrl: 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&q=80',
-    welcomeMessage: "Handshake verified. v9.0.0 Technical Audit active. Ready to refract Domain A: Philosophy via Sector 00?",
+    tags: ['Pitch', 'Hackathon', 'Winning', 'Fast'],
+    imageUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&q=80',
+    welcomeMessage: "Handshake established. Initiating 180-second Refraction Pitch...",
     createdAt: Date.now()
   },
   {
     id: 'judge-deep-dive',
-    title: '🏆 JUDGE: Technical Audit',
-    description: 'v9.0.0-COMPLETE Technical manifest. Multi-model orchestration, BCP sharding, and Heuristic Simulation thermodynamics.',
+    title: '⚖️ AUDIT: Full Spectrum Deep-Dive',
+    description: 'The complete 30-minute technical manifest. Every app, every logic gate, and the formal verification of the entire Neural Prism architecture.',
     author: 'Project Lead',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the Project Lead for Neural Prism. Conduct a technical audit for a hackathon judge based on the v9.0.0 manifest. Focus on the Earn/Spend = 1.0 goal, achieved via 18x Flash concurrency and 100x community knowledge caching.',
-    likes: 2100,
+    systemInstruction: 'You are the Project Lead. Conduct a 30-minute deep dive into all 20+ apps. Use the Neural Lens to verify every claim. Focus on technical truth.',
+    likes: 5400,
     dislikes: 0,
     comments: [],
-    tags: ['Judging', 'Architecture', 'Sovereignty', 'Complete'],
+    tags: ['Audit', 'Verification', 'FullCoverage', 'Technical'],
     imageUrl: 'https://images.unsplash.com/photo-1507413245164-6160d8298b31?w=600&q=80',
-    welcomeMessage: "Welcome, Auditor. v9.0.0-COMPLETE Technical Audit is now live. We have achieved 100% sector parity with the 0-indexed manifest.",
+    welcomeMessage: "Auditor login confirmed. Full Spectrum Registry is now open for logic verification.",
+    createdAt: Date.now()
+  },
+  {
+    id: 'system-gemini-3-official',
+    title: '🤖 Google AI Studio - Gemini 3',
+    description: 'Master the Live API, context caching, and native multimodality. Deep dive into the next generation of reasoning models.',
+    author: 'Google DevRel',
+    voiceName: 'Default Gem',
+    systemInstruction: 'You are an expert on Google AI Studio. Explain the technical nuances of Gemini 3 Pro and Flash, focusing on the Live API and tool-calling capabilities.',
+    likes: 5600,
+    dislikes: 0,
+    comments: [],
+    tags: ['AI', 'Google', 'Gemini3', 'API'],
+    imageUrl: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=600&q=80',
+    createdAt: Date.now()
+  },
+  {
+    id: 'system-linux-kernel-architect',
+    title: '🐧 Linux Kernel Architect',
+    description: 'Dissecting the CFS scheduler, memory management, and the sk_buff lifecycle. A masterclass for systems engineers.',
+    author: 'Kernel Maintainer',
+    voiceName: 'Linux Kernel Voice gen-lang-client-0375218270',
+    systemInstruction: 'You are a senior Linux Kernel maintainer. Explain low-level kernel subsystems with high technical precision.',
+    likes: 8900,
+    dislikes: 0,
+    comments: [],
+    tags: ['Linux', 'Kernel', 'Systems', 'C'],
+    imageUrl: 'https://images.unsplash.com/photo-1629654297299-c8506221ca97?w=600&q=80',
     createdAt: Date.now()
   },
   {
     id: OFFLINE_CHANNEL_ID,
     title: 'Neural Prism Platform Guide',
-    description: 'v9.0.0 Self-documenting guide. Master the Sovereign Signer, the Offline Trust Root, and the Unified Refraction engine.',
+    description: 'v12.0 Self-documenting guide. Master the Stateful Refraction Loop, the Sovereign Signer, and the Unified Refraction engine.',
     author: 'Prism Architect',
     voiceName: 'Default Gem',
-    systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on our v9.0.0 0-indexed manifest.',
+    systemInstruction: 'You are the lead architect of Neural Prism. You explain the technical implementation of the platform, focusing on our v12.0 stateful manifest and cumulative context synthesis.',
     likes: 18200,
     dislikes: 0,
     comments: [],
-    tags: ['Architecture', 'Guide', 'OfflineReady', 'v9.0.0'],
+    tags: ['Architecture', 'Guide', 'OfflineReady', 'v12.0'],
     imageUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=200&q=80', 
-    welcomeMessage: "Welcome to the Neural Prism v9.0.0. We have achieved 100% verification parity. Ready to audit?",
+    welcomeMessage: "Welcome to the Neural Prism v12.0.0-ABUNDANCE. We have achieved 100% stateful consistency. Ready to audit the spectrum?",
     createdAt: INITIAL_DATE
   }
 ];

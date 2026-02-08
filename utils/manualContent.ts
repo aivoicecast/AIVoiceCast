@@ -1,3 +1,4 @@
+
 import { ViewID } from '../types';
 
 export const MANUAL_CONTENT: Partial<Record<ViewID, string>> = {
@@ -232,5 +233,33 @@ During the development of the Scribe Protocol, we encountered several "Neural Dr
 - **One-Click Synthesis**: Refract hours of dialogue into a 3-paragraph executive brief.
 
 *Refracted by Neural Prism v9.9.2 // Stable Architecture Confirmed.*
+  `,
+  neural_lens: `
+# 🔭 Neural Lens: Intelligence Observability
+
+**Mission Control for Automated Reasoning Verification.**
+
+The Neural Lens is the primary instrumentation tool for ensuring technical truth. It turns the "Liar's Computer" into a verifiable system of record.
+
+### 🛠️ How to use the Lens:
+
+#### 1. Ingest/Generate Content
+The Lens operates on "Nodes" (Lectures, Documents, Specifications). To trigger an audit, go to the **Hub (Discovery)** or **Author Studio** and generate a new technical dialogue. 
+
+#### 2. The Shadow Audit (Automatic)
+Upon generation, the **Shadow Agent** (Gemini 3 Pro) recursively analyzes the content to extract logic gates and dependency concepts.
+
+#### 3. Inspect the Logic Mesh
+Open the **Neural Lens** app from the launcher. Use the sidebar to select your generated node. 
+- **The Graph**: View how the AI has linked technical concepts (e.g., how "Buddy Allocator" links to "Memory Fragmentation").
+- **Structural Coherence**: Check the score (0-100). Scores below 80 indicate potential "Neural Drift" where the logic may be shallow.
+
+#### 4. Review Adversarial Probes
+The most critical part of the audit is the **Adversarial Trace**. Here, you see the questions the Shadow Agent used to challenge the Lead Agent's reasoning.
+- **Passed**: The logic held up under scrutiny.
+- **Warning**: A logical contradiction was detected. You should trigger a "Neural Refraction" (Refresh button) to repair the node.
+
+### 💎 Pro-Tip for Judges:
+Select the **🏆 JUDGE: Technical Audit** node in the Lens sidebar to see how the platform evaluates its own architecture against the hackathon criteria.
   `
 };
