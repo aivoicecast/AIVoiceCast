@@ -1,3 +1,4 @@
+
 import { initializeApp, getApps, getApp } from "@firebase/app";
 import type { FirebaseApp } from "@firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
@@ -13,8 +14,10 @@ import { firebaseKeys } from './private_keys';
  */
 const initializeFirebase = (): FirebaseApp | null => {
     try {
-        if (getApps().length > 0) {
-            return getApp();
+        // Prevent re-initialization if already active
+        const existingApps = getApps();
+        if (existingApps.length > 0) {
+            return existingApps[0];
         }
 
         if (firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_BASE_API_KEY") {
@@ -44,22 +47,27 @@ const initDb = (): Firestore | null => {
     
     let firestore: Firestore;
     try {
-        console.log("[Firestore] Initializing refractive data plane with Enhanced Long-Polling...");
-        // Use experimentalForceLongPolling to handle environments where WebSockets are blocked/unstable
+        console.log("[Firestore] Initializing refractive data plane with Forced Long-Polling...");
+        
+        // Use initializeFirestore to set experimental settings before any other DB call
         firestore = initializeFirestore(appInstance, {
             experimentalForceLongPolling: true,
+            // Automatically switch to long-polling if WebSockets are blocked
             experimentalAutoDetectLongPolling: true,
+            // Explicitly set the host to ensure direct connectivity
+            host: "firestore.googleapis.com",
+            ssl: true,
             cacheSizeBytes: CACHE_SIZE_UNLIMITED
         });
     } catch (e) {
-        console.warn("[Firestore] initializeFirestore failed, falling back to getFirestore:", e);
+        console.warn("[Firestore] initializeFirestore failed (likely already initialized), falling back to getFirestore:", e);
         firestore = getFirestore(appInstance);
     }
 
-    // Persistence initialization shouldn't block the connection.
+    // Persistence initialization should be robust against multi-tab issues.
     enableIndexedDbPersistence(firestore).catch((err) => {
         if (err.code === 'failed-precondition') {
-            console.debug("[Firestore] Persistence: Multiple tabs open. Local cache active.");
+            console.debug("[Firestore] Persistence: Multiple tabs open. Local cache remains active.");
         } else if (err.code === 'unimplemented') {
             console.debug("[Firestore] Persistence: Browser environment lacks IndexedDB support.");
         } else {

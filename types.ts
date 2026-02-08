@@ -21,6 +21,16 @@ export interface TranscriptItem {
   timestamp: number;
 }
 
+// Added Comment interface to resolve multiple file errors
+export interface Comment {
+  id: string;
+  userId: string;
+  user: string;
+  text: string;
+  timestamp: number;
+  attachments?: Attachment[];
+}
+
 export interface UserFeedback {
     id: string;
     userId: string;
@@ -130,6 +140,14 @@ export interface Channel {
   shares?: number;
 }
 
+// Added ChannelStats interface to fix ChannelCard error
+export interface ChannelStats {
+  likes: number;
+  dislikes: number;
+  shares: number;
+  comments?: number;
+}
+
 export interface Chapter {
   id: string;
   title: string;
@@ -156,6 +174,43 @@ export interface CommunityDiscussion {
   segmentIndex?: number;
   visibility?: ChannelVisibility;
   groupIds?: string[];
+}
+
+// Added Booking interface to resolve multiple file errors
+export interface Booking {
+  id: string;
+  userId: string;
+  hostName: string;
+  mentorId: string;
+  mentorName: string;
+  mentorImage?: string;
+  date: string;
+  time: string;
+  duration: number;
+  endTime: string;
+  topic: string;
+  invitedEmail: string;
+  status: 'pending' | 'scheduled' | 'rejected' | 'cancelled' | 'completed';
+  type: 'p2p' | 'group';
+  createdAt: number;
+  recordingUrl?: string;
+}
+
+// Added Invitation interface to resolve multiple file errors
+export interface Invitation {
+  id: string;
+  fromUserId: string;
+  fromName: string;
+  toEmail: string;
+  toUserId?: string;
+  groupId?: string;
+  groupName?: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  type: 'group' | 'coin' | 'session';
+  amount?: number;
+  memo?: string;
+  link?: string;
+  createdAt: number;
 }
 
 export interface RecordingSession {
@@ -191,6 +246,27 @@ export interface Group {
   memberIds: string[];
   createdAt: number;
   visibility: 'public' | 'private';
+}
+
+// Added ChatChannel interface for WorkplaceChat
+export interface ChatChannel {
+  id: string;
+  name: string;
+  type: string;
+  memberIds: string[];
+  createdAt: number;
+}
+
+// Added RealTimeMessage interface for WorkplaceChat
+export interface RealTimeMessage {
+  id: string;
+  text: string;
+  senderId: string;
+  senderName: string;
+  senderImage?: string;
+  timestamp: any; // Firestore Timestamp
+  replyTo?: any;
+  attachments?: any[];
 }
 
 export interface CodeFile {
@@ -334,6 +410,29 @@ export interface GeneratedIcon {
   ownerId: string;
 }
 
+// Added AgentMemory interface to resolve multiple file errors
+export interface AgentMemory {
+  id?: string;
+  ownerId?: string;
+  recipientName: string;
+  senderName: string;
+  occasion: string;
+  cardMessage: string;
+  context: string;
+  theme: 'festive' | 'cozy' | 'minimal' | 'chinese-poem' | 'cyberpunk' | 'abstract';
+  customThemePrompt: string;
+  userImages: string[];
+  googlePhotosUrl: string;
+  generatedAt: string;
+  fontFamily?: string;
+  fontSizeScale?: number;
+  coverImageUrl?: string;
+  backImageUrl?: string;
+  voiceMessageUrl?: string;
+  songLyrics?: string;
+  songUrl?: string;
+}
+
 export interface BankingCheck {
   id: string;
   payee: string;
@@ -365,6 +464,21 @@ export interface InsurancePolicy {
   maxAmount: number;
   validWindows: { start: number, end: number }[];
   recipientUid?: string;
+}
+
+// Added DigitalReceipt interface for firestoreService
+export interface DigitalReceipt {
+  id: string;
+  senderId: string;
+  senderName: string;
+  receiverId: string;
+  receiverName: string;
+  amount: number;
+  memo: string;
+  status: 'pending' | 'confirmed' | 'claimed';
+  createdAt: number;
+  confirmedAt?: number;
+  claimedAt?: number;
 }
 
 export interface ShippingLabel {

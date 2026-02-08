@@ -1,3 +1,4 @@
+
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -11,7 +12,7 @@ import {
   CodeFile, CursorPosition, WhiteboardElement, Blog, BlogPost, JobPosting, 
   CareerApplication, Notebook, AgentMemory, GlobalStats, SubscriptionTier, 
   ChannelVisibility, GeneratedIcon, BankingCheck, ShippingLabel, CoinTransaction, OfflinePaymentToken, MockInterviewRecording, TrustScore, DualVerse, DigitalReceipt, UserFeedback, BadgeData, SignedDocument,
-  BookData 
+  BookData, CloudItem 
 } from '../types';
 import { SYSTEM_BLOG_POSTS } from '../utils/blogContent';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
@@ -1138,4 +1139,95 @@ export async function getDebugCollectionDocs(col: string, l: number = 50): Promi
 export async function setUserSubscriptionTier(uid: string, tier: SubscriptionTier) {
     if (!db) return;
     await updateDoc(doc(db, USERS_COLLECTION, uid), { subscriptionTier: tier });
+}
+
+// --- Missing for CodeStudio ---
+
+/**
+ * Lists items in a cloud directory (Stub)
+ */
+export async function listCloudDirectory(path: string): Promise<CloudItem[]> {
+    if (!db) return [];
+    // Stub implementation
+    return [];
+}
+
+/**
+ * Saves a code project to the cloud vault
+ */
+export async function saveProjectToCloud(project: CodeProject) {
+    await saveCodeProject(project);
+}
+
+/**
+ * Deletes an item from the cloud (Stub)
+ */
+export async function deleteCloudItem(path: string) {
+    if (!db) return;
+    // Stub implementation
+}
+
+/**
+ * Creates a folder in the cloud (Stub)
+ */
+export async function createCloudFolder(path: string) {
+    if (!db) return;
+    // Stub implementation
+}
+
+/**
+ * Deletes a file from a code project
+ */
+export async function deleteCodeFile(projectId: string, filePath: string) {
+    if (!db) return;
+    const p = await getCodeProject(projectId);
+    if (p) {
+        const nextFiles = p.files.filter(f => f.path !== filePath);
+        await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { files: sanitizeData(nextFiles), lastModified: Date.now() });
+    }
+}
+
+/**
+ * Moves/renames a file in a code project
+ */
+export async function moveCloudFile(projectId: string, oldPath: string, newPath: string) {
+    if (!db) return;
+    const p = await getCodeProject(projectId);
+    if (p) {
+        const nextFiles = p.files.map(f => f.path === oldPath ? { ...f, path: newPath, name: newPath.split('/').pop() || f.name } : f);
+        await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { files: sanitizeData(nextFiles), lastModified: Date.now() });
+    }
+}
+
+/**
+ * Sends a share notification to users (via invitations)
+ */
+export async function sendShareNotification(uids: string[], docName: string, link: string) {
+    if (!db || !auth.currentUser) return;
+    for (const uid of uids) {
+        const inviteId = generateSecureId();
+        await setDoc(doc(db, 'invitations', inviteId), sanitizeData({
+            id: inviteId,
+            fromUserId: auth.currentUser.uid,
+            fromName: auth.currentUser.displayName,
+            toUserId: uid,
+            groupName: docName,
+            status: 'pending',
+            type: 'session',
+            link,
+            createdAt: Date.now()
+        }));
+    }
+}
+
+/**
+ * Deletes a folder and all its contents recursively in a code project
+ */
+export async function deleteCloudFolderRecursive(projectId: string, folderPath: string) {
+    if (!db) return;
+    const p = await getCodeProject(projectId);
+    if (p) {
+        const nextFiles = p.files.filter(f => !f.path.startsWith(folderPath));
+        await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { files: sanitizeData(nextFiles), lastModified: Date.now() });
+    }
 }
