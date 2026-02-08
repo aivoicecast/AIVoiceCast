@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ArrowLeft, BookOpen, Rocket, Sparkles, Globe, ShieldCheck, Play, Pause, Volume2, Clock, Loader2, FileText, LayoutList, Speaker, ChevronDown, Check, Zap, Trophy, Layout, Target } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
@@ -31,10 +30,10 @@ export const ProjectStory: React.FC<ProjectStoryProps> = ({ onBack }) => {
   }, [activeVersion]);
 
   const estimatedDuration = useMemo(() => {
-      if (activeVersion === 'hackathon') return '2m 15s';
-      if (activeVersion === 'judge') return '2m 30s';
-      if (activeVersion === 'vision') return '3m 0s';
-      return '12m 30s';
+      if (activeVersion === 'hackathon') return '5m 15s';
+      if (activeVersion === 'judge') return '5m 30s';
+      if (activeVersion === 'vision') return '5m 0s';
+      return '15m 0s';
   }, [activeVersion]);
 
   const stopAudioLocal = useCallback(() => {

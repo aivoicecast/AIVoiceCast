@@ -1,89 +1,249 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, TranscriptItem } from '../types';
-import { 
-    subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, 
-    claimCodeProjectLock, updateProjectActiveFile, updateProjectAccess,
-    getCodeProject, deductCoins, AI_COSTS 
-} from '../services/firestoreService';
-import { 
-    ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, 
-    deleteDriveFile, createDriveFolder, downloadDriveFileAsBlob, getDriveFileStreamUrl,
-    moveDriveFile
-} from '../services/googleDriveService';
-import { connectGoogleDrive, getDriveToken, signInWithGoogle, signInWithGitHub } from '../services/authService';
-import { 
-    fetchRepoContents, fetchFileContent, updateRepoFile, fetchRepoSubTree, 
-    deleteRepoFile, renameRepoFile, fetchRepoInfo
-} from '../services/githubService';
-import { GeminiLiveService } from '../services/geminiLive';
-import { MarkdownView } from './MarkdownView';
-import { generateSecureId } from '../utils/idUtils';
-import { GoogleGenAI, Type, FunctionDeclaration } from '@google/genai';
-import Editor from '@monaco-editor/react';
+// Added TranscriptItem to imports
+import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem, TranscriptItem } from '../types';
 import { 
   ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, 
-  File, Folder, Loader2, RefreshCw, Trash2, Edit2, FolderOpen, Send, Bot, Mic, MicOff, 
-  Sparkles, Terminal, Wand2, PanelLeft, PenTool, Activity, Lock, Search, FilePlus, 
-  FileUp, Play, ExternalLink, ShieldCheck, Zap, Download, Layout, LayoutGrid, 
-  PanelRightClose, PanelRightOpen, Database, Globe, FolderPlus, MoreVertical, Check, Settings, AlertCircle, FileText, FileVideo, Eye, TestTube, Microscope, MessageSquare, Binary, Info
+  File, Folder, DownloadCloud, Loader2, CheckCircle, AlertCircle, Info, FolderPlus, 
+  FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, 
+  Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, 
+  FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, 
+  Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, 
+  PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, 
+  ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, 
+  FileSearch, Indent, Wand2, Check, UserCheck, Briefcase, FileUser, Trophy, Star, Play, Camera,
+  // Added FilePlus icon import
+  FilePlus
 } from 'lucide-react';
+import { 
+  // Removed missing members from firestoreService import
+  subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, 
+  claimCodeProjectLock, updateProjectActiveFile, 
+  updateProjectAccess
+} from '../services/firestoreService';
+import { 
+  ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, 
+  deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile 
+} from '../services/googleDriveService';
+// Added getDriveToken to authService import
+import { connectGoogleDrive, signInWithGitHub, getDriveToken } from '../services/authService';
+import { 
+  fetchRepoInfo, fetchRepoContents, fetchFileContent, updateRepoFile, 
+  deleteRepoFile, renameRepoFile 
+} from '../services/githubService';
+import { MarkdownView } from './MarkdownView';
 import { Whiteboard } from './Whiteboard';
-import { Visualizer } from './Visualizer';
+import { GoogleGenAI, FunctionDeclaration, Type } from '@google/genai';
+import { ShareModal } from './ShareModal';
 
-// Import SWC for WASM syntax checking and transpilation
-import init, { transform } from 'https://esm.sh/@swc/wasm-web@1.5.7';
+// --- Interfaces & Constants ---
+
+// Added missing StorageSource type definition
+type StorageSource = 'cloud' | 'drive' | 'github' | 'session';
+
+interface TreeNode {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  children?: TreeNode[];
+  data?: any;
+  isLoaded?: boolean;
+  status?: 'modified' | 'new' | 'deleted';
+}
+
+type LayoutMode = 'single' | 'split-v' | 'split-h' | 'quad';
+type IndentMode = 'tabs' | 'spaces';
 
 interface CodeStudioProps {
   onBack: () => void;
   currentUser: any;
   userProfile: UserProfile | null;
   sessionId?: string;
+  accessKey?: string;
   onSessionStart: (id: string) => void;
-  onSessionStop: (id: string) => void;
+  onSessionStop: () => void;
   onStartLiveSession: (channel: Channel, context?: string) => void;
-  initialFiles?: CodeFile[];
   isProMember?: boolean;
+  onOpenManual?: () => void;
   isInterviewerMode?: boolean;
+  initialFiles?: CodeFile[];
   onFileChange?: (file: CodeFile) => void;
   externalChatContent?: TranscriptItem[];
   isAiThinking?: boolean;
   onSyncCodeWithAi?: (file: CodeFile) => void;
-  onOpenManual?: () => void;
+  activeFilePath?: string | null;
+  onActiveFileChange?: (path: string | null) => void;
 }
 
-type StorageSource = 'cloud' | 'drive' | 'github';
-
-const FileIcon = ({ filename, isDirectory }: { filename: string, isDirectory?: boolean }) => {
-    if (isDirectory) return <Folder size={14} className="text-indigo-400 fill-indigo-400/20" />;
+function getLanguageFromExt(filename: string): any {
+    if (!filename) return 'text';
     const ext = filename.split('.').pop()?.toLowerCase();
-    if (['js', 'jsx', 'ts', 'tsx'].includes(ext || '')) return <Code size={14} className="text-yellow-400" />;
-    if (ext === 'py') return <Code size={14} className="text-blue-400" />;
-    if (ext === 'md') return <FileText size={14} className="text-slate-400" />;
-    if (ext === 'json') return <Code size={14} className="text-green-400" />;
-    if (ext === 'html') return <Code size={14} className="text-orange-500" />;
-    if (ext === 'css') return <Code size={14} className="text-blue-300" />;
-    if (ext === 'pdf') return <FileText size={14} className="text-red-400" />;
-    if (ext === 'webm') return <FileVideo size={14} className="text-purple-400" />;
-    if (['wb', 'draw'].includes(ext || '')) return <PenTool size={14} className="text-pink-400" />;
-    return <File size={14} className="text-slate-500" />;
+    if (['js', 'jsx'].includes(ext || '')) return 'javascript';
+    if (['ts', 'tsx'].includes(ext || '')) return 'typescript';
+    if (ext === 'py') return 'python';
+    if (['cpp', 'c', 'h', 'hpp'].includes(ext || '')) return 'c++';
+    if (ext === 'html') return 'html';
+    if (ext === 'css') return 'css';
+    if (ext === 'json') return 'json';
+    if (ext === 'md') return 'markdown';
+    if (['draw', 'whiteboard', 'wb'].includes(ext || '')) return 'whiteboard';
+    return 'text';
+}
+
+const FileIcon = ({ filename }: { filename: string }) => {
+    if (!filename) return <File size={16} className="text-slate-500" />;
+    const lang = getLanguageFromExt(filename);
+    if (lang === 'javascript' || lang === 'typescript') return <FileCode size={16} className="text-yellow-400" />;
+    if (lang === 'python') return <FileCode size={16} className="text-blue-400" />;
+    if (lang === 'c++') return <FileCode size={16} className="text-indigo-400" />;
+    if (lang === 'html') return <FileCode size={16} className="text-orange-400" />;
+    if (lang === 'css') return <FileCode size={16} className="text-blue-300" />;
+    if (lang === 'json') return <FileCode size={16} className="text-green-400" />;
+    if (lang === 'markdown') return <FileTextIcon size={16} className="text-slate-400" />;
+    if (lang === 'whiteboard') return <PenTool size={16} className="text-pink-500" />;
+    return <File size={16} className="text-slate-500" />;
 };
 
-const updateCodeTool: FunctionDeclaration = {
-    name: 'update_code',
-    description: 'Updates the content of the currently active code file. Use this to apply fixes, refactor code, or add test cases. Do NOT print the code in your text response if you use this tool.',
-    parameters: {
-        type: Type.OBJECT,
-        properties: {
-            content: { type: Type.STRING, description: 'The complete new content for the active file.' }
-        },
-        required: ['content']
-    }
+const FileTreeItem = ({ node, depth, activeId, onSelect, onToggle, expandedIds, loadingIds }: any) => {
+    const isExpanded = expandedIds[node.id];
+    const isLoading = loadingIds[node.id];
+    const isActive = activeId === node.id;
+    
+    return (
+        <div>
+            <div 
+                className={`flex items-center gap-1 py-1 px-2 cursor-pointer select-none hover:bg-slate-800/50 group ${isActive ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                style={{ paddingLeft: `${depth * 12 + 8}px` }}
+                onClick={() => onSelect(node)}
+            >
+                {node.type === 'folder' && (
+                    <div onClick={(e) => { e.stopPropagation(); onToggle(node); }} className="p-0.5 hover:text-white">
+                        {isLoading ? <Loader2 size={12} className="animate-spin"/> : isExpanded ? <ChevronDown size={12}/> : <ChevronRight size={12}/>}
+                    </div>
+                )}
+                {node.type === 'folder' ? (
+                    isExpanded ? <FolderOpen size={16} className="text-indigo-400"/> : <Folder size={16} className="text-indigo-400"/>
+                ) : (
+                    <FileIcon filename={node.name} />
+                )}
+                <span className="text-xs truncate flex-1">{node.name}</span>
+                {node.status === 'modified' && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 ml-1"></div>}
+            </div>
+            {isExpanded && node.children && (
+                <div>
+                    {node.children.map((child: any) => (
+                        <FileTreeItem 
+                            key={child.id} 
+                            node={child} 
+                            depth={depth + 1} 
+                            activeId={activeId} 
+                            onSelect={node.data ? () => onSelect(node) : undefined} 
+                            onToggle={onToggle} 
+                            expandedIds={expandedIds} 
+                            loadingIds={loadingIds}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const RichCodeEditor = ({ code, onChange, onCursorMove, language, readOnly, fontSize, indentMode }: any) => {
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const lineNumbersRef = useRef<HTMLDivElement>(null);
+    const lineCount = (code || '').split('\n').length;
+    
+    const handleScroll = () => {
+        if (textareaRef.current && lineNumbersRef.current) {
+            lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            if (readOnly) return;
+            const target = e.currentTarget;
+            const start = target.selectionStart;
+            const end = target.selectionEnd;
+            const value = target.value;
+            const tabStr = indentMode === 'spaces' ? "    " : "\t"; 
+            const updatedValue = value.substring(0, start) + tabStr + value.substring(end);
+            onChange(updatedValue);
+            requestAnimationFrame(() => {
+                target.selectionStart = target.selectionEnd = start + tabStr.length;
+            });
+        }
+    };
+
+    const editorStyles = { 
+        fontSize: `${fontSize}px`, 
+        lineHeight: '1.6', 
+        tabSize: 4, 
+        MozTabSize: 4,
+        fontFamily: "'JetBrains Mono', monospace"
+    } as React.CSSProperties;
+
+    return (
+        <div className="w-full h-full flex bg-slate-950 font-mono overflow-hidden relative">
+            <div ref={lineNumbersRef} className="w-12 flex-shrink-0 bg-slate-900 text-slate-600 py-4 text-right pr-3 select-none overflow-hidden border-r border-slate-800" style={editorStyles}>
+                {Array.from({ length: lineCount }).map((_, i) => <div key={i} className="h-[1.6em]">{i + 1}</div>)}
+            </div>
+            <textarea
+                ref={textareaRef}
+                className="flex-1 bg-transparent text-slate-300 p-4 resize-none outline-none leading-relaxed overflow-auto whitespace-pre scrollbar-hide"
+                style={editorStyles}
+                value={code || ''}
+                wrap="off"
+                onChange={(e) => onChange(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onScroll={handleScroll}
+                onSelect={(e) => {
+                    const target = e.target as HTMLTextAreaElement;
+                    const val = target.value.substr(0, target.selectionStart);
+                    const lines = val.split('\n');
+                    if (onCursorMove) onCursorMove(lines.length, lines[lines.length - 1].length);
+                }}
+                spellCheck={false}
+                readOnly={readOnly}
+            />
+        </div>
+    );
+};
+
+const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking }: any) => {
+    const [input, setInput] = useState('');
+    return (
+        <div className="flex flex-col h-full bg-slate-950 border-l border-slate-800">
+            <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-900">
+                <span className="font-bold text-slate-300 text-sm flex items-center gap-2"><Bot size={16} className="text-indigo-400"/> AI Assistant</span>
+                <button onClick={onClose} title="Minimize AI Panel"><PanelRightClose size={16} className="text-slate-500 hover:text-white"/></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide">
+                {messages.map((m: any, i: number) => (
+                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[95%] rounded-lg p-3 text-sm leading-relaxed ${m.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
+                            {m.role === 'ai' ? <MarkdownView content={m.text} /> : <p className="whitespace-pre-wrap">{m.text}</p>}
+                        </div>
+                    </div>
+                ))}
+                {isThinking && <div className="text-slate-500 text-xs flex items-center gap-2 justify-center"><Loader2 className="animate-spin" size={12}/> AI is thinking...</div>}
+            </div>
+            <div className="p-3 border-t border-slate-800 bg-slate-950">
+                <div className="flex gap-2">
+                    <input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if(e.key === 'Enter') { onSendMessage(input); setInput(''); } }} className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-indigo-500 placeholder-slate-600" placeholder="Ask AI to edit code..." />
+                    <button onClick={() => { onSendMessage(input); setInput(''); }} className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"><Send size={16}/></button>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export const CodeStudio: React.FC<CodeStudioProps> = ({ 
-  onBack, currentUser, userProfile, isProMember, sessionId, initialFiles,
-  isInterviewerMode, onFileChange, externalChatContent, isAiThinking, onSyncCodeWithAi, onOpenManual
+  onBack, currentUser, userProfile, sessionId, accessKey, onSessionStart, onSessionStop, onStartLiveSession,
+  isProMember, onOpenManual, isInterviewerMode, initialFiles, onFileChange, externalChatContent, isAiThinking,
+  onSyncCodeWithAi, activeFilePath: propActiveFilePath, onActiveFileChange
 }) => {
   if (isProMember === false) {
     return (
@@ -92,1083 +252,423 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({
                 <div className="absolute top-0 right-0 p-32 bg-indigo-600/10 blur-[100px] rounded-full pointer-events-none"></div>
                 <Lock size={48} className="text-indigo-400 mx-auto mb-6 relative z-10" />
                 <h2 className="text-2xl font-black text-white italic tracking-tighter uppercase mb-4 relative z-10">Pro Access Required</h2>
-                <p className="text-slate-400 text-sm mb-10 font-medium relative z-10">Neural Builder Studio requires an active Pro Membership to use high-intensity AI simulation and sovereign storage integration.</p>
-                <button onClick={onBack} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl transition-all relative z-10">Back to Hub</button>
+                <button onClick={onBack} className="w-full py-4 bg-indigo-600 hover:bg-indigo-50 text-white font-black uppercase tracking-widest rounded-2xl transition-all relative z-10">Back to Hub</button>
             </div>
         </div>
     );
   }
 
-  const [source, setSource] = useState<StorageSource>('cloud');
-  const [project, setProject] = useState<CodeProject | null>(null);
-  const [activeFile, setActiveFile] = useState<CodeFile | null>(null);
-  const activeFileRef = useRef<CodeFile | null>(null);
-  const [files, setFiles] = useState<CodeFile[]>(initialFiles || []);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [isCheckingSyntax, setIsCheckingSyntax] = useState(false);
-  const [isMagicFixing, setIsMagicFixing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [githubToken, setGithubToken] = useState<string | null>(localStorage.getItem('github_token'));
-  const [previewMode, setPreviewMode] = useState(false);
-  const [swcReady, setSwcReady] = useState(false);
+  const defaultFile: CodeFile = {
+      name: 'hello.cpp',
+      path: 'cloud://hello.cpp',
+      language: 'c++',
+      content: `#include <iostream>\n\nint main() {\n    std::cout << "Hello, World!" << std::endl;\n    return 0;\n}`,
+      loaded: true,
+      isDirectory: false
+  };
+
+  // MULTI-PANE STATE
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>('single');
+  const [activeSlots, setActiveSlots] = useState<(CodeFile | null)[]>([defaultFile, null, null, null]);
+  const [focusedSlot, setFocusedSlot] = useState<number>(0);
+  const [slotViewModes, setSlotViewModes] = useState<Record<number, 'code' | 'preview'>>({});
+  const [innerSplitRatio, setInnerSplitRatio] = useState(50); 
+  const [isDraggingInner, setIsDraggingInner] = useState(false);
   
-  // Sidebar State
-  const [repoUrlInput, setRepoUrlInput] = useState('');
-  const [githubConfig, setGithubConfig] = useState({ owner: '', repo: '', branch: 'main' });
-  const [terminalOutput, setTerminalOutput] = useState<string | null>(null);
-  const [namingModal, setNamingModal] = useState<{ type: 'file' | 'folder' | 'rename', path?: string, oldName?: string } | null>(null);
-  const [newName, setNewName] = useState('');
-
-  // AI Chat State
-  const [chatMessages, setChatMessages] = useState<Array<{role: 'user' | 'ai', text: string}>>([
-      { role: 'ai', text: "Hello! I'm your Neural Partner. I can help you write, debug, and simulate code across all backends." }
-  ]);
-  const [chatInput, setChatInput] = useState('');
+  const [project, setProject] = useState<CodeProject>({ id: 'init', name: 'New Project', files: initialFiles || [defaultFile], lastModified: Date.now() });
+  const [activeTab, setActiveTab] = useState<StorageSource>('cloud');
+  const [isLeftOpen, setIsLeftOpen] = useState(true);
+  const [isRightOpen, setIsRightOpen] = useState(true);
+  const [chatMessages, setChatMessages] = useState<Array<{role: 'user' | 'ai', text: string}>>([{ role: 'ai', text: "Ready to build. Open a file from the explorer to begin." }]);
   const [isChatThinking, setIsChatThinking] = useState(false);
-  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+  // Added isLoading state to fix CodeStudio error
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const [cloudItems, setCloudItems] = useState<CloudItem[]>([]); 
+  const [driveItems, setDriveItems] = useState<(DriveFile & { parentId?: string, isLoaded?: boolean })[]>([]); 
+  const [driveRootId, setDriveRootId] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [loadingFolders, setLoadingFolders] = useState<Record<string, boolean>>({});
+  
+  const [driveToken, setDriveToken] = useState<string | null>(null);
+  const [githubToken, setGithubToken] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'modified' | 'saving'>('saved');
+  const [isSharedSession, setIsSharedSession] = useState(!!sessionId);
+  const [fontSize, setFontSize] = useState(14);
+  const [indentMode, setIndentMode] = useState<IndentMode>('spaces');
+  const [leftWidth, setLeftWidth] = useState(256); 
+  const [rightWidth, setRightWidth] = useState(320); 
+  const [isDraggingLeft, setIsDraggingLeft] = useState(false);
+  const [isDraggingRight, setIsDraggingRight] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [activeClients, setActiveClients] = useState<Record<string, CursorPosition>>({});
+  const [clientId] = useState(() => crypto.randomUUID());
 
-  // Partner Live State
-  const [isLiveActive, setIsLiveActive] = useState(false);
-  const [isAiConnected, setIsAiConnected] = useState(false);
-  const [isRecoveringLink, setIsRecoveringLink] = useState(false);
-  const [volume, setVolume] = useState(0);
-  const partnerLiveRef = useRef<GeminiLiveService | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const isConnectingRef = useRef(false);
+  const centerContainerRef = useRef<HTMLDivElement>(null);
+  const activeFile = activeSlots[focusedSlot];
 
-  // Initialize SWC WASM
-  useEffect(() => {
-    const initSwc = async () => {
-        try {
-            await init();
-            setSwcReady(true);
-            window.dispatchEvent(new CustomEvent('neural-log', { 
-                detail: { text: "[WASM] Neural Syntax Engine (SWC) Initialized. Compute Source: Browser Local.", type: 'success' } 
-            }));
-        } catch (e) {
-            console.error("SWC Init Failed", e);
-        }
-    };
-    initSwc();
+  // Tool for In-Place Editing (CRITICAL FOR AI VISIBILITY)
+  const updateFileTool: FunctionDeclaration = {
+    name: "update_active_file",
+    description: "Updates the content of the currently focused file in the editor. Use this whenever the user asks for code modifications.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        new_content: { type: Type.STRING, description: "The complete new content." },
+        summary: { type: Type.STRING, description: "Brief summary of changes." }
+      },
+      required: ["new_content"]
+    }
+  };
+
+  const writeFileTool: FunctionDeclaration = {
+    name: 'write_file',
+    description: 'Create or update a specific file in the workspace. Forces the editor to open this file.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            path: { type: Type.STRING, description: 'File path.' },
+            content: { type: Type.STRING, description: 'Content.' }
+        },
+        required: ['path', 'content']
+    }
+  };
+
+  const dispatchLog = useCallback((text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
+      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `[Studio] ${text}`, type } }));
   }, []);
 
-  const getLanguageFromFilename = (name: string): any => {
-      const ext = name.split('.').pop()?.toLowerCase();
-      if (['js', 'jsx'].includes(ext || '')) return 'javascript';
-      if (['ts', 'tsx'].includes(ext || '')) return 'typescript';
-      if (ext === 'py') return 'python';
-      if (ext === 'html') return 'html';
-      if (ext === 'css') return 'css';
-      if (ext === 'json') return 'json';
-      if (ext === 'md') return 'markdown';
-      if (ext === 'plantuml' || ext === 'puml') return 'plantuml';
-      if (ext === 'wb' || ext === 'draw') return 'whiteboard';
-      if (ext === 'pdf') return 'pdf';
-      if (ext === 'webm') return 'video';
-      return 'text';
-  };
-
-  const parseGithubUrl = (url: string) => {
-      if (!url) return null;
-      try {
-          if (url.startsWith('http')) {
-              const u = new URL(url);
-              const parts = u.pathname.split('/').filter(Boolean);
-              if (parts.length >= 2) {
-                  return { owner: parts[0], repo: parts[1].replace('.git', '') };
-              }
-          } else {
-              const parts = url.split('/').filter(Boolean);
-              if (parts.length === 2) {
-                  return { owner: parts[0], repo: parts[1] };
-              }
-          }
-      } catch (e) {}
-      return null;
-  };
-
+  // --- Real-time Collaboration Logic ---
   useEffect(() => {
-    if (userProfile?.defaultRepoUrl) {
-        setRepoUrlInput(userProfile.defaultRepoUrl);
-        const parsed = parseGithubUrl(userProfile.defaultRepoUrl);
-        if (parsed) {
-            setGithubConfig({ ...githubConfig, owner: parsed.owner, repo: parsed.repo });
-        }
-    }
-  }, [userProfile]);
-
-  useEffect(() => {
-      chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
-
-  useEffect(() => {
-      activeFileRef.current = activeFile;
-  }, [activeFile]);
-
-  // Sync internal state with props in interviewer mode
-  useEffect(() => {
-    if (isInterviewerMode && initialFiles && initialFiles.length > 0) {
-        setFiles(initialFiles);
-        // If we have an active file, make sure its content is updated from the new prop array
-        if (activeFileRef.current) {
-            const updated = initialFiles.find(f => f.path === activeFileRef.current?.path);
-            if (updated && updated.content !== activeFileRef.current.content) {
-                setActiveFile(updated);
-                activeFileRef.current = updated;
-            }
-        }
-    }
-  }, [initialFiles, isInterviewerMode]);
-
-  const handleGitHubSignIn = async () => {
-    try {
-        const token = await signInWithGitHub();
-        setGithubToken(token);
-    } catch (e) {
-        setSyncError("GitHub authentication failed.");
-    }
-  };
-
-  const handleRefreshSource = useCallback(async (forcedSource?: StorageSource, explicitGithub?: { owner: string, repo: string, branch: string }) => {
-    const activeSource = forcedSource || source;
-    let activeGithub = explicitGithub || githubConfig;
-    setSyncError(null);
-
-    if (activeSource === 'github' && !activeGithub.repo && repoUrlInput) {
-        const parsed = parseGithubUrl(repoUrlInput);
-        if (parsed) {
-            activeGithub = { ...githubConfig, ...parsed };
-            setGithubConfig(activeGithub);
-        } else {
-            setSyncError("Invalid GitHub URI. Use 'owner/repo' or full URL.");
-            return;
-        }
-    }
-
-    setIsLoading(true);
-    try {
-        if (activeSource === 'drive') {
-            const token = getDriveToken() || await connectGoogleDrive();
-            const folderId = await ensureCodeStudioFolder(token);
-            const driveFiles = await listDriveFiles(token, folderId);
-            setFiles(driveFiles.map(f => ({
-                name: f.name,
-                path: f.id,
-                language: getLanguageFromFilename(f.name),
-                content: '',
-                loaded: false,
-                isDirectory: f.mimeType === 'application/vnd.google-apps.folder'
-            })));
-        } else if (activeSource === 'github' && activeGithub.repo) {
-            const token = localStorage.getItem('github_token');
-            const { files: ghFiles } = await fetchRepoContents(token, activeGithub.owner, activeGithub.repo, activeGithub.branch);
-            setFiles(ghFiles);
-        } else if (activeSource === 'cloud' && project) {
-            const p = await getCodeProject(project.id);
-            if (p) setFiles(p.files);
-        }
-    } catch (e: any) {
-        console.error("Refresh failed", e);
-        setSyncError(e.message || "Sync failed. Check your connection or token.");
-    } finally {
-        setIsLoading(false);
-    }
-  }, [source, githubConfig, project, repoUrlInput]);
-
-  const handleSourceChange = async (newSource: StorageSource) => {
-    setSource(newSource);
-    setSyncError(null);
-    
-    if (newSource === 'github') {
-        const urlToUse = repoUrlInput || userProfile?.defaultRepoUrl;
-        if (urlToUse) {
-            const parsed = parseGithubUrl(urlToUse);
-            if (parsed) {
-                const newConfig = { ...githubConfig, owner: parsed.owner, repo: parsed.repo };
-                setGithubConfig(newConfig);
-                await handleRefreshSource('github', newConfig);
-                return;
-            }
-        }
-        setFiles([]);
-        setActiveFile(null);
-    } else {
-        await handleRefreshSource(newSource);
-    }
-  };
-
-  const handleFileSelect = async (file: CodeFile) => {
-    if (file.isDirectory) return;
-    
-    const isBinary = file.language === 'pdf' || file.language === 'video';
-    const isSpecial = isBinary || file.language === 'markdown' || file.language === 'plantuml' || file.language === 'whiteboard';
-    
-    if (file.loaded) { 
-        setActiveFile(file); 
-        setPreviewMode(isSpecial);
-        return; 
-    }
-
-    setIsLoading(true);
-    try {
-        let content = '';
-        if (!isBinary) {
-            if (source === 'drive') {
-                const token = getDriveToken()!;
-                content = await readDriveFile(token, file.path);
-            } else if (source === 'github') {
-                content = await fetchFileContent(localStorage.getItem('github_token'), githubConfig.owner, githubConfig.repo, file.path, githubConfig.branch);
-            }
-        }
-        
-        const updatedFile = { ...file, content, loaded: true };
-        setFiles(prev => prev.map(f => f.path === file.path ? updatedFile : f));
-        setActiveFile(updatedFile);
-        setPreviewMode(isSpecial);
-    } catch (e) {
-        setSyncError("Failed to load file content.");
-    } finally {
-        setIsLoading(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!activeFile || !currentUser) return;
-    setIsSaving(true);
-    setSaveSuccess(false);
-    try {
-        if (source === 'cloud') {
-            const pId = project?.id || generateSecureId();
-            const updatedFiles = files.map(f => f.path === activeFile.path ? activeFile : f);
-            const updatedProject: CodeProject = {
-                id: pId,
-                name: project?.name || 'Untitled Project',
-                files: updatedFiles,
-                lastModified: Date.now()
-            };
-            await saveCodeProject(updatedProject);
-            setProject(updatedProject);
-            setFiles(updatedFiles);
-        } else if (source === 'drive') {
-            const token = getDriveToken()!;
-            const folderId = await ensureCodeStudioFolder(token);
-            await saveToDrive(token, folderId, activeFile.name, activeFile.content, activeFile.path);
-        } else if (source === 'github') {
-            const token = localStorage.getItem('github_token');
-            if (!token) throw new Error("Please sign in to GitHub to save.");
-            const res = await updateRepoFile(token, githubConfig.owner, githubConfig.repo, activeFile.path, activeFile.content, activeFile.sha, "Neural Studio Sync", githubConfig.branch);
-            setFiles(prev => prev.map(f => f.path === activeFile.path ? { ...f, sha: res.sha } : f));
-        }
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (e: any) {
-        setSyncError("Save failed: " + e.message);
-    } finally {
-        setIsSaving(false);
-    }
-  };
-
-  const handleMagicFix = async () => {
-    if (!activeFile) return;
-    setIsMagicFixing(true);
-    try {
-        // Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const systemPrompt = `You are a professional code refactoring and fixing tool.
-        Your tasks:
-        1. Fix any syntax errors in the provided code.
-        2. Format the code with consistent indentation, spacing, and modern standards.
-        3. Add any missing included headers, imports, or requires (e.g., #include <iostream> for C++ if cout is used).
-        4. Return ONLY the corrected code. Do NOT include any explanations or markdown code blocks.`;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `CODE FOR ${activeFile.language.toUpperCase()}:\n${activeFile.content}`,
-            config: {
-                systemInstruction: systemPrompt,
-                thinkingConfig: { thinkingBudget: 0 }
-            }
-        });
-
-        const correctedContent = response.text || activeFile.content;
-        handleFileChangeLocal({ ...activeFile, content: correctedContent });
-        
-        if (currentUser) {
-            deductCoins(currentUser.uid, AI_COSTS.TEXT_REFRACTION);
-        }
-    } catch (e: any) {
-        alert("Magic Pen failed: " + e.message);
-    } finally {
-        setIsMagicFixing(false);
-    }
-  };
-
-  const handleCheckSyntax = async () => {
-      if (!activeFile) return;
-      setIsCheckingSyntax(true);
-      setTerminalOutput(null);
-      
-      const isJsTs = ['javascript', 'typescript', 'javascript (react)', 'typescript (react)'].includes(activeFile.language);
-
-      if (swcReady && isJsTs) {
-          // PROOF OF LOCAL COMPUTE: Dispatching log to Diagnostic Console
-          window.dispatchEvent(new CustomEvent('neural-log', { 
-            detail: { 
-                text: `[LOCAL_WASM_HANDSHAKE] Dispatched parse request for ${activeFile.name}. Target: SWC_WASM_ENGINE. API_USE: NONE.`, 
-                type: 'info' 
-            } 
-          }));
-
-          // RATIONALE TRACE: Explain why WASM is preferred
-          window.dispatchEvent(new CustomEvent('neural-log', { 
-            detail: { 
-                text: `[WASM_RATIONALE] Chosen over native eval() to handle TypeScript AST parsing and prevent side-effect execution during analysis.`, 
-                type: 'success' 
-            } 
-          }));
-
-          try {
-              // Real WASM Transformation/Parsing
-              await transform(activeFile.content, {
-                  jsc: {
-                      parser: {
-                          syntax: activeFile.language.includes('typescript') ? 'typescript' : 'ecmascript',
-                          tsx: activeFile.language.includes('react'),
-                          jsx: activeFile.language.includes('react')
-                      },
-                      target: 'es2022'
-                  }
-              });
-              
-              setTerminalOutput(`[LOCAL_WASM SUCCESS]\nNode: ${activeFile.name}\nStatus: SYNTAX_VALIDATED\n\nNo errors found in browser-local refraction.\nSOURCE: Browser WebAssembly (SWC)\nCOST: $0.00 (0 Tokens)`);
-              addLog(`[LOCAL_WASM] Static audit complete. 0 tokens consumed. Handshake successful.`, 'success');
-          } catch (e: any) {
-              setTerminalOutput(`[LOCAL_WASM ERROR]\nFile: ${activeFile.name}\nLogic Breach detected:\n\n${e.message}\n\nCOST: $0.00 (0 Tokens consumed)`);
-              addLog(`[LOCAL_WASM] Syntax fault detected locally. 0 tokens consumed.`, 'error');
-          } finally {
-              setIsCheckingSyntax(false);
-          }
-      } else {
-          // Fallback or Simulation for non-JS/TS
-          window.dispatchEvent(new CustomEvent('neural-log', { 
-            detail: { text: `[HYBRID] Non-WASM language detected. Routing to Heuristic Gate...`, type: 'warn' } 
-          }));
-          setTimeout(() => {
-              setIsCheckingSyntax(false);
-              setTerminalOutput(`[HEURISTIC CHECK COMPLETE]\nLocal Syntax Check simulated for ${activeFile.name}.\nSTATUS: LIKELY VALID.\nNOTE: High-fidelity C++/Python WASM modules pending in v7.1 refraction.\nCOST: $0.00`);
-              addLog(`[HYBRID] Heuristic verification complete.`, 'success');
-          }, 800);
-      }
-  };
-
-  const handleCreateEntity = async () => {
-    if (!newName.trim() || !namingModal) return;
-    setIsLoading(true);
-    try {
-        const isFolder = namingModal.type === 'folder';
-        if (source === 'drive') {
-            const token = getDriveToken()!;
-            const rootId = await ensureCodeStudioFolder(token);
-            if (isFolder) {
-                await createDriveFolder(token, newName, rootId);
-            } else {
-                await saveToDrive(token, rootId, newName, "// New file\n");
-            }
-        } else if (source === 'github') {
-            const token = localStorage.getItem('github_token');
-            if (!token) throw new Error("GitHub login required");
-            const path = isFolder ? `${newName}/.keep` : newName;
-            await updateRepoFile(token, githubConfig.owner, githubConfig.repo, path, isFolder ? "" : "// New file", undefined, `Create ${newName}`, githubConfig.branch);
-        } else {
-            const newFile: CodeFile = {
-                name: newName,
-                path: generateSecureId(),
-                content: isFolder ? "" : "// New file",
-                language: getLanguageFromFilename(newName),
-                isDirectory: isFolder,
-                loaded: true
-            };
-            const updatedFiles = [...files, newFile];
-            setFiles(updatedFiles);
-            if (project) await saveCodeProject({ ...project, files: updatedFiles });
-        }
-        await handleRefreshSource();
-    } catch (e: any) {
-        alert("Action failed: " + e.message);
-    } finally {
-        setIsLoading(false);
-        setNamingModal(null);
-        setNewName('');
-    }
-  };
-
-  const handleDeleteEntity = async (file: CodeFile) => {
-      if (!confirm(`Permanently delete ${file.name}?`)) return;
-      setIsLoading(true);
-      try {
-          if (source === 'drive') {
-              await deleteDriveFile(getDriveToken()!, file.path);
-          } else if (source === 'github') {
-              const token = localStorage.getItem('github_token');
-              if (!token) throw new Error("GitHub login required");
-              await deleteRepoFile(token, githubConfig.owner, githubConfig.repo, file.path, file.sha || '', `Delete ${file.name}`, githubConfig.branch);
-          } else {
-              const updatedFiles = files.filter(f => f.path !== file.path);
-              setFiles(updatedFiles);
-              if (project) await saveCodeProject({ ...project, files: updatedFiles });
-          }
-          if (activeFile?.path === file.path) setActiveFile(null);
-          await handleRefreshSource();
-      } catch (e: any) {
-          alert("Delete failed: " + e.message);
-      } finally {
-          setIsLoading(false);
-      }
-  };
-
-  const handleRenameEntity = async (file: CodeFile) => {
-      const currentName = file.name.split('/').pop() || '';
-      const newName = prompt("Rename to:", currentName);
-      if (!newName || newName === currentName) return;
-
-      setIsLoading(true);
-      try {
-          if (source === 'drive') {
-              const token = getDriveToken()!;
-              await moveDriveFile(token, file.path, '', '', newName);
-          } else if (source === 'github') {
-              const token = localStorage.getItem('github_token')!;
-              await renameRepoFile(token, githubConfig.owner, githubConfig.repo, file.path, newName, file.content, file.sha || '', githubConfig.branch);
-          } else {
-              const updatedFiles = files.map(f => f.path === file.path ? { ...f, name: newName } : f);
-              setFiles(updatedFiles);
-              if (project) await saveCodeProject({ ...project, files: updatedFiles });
-          }
-          await handleRefreshSource();
-      } catch (e: any) {
-          alert("Rename failed: " + e.message);
-      } finally {
-          setIsLoading(false);
-      }
-  };
-
-  const handleSimulate = async () => {
-    if (!activeFile) return;
-    
-    const isJsTs = ['javascript', 'typescript', 'javascript (react)', 'typescript (react)'].includes(activeFile.language);
-
-    if (isJsTs && swcReady) {
-        // NATIVE EXECUTION PATH
-        setIsSimulating(true);
-        setTerminalOutput("");
-        addLog(`[NATIVE] Starting local execution for ${activeFile.name}...`, 'info');
-        
-        try {
-            let executableCode = activeFile.content;
-            
-            // TRANSPILE IF TS
-            if (activeFile.language.includes('typescript')) {
-                window.dispatchEvent(new CustomEvent('neural-log', { 
-                    detail: { text: `[LOCAL_WASM_TRANSPILE] Converting TypeScript to executable ECMAScript via SWC...`, type: 'info' } 
-                }));
-                const result = await transform(activeFile.content, {
-                    jsc: {
-                        parser: { syntax: 'typescript', tsx: activeFile.language.includes('react') },
-                        target: 'es2022'
-                    }
+    if (sessionId) {
+        setIsSharedSession(true);
+        setActiveTab('session');
+        const unsubscribe = subscribeToCodeProject(sessionId, (remoteProject: any) => {
+            setProject(prev => {
+                const mergedFiles = [...prev.files];
+                remoteProject.files.forEach((rf: any) => {
+                    const idx = mergedFiles.findIndex(f => (f.path || f.name) === (rf.path || rf.name));
+                    if (idx > -1) {
+                        if (rf.content !== mergedFiles[idx].content) mergedFiles[idx] = rf;
+                    } else { mergedFiles.push(rf); }
                 });
-                executableCode = result.code;
-            }
-
-            // CAPTURE CONSOLE
-            let output = `[BROWSER RUNTIME START]\n`;
-            const originalLog = console.log;
-            const originalError = console.error;
-            const logs: string[] = [];
-
-            const safeLog = (...args: any[]) => {
-                const line = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-                logs.push(line);
-                originalLog(...args);
-            };
-
-            // SANDBOXED EXECUTION
-            try {
-                // Use a Function constructor to create a local scope
-                const scriptFn = new Function('console', executableCode);
-                scriptFn({
-                    log: safeLog,
-                    info: safeLog,
-                    warn: safeLog,
-                    error: safeLog
-                });
-                output += logs.join('\n') || "(Execution finished with no console output)";
-            } catch (runtimeErr: any) {
-                output += `\n[RUNTIME ERROR]: ${runtimeErr.message}`;
-            }
-
-            setTerminalOutput(output + `\n\n[LOCAL_EXIT_SUCCESS]\nCOST: $0.00 (0 Tokens consumed)`);
-            addLog(`[NATIVE] Local execution complete. 0 tokens consumed.`, 'success');
-        } catch (transpileErr: any) {
-            setTerminalOutput(`[LOCAL_TRANSPILE_ERROR]\n${transpileErr.message}\n\nCOST: $0.00`);
-            addLog(`[WASM] Transpilation failed.`, 'error');
-        } finally {
-            setIsSimulating(false);
-        }
-        return;
-    }
-
-    // AI SIMULATION PATH (For C++, Python, etc.)
-    setIsSimulating(true);
-    setTerminalOutput(null);
-    try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const prompt = `ACT AS A DIGITAL TWIN TERMINAL. Execute the following code and provide the output/errors.\n\nCODE:\n\`\`\`${activeFile.language}\n${activeFile.content}\n\`\`\``;
-        const response = await ai.models.generateContent({ 
-            model: 'gemini-3-flash-preview', 
-            contents: prompt,
-            config: { thinkingConfig: { thinkingBudget: 0 } }
+                return { ...remoteProject, files: mergedFiles };
+            });
+            if (remoteProject.activeSlots && remoteProject.activeClientId !== clientId) setActiveSlots(remoteProject.activeSlots);
+            if (remoteProject.layoutMode) setLayoutMode(remoteProject.layoutMode);
+            if (remoteProject.cursors) setActiveClients(remoteProject.cursors);
         });
-        setTerminalOutput(response.text || "Execution finished with no output.");
-        
-        if (currentUser) {
-            deductCoins(currentUser.uid, AI_COSTS.TEXT_REFRACTION);
-        }
-    } catch (e: any) {
-        setTerminalOutput(`[INTERNAL ERROR]: ${e.message}`);
-    } finally {
-        setIsSimulating(false);
+        return () => unsubscribe();
     }
+  }, [sessionId, clientId]);
+
+  const handleSetLayout = (mode: LayoutMode) => {
+      setLayoutMode(mode);
+      if (mode === 'single' && focusedSlot !== 0) setFocusedSlot(0);
+      // layoutMode is now optional on CodeProject to fix error
+      if (isSharedSession && sessionId) saveCodeProject({ ...project, layoutMode: mode, activeClientId: clientId });
   };
 
-  const handleChat = async (e?: React.FormEvent, customPrompt?: string) => {
-    const userText = customPrompt || chatInput;
-    if (!userText.trim() || isChatThinking) return;
+  const updateSlotFile = (file: CodeFile | null, slotIndex: number) => {
+      const newSlots = [...activeSlots];
+      newSlots[slotIndex] = file;
+      setActiveSlots(newSlots);
+      if (file && isPreviewable(file.name)) setSlotViewModes(prev => ({ ...prev, [slotIndex]: 'code' }));
+      if (isSharedSession && sessionId) {
+          if (file) updateProjectActiveFile(sessionId, file.path || file.name);
+          // activeSlots is now optional on CodeProject to fix error
+          saveCodeProject({ ...project, activeSlots: newSlots, activeClientId: clientId });
+          if (file) updateCodeFile(sessionId, file);
+      }
+      if (file && onActiveFileChange) onActiveFileChange(file.path);
+  };
 
-    if (!customPrompt) setChatInput('');
-    setChatMessages(prev => [...prev, { role: 'user', text: userText }]);
-    setIsChatThinking(true);
+  const isPreviewable = (filename: string) => ['md', 'wb', 'draw'].includes(filename.split('.').pop()?.toLowerCase() || '');
 
-    try {
-        // Initialize GoogleGenAI with process.env.API_KEY directly as per guidelines
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const active = activeFileRef.current;
-        const context = active ? `\n\nCURRENT FILE (${active.name}):\n\`\`\`${active.language}\n${active.content}\n\`\`\`` : '';
-        
-        const response = await ai.models.generateContent({
-            // Optimization: Switched to Flash for faster tool calls and code generation
-            model: 'gemini-3-flash-preview',
-            contents: userText + context,
-            config: {
-                systemInstruction: "You are the Neural Partner, a world-class software engineer. You have full visibility of the user's active file. If you need to fix errors, refactor, or add tests, ALWAYS use the 'update_code' tool. DO NOT output code blocks in your text response if you use the tool. Your goal is in-place updates for a seamless experience.",
-                tools: [{ functionDeclarations: [updateCodeTool] }],
-                // Optimization: Disable thinking for direct, fast action responses
-                thinkingConfig: { thinkingBudget: 0 }
-            }
-        });
+  const handleCodeChangeInSlot = (newCode: string, slotIdx: number) => {
+      const file = activeSlots[slotIdx];
+      if (!file) return;
+      // isModified is now optional on CodeFile to fix error
+      const updatedFile = { ...file, content: newCode, isModified: true };
+      const newSlots = [...activeSlots];
+      newSlots[slotIdx] = updatedFile;
+      setActiveSlots(newSlots);
+      setProject(prev => ({ ...prev, files: prev.files.map(f => (f.path || f.name) === (file.path || f.name) ? updatedFile : f) }));
+      setSaveStatus('modified');
+      if (isSharedSession && sessionId) updateCodeFile(sessionId, updatedFile);
+      if (onFileChange) onFileChange(updatedFile);
+  };
 
-        if (currentUser) {
-            deductCoins(currentUser.uid, AI_COSTS.TEXT_REFRACTION);
-        }
-
-        if (response.functionCalls && response.functionCalls.length > 0) {
-            for (const fc of response.functionCalls) {
-                if (fc.name === 'update_code' && activeFileRef.current) {
-                    const args = fc.args as any;
-                    const newContent = args.content || args.code || args.new_content;
-                    if (newContent !== undefined) {
-                        handleFileChangeLocal({ ...activeFileRef.current, content: newContent });
-                    }
+  const handleExplorerSelect = async (node: TreeNode) => {
+      if (node.type === 'file') {
+          let fileData: CodeFile | null = null;
+          if (activeTab === 'cloud') {
+                const item = node.data as CloudItem;
+                if (item.url) {
+                    const res = await fetch(item.url);
+                    const text = await res.text();
+                    // isModified is now optional on CodeFile to fix error
+                    fileData = { name: item.name, path: item.fullPath, content: text, language: getLanguageFromExt(item.name), loaded: true, isModified: false };
                 }
-            }
-            setChatMessages(prev => [...prev, { role: 'ai', text: "Workspace refraction complete. I've updated the source file with the requested changes." }]);
-        } else {
-            setChatMessages(prev => [...prev, { role: 'ai', text: response.text || "No response." }]);
-        }
-    } catch (e: any) {
-        setChatMessages(prev => [...prev, { role: 'ai', text: `[Partner Error]: ${e.message}` }]);
-    } finally {
-        setIsChatThinking(false);
-    }
+          } else if (activeTab === 'drive' && driveToken) {
+                const driveFile = node.data as DriveFile;
+                const text = await readDriveFile(driveToken, driveFile.id);
+                // isModified is now optional on CodeFile to fix error
+                fileData = { name: driveFile.name, path: `drive://${driveFile.id}`, content: text, language: getLanguageFromExt(driveFile.name), loaded: true, isModified: false };
+          } else if (activeTab === 'github') {
+                const file = node.data as CodeFile;
+                if (!file.loaded && project.github) {
+                    const content = await fetchFileContent(githubToken, project.github.owner, project.github.repo, file.path || file.name, project.github.branch);
+                    fileData = { ...file, content, loaded: true };
+                } else { fileData = file; }
+          } else { fileData = node.data; }
+
+          if (fileData) updateSlotFile(fileData, focusedSlot);
+      } else {
+          setExpandedFolders(prev => ({...prev, [node.id]: !expandedFolders[node.id]}));
+      }
   };
 
-  const toggleLivePartner = async () => {
-      if (isLiveActive) {
-          partnerLiveRef.current?.disconnect();
-          partnerLiveRef.current = null;
-          setIsLiveActive(false);
-          setIsAiConnected(false);
-          setIsRecoveringLink(false);
-          reconnectAttemptsRef.current = 0;
-          return;
-      }
+  const handleSendMessage = async (input: string) => {
+      if (!input.trim()) return;
+      setChatMessages(prev => [...prev, { role: 'user', text: input }]);
+      setIsChatThinking(true);
+      try {
+          const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+          const contextFiles = activeSlots.filter(f => f !== null).map(f => `File: ${f?.name}\nContent:\n${f?.content}`).join('\n---\n');
+          const systemPrompt = `You are a Senior Engineer helping in Code Studio.\nWorkspace:\n${contextFiles}\nFocused File: ${activeFile?.name || "None"}`;
 
-      if (isConnectingRef.current) return;
+          const resp = await ai.models.generateContent({ 
+              model: 'gemini-3-flash-preview', 
+              contents: `${systemPrompt}\nUser: ${input}`,
+              config: { tools: [{ functionDeclarations: [updateFileTool, writeFileTool] }] }
+          });
 
-      // Local connection function to bypass closure issues with isLiveActive
-      const initiateConnection = async () => {
-          isConnectingRef.current = true;
-          setIsLiveActive(true);
-          
-          const service = new GeminiLiveService();
-          partnerLiveRef.current = service;
-
-          const systemInstruction = `
-            You are the Neural Partner in the Code Studio. 
-            You are a supportive, high-level software architect.
-            You can hear the user and they can hear you.
-            
-            CRITICAL BEHAVIOR:
-            1. Upon connection, YOU MUST START THE CONVERSATION FIRST.
-            2. Introduce yourself as the Neural Partner.
-            3. Acknowledge the file content you see in the 'Neural Snapshot'.
-            4. Ask the user how you can assist with their project today.
-            
-            Use the 'update_code' tool to modify the user's active file in-place when they ask for code fixes, refactoring, or test cases. 
-            Never output code blocks verbally or in transcript if you can use the tool. 
-            When the user says "review" or "add tests", trigger the 'update_code' tool with the full corrected file content.
-            
-            IMPORTANT: If the user just reconnected, they will send a "Neural Snapshot" automatically. Acknowledge it and continue from where you left off.
-          `;
-
-          try {
-              // PRIME AUDIO FIRST
-              await service.initializeAudio();
-              
-              await service.connect('Software Interview Voice', systemInstruction, {
-                  onOpen: () => {
-                      isConnectingRef.current = false;
-                      setIsAiConnected(true);
-                      setIsRecoveringLink(false);
-                      reconnectAttemptsRef.current = 0;
-                      const current = activeFileRef.current;
-                      if (current) {
-                          const snap = `NEURAL SNAPSHOT (Initial Context): I am currently working in ${current.name} (${current.language}). Here is the latest state of the file:\n\n\`\`\`${current.language}\n${current.content}\n\`\`\`\n\nINSTRUCTION: Please introduce yourself and let me know you're ready to collaborate on this code.`;
-                          service.sendText(snap);
-                      } else {
-                          service.sendText("NEURAL LINK ESTABLISHED: I am ready. Please introduce yourself and let's get started.");
+          if (resp.functionCalls) {
+              for (const fc of resp.functionCalls) {
+                  if (fc.name === 'update_active_file') {
+                      const { new_content, summary } = fc.args as any;
+                      if (activeFile) {
+                          handleCodeChangeInSlot(new_content, focusedSlot);
+                          setChatMessages(prev => [...prev, { role: 'ai', text: `✨ **Edit Applied to ${activeFile.name}**\n\n${summary || "Updated."}` }]);
                       }
-                  },
-                  onClose: () => {
-                      isConnectingRef.current = false;
-                      setIsAiConnected(false);
-                      // Check for auto-reconnect if it wasn't manually stopped
-                      if (partnerLiveRef.current && reconnectAttemptsRef.current < 5) {
-                          reconnectAttemptsRef.current++;
-                          setIsRecoveringLink(true);
-                          setTimeout(initiateConnection, 2000); 
-                      } else {
-                          setIsLiveActive(false);
-                          setIsRecoveringLink(false);
-                      }
-                  },
-                  onError: (err) => { 
-                      isConnectingRef.current = false;
-                      console.error("Partner connection error", err);
-                      setIsAiConnected(false);
-                      if (!err.includes('429') && reconnectAttemptsRef.current < 3) {
-                          reconnectAttemptsRef.current++;
-                          setTimeout(initiateConnection, 3000);
-                      } else {
-                          setIsLiveActive(false);
-                      }
-                  },
-                  onVolumeUpdate: (v) => setVolume(v),
-                  onTranscript: (text, isUser) => {
-                      setChatMessages(prev => {
-                          const role = isUser ? 'user' : 'ai';
-                          if (prev.length > 0 && prev[prev.length - 1].role === role) {
-                            return [...prev.slice(0, -1), { ...prev[prev.length - 1], text: prev[prev.length - 1].text + text }];
-                          }
-                          return [...prev, { role, text }];
-                      });
-                  },
-                  onToolCall: async (toolCall) => {
-                      for (const fc of toolCall.functionCalls) {
-                          if (fc.name === 'update_code' && activeFileRef.current) {
-                              const args = fc.args as any;
-                              const newContent = args.content || args.code || args.new_content;
-                              if (newContent !== undefined) {
-                                handleFileChangeLocal({ ...activeFileRef.current, content: newContent });
-                              }
-                              service.sendToolResponse({ 
-                                id: fc.id, 
-                                name: fc.name, 
-                                response: { result: "Code updated in workspace successfully." } 
-                              });
-                          }
-                      }
+                  } else if (fc.name === 'write_file') {
+                      const { path, content } = fc.args as any;
+                      const newFile: CodeFile = { name: path, path: path, language: getLanguageFromExt(path), content, loaded: true };
+                      setProject(prev => ({ ...prev, files: [...prev.files, newFile] }));
+                      updateSlotFile(newFile, focusedSlot);
+                      setChatMessages(prev => [...prev, { role: 'ai', text: `✅ Manifested ${path}.` }]);
                   }
-              }, [{ functionDeclarations: [updateCodeTool] }]);
-          } catch (e) {
-              isConnectingRef.current = false;
-              console.error("Critical connection failure", e);
-              setIsLiveActive(false);
-          }
-      };
-
-      initiateConnection();
+              }
+          } else { setChatMessages(prev => [...prev, { role: 'ai', text: resp.text || "No response." }]); }
+      } catch (e: any) { setChatMessages(prev => [...prev, { role: 'ai', text: `Error: ${e.message}` }]); } 
+      finally { setIsChatThinking(false); }
   };
 
-  const handleQuickAction = (type: 'review' | 'test') => {
-      if (!activeFileRef.current) return alert("Select a file first.");
-      const prompt = type === 'review' 
-        ? "Perform a high-intensity review of this code. Fix logic errors, optimize bottlenecks, and apply security best practices. Return only the corrected code via the tool."
-        : "Generate a comprehensive test suite for this code. Use standard testing patterns for the language. Append them or update the file via the tool.";
-      handleChat(undefined, prompt);
-  };
+  const resize = useCallback((e: MouseEvent) => {
+    if (isDraggingLeft) { const newWidth = e.clientX; if (newWidth > 160 && newWidth < 500) setLeftWidth(newWidth); }
+    if (isDraggingRight) { const newWidth = window.innerWidth - e.clientX; if (newWidth > 160 && newWidth < 500) setRightWidth(newWidth); }
+    if (isDraggingInner && centerContainerRef.current) {
+        const rect = centerContainerRef.current.getBoundingClientRect();
+        const ratio = layoutMode === 'split-v' ? ((e.clientX - rect.left) / rect.width) * 100 : ((e.clientY - rect.top) / rect.height) * 100;
+        if (ratio > 10 && ratio < 90) setInnerSplitRatio(ratio);
+    }
+  }, [isDraggingLeft, isDraggingRight, isDraggingInner, layoutMode]);
 
-  const handleFileChangeLocal = (updated: CodeFile) => {
-      setActiveFile(updated);
-      activeFileRef.current = updated;
-      setFiles(prev => prev.map(f => f.path === updated.path ? updated : f));
-      if (onFileChange) onFileChange(updated);
-  };
-
-  const addLog = useCallback((msg: string, type: 'info' | 'error' | 'success' | 'warn' = 'info') => {
-      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: msg, type } }));
-  }, []);
-
-  const renderFileViewer = () => {
-      if (!activeFile) return null;
-
-      if (previewMode) {
-          if (activeFile.language === 'markdown') {
-              return <div className="h-full overflow-y-auto bg-white"><MarkdownView content={activeFile.content} initialTheme="light" /></div>;
-          }
-          if (activeFile.language === 'plantuml') {
-              return <div className="h-full overflow-y-auto bg-white p-10"><MarkdownView content={`\`\`\`plantuml\n${activeFile.content}\n\`\`\``} initialTheme="light" /></div>;
-          }
-          if (activeFile.language === 'whiteboard') {
-              return (
-                  <Whiteboard 
-                    initialContent={activeFile.content} 
-                    onChange={(content) => handleFileChangeLocal({ ...activeFile, content })}
-                    backgroundColor="#000000"
-                  />
-              );
-          }
-          if (activeFile.language === 'pdf') {
-              const url = (source === 'drive' && getDriveToken()) ? getDriveFileStreamUrl(getDriveToken()!, activeFile.path) : activeFile.path;
-              return <iframe src={url} className="w-full h-full border-none" title="PDF Viewer" />;
-          }
-          if (activeFile.language === 'video') {
-              const url = (source === 'drive' && getDriveToken()) ? getDriveFileStreamUrl(getDriveToken()!, activeFile.path) : activeFile.path;
-              return (
-                  <div className="h-full w-full bg-black flex items-center justify-center">
-                      <video src={url} controls className="max-w-full max-h-full" autoPlay />
-                  </div>
-              );
-          }
+  useEffect(() => {
+      if (isDraggingLeft || isDraggingRight || isDraggingInner) {
+          window.addEventListener('mousemove', resize);
+          const stop = () => { setIsDraggingLeft(false); setIsDraggingRight(false); setIsDraggingInner(false); };
+          window.addEventListener('mouseup', stop);
+          return () => { window.removeEventListener('mousemove', resize); window.removeEventListener('mouseup', stop); };
       }
+  }, [isDraggingLeft, isDraggingRight, isDraggingInner, resize]);
+
+  const workspaceTree = useMemo(() => {
+      const root: TreeNode[] = [];
+      const map = new Map<string, TreeNode>();
+      project.files.forEach(f => {
+          const path = f.path || f.name;
+          // isModified is now optional on CodeFile to fix error
+          map.set(path, { id: path, name: f.name.split('/').pop()!, type: f.isDirectory ? 'folder' : 'file', data: f, children: [], status: f.isModified ? 'modified' : undefined });
+      });
+      project.files.forEach(f => {
+          const path = f.path || f.name;
+          const node = map.get(path)!;
+          const parts = path.split('/');
+          if (parts.length === 1) root.push(node);
+          else {
+              const parent = map.get(parts.slice(0, -1).join('/'));
+              if (parent) parent.children?.push(node); else root.push(node);
+          }
+      });
+      return root;
+  }, [project.files]);
+
+  // Added driveTree calculation for explorer
+  const driveTree = useMemo(() => {
+      return driveItems.map(f => ({
+          id: f.id,
+          name: f.name,
+          type: f.mimeType === 'application/vnd.google-apps.folder' ? 'folder' : 'file',
+          data: f,
+          children: []
+      }));
+  }, [driveItems]);
+
+  const handleRefreshSource = async () => {
+    setIsLoading(true);
+    dispatchLog(`Syncing ${activeTab.toUpperCase()}...`);
+    try {
+        if (activeTab === 'github' && userProfile?.defaultRepoUrl) {
+            const [owner, repo] = userProfile.defaultRepoUrl.replace('https://github.com/', '').split('/');
+            const info = await fetchRepoInfo(owner, repo, githubToken);
+            const { files } = await fetchRepoContents(githubToken, owner, repo, info.default_branch);
+            setProject(prev => ({ ...prev, files }));
+        } else if (activeTab === 'drive') {
+            const token = getDriveToken() || await connectGoogleDrive();
+            setDriveToken(token);
+            const rootId = await ensureCodeStudioFolder(token);
+            const files = await listDriveFiles(token, rootId);
+            setDriveItems(files.map(f => ({ ...f, isLoaded: false })));
+        }
+    } catch(e: any) { dispatchLog(e.message, 'error'); } finally { setIsLoading(false); }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'github' && userProfile?.defaultRepoUrl && project.files.length === 0) handleRefreshSource();
+  }, [activeTab]);
+
+  const handleCreateFile = () => {
+      const name = prompt("File name (e.g. main.py):");
+      if (!name) return;
+      const newFile: CodeFile = { name, path: name, language: getLanguageFromExt(name), content: '', loaded: true };
+      setProject(prev => ({ ...prev, files: [...prev.files, newFile] }));
+      updateSlotFile(newFile, focusedSlot);
+  };
+
+  const handleCreateBoard = () => {
+      const name = prompt("Board name:");
+      if (!name) return;
+      const newFile: CodeFile = { name: `${name}.wb`, path: `${name}.wb`, language: 'whiteboard', content: '[]', loaded: true };
+      setProject(prev => ({ ...prev, files: [...prev.files, newFile] }));
+      updateSlotFile(newFile, focusedSlot);
+  };
+
+  const renderSlot = (idx: number) => {
+      const file = activeSlots[idx];
+      const isFocused = focusedSlot === idx;
+      const isVisible = layoutMode === 'single' ? idx === 0 : (layoutMode === 'quad' ? true : idx < 2);
+      if (!isVisible) return null;
+      const slotStyle = (layoutMode === 'split-v' || layoutMode === 'split-h') 
+        ? { [layoutMode === 'split-v' ? 'width' : 'height']: `${idx === 0 ? innerSplitRatio : 100 - innerSplitRatio}%`, flex: 'none' } 
+        : { flex: 1 };
 
       return (
-          <Editor 
-            height="100%" 
-            theme="vs-dark" 
-            language={activeFile.language} 
-            value={activeFile.content} 
-            onChange={(val) => handleFileChangeLocal({ ...activeFile, content: val || '' })} 
-            options={{ 
-                fontSize: 14, 
-                minimap: { enabled: false }, 
-                fontFamily: "'JetBrains Mono', monospace", 
-                automaticLayout: true,
-                padding: { top: 20 }
-            }} 
-          />
+          <div key={idx} onClick={() => setFocusedSlot(idx)} style={slotStyle} className={`flex flex-col border ${isFocused ? 'border-indigo-500 z-10' : 'border-slate-800'} bg-slate-950 overflow-hidden`}>
+              {file ? (
+                  <>
+                    <div className={`px-3 py-1.5 flex items-center justify-between border-b ${isFocused ? 'bg-indigo-900/20' : 'bg-slate-900'}`}>
+                        <div className="flex items-center gap-2 overflow-hidden">
+                            <FileIcon filename={file.name} />
+                            <span className="text-xs font-bold truncate">{file.name}</span>
+                        </div>
+                        <button onClick={() => updateSlotFile(null, idx)} className="p-1 hover:bg-slate-800 rounded text-slate-500"><X size={12}/></button>
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                        {getLanguageFromExt(file.name) === 'whiteboard' ? (
+                            <Whiteboard initialContent={file.content} onChange={(c) => handleCodeChangeInSlot(c, idx)} backgroundColor="#000000" />
+                        ) : (
+                            <RichCodeEditor code={file.content} onChange={(c: string) => handleCodeChangeInSlot(c, idx)} fontSize={fontSize} indentMode={indentMode} />
+                        )}
+                    </div>
+                  </>
+              ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-slate-800 bg-slate-950/50 m-4 rounded-xl border-2 border-dashed border-slate-800 group hover:border-slate-600 cursor-pointer">
+                      <Plus size={32} className="opacity-20 group-hover:opacity-40 transition-opacity" />
+                      <p className="text-[10px] font-black uppercase tracking-widest mt-2">Slot {idx + 1}</p>
+                  </div>
+              )}
+          </div>
       );
   };
 
   return (
-    <div className="flex h-full w-full bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* Sidebar - VFS */}
-      <div className="w-72 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
-          <div className="p-4 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between shrink-0">
-              {!isInterviewerMode && (
-                  <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400">
-                      <ArrowLeft size={20} />
-                  </button>
+    <div className="flex flex-col h-full bg-slate-950 text-slate-100 overflow-hidden relative font-sans">
+      <header className="h-14 bg-slate-950 border-b border-slate-800 flex items-center justify-between px-4 shrink-0 z-20">
+         <div className="flex items-center space-x-4">
+            <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400"><ArrowLeft size={20} /></button>
+            <button onClick={() => setIsLeftOpen(!isLeftOpen)} className={`p-2 rounded-lg transition-colors ${isLeftOpen ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>{isLeftOpen ? <PanelLeftClose size={20} /> : <PanelLeftOpen size={20} />}</button>
+            <h1 className="font-bold text-white text-sm flex items-center gap-2"><Code className="text-indigo-400" size={18}/> {project.name}</h1>
+         </div>
+
+         <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 mr-4">
+                <button onClick={() => handleSetLayout('single')} className={`p-1.5 rounded transition-colors ${layoutMode === 'single' ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}><SquareIcon size={16}/></button>
+                <button onClick={() => handleSetLayout('split-v')} className={`p-1.5 rounded transition-colors ${layoutMode === 'split-v' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`}><Columns size={16}/></button>
+                <button onClick={() => handleSetLayout('split-h')} className={`p-1.5 rounded transition-colors ${layoutMode === 'split-h' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`}><Rows size={16}/></button>
+                <button onClick={() => handleSetLayout('quad')} className={`p-1.5 rounded transition-colors ${layoutMode === 'quad' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`}><Grid2X2 size={16}/></button>
+            </div>
+            <button onClick={() => setFontSize(f => Math.max(10, f - 2))} className="p-1.5 hover:bg-slate-700 rounded text-slate-400"><ZoomOut size={16}/></button>
+            <button onClick={() => setFontSize(f => Math.min(48, f + 2))} className="p-1.5 hover:bg-slate-700 rounded text-slate-400"><ZoomIn size={16}/></button>
+            <button onClick={() => setShowShareModal(true)} className="flex items-center space-x-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold"><Share2 size={14}/><span>Share</span></button>
+            <button onClick={() => setIsRightOpen(!isRightOpen)} className={`p-2 rounded-lg transition-colors ${isRightOpen ? 'bg-slate-800 text-white' : 'text-slate-50'}`}>{isRightOpen ? <PanelRightClose size={20} /> : <PanelRightOpen size={20} />}</button>
+         </div>
+      </header>
+
+      <div className="flex-1 flex overflow-hidden relative">
+          {/* EXPLORER PANEL */}
+          <div className={`${isLeftOpen ? '' : 'hidden'} bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 overflow-hidden`} style={{ width: `${leftWidth}px` }}>
+              <div className="flex border-b border-slate-800 bg-slate-900">
+                  {(['cloud', 'drive', 'github'] as StorageSource[]).map(t => (
+                      <button key={t} onClick={() => setActiveTab(t)} className={`flex-1 py-3 flex justify-center border-b-2 transition-colors ${activeTab === t ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500 hover:text-slate-300'}`}>
+                          {t === 'cloud' ? <Cloud size={16}/> : t === 'drive' ? <HardDrive size={16}/> : <Github size={16}/>}
+                      </button>
+                  ))}
+              </div>
+              <div className="p-3 border-b border-slate-800 flex gap-2 bg-slate-900 justify-center">
+                  <button onClick={handleCreateFile} className="flex-1 flex items-center justify-center gap-1 bg-indigo-600 hover:bg-indigo-500 text-white py-1.5 px-2 rounded text-xs font-bold transition-colors whitespace-nowrap"><FilePlus size={14}/> <span>File</span></button>
+                  <button onClick={handleCreateBoard} className="flex-1 flex items-center justify-center gap-1 bg-pink-600 hover:bg-pink-500 text-white py-1.5 px-2 rounded text-xs font-bold transition-colors whitespace-nowrap"><PenTool size={14}/> <span>Board</span></button>
+                  <button onClick={handleRefreshSource} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 transition-colors"><RefreshCw size={16} className={isLoading ? 'animate-spin' : ''}/></button>
+              </div>
+              <div className="flex-1 overflow-y-auto scrollbar-hide">
+                  {activeTab === 'cloud' && workspaceTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path} onSelect={handleExplorerSelect} onToggle={()=>{}} expandedIds={expandedFolders} loadingIds={loadingFolders}/>)}
+                  {activeTab === 'drive' && driveTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path} onSelect={handleExplorerSelect} onToggle={()=>{}} expandedIds={expandedFolders} loadingIds={loadingFolders}/>)}
+                  {activeTab === 'github' && workspaceTree.map(node => <FileTreeItem key={node.id} node={node} depth={0} activeId={activeFile?.path} onSelect={handleExplorerSelect} onToggle={()=>{}} expandedIds={expandedFolders} loadingIds={loadingFolders}/>)}
+              </div>
+          </div>
+
+          <div onMouseDown={() => setIsDraggingLeft(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 transition-colors z-30 shrink-0 bg-slate-800/20 group relative">
+             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 bg-indigo-500 p-0.5 rounded-full pointer-events-none"><GripVertical size={10}/></div>
+          </div>
+
+          <div ref={centerContainerRef} className={`flex-1 bg-slate-950 flex min-w-0 relative ${layoutMode === 'quad' ? 'grid grid-cols-2 grid-rows-2' : layoutMode === 'split-v' ? 'flex-row' : 'flex-col'}`}>
+              {layoutMode === 'single' && renderSlot(0)}
+              {(layoutMode === 'split-v' || layoutMode === 'split-h') && (
+                  <>
+                    {renderSlot(0)}
+                    <div onMouseDown={() => setIsDraggingInner(true)} className={`${layoutMode === 'split-v' ? 'w-1.5 cursor-col-resize' : 'h-1.5 cursor-row-resize'} hover:bg-indigo-500/50 transition-colors z-40 bg-slate-800 flex-shrink-0 relative group`}>
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 bg-indigo-500 p-1 rounded-full shadow-lg"><GripVertical size={12}/></div>
+                    </div>
+                    {renderSlot(1)}
+                  </>
               )}
-              <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800">
-                  <button onClick={() => handleSourceChange('cloud')} className={`p-1.5 rounded ${source === 'cloud' ? 'bg-indigo-600 text-white' : 'text-slate-50'}`} title="Neural Cloud"><Database size={16}/></button>
-                  <button onClick={() => handleSourceChange('drive')} className={`p-1.5 rounded ${source === 'drive' ? 'bg-emerald-600 text-white' : 'text-slate-50'}`} title="Google Drive"><HardDrive size={16}/></button>
-                  <button onClick={() => handleSourceChange('github')} className={`p-1.5 rounded ${source === 'github' ? 'bg-white text-black' : 'text-slate-50'}`} title="GitHub"><Github size={16}/></button>
-              </div>
+              {layoutMode === 'quad' && [0,1,2,3].map(i => renderSlot(i))}
           </div>
 
-          <div className="p-2 flex gap-1 border-b border-slate-800 bg-slate-900/50">
-              <button onClick={() => setNamingModal({ type: 'file' })} className="flex-1 py-1.5 flex items-center justify-center gap-2 hover:bg-slate-800 rounded text-[10px] font-bold text-slate-400 uppercase tracking-widest"><FilePlus size={14}/> File</button>
-              <button onClick={() => setNamingModal({ type: 'folder' })} className="flex-1 py-1.5 flex items-center justify-center gap-2 hover:bg-slate-800 rounded text-[10px] font-bold text-slate-400 uppercase tracking-widest"><FolderPlus size={14}/> Folder</button>
-              <button onClick={() => handleRefreshSource()} className="px-2 hover:bg-slate-800 rounded text-slate-500"><RefreshCw size={14} className={isLoading ? 'animate-spin' : ''}/></button>
+          <div onMouseDown={() => setIsDraggingRight(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 transition-colors z-30 shrink-0 bg-slate-800/20 group relative">
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 bg-indigo-500 p-0.5 rounded-full pointer-events-none"><GripVertical size={10}/></div>
           </div>
 
-          <div className="flex-1 overflow-y-auto scrollbar-hide">
-              <div className="p-4 space-y-4">
-                  {source === 'github' && !githubConfig.repo && (
-                      <div className="space-y-3 p-3 bg-slate-950 rounded-xl border border-slate-800 animate-fade-in text-center">
-                          <div className="w-12 h-12 bg-indigo-900/20 rounded-full flex items-center justify-center mx-auto mb-2">
-                             <Github size={20} className="text-indigo-400" />
-                          </div>
-                          <p className="text-xs font-bold text-white uppercase tracking-widest">Connect Repo</p>
-                          <p className="text-[10px] text-slate-500 leading-relaxed">Enter a GitHub repository URI or owner/repo to refract.</p>
-                          <div className="pt-2 space-y-2">
-                              {!githubToken && (
-                                  <button onClick={handleGitHubSignIn} className="w-full py-2 bg-slate-800 border border-slate-700 rounded-lg text-[10px] font-black uppercase tracking-widest text-white flex items-center justify-center gap-2 hover:bg-slate-700 transition-all">
-                                      <Lock size={12}/> Handshake Required
-                                  </button>
-                              )}
-                              <input 
-                                type="text" 
-                                placeholder="https://github.com/owner/repo" 
-                                value={repoUrlInput} 
-                                onChange={e => setRepoUrlInput(e.target.value)} 
-                                onKeyDown={e => e.key === 'Enter' && handleRefreshSource()}
-                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs outline-none focus:border-indigo-500 text-slate-200"
-                              />
-                          </div>
-                          <button onClick={() => handleRefreshSource()} className="w-full py-2.5 bg-indigo-600 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-lg active:scale-95">Sync Tree</button>
-                      </div>
-                  )}
-
-                  {syncError && (
-                      <div className="p-3 bg-red-900/20 border border-red-900/50 rounded-xl flex items-start gap-3 animate-fade-in">
-                          <AlertCircle size={14} className="text-red-400 shrink-0 mt-0.5" />
-                          <p className="text-[10px] text-red-200 leading-relaxed">{syncError}</p>
-                      </div>
-                  )}
-
-                  <div className="space-y-0.5">
-                      {isLoading ? (
-                          <div className="py-12 text-center flex flex-col items-center gap-3">
-                              <Loader2 className="animate-spin text-indigo-500" size={24}/>
-                              <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Indexing Workspace...</span>
-                          </div>
-                      ) : (
-                          files.map(file => (
-                            <div key={file.path} className="group relative">
-                                <button 
-                                  onClick={() => handleFileSelect(file)}
-                                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-all ${activeFile?.path === file.path ? 'bg-indigo-600/20 text-white border border-indigo-500/30' : 'text-slate-400 hover:bg-slate-800'}`}
-                                >
-                                    <FileIcon filename={file.name} isDirectory={file.isDirectory}/>
-                                    <span className="truncate">{file.name}</span>
-                                </button>
-                                <div className="absolute right-1 top-1.5 hidden group-hover:flex items-center gap-0.5 z-10 bg-slate-800 rounded px-1">
-                                    <button onClick={(e) => { e.stopPropagation(); handleRenameEntity(file); }} className="p-1 hover:bg-slate-700 rounded text-slate-500 hover:text-white"><Edit2 size={12}/></button>
-                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteEntity(file); }} className="p-1 hover:bg-red-900/30 rounded text-slate-500 hover:text-red-400"><Trash2 size={12}/></button>
-                                </div>
-                            </div>
-                          ))
-                      )}
-                  </div>
-              </div>
+          <div className={`${isRightOpen ? '' : 'hidden'} bg-slate-950 flex flex-col shrink-0 overflow-hidden transition-all duration-300`} style={{ width: `${rightWidth}px` }}>
+              <AIChatPanel isOpen={true} onClose={() => setIsRightOpen(false)} messages={chatMessages} onSendMessage={handleSendMessage} isThinking={isChatThinking} />
           </div>
       </div>
-
-      {/* Editor Area */}
-      <div className="flex-1 flex flex-col min-0 bg-slate-950 relative">
-          <header className="h-14 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 shrink-0 z-20">
-              <div className="flex items-center gap-4">
-                  <div className="w-8 h-8 bg-indigo-600/10 rounded-lg flex items-center justify-center border border-indigo-500/20"><Code size={18} className="text-indigo-400" /></div>
-                  <div>
-                      <h1 className="text-sm font-bold text-white truncate max-w-[200px]">{activeFile?.name || 'Neural Workspace'}</h1>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-1.5 h-1.5 rounded-full ${source === 'cloud' ? 'bg-amber-500' : source === 'drive' ? 'bg-emerald-500' : 'bg-white'}`}></div>
-                        <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{source} Mode</span>
-                        {onOpenManual && <button onClick={onOpenManual} className="p-1 text-slate-600 hover:text-white transition-colors" title="Studio Manual"><Info size={12}/></button>}
-                      </div>
-                  </div>
-              </div>
-              <div className="flex items-center gap-3">
-                  {activeFile && (activeFile.language === 'markdown' || activeFile.language === 'plantuml' || activeFile.language === 'whiteboard' || activeFile.language === 'pdf' || activeFile.language === 'video') && (
-                      <button 
-                        onClick={() => setPreviewMode(!previewMode)} 
-                        className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${previewMode ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-                      >
-                          {previewMode ? <Edit2 size={14}/> : <Eye size={14}/>}
-                          {previewMode ? 'Edit' : 'Preview'}
-                      </button>
-                  )}
-                  {onSyncCodeWithAi && activeFile && (
-                      <button onClick={() => onSyncCodeWithAi(activeFile)} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/40 text-indigo-300 border border-indigo-500/30 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all">
-                          <Zap size={12} fill="currentColor" /> Sync to AI
-                      </button>
-                  )}
-                  <button onClick={handleCheckSyntax} disabled={isCheckingSyntax || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:opacity-50 group">
-                      {isCheckingSyntax ? <Loader2 size={14} className="animate-spin" /> : <Binary size={14} className="text-emerald-400" />} Check Syntax
-                  </button>
-                  <button onClick={handleMagicFix} disabled={isMagicFixing || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/40 text-indigo-400 border border-indigo-500/30 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95 disabled:opacity-50 group">
-                      {isMagicFixing ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} className="group-hover:rotate-12 transition-transform" />} Magic Fix
-                  </button>
-                  <button onClick={handleSimulate} disabled={isSimulating || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 disabled:opacity-50">
-                      {isSimulating ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} fill="currentColor"/>} Run
-                  </button>
-                  <button onClick={handleSave} disabled={isSaving || !activeFile} className="flex items-center gap-2 px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 disabled:opacity-50">
-                      {isSaving ? <Loader2 size={14} className="animate-spin" /> : saveSuccess ? <Check size={14} /> : <Save size={14}/>}
-                      {isSaving ? 'Saving...' : saveSuccess ? 'Saved' : 'Save'}
-                  </button>
-              </div>
-          </header>
-
-          <div className="flex-1 overflow-hidden relative">
-              {activeFile ? renderFileViewer() : (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-700 bg-slate-950/50">
-                      <div className="p-8 border-2 border-dashed border-slate-800 rounded-[3rem] text-center space-y-4">
-                          <Code size={48} className="mx-auto opacity-10" />
-                          <p className="text-sm font-bold uppercase tracking-widest">Select a file to begin refraction</p>
-                      </div>
-                  </div>
-              )}
-
-              {/* Terminal Drawer */}
-              {terminalOutput !== null && (
-                  <div className="absolute bottom-0 left-0 right-0 h-1/3 bg-slate-950 border-t-2 border-indigo-500/50 flex flex-col z-40 animate-fade-in-up">
-                      <div className="flex justify-between items-center px-4 py-2 bg-slate-900 border-b border-slate-800">
-                          <div className="flex items-center gap-2 text-indigo-400">
-                              <Terminal size={14} />
-                              <span className="text-[10px] font-black uppercase tracking-widest">Neural Execution Trace</span>
-                          </div>
-                          <button onClick={() => setTerminalOutput(null)} className="text-slate-500 hover:text-white transition-colors"><X size={16}/></button>
-                      </div>
-                      <div className="flex-1 overflow-auto p-6 font-mono text-xs text-slate-300 leading-relaxed bg-black/30">
-                          {terminalOutput.startsWith('[BROWSER RUNTIME START]') ? (
-                              <pre className="whitespace-pre-wrap">{terminalOutput}</pre>
-                          ) : (
-                              <MarkdownView content={terminalOutput} />
-                          )}
-                      </div>
-                  </div>
-              )}
-          </div>
-      </div>
-
-      {/* Neural Partner Chat Sidebar */}
-      {!isInterviewerMode && (
-          <div className="w-80 bg-slate-950 border-l border-slate-800 flex flex-col shrink-0">
-              <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                      <div className="relative">
-                          <Bot className="text-indigo-400" size={20}/>
-                          {isLiveActive && (
-                              <div className={`absolute -top-1 -right-1 w-2 h-2 rounded-full animate-pulse ${isRecoveringLink ? 'bg-amber-500' : 'bg-red-500'}`}></div>
-                          )}
-                      </div>
-                      <span className="font-bold text-sm uppercase tracking-tight">Neural Partner</span>
-                  </div>
-                  <button 
-                    onClick={toggleLivePartner}
-                    className={`p-2 rounded-lg transition-all ${isLiveActive ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-900/40' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-                    title={isLiveActive ? "End Audio Link" : "Start Live Audio Chat"}
-                  >
-                      {isLiveActive ? <MicOff size={18}/> : <Mic size={18}/>}
-                  </button>
-              </div>
-
-              {isLiveActive && (
-                  <div className="px-4 py-2 bg-slate-900 border-b border-slate-800 flex items-center gap-3">
-                      <div className="flex-1">
-                          <Visualizer volume={volume} isActive={isAiConnected} color={isRecoveringLink ? "#f59e0b" : "#6366f1"} />
-                      </div>
-                      {isRecoveringLink && (
-                          <div className="flex items-center gap-1.5 animate-pulse">
-                              <RefreshCw size={12} className="text-amber-500 animate-spin"/>
-                              <span className="text-[8px] font-black uppercase text-amber-500 whitespace-nowrap">Recovering Link...</span>
-                          </div>
-                      )}
-                  </div>
-              )}
-
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide pr-1">
-                  {chatMessages.map((m, i) => (
-                      <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                          <div className={`max-w-[90%] rounded-2xl p-3 text-xs leading-relaxed ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-lg' : 'bg-slate-800 text-slate-300 rounded-tl-sm border border-slate-700'}`}>
-                              {m.role === 'ai' ? <MarkdownView content={m.text} /> : <p className="whitespace-pre-wrap">{m.text}</p>}
-                          </div>
-                      </div>
-                  ))}
-                  {isChatThinking && <div className="p-2 flex gap-1"><div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></div><div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.2s]"></div><div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.4s]"></div></div>}
-                  <div ref={chatMessagesEndRef} />
-              </div>
-
-              <div className="p-4 border-t border-slate-800 bg-slate-900 space-y-4">
-                  {activeFileRef.current && (
-                      <div className="grid grid-cols-2 gap-2">
-                          <button 
-                            onClick={() => handleQuickAction('review')}
-                            disabled={isChatThinking}
-                            className="flex items-center justify-center gap-2 py-2 bg-slate-800 hover:bg-indigo-900/40 text-indigo-300 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-700 transition-all hover:border-indigo-500/30 disabled:opacity-50"
-                          >
-                            <Microscope size={12}/> Review Code
-                          </button>
-                          <button 
-                            onClick={() => handleQuickAction('test')}
-                            disabled={isChatThinking}
-                            className="flex items-center justify-center gap-2 py-2 bg-slate-800 hover:bg-emerald-900/40 text-emerald-300 rounded-lg text-[10px] font-black uppercase tracking-widest border border-slate-700 transition-all hover:border-indigo-500/30 disabled:opacity-50"
-                          >
-                            <TestTube size={12}/> Generate Tests
-                          </button>
-                      </div>
-                  )}
-                  <form onSubmit={(e) => handleChat(e)} className="relative">
-                      <textarea 
-                        value={chatInput}
-                        onChange={e => setChatInput(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChat(); } }}
-                        placeholder="Ask for feedback..."
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-4 pr-12 py-3 text-xs text-white outline-none focus:border-indigo-500 resize-none h-20 shadow-inner"
-                      />
-                      <button type="submit" disabled={!chatInput.trim() || isChatThinking} className="absolute bottom-3 right-3 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all shadow-lg disabled:opacity-50"><Send size={16}/></button>
-                  </form>
-              </div>
-          </div>
-      )}
-
-      {/* Interviewer Chat View */}
-      {isInterviewerMode && (
-          <div className="w-96 bg-slate-950 border-l border-slate-800 flex flex-col shrink-0">
-               <div className="p-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                      <Bot className="text-red-500" size={20}/>
-                      <span className="font-bold text-sm uppercase tracking-tight">Technical Interviewer</span>
-                  </div>
-               </div>
-               <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
-                  {externalChatContent?.map((item, i) => (
-                      <div key={i} className={`flex flex-col ${item.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in-up`}>
-                          <span className={`text-[9px] font-black uppercase mb-1 tracking-widest ${item.role === 'user' ? 'text-indigo-400' : 'text-red-400'}`}>{item.role === 'user' ? 'Candidate' : 'Interviewer'}</span>
-                          <div className={`max-w-[90%] px-4 py-3 rounded-2xl text-sm leading-relaxed ${item.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-xl' : 'bg-slate-900 text-slate-200 rounded-tl-sm border border-slate-800 shadow-md'}`}>
-                              <p className="whitespace-pre-wrap">{item.text}</p>
-                          </div>
-                      </div>
-                  ))}
-                  {isAiThinking && <div className="p-4 flex flex-col items-center gap-2"><Loader2 className="animate-spin text-red-500" size={20}/><span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">AI evaluating response...</span></div>}
-               </div>
-               <div className="p-4 border-t border-slate-800 bg-slate-900/50 text-center">
-                   <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.3em]">Live Audio Interrogation Active</p>
-               </div>
-          </div>
-      )}
-
-      {/* Naming Modal */}
-      {namingModal && (
-          <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-6 animate-fade-in">
-              <div className="w-full max-sm bg-slate-900 border border-slate-700 rounded-3xl p-8 shadow-2xl space-y-6 animate-fade-in-up">
-                  <div className="flex justify-between items-center">
-                      <h3 className="text-lg font-bold text-white uppercase tracking-tighter italic">Create New {namingModal.type}</h3>
-                      <button onClick={() => setNamingModal(null)} className="text-slate-500 hover:text-white"><X/></button>
-                  </div>
-                  <input autoFocus type="text" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreateEntity()} placeholder={`Enter ${namingModal.type} name...`} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"/>
-                  <div className="flex gap-2">
-                      <button onClick={() => setNamingModal(null)} className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl text-xs font-bold uppercase tracking-widest">Cancel</button>
-                      <button onClick={handleCreateEntity} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 uppercase tracking-widest transition-all active:scale-95"><Check size={14}/> Confirm</button>
-                  </div>
-              </div>
-          </div>
-      )}
+      
+      <ShareModal 
+        isOpen={showShareModal} onClose={() => setShowShareModal(false)} link={`${window.location.origin}/?session=${sessionId}`} title={project.name} 
+        onShare={async (uids, pub) => { await updateProjectAccess(sessionId!, pub ? 'public' : 'restricted', uids); }} 
+      />
     </div>
   );
 };

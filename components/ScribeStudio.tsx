@@ -26,7 +26,6 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
   const [stagedDocId, setStagedDocId] = useState<string | null>(null);
   const [volume, setVolume] = useState(0);
   const [sessionTitle, setSessionTitle] = useState('Neural Transcript');
-  const [audioSource, setAudioSource] = useState<'mic' | 'system'>('mic');
   
   const [history, setHistory] = useState<TranscriptItem[]>([]);
   const [liveText, setLiveText] = useState('');
@@ -34,7 +33,7 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
   
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const systemStreamRef = useRef<MediaStream | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
 
@@ -43,6 +42,7 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
   const lastResultTimeRef = useRef<number>(Date.now());
   const volumeRef = useRef<number>(0);
   const liveTextRef = useRef<string>('');
+  const lastCommittedTextRef = useRef<string>('');
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -93,6 +93,23 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
     updateVolume();
   };
 
+  const commitToHistory = (text: string) => {
+    const cleanText = text.trim();
+    if (!cleanText) return;
+
+    // DUPLICATE GUARD: Check if this exact text was just added
+    if (cleanText === lastCommittedTextRef.current) {
+        return;
+    }
+
+    setHistory(prev => [...prev, { 
+        role: 'user', 
+        text: cleanText, 
+        timestamp: Date.now() 
+    }]);
+    lastCommittedTextRef.current = cleanText;
+  };
+
   const handleStart = async () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -104,29 +121,17 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
     setLiveText('');
     setSummary(null);
     setStagedDocId(null);
+    lastCommittedTextRef.current = '';
     isBatchRunningRef.current = true;
     lastResultTimeRef.current = Date.now();
 
-    dispatchLog(`Initiating Sovereign Scribe (Source: ${audioSource})...`, "info");
+    dispatchLog(`Initiating Sovereign Scribe...`, "info");
     
     try {
-        let captureStream: MediaStream;
+        // Exclusively use microphone for security and privacy
+        const captureStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         
-        if (audioSource === 'system') {
-            dispatchLog("System Audio: Disabling hardware noise filters.", "warn");
-            captureStream = await navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    echoCancellation: false,
-                    noiseSuppression: false,
-                    autoGainControl: true, 
-                    channelCount: 1
-                }
-            });
-        } else {
-            captureStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        }
-        
-        systemStreamRef.current = captureStream;
+        audioStreamRef.current = captureStream;
         await setupVisualizer(captureStream);
 
         const recognition = new SpeechRecognition();
@@ -148,11 +153,7 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
                 if (result.isFinal) {
                     const finalFragment = result[0].transcript.trim();
                     if (finalFragment) {
-                        setHistory(prev => [...prev, { 
-                            role: 'user', 
-                            text: finalFragment, 
-                            timestamp: Date.now() 
-                        }]);
+                        commitToHistory(finalFragment);
                         setLiveText(''); // Clear interim as it's now finalized
                     }
                 } else {
@@ -162,20 +163,16 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
             
             if (currentInterim) {
                 // SLIDING WINDOW COMMITMENT:
-                // If the speaker doesn't pause for 3 minutes, the browser buffer grows too large.
-                // We force-split the interim text if it exceeds 12 words to ensure 100% data integrity.
+                // Prevents state bloat during long continuous speech segments.
                 const words = currentInterim.trim().split(/\s+/);
-                if (words.length > 12) {
-                    const toCommit = words.slice(0, 8).join(' ');
-                    const remaining = words.slice(8).join(' ');
+                if (words.length > 20) {
+                    const toCommit = words.slice(0, 15).join(' ');
+                    const remaining = words.slice(15).join(' ');
                     
-                    setHistory(prev => [...prev, { 
-                        role: 'user', 
-                        text: toCommit, 
-                        timestamp: Date.now() 
-                    }]);
+                    commitToHistory(toCommit);
+                    // Crucial: Set live text to ONLY the remaining portion
                     setLiveText(remaining);
-                    dispatchLog("Buffer Pumping: Partial commit secured.", "info");
+                    dispatchLog("Buffer Pumping: Partial node secured.", "info");
                 } else {
                     setLiveText(currentInterim);
                 }
@@ -188,21 +185,17 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
         };
 
         recognition.onend = () => {
-            // CRITICAL FLUSH: Before the engine restarts, salvage any text in the ref.
+            // CRITICAL FLUSH: Salvage residual text before potential restart
             const residual = liveTextRef.current.trim();
             if (residual.length > 0 && isBatchRunningRef.current) {
-                setHistory(prev => [...prev, { 
-                    role: 'user', 
-                    text: residual, 
-                    timestamp: Date.now() 
-                }]);
+                commitToHistory(residual);
                 setLiveText('');
             }
 
             if (isBatchRunningRef.current) {
                 try { 
                     recognition.start(); 
-                    dispatchLog("Neural Link Re-Handshaked.", "info");
+                    dispatchLog("Neural Link Refreshed.", "info");
                 } catch (e) {}
             }
         };
@@ -226,60 +219,70 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
     setIsActive(false);
     dispatchLog("Session closed. Finalizing artifact...", "info");
     
-    if (systemStreamRef.current) {
-        systemStreamRef.current.getTracks().forEach(t => t.stop());
-        systemStreamRef.current = null;
+    if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(t => t.stop());
+        audioStreamRef.current = null;
     }
     if (audioContextRef.current) {
         audioContextRef.current.close();
     }
 
     // Final flush of remaining volatile buffer
-    const finalHistory = [...history];
-    if (liveText.trim()) {
-        finalHistory.push({ role: 'user', text: liveText.trim(), timestamp: Date.now() });
-        setHistory(finalHistory);
+    const currentLive = liveText.trim();
+    if (currentLive) {
+        commitToHistory(currentLive);
         setLiveText('');
     }
 
-    if (finalHistory.length > 0) {
-        try {
-            setIsSynthesizing(true);
-            const fullText = finalHistory.map(h => h.text).join('\n');
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            
-            const prompt = `You are a Senior Technical Scribe. Title: "${sessionTitle}". Reconstruct the following transcript into a high-fidelity technical specification. Summarize logic, architecture, and decisions.\n\nRAW DATA:\n${fullText}`;
-
-            const res = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: prompt,
-                config: { thinkingConfig: { thinkingBudget: 0 } }
-            });
-            
-            if (res.text) {
-                setSummary(res.text);
-                if (currentUser) {
-                    const docId = await saveDiscussion({
-                        id: 'new',
-                        channelId: 'scribe_studio',
-                        userId: currentUser.uid,
-                        userName: currentUser.displayName || 'Scribe Member',
-                        transcript: finalHistory,
-                        createdAt: Date.now(),
-                        title: sessionTitle || 'Neural Transcript',
-                        isManual: true,
-                        designDoc: res.text
-                    });
-                    setStagedDocId(docId);
-                    deductCoins(currentUser.uid, AI_COSTS.TEXT_REFRACTION);
-                }
-                dispatchLog("Refraction secured in vault.", "success");
+    // Capture the state at the moment of completion
+    setTimeout(async () => {
+        // Use a functional update or direct state access to get final history
+        setHistory(finalHistory => {
+            if (finalHistory.length > 0) {
+                generateSummary(finalHistory);
             }
-        } catch (e: any) {
-            dispatchLog("Synthesis Error. Registry remains intact.", "error");
-        } finally {
-            setIsSynthesizing(false);
+            return finalHistory;
+        });
+    }, 500);
+  };
+
+  const generateSummary = async (finalHistory: TranscriptItem[]) => {
+    try {
+        setIsSynthesizing(true);
+        const fullText = finalHistory.map(h => h.text).join('\n');
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        
+        const prompt = `You are a Senior Technical Scribe. Title: "${sessionTitle}". Reconstruct the following transcript into a high-fidelity technical specification. Summarize logic, architecture, and decisions.\n\nRAW DATA:\n${fullText}`;
+
+        const res = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: { thinkingConfig: { thinkingBudget: 0 } }
+        });
+        
+        if (res.text) {
+            setSummary(res.text);
+            if (currentUser) {
+                const docId = await saveDiscussion({
+                    id: 'new',
+                    channelId: 'scribe_studio',
+                    userId: currentUser.uid,
+                    userName: currentUser.displayName || 'Scribe Member',
+                    transcript: finalHistory,
+                    createdAt: Date.now(),
+                    title: sessionTitle || 'Neural Transcript',
+                    isManual: true,
+                    designDoc: res.text
+                });
+                setStagedDocId(docId);
+                deductCoins(currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+            }
+            dispatchLog("Refraction secured in vault.", "success");
         }
+    } catch (e: any) {
+        dispatchLog("Synthesis Error. Registry remains intact.", "error");
+    } finally {
+        setIsSynthesizing(false);
     }
   };
 
@@ -314,14 +317,6 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
                   <input type="text" value={sessionTitle} onChange={e => setSessionTitle(e.target.value)} placeholder="Session title..." className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:ring-2 focus:ring-red-500 outline-none shadow-inner transition-all"/>
               </div>
 
-              <div className="space-y-4">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Audio Source</label>
-                  <div className="flex p-1 bg-slate-950 rounded-xl border border-slate-800 shadow-inner">
-                      <button disabled={isActive} onClick={() => setAudioSource('mic')} className={`flex-1 py-3 text-[10px] font-black uppercase rounded-lg transition-all ${audioSource === 'mic' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}><Mic size={14} className="mx-auto mb-1"/>Mic</button>
-                      <button disabled={isActive} onClick={() => setAudioSource('system')} className={`flex-1 py-3 text-[10px] font-black uppercase rounded-lg transition-all ${audioSource === 'system' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-50'}`}><Monitor size={14} className="mx-auto mb-1"/>System</button>
-                  </div>
-              </div>
-
               <div className="pt-4">
                   {!isActive ? (
                       <button onClick={handleStart} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white rounded-2xl font-black uppercase tracking-[0.2em] shadow-2xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3"><Mic size={24}/> Begin Ingest</button>
@@ -332,7 +327,7 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
 
               {isActive && (
                   <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-6 flex flex-col items-center gap-4 animate-fade-in">
-                      <div className="w-full h-12"><Visualizer volume={volume} isActive={true} color={audioSource === 'system' ? '#ef4444' : '#6366f1'} /></div>
+                      <div className="w-full h-12"><Visualizer volume={volume} isActive={true} color='#6366f1' /></div>
                       <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div><span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.3em]">Persistent Link Active</span></div>
                   </div>
               )}

@@ -480,8 +480,8 @@ const App: React.FC = () => {
     context?: string, 
     recordingEnabled?: boolean, 
     bookingId?: string, 
-    recordScreen?: boolean, 
-    recordCamera?: boolean, 
+    videoEnabled?: boolean, 
+    cameraEnabled?: boolean, 
     activeSegment?: any, 
     recordingDuration?: number, 
     interactionEnabled?: boolean,
@@ -493,7 +493,7 @@ const App: React.FC = () => {
         setIsPricingModalOpen(true);
         return;
     }
-    setLiveSessionParams({ channel, context, recordingEnabled, bookingId, recordScreen, recordCamera, activeSegment, recordingDuration, interactionEnabled, recordingTarget, sessionTitle, returnTo: activeViewID });
+    setLiveSessionParams({ channel, context, recordingEnabled, bookingId, recordScreen: !!recordingEnabled, recordCamera: !!cameraEnabled, activeSegment, recordingDuration, interactionEnabled, recordingTarget, sessionTitle, returnTo: activeViewID });
     handleSetViewState('live_session');
   }, [activeViewID, handleSetViewState, isProMember]);
 
@@ -505,7 +505,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Sovereignty Protocols Active (v8.8.0-COMPLETE).", "info");
+    addSystemLog("Abundance Protocols Active (v10.0.0-ABUNDANCE).", "info");
     if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
         if (u) { setCurrentUser(u); syncUserProfile(u).catch(console.error); }
@@ -627,7 +627,7 @@ const App: React.FC = () => {
     else setIsPricingModalOpen(true);
   }, [isProMember]);
 
-  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Spectrum (v8.8.0)...</span></div>;
+  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Abundance Spectrum (v10.0.0)...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} onResumeClick={() => handleSetViewState('resume')} />;
 
   return (
@@ -672,7 +672,7 @@ const App: React.FC = () => {
               <button onClick={() => setShowConsole(!showConsole)} className={`p-2 transition-all rounded-lg ${showConsole ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`} title="Neural Diagnostics"><Bug size={18} className={!showConsole ? 'animate-pulse text-red-500' : ''} /></button>
               <button onClick={() => window.location.reload()} className="p-2 text-slate-400 hover:text-white transition-colors" title="Reload Web App"><RefreshCcw size={18} /></button>
               {userProfile && (<button onClick={() => handleSetViewState('coin_wallet')} className="flex items-center gap-2 px-3 py-1.5 bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 rounded-full border border-amber-500/30 transition-all hidden sm:flex"><Coins size={16}/><span className="font-black text-xs">{userProfile.coinBalance || 0}</span></button>)}
-              <div className="relative"><button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors"><img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}`} alt="Profile" className="w-full h-full object-cover" /></button><StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice="Auto" setGlobalVoice={()=>{}} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} onNavigate={(v) => handleSetViewState(v as any)} onUpgradeClick={() => setIsPricingModalOpen(true)} setIsSyncModalOpen={()=>{}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => handleSetViewState('user_guide')} onOpenPrivacy={() => handleSetViewState('privacy')} t={t} language={language} setLanguage={handleUpdateLanguage} channels={allChannels} isSuperAdmin={isSuperAdmin} isProMember={isProMember} /></div>
+              <div className="relative"><button onClick={() => { setIsUserMenuOpen(!isUserMenuOpen); setIsAppsMenuOpen(false); }} className="w-10 h-10 rounded-full border-2 border-slate-700 overflow-hidden hover:border-indigo-500 transition-colors"><img src={currentUser?.photoURL || `https://ui-avatars.com/api/?name=${currentUser?.displayName}`} alt="Profile" className="w-full h-full object-cover" /></button><StudioMenu isUserMenuOpen={isUserMenuOpen} setIsUserMenuOpen={setIsUserMenuOpen} currentUser={currentUser} userProfile={userProfile} setUserProfile={setUserProfile} globalVoice="Auto" setGlobalVoice={()=>{}} setIsCreateModalOpen={setIsCreateModalOpen} setIsVoiceCreateOpen={setIsVoiceCreateOpen} onNavigate={(v, p) => handleSetViewState(v as any, p)} onUpgradeClick={() => setIsPricingModalOpen(true)} setIsSyncModalOpen={()=>{}} setIsSettingsModalOpen={setIsSettingsModalOpen} onOpenUserGuide={() => handleSetViewState('user_guide')} onOpenPrivacy={() => handleSetViewState('privacy')} t={t} language={language} setLanguage={handleUpdateLanguage} channels={allChannels} isSuperAdmin={isSuperAdmin} isProMember={isProMember} /></div>
            </div>
         </header>
 
@@ -763,12 +763,12 @@ const App: React.FC = () => {
                                     ))}
                                 </div>
                                 <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 rounded-[2rem] p-6 text-sm text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none shadow-inner leading-relaxed" placeholder="Report a bug, suggest a feature, or request a new Neural Lab..."/>
-                                <div className="flex justify-between items-center gap-4"><div className="flex items-center gap-2 px-4 py-2 bg-slate-950 border border-slate-800 rounded-full text-[9px] font-black text-slate-500 uppercase"><Activity size={12} className="text-indigo-500"/> Trace Bundling Enabled</div><button onClick={handleSendFeedback} disabled={!feedbackText.trim() || isSubmittingFeedback} className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3">{isSubmittingFeedback ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}<span>{t.submitFeedback}</span></button></div>
+                                <div className="flex justify-between items-center gap-4"><div className="flex items-center gap-2 px-4 py-2 bg-slate-950 border border-slate-800 rounded-full text-[9px] font-black text-slate-500 uppercase"><Activity size={12} className="text-indigo-400"/> Trace Bundling Enabled</div><button onClick={handleSendFeedback} disabled={!feedbackText.trim() || isSubmittingFeedback} className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3">{isSubmittingFeedback ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}<span>{t.submitFeedback}</span></button></div>
                             </div>
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v8.8.0-COMPLETE</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v10.0.0-ABUNDANCE</p></div>
             </div>
         </div>
 

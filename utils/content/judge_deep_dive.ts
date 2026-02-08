@@ -9,7 +9,7 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
         subTopics: [
             { id: 'jd-1-1', title: 'Intelligence Routing Logic' }, 
             { id: 'jd-1-2', title: 'Vector Map Re-hydration' },
-            { id: 'jd-1-3', title: 'The 18x Capacity Multiplier' }
+            { id: 'jd-1-3', title: 'The 18x Efficiency Proof: KV Cache Math' }
         ] 
       },
       { 
@@ -22,9 +22,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
       },
       { 
         id: 'judge-ch3', 
-        title: 'Sector 03: Sovereign Data Persistence (BCP)', 
+        title: 'Sector 03: Thermodynamic Storage (BCP)', 
         subTopics: [
-            { id: 'jd-3-1', title: 'Binary Chunking Protocol: 750,000 Byte Shards' }
+            { id: 'jd-3-1', title: 'Binary Chunking Protocol: 750,000 Byte Shards' },
+            { id: 'jd-3-2', title: 'Serverless Choice: Why Firestore wins over SQL' }
         ] 
       },
       { 
@@ -50,17 +51,33 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { id: 'jd-6-1', title: 'Managing 429 Interruption via Neural Rotation' }, 
             { id: 'jd-6-2', title: 'Automatic TTS Failover Protocol' }
         ] 
+      },
+      { 
+        id: 'judge-ch7', 
+        title: 'Sector 07: The 8 Billion Humanity Goal', 
+        subTopics: [
+            { id: 'jd-7-1', title: 'Neural Lenses: Agent + Tool + Model Integration' }, 
+            { id: 'jd-7-2', title: 'Earn/Spend 1.0: Zero-Cost Intelligence Economics' }
+        ] 
+      },
+      { 
+        id: 'judge-ch8', 
+        title: 'Sector 08: The Dyad Pattern', 
+        subTopics: [
+            { id: 'jd-8-1', title: 'Lead-Shadow Orchestration' }, 
+            { id: 'jd-8-2', title: 'Democratizing Dual-Model Applications' }
+        ] 
       }
     ],
     lectures: {
-      "The 18x Capacity Multiplier": {
-        topic: "The 18x Capacity Multiplier",
+      "The 18x Efficiency Proof: KV Cache Math": {
+        topic: "The 18x Efficiency Proof: KV Cache Math",
         professorName: "Economic Architect",
-        studentName: "Technical Judge",
+        studentName: "Technical Auditor",
         sections: [
-          { speaker: "Teacher", text: "Welcome to the economics of thermodynamics. By pushing users toward the 'Standard' 128k window of Gemini 3 Flash for most tasks, Google can support 18x more people on the same physical hardware compared to the 2-million-token Pro mode. In Neural Prism, we use this multiplier to reach the Earn/Spend 1.0 goal." },
-          { speaker: "Student", text: "How does the community affect this?" },
-          { speaker: "Teacher", text: "We deduplicate. If one user generates a technical Course or Scripture node and saves it to our Firebase ledger, and 100 others use that cached refraction, we save another 100x in cost. We encourage members to build their own lenses and share with the community, potentially dropping the cost of super-intelligence from $300/yr to almost zero." }
+          { speaker: "Teacher", text: "Auditors often ask: why is the difference exactly 18x? It comes down to the physics of the KV Cache—the model's short-term memory. A 128k context requires roughly 150GB of RAM. A 2M context requires 2.4TB. That is a 16x jump in physical memory occupancy." },
+          { speaker: "Student", text: "And where does the 18x come from?" },
+          { speaker: "Teacher", text: "System overhead and bandwidth. Reading 2M tokens takes 18x more time-slices from the memory bandwidth than reading 128k. We call this the 'Hardware Hog' factor. One 2M query physically kicks out 18 other users. By using Gemini 3 Flash for the 128k window, we reach the Earn/Spend 1.0 goal." }
         ]
       },
       "Intelligence Routing Logic": {
@@ -72,6 +89,26 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
           { speaker: "Student", text: "Do you send the full simulation logs to the Pro model?" },
           { speaker: "Teacher", text: "Absolutely not. That would be thermodynamically irresponsible. Instead, we use the 'Vector Map Re-hydration' protocol. The Flash model generates a high-entropy vector map—a compressed fingerprint of the logic states—and only *that* is passed to Gemini 3 Pro for the final synthesis." }
         ]
+      },
+      "Neural Lenses: Agent + Tool + Model Integration": {
+          topic: "Neural Lenses: Agent + Tool + Model Integration",
+          professorName: "Chief Architect",
+          studentName: "Hackathon Auditor",
+          sections: [
+              { speaker: "Teacher", text: "In Sector 07, we define the 'Neural Lens.' It is the fundamental building block of our 8-billion-user vision. A Lens is an integrated circuit of intelligence combining a specialized Agent persona, MCP tools for data grounding, and the raw reasoning of Gemini." },
+              { speaker: "Student", text: "And these Lenses are open-source?" },
+              { speaker: "Teacher", text: "Exactly. Our mindset is one of radical transparency. We encourage everyone to clone our source and replicate our successes. When a Lens creates domain-specific content—like a study guide for kernel development—that content is shared among N members. This splits the model cost among the collective, making elite intelligence affordable for all of humanity." }
+          ]
+      },
+      "Lead-Shadow Orchestration": {
+          topic: "Lead-Shadow Orchestration",
+          professorName: "Socratic Architect",
+          studentName: "Technical Judge",
+          sections: [
+              { speaker: "Teacher", text: "In Sector 08, we reveal the 'Dyad Pattern.' We orchestrate a dual-model loop: Gemini 2.5 Flash Native Audio acts as the 'Lead Agent' for sub-200ms latency, while Gemini 3 Pro acts as the 'Shadow Agent' performing deep logic audits." },
+              { speaker: "Student", text: "Can members build their own Dyad apps?" },
+              { speaker: "Teacher", text: "Yes. Our platform democratizes this architecture. Any member can design a multi-model workflow—for example, a Tutor persona paired with a strict Grader auditor. This bypasses the 'agreeability' trap of standard AI and ensures a high-fidelity signal in any professional refraction." }
+          ]
       }
     }
   }

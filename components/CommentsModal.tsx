@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Channel, Attachment, AttachmentType, Comment, UserProfile } from '../types';
 import { X, Send, MessageSquare, User, Image as ImageIcon, Video, Mic, Loader2, StopCircle, Trash2, Edit2, Save, FileText } from 'lucide-react';
-import { uploadCommentAttachment, isUserAdmin, getUserProfile } from '../services/firestoreService';
+// Fix: uploadCommentAttachment does not exist, use uploadFileToStorage instead
+import { uploadFileToStorage, isUserAdmin, getUserProfile } from '../services/firestoreService';
 
 interface CommentsModalProps {
   isOpen: boolean;
@@ -127,7 +128,8 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
             if (currentUser) {
                 try {
                     const path = `comments/${channel.id}/${Date.now()}_${file.name}`;
-                    url = await uploadCommentAttachment(path, file);
+                    // Fix: replaced uploadCommentAttachment with uploadFileToStorage
+                    url = await uploadFileToStorage(path, file);
                 } catch(err) {
                     console.error("Upload failed", err);
                     continue; 
@@ -220,7 +222,7 @@ export const CommentsModal: React.FC<CommentsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-xl shadow-2xl flex flex-col max-h-[85vh] animate-fade-in-up">
         
         {/* Header */}

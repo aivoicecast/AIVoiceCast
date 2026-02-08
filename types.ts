@@ -1,4 +1,5 @@
 
+
 export type SubscriptionTier = 'free' | 'pro';
 export type ChannelVisibility = 'public' | 'private' | 'group';
 export type ReaderTheme = 'slate' | 'light' | 'dark' | 'sepia';
@@ -181,7 +182,7 @@ export interface Attachment {
   name?: string;
 }
 
-export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view' | 'pdf_signer' | 'badge_studio' | 'badge_viewer' | 'resume' | 'scribe_studio';
+export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'mock_interview' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view' | 'pdf_signer' | 'badge_studio' | 'badge_viewer' | 'resume' | 'scribe_studio' | 'cloud_sql_inspector';
 
 export interface Group {
   id: string;
@@ -204,133 +205,8 @@ export interface CodeFile {
   treeSha?: string;
   childrenFetched?: boolean;
   driveId?: string;
-}
-
-export interface AgentMemory {
-  id?: string;
-  ownerId?: string;
-  recipientName: string;
-  senderName: string;
-  occasion: string;
-  cardMessage: string;
-  context: string;
-  theme: 'festive' | 'minimal' | 'cyberpunk' | 'chinese-poem' | 'abstract';
-  customThemePrompt?: string;
-  userImages: string[];
-  generatedAt: string;
-  fontFamily?: string;
-  fontSizeScale?: number;
-  coverImageUrl?: string;
-  backImageUrl?: string;
-  voiceMessageUrl?: string;
-  songLyrics?: string;
-  songUrl?: string;
-  googlePhotosUrl?: string;
-}
-
-export interface ChannelStats {
-  likes: number;
-  dislikes: number;
-  shares: number;
-}
-
-export interface Comment {
-  id: string;
-  userId: string;
-  user: string;
-  text: string;
-  timestamp: number;
-  attachments?: Attachment[];
-}
-
-export interface ChatChannel {
-  id: string;
-  name: string;
-  type: 'dm' | 'group' | 'public';
-  memberIds: string[];
-  createdAt: number;
-}
-
-export interface RealTimeMessage {
-  id: string;
-  text: string;
-  senderId: string;
-  senderName: string;
-  senderImage?: string;
-  timestamp: any;
-  replyTo?: {
-    id: string;
-    text: string;
-    senderName: string;
-  };
-  attachments?: Attachment[];
-}
-
-export interface Booking {
-  id: string;
-  userId: string;
-  hostName: string;
-  mentorId: string;
-  mentorName: string;
-  mentorImage?: string;
-  date: string;
-  time: string;
-  duration: number;
-  endTime: string;
-  topic: string;
-  invitedEmail: string;
-  status: 'pending' | 'scheduled' | 'completed' | 'rejected' | 'cancelled';
-  type: 'p2p' | 'system';
-  createdAt: number;
-  recordingUrl?: string;
-  transcriptUrl?: string;
-}
-
-export interface Invitation {
-  id: string;
-  fromUserId: string;
-  fromName: string;
-  toEmail: string;
-  toUserId?: string;
-  groupId?: string;
-  groupName?: string;
-  status: 'pending' | 'accepted' | 'rejected';
-  createdAt: number;
-  type: 'group' | 'session' | 'coin';
-  link?: string;
-  amount?: number;
-  memo?: string;
-}
-
-export interface DigitalReceipt {
-    id: string;
-    senderId: string;
-    senderName: string;
-    receiverId: string;
-    receiverName: string;
-    amount: number;
-    memo: string;
-    status: 'pending' | 'confirmed' | 'claimed';
-    createdAt: number;
-    confirmedAt?: number;
-    claimedAt?: number;
-}
-
-export interface CodeProject {
-  id: string;
-  name: string;
-  files: CodeFile[];
-  lastModified: number;
-  activeFilePath?: string;
-  accessLevel?: 'public' | 'restricted';
-  allowedUserIds?: string[];
-  activeClientId?: string;
-  github?: {
-    owner: string;
-    repo: string;
-    branch: string;
-    sha: string;
-  };
+  // Added isModified to fix CodeStudio errors
+  isModified?: boolean;
 }
 
 export interface CursorPosition {
@@ -558,6 +434,8 @@ export interface MockInterviewRecording {
   language: string;
   // Support for local video blobs and resolving type errors in MockInterview component
   blob?: Blob;
+  // Store structured report data directly in the record for instant high-fidelity history
+  report?: any;
 }
 
 export interface TodoItem {
@@ -615,3 +493,36 @@ export interface BookData {
   ownerId?: string;
   isCustom?: boolean;
 }
+
+// Added CloudItem interface to fix CodeStudio errors
+export interface CloudItem {
+  name: string;
+  fullPath: string;
+  url?: string;
+  size?: number;
+  timeCreated?: string;
+  contentType?: string;
+  isFolder?: boolean;
+}
+
+export interface CodeProject {
+  id: string;
+  name: string;
+  files: CodeFile[];
+  lastModified: number;
+  activeFilePath?: string;
+  accessLevel?: 'public' | 'restricted';
+  allowedUserIds?: string[];
+  activeClientId?: string;
+  github?: {
+    owner: string;
+    repo: string;
+    branch: string;
+    sha: string;
+  };
+  // Added layoutMode and activeSlots to fix CodeStudio errors
+  layoutMode?: 'single' | 'split-v' | 'split-h' | 'quad';
+  activeSlots?: (CodeFile | null)[];
+  cursors?: Record<string, CursorPosition>;
+}
+

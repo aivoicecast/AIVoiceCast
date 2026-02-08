@@ -7,11 +7,14 @@ import {
   LayoutGrid, ChevronLeft, Hash, Grid3X3, Info, SkipBack, SkipForward, Zap, Speaker, Settings2, Check, Globe, CloudCheck, CloudOff, CloudDownload, Radio,
   Bug, Film, X
 } from 'lucide-react';
-import { auth, storage } from '../services/firebaseConfig';
+// Fix: Added missing 'db' import for Firestore operations
+import { auth, storage, db } from '../services/firebaseConfig';
+// Fix: Added missing Firestore modular imports for ledger scanning
+import { collection, query, where, getDocs } from '@firebase/firestore';
 import { ref, listAll, getDownloadURL } from '@firebase/storage';
 import { saveScriptureToLedger, getScriptureFromLedger, getScriptureAudioUrl } from '../services/firestoreService';
 import { DualVerse } from '../types';
-import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput } from '../utils/audioUtils';
+import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput, syncPrimeSpeech } from '../utils/audioUtils';
 import { synthesizeSpeech, TtsProvider } from '../services/tts';
 import { Visualizer } from './Visualizer';
 
@@ -22,7 +25,6 @@ interface ScriptureSanctuaryProps {
   onBack: () => void;
   language: 'en' | 'zh';
   isProMember: boolean;
-  // Added onOpenManual prop to fix type error in App.tsx
   onOpenManual?: () => void;
 }
 
@@ -117,7 +119,6 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
 
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const playbackSessionRef = useRef(0);
-  const loadedKeyRef = useRef<string>('');
   const lastInitiatedKeyRef = useRef<string>(''); 
   const verseRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -131,36 +132,33 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
   }, []);
 
   const scanBookVault = useCallback(async (book: string) => {
-    if (!storage) return;
+    if (!db) return;
     const bookStatus: Record<string, { text: boolean, audio: boolean, checking: boolean }> = {};
     const count = BIBLE_CHAPTER_COUNTS[book] || 0;
     for (let i = 1; i <= count; i++) bookStatus[i] = { text: false, audio: false, checking: true };
     setVaultStatus(bookStatus);
     
-    dispatchLog(`Vault Handshake: Scanning ${book} registry...`, 'info');
-    
     try {
-        const folderRef = ref(storage, `bible_corpus/${book}`);
-        const listRes = await listAll(folderRef);
-        const existingChapters = listRes.items.map(item => item.name.replace('.json', ''));
+        const bibleLedgerRef = collection(db, 'bible_ledger');
+        const q = query(bibleLedgerRef, where('book', '==', book));
+        const snap = await getDocs(q);
         
         const finalStatus: Record<string, { text: boolean, audio: boolean, checking: boolean }> = {};
         for (let i = 1; i <= count; i++) {
+            const docData = snap.docs.find((d: any) => (d.data() as any).chapter === i.toString())?.data() as any;
             finalStatus[i] = {
-                text: existingChapters.includes(i.toString()),
-                audio: false, // Placeholder as listAll doesn't easily show nested status
+                text: !!docData && Array.isArray(docData.verses) && docData.verses.length > 0,
+                audio: !!docData?.hasAudio,
                 checking: false
             };
         }
         setVaultStatus(finalStatus);
-        dispatchLog(`Vault Scan Complete for ${book}.`, 'success');
     } catch (e: any) {
-        console.error("Vault scan failed", e);
         const failStatus: Record<string, { text: boolean, audio: boolean, checking: boolean }> = {};
         for (let i = 1; i <= count; i++) failStatus[i] = { text: false, audio: false, checking: false };
         setVaultStatus(failStatus);
     }
-  }, [dispatchLog]);
+  }, []);
 
   useEffect(() => {
     if (viewMode === 'chapters') {
@@ -180,11 +178,11 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
     }
   }, []);
 
-  const stopReading = useCallback(() => {
+  const stopReading = useCallback((resetIndex = false) => {
       playbackSessionRef.current++;
       setIsReading(false);
       setAudioBuffering(false);
-      setCurrentReadingIndex(-1);
+      if (resetIndex) setCurrentReadingIndex(-1);
       setLiveVolume(0);
       activeSourcesRef.current.forEach(s => { try { s.stop(); s.disconnect(); } catch(e) {} });
       activeSourcesRef.current.clear();
@@ -195,11 +193,9 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
     const key = `${book}_${chapter}`;
     
     if (!force && SESSION_CHAPTER_CACHE.has(key)) {
-        dispatchLog(`Local Refraction Hit: Resuming ${key} from session cache.`, 'success');
         setParsedVerses(SESSION_CHAPTER_CACHE.get(key)!);
         setDataSource('archive');
         setViewMode('verses');
-        loadedKeyRef.current = key;
         return;
     }
 
@@ -222,7 +218,6 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
       if (dataFound && dataFound.verses && dataFound.verses.length > 0) {
           setParsedVerses(dataFound.verses); 
           SESSION_CHAPTER_CACHE.set(key, dataFound.verses);
-          loadedKeyRef.current = key;
           setDataSource('archive');
           setIsSyncing(false);
           dispatchLog(`Ledger Hit: Hydrated ${dataFound.verses.length} nodes from database.`, 'success');
@@ -276,7 +271,6 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
           setDataSource('neural');
           SESSION_CHAPTER_CACHE.set(key, streamVerses);
           saveScriptureToLedger(normalizedBookLocal, chapter, streamVerses);
-          loadedKeyRef.current = key;
           dispatchLog(`Neural Synthesis finalized. Ledger entry updated.`, 'success');
       }
 
@@ -298,20 +292,28 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
   }, [selectedBook, selectedChapter, viewMode, handleRefractScripture]);
 
   const startReadingSequence = async (startIndex: number) => {
-      const actualStart = startIndex < 0 ? 0 : startIndex;
-      stopReading();
-      setIsReading(true);
-      
-      const localSession = ++playbackSessionRef.current;
-      registerAudioOwner(MY_TOKEN, stopReading);
-
+      // 1. HARDWARE PRIME: Ensure audio context is alive and speech engine is reset
       const ctx = getGlobalAudioContext();
       await warmUpAudioContext(ctx);
+      syncPrimeSpeech();
 
-      dispatchLog(`Bilingual Sync Active: @ Node ${actualStart + 1}`, 'info');
+      // 2. HANDSHAKE: Register as global audio owner. 
+      // If we were already the owner, this triggers OUR OWN stopReading() callback.
+      registerAudioOwner(MY_TOKEN, () => stopReading(false));
+
+      // 3. SESSION LOCK: Increment session ID AFTER potential handshake-triggered increments
+      const localSession = ++playbackSessionRef.current;
+      setIsReading(true);
+
+      const actualStart = startIndex < 0 ? 0 : startIndex;
+      dispatchLog(`Neural Broadcast Active: Beginning at Node ${actualStart + 1}`, 'info');
 
       for (let i = actualStart; i < parsedVerses.length; i++) {
-          if (localSession !== playbackSessionRef.current) return;
+          if (localSession !== playbackSessionRef.current) {
+              dispatchLog(`Session ${localSession} neutralized by session ${playbackSessionRef.current}.`, 'info');
+              return;
+          }
+
           const verse = parsedVerses[i];
           setCurrentReadingIndex(i);
           
@@ -351,13 +353,11 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                           source.onended = () => { activeSourcesRef.current.delete(source); setLiveVolume(0); resolve(); };
                           source.start(0);
                       });
-                  } else if (!resultEn.buffer) {
-                      dispatchLog(`Node ${verse.number} EN: Ledger miss & API empty.`, 'warn');
                   }
               }
           } catch (err: any) {
               setAudioBuffering(false);
-              dispatchLog(`Node ${verse.number} EN Error: ${err.message}`, 'warn');
+              dispatchLog(`Node ${verse.number} EN Fault: ${err.message}`, 'warn');
           }
 
           if (localSession !== playbackSessionRef.current) return;
@@ -398,14 +398,27 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
               }
           } catch (err: any) {
               setAudioBuffering(false);
-              dispatchLog(`Node ${verse.number} ZH Error: ${err.message}`, 'warn');
+              dispatchLog(`Node ${verse.number} ZH Fault: ${err.message}`, 'warn');
           }
           
           if (localSession !== playbackSessionRef.current) return;
           await new Promise(r => setTimeout(r, 1000));
       }
-      setIsReading(false);
-      setCurrentReadingIndex(-1);
+      
+      if (localSession === playbackSessionRef.current) {
+          setIsReading(false);
+          setCurrentReadingIndex(-1);
+          dispatchLog("Cycle complete. Returning to origin.", "success");
+      }
+  };
+
+  const handleToggleRead = async () => {
+    if (isReading) {
+        stopReading(false); 
+        return;
+    }
+    // Verbatim resume from current state index
+    startReadingSequence(currentReadingIndex);
   };
 
   const filteredBooks = useMemo(() => {
@@ -417,7 +430,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
 
   return (
     <div className={`h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans ${isCinemaMode ? 'cinema-bg' : ''}`}>
-      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-50">
+      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
         <div className="flex items-center gap-4">
             <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>
             <div>
@@ -431,7 +444,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
             <button onClick={() => setIsCinemaMode(!isCinemaMode)} className={`p-2 rounded-lg transition-colors ${isCinemaMode ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-white hover:bg-slate-800'}`} title="Cinema Mode"><Film size={18}/></button>
             <div className="w-px h-6 bg-slate-800 mx-2"></div>
             {viewMode === 'verses' && (
-                <button onClick={() => setViewMode('chapters')} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Close Chapter</button>
+                <button onClick={() => { stopReading(true); setViewMode('chapters'); }} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Close Chapter</button>
             )}
         </div>
       </header>
@@ -453,7 +466,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                 {filteredBooks.map(b => (
                     <button 
                         key={b} 
-                        onClick={() => { setSelectedBook(b); setViewMode('chapters'); stopReading(); }} 
+                        onClick={() => { setSelectedBook(b); setViewMode('chapters'); stopReading(true); }} 
                         className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all ${selectedBook === b ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'}`}
                     >
                         <div className="flex flex-col items-start">
@@ -572,12 +585,12 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                             <div className="flex items-center gap-4">
                                 <div className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-2xl flex items-center gap-4 shadow-xl">
                                     <button 
-                                        onClick={() => startReadingSequence(currentReadingIndex)}
+                                        onClick={handleToggleRead}
                                         className={`p-3 rounded-xl transition-all shadow-lg active:scale-95 ${isReading ? 'bg-red-600 text-white animate-pulse' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-900/20'}`}
                                     >
                                         {audioBuffering ? <Loader2 size={18} className="animate-spin"/> : isReading ? <Pause size={18} fill="currentColor"/> : <Play size={18} fill="currentColor" className="ml-0.5"/>}
                                     </button>
-                                    <button onClick={stopReading} disabled={!isReading} className={`p-3 rounded-xl transition-colors ${isReading ? 'text-slate-400 hover:text-white bg-slate-800' : 'text-slate-700 bg-slate-900'}`}><Square size={18} fill="currentColor"/></button>
+                                    <button onClick={() => stopReading(true)} disabled={!isReading && currentReadingIndex === -1} className={`p-3 rounded-xl transition-colors ${isReading || currentReadingIndex !== -1 ? 'text-slate-400 hover:text-white bg-slate-800' : 'text-slate-700 bg-slate-900'}`}><Square size={18} fill="currentColor"/></button>
                                     <div className="w-px h-6 bg-slate-800 mx-1"></div>
                                     <div className="flex items-center gap-4">
                                         <div className="w-24 h-6 rounded-full overflow-hidden bg-slate-950"><Visualizer volume={liveVolume} isActive={isReading} color="#fbbf24"/></div>

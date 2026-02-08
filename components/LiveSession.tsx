@@ -7,7 +7,8 @@ import { getDriveToken, signInWithGoogle, isJudgeSession } from '../services/aut
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { ensureCodeStudioFolder, uploadToDrive, uploadToDriveWithProgress } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
-import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, updateDiscussion, syncUserProfile, getUserProfile, uploadFileToStorage } from '../services/firestoreService';
+// Fix: removed non-existent updateDiscussion from imports
+import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, syncUserProfile, getUserProfile, uploadFileToStorage } from '../services/firestoreService';
 import { summarizeDiscussionAsSection, generateDesignDocFromTranscript } from '../services/lectureGenerator';
 import { FunctionDeclaration, Type } from '@google/genai';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext, stopAllPlatformAudio } from '../utils/audioUtils';
@@ -182,9 +183,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
 
-  const handlePipBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const b64 = await resizeImage(e.target.files[0], 1024, 0.7);
+  const handlePipBgUpload = async (timeout: React.ChangeEvent<HTMLInputElement>) => {
+    if (timeout.target.files?.[0]) {
+      const b64 = await resizeImage(timeout.target.files[0], 1024, 0.7);
       setCustomPipBgBase64(b64);
       const img = new Image();
       img.src = b64;
@@ -640,7 +641,7 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                                 {(['normal', 'compact'] as PipSize[]).map(sz => (
                                     <button 
                                         key={sz} onClick={() => setPipSize(sz)}
-                                        className={`py-2 rounded-xl text-[9px] font-black uppercase transition-all border ${pipSize === sz ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                                        className={`py-2 rounded-xl text-[9px] font-black uppercase transition-all border ${pipSize === sz ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-50'}`}
                                     >
                                         <span>{sz}</span>
                                     </button>

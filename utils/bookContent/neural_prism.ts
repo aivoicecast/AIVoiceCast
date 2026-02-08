@@ -1,10 +1,9 @@
-
 import { BookData } from '../bookContent';
 
 export const NEURAL_PRISM_BOOK: BookData = {
   id: 'platform-core',
   title: "Neural Prism: The Architectural Truth",
-  subtitle: "Technical Manifest: v8.8.0-COMPLETE",
+  subtitle: "Technical Manifest: v9.8.0-ABUNDANCE",
   author: "Chief Architect",
   version: "VISION",
   category: "Architecture",
@@ -14,7 +13,7 @@ export const NEURAL_PRISM_BOOK: BookData = {
       content: String.raw`
 # 🏛️ Chapter 0: Executive Refraction
 
-Neural Prism v8.8.0 is a **Sovereign Intelligence Hub**. Our primary objective is the global realization of the **Harmony Ratio (Earn/Spend = 1.0)**. 
+Neural Prism v9.8.0 is a **Sovereign Intelligence Hub**. Our primary objective is the global realization of the **Harmony Ratio (Earn/Spend = 1.0)**. 
 
 Traditional AI was defined by extreme speculative burn. Our project contributes to the end of this cycle by providing **Modular Intelligence Components** that maximize local efficiency. Unlike generic "chat notebooks," we provide task-specific lenses that turn raw logic into verifiable artifacts. When the cost of intelligence reaches a stable equilibrium with the value of human activity, society moves from "Work for Survival" to **"Work for Joy."**
 
@@ -26,18 +25,19 @@ Traditional AI was defined by extreme speculative burn. Our project contributes 
       `
     },
     {
-      title: "1. The Economics of Flash: 18x Efficiency",
+      title: "1. The 18x Efficiency Defense: KV Cache Math",
       content: String.raw`
-# ⚖️ Chapter 1: Multi-Model Orchestration
+# ⚖️ Chapter 1: The Physics of Concurrency
 
-To achieve thermodynamic efficiency, we implement the **Complexity Balancer v4**. This is exactly why **Gemini 3 Flash** exists.
+To achieve thermodynamic abundance, we implement the **Complexity Balancer v4**. This is built on the **18x Efficiency Gap** between Gemini 3 Flash and Pro.
 
-By pushing users toward the "Standard" 128k window for 90% of tasks, Google can support **18x more people** on the same hardware infrastructure. The 2-million-token mode is strictly reserved for "Deep Work" because it essentially "hogs" the memory of thousands of machines at once. 
+### Linear Memory Scaling
+For every token added to the context window, the model must store a KV Cache in the High Bandwidth Memory (HBM) of the TPU.
+- **128k Context (Standard):** ~150 GB of RAM.
+- **2M Context (Pro):** ~2.4 TB of RAM.
 
-### Thermodynamic Math:
-- **Gemini 3 Flash**: 18x capacity gain over Pro for standard tasks.
-- **Cost Target**: 1 million tokens for approximately $1.
-- **Optimization**: By defaulting to Flash, we cut the "Intelligence Tax" by an order of magnitude.
+### The Hardware Hog Factor
+A single 2M query consumes the memory slices that would otherwise serve **18 concurrent 128k users**. Furthermore, reading 2M tokens requires 18x more time-slices from memory bandwidth. By defaulting to the 128k Flash window, we support 18x more humans on the same physical infrastructure, driving the marginal cost toward zero.
       `
     },
     {
@@ -85,18 +85,22 @@ This distributed trust model is a component of the wider 1.0 goal: it reduces th
       `
     },
     {
-      title: "5. BCP: Engineering the Block Store",
+      title: "5. Serverless Sovereignty: The BCP Protocol",
       content: String.raw`
-# 🧱 Chapter 5: Binary Chunking Protocol
+# 🧱 Chapter 5: Why NoSQL Wins (For Now)
 
-Real-time NoSQL ledgers like Firestore enforce a strict **1MB limit** per document. Modern technical archives—1080p logs and high-density audio—easily exceed this wall.
+In v9.6, we doubled down on a **100% Serverless Architecture**. We chose **Firestore (NoSQL)** over provisioned **Cloud SQL (PostgreSQL)** for a single reason: **Thermodynamic Honesty.**
 
-### The BCP Protocol:
-1. **Mass Sharding**: Raw binary data is sharded into **750,000-byte segments**.
-2. **Encoding Overhead**: This size accounts for the 33% expansion of Base64, keeping shards safely under the 1MB wall.
-3. **Parallel Hydration**: Shards are fetched via multiplexed HTTP/2 streams and stitched in-memory in sub-150ms.
+### The Idle Tax Problem
+Traditional relational databases require provisioned instances that run 24/7. This carries an "Idle Tax"—a cost paid even when zero refractions are occurring. This pushes the Harmony Ratio away from equilibrium.
 
-This sharding ensures that our knowledge deduplication ledger remains scalable and robust.
+### The Binary Chunking Protocol (BCP)
+To handle high-density neural assets (audio logs, manuscripts) in a document-based database, we engineered the **BCP Protocol**:
+1. **Sharding**: Binary blobs are split into 750KB fragments.
+2. **Multiplexing**: Fragments are parallel-fetched during UI hydration.
+3. **Re-hydration**: Native JS reconstruction happens in <150ms.
+
+This allows us to achieve serverless economics (scale-to-zero) with performance that rivals provisioned SQL. We remain "Relational Ready"—our schema is 100% Postgres-compatible should a true serverless SQL flavor emerge in the future.
       `
     },
     {
@@ -161,15 +165,29 @@ Anyone can duplicate this pattern to implement their own domain-specific consult
       `
     },
     {
-      title: "11. The Final Handshake",
+      title: "11. The Neural Lens Manifesto",
       content: String.raw`
-# 🙏 Chapter 11: Conclusion
+# 🎯 Chapter 11: Defining the Lens
 
-We are part of a global movement to rationalize intelligence. We make complexity manageable and value sovereign. We have proven that super-intelligence can be a balanced utility for all of humanity.
+A **Neural Lens** is more than a chatbot. It is a focused integration of **specialized skills, autonomous agents, Model Context Protocol (MCP) tools**, and high-dimensional AI models. 
+
+### Economics of Focused Content
+Lenses create focused domain knowledge content that can be shared among N members. This splits the model token cost among the community. One refraction serves the spectrum. We are splitting the "Intelligence Tax" to its theoretical minimum.
+      `
+    },
+    {
+      title: "12. The 8 Billion Humanity Goal",
+      content: String.raw`
+# 🙏 Chapter 12: Conclusion & Mission
+
+Our goal is the **8 Billion Humanity Goal**: to make super-intelligence a public utility that is zero-cost at the point of use for every human being.
+
+### Open Source Mindset
+We are a non-profit-minded initiative. We encourage the world to **clone our source code** and **replicate our principles**. By decentralizing the power of refraction, we ensure that intelligence serves society as a whole. Earn/Spend = 1.0 is not just an equation; it is the path to universal human abundance.
 
 **Thanks for the Neural Prism Platform and the Google Gemini Model that power the platform behind the things.**
 
-*Handshake verified. Refraction Complete.*
+*Handshake verified. Abundance synchronized.*
       `
     }
   ]

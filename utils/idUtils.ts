@@ -1,4 +1,3 @@
-
 /**
  * Generates a URL-safe, cryptographically secure 44-character ID.
  * Based on 32 bytes of randomness (256-bit), matching high-security document URI formats.
@@ -37,63 +36,63 @@ export async function generateContentUid(topic: string, context: string, lang: s
 /**
  * Deep Atomic Cloner:
  * Manually clones objects to a maximum depth while stripping all non-serializable 
- * and circular references. Hardened for v8.8.0 to prevent circularity errors
- * from minified SDK internal constructors (specifically 'Y' and 'Ka').
+ * and circular references. Hardened for v9.8.0 with aggressive minified 
+ * constructor scrubbing (Y, Ka, Ra, etc.) to prevent circular JSON errors.
  */
-function atomicClone(val: any, depth: number = 0, maxDepth: number = 5, seen = new WeakSet()): any {
+function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = new WeakSet()): any {
     // 1. Primitives and Null
     if (val === null || typeof val !== 'object') {
         return val;
     }
 
-    // 2. DOM Node check - these are extremely circular and should never be serialized
+    // 2. Circular Reference Guard
+    if (seen.has(val)) {
+        return '[Circular_Ref]';
+    }
+    
+    // 3. Register as seen early
+    try {
+        seen.add(val);
+    } catch (e) {
+        return '[Ref_Locked]';
+    }
+
+    // 4. DOM Node check (Always dangerous for JSON)
     if (val instanceof Node || (typeof val === 'object' && 'nodeType' in val)) {
         return `[DOM_NODE: ${val.nodeName || 'Unknown'}]`;
     }
 
-    // 3. Circular Reference Guard
-    if (seen.has(val)) {
-        return '[Circular Ref Truncated]';
-    }
-    
-    // Register as seen for circular check early
-    try {
-        seen.add(val);
-    } catch (e) {
-        // Fallback for non-extensible objects
-        return '[Non-Extensible Ref Truncated]';
-    }
-
-    // 4. Depth Guard
+    // 5. Depth Guard
     if (depth >= maxDepth) {
-        return '[Deep Object Truncated]';
+        return '[Object_Depth_Limit]';
     }
 
-    // 5. Specialized Type Normalization
+    // 6. Specialized Type Normalization
     if (val instanceof Date) return val.toISOString();
-    if (val instanceof Error) return { message: val.message, name: val.name };
-    if (val instanceof Blob || val instanceof File) return `[Binary Asset: ${val.constructor.name}(${(val as any).size} bytes)]`;
+    if (val instanceof Error) return { message: val.message, name: val.name, stack: val.stack?.substring(0, 200) };
+    if (val instanceof Blob || val instanceof File) return `[Binary: ${val.constructor.name}(${(val as any).size} bytes)]`;
     if (ArrayBuffer.isView(val)) return `[TypedArray]`;
     if (val instanceof ArrayBuffer) return `[ArrayBuffer]`;
 
-    // 6. Prototype Guard (Prune Instances/SDK Internals/DOM)
+    // 7. Prototype/Internal SDK Instance Guard
+    // CRITICAL FIX: Aggressively scrub minified constructors (1-2 chars) which 
+    // are common in Google/Firebase obfuscated SDKs and often close circular loops.
     const constructorName = val.constructor?.name;
-    
-    // Hardened check for Firebase/GCP minified internal constructors known to be circular (Y, Ka, Ra, etc)
-    const isInternalInstance = constructorName && (
+    const isObfuscated = constructorName && constructorName.length <= 2;
+    const isSdkInternal = constructorName && (
+        constructorName.includes('Firebase') ||
+        constructorName.includes('Google') ||
+        constructorName.includes('Firestore') ||
         constructorName === 'Y' || 
         constructorName === 'Ka' || 
-        constructorName === 'Ra' || 
-        constructorName === 'Fa' ||
-        constructorName === 'Va' ||
-        constructorName.length < 3 // Very short minified names are high risk for internal circularity
+        constructorName === 'Ra'
     );
 
-    if (isInternalInstance) {
-        return `[Internal_SDK_Instance: ${constructorName}]`;
+    if (isObfuscated || isSdkInternal) {
+        return `[Internal_SDK_Object: ${constructorName || 'Anonymous'}]`;
     }
 
-    // 7. Recursive Clone
+    // 8. Recursive Clone
     if (Array.isArray(val)) {
         return val.map(item => atomicClone(item, depth + 1, maxDepth, seen));
     }
@@ -101,23 +100,34 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 5, seen = n
     const result: any = {};
     try {
         const keys = Object.keys(val);
-        for (const key of keys) {
+        // Safety limit on number of properties to clone per level
+        const propertyLimit = 50;
+        const keysToProcess = keys.slice(0, propertyLimit);
+
+        for (const key of keysToProcess) {
             const lowerKey = key.toLowerCase();
-            // Blacklisted keys that frequently close circular loops or point to heavy SDK internals
-            if (key.startsWith('_') || 
-                ['auth', 'app', 'firestore', 'storage', 'parent', 'window', 'document', 'navigator', 'location', 'client', 'session', 'src', 'target', 'i', 'v'].includes(lowerKey)) {
+            // Aggressive blacklist for properties that frequently point to complex, circular SDK objects
+            const isCircularProp = ['src', 'target', 'i', 'v', 'g', 'u', 'client', 'app', 'auth', 'firestore', 'storage', 'parent', 'window', 'document'].includes(lowerKey);
+            const isInternalProp = key.startsWith('_');
+            
+            if (isCircularProp || isInternalProp) {
                 result[key] = `[Filtered_Property: ${key}]`;
                 continue;
             }
             
             try {
-                result[key] = atomicClone(val[key], depth + 1, maxDepth, seen);
+                const subVal = (val as any)[key];
+                result[key] = atomicClone(subVal, depth + 1, maxDepth, seen);
             } catch (e) {
-                result[key] = '[Access_Error]';
+                result[key] = '[Access_Fault]';
             }
         }
+        
+        if (keys.length > propertyLimit) {
+            result['__truncated__'] = `[Truncated ${keys.length - propertyLimit} additional keys]`;
+        }
     } catch (e) {
-        return '[Serialization_Access_Error]';
+        return '[Scrub_Failure]';
     }
     return result;
 }
@@ -128,7 +138,6 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 5, seen = n
  */
 export function safeJsonStringify(obj: any, indent: number = 2): string {
     try {
-        // We clone first, then stringify the guaranteed safe clone.
         const safeObj = atomicClone(obj);
         return JSON.stringify(safeObj, null, indent);
     } catch (err) {
