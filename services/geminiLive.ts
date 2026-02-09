@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 // Fix: safeJsonStringify is not exported from audioUtils, it resides in idUtils
 import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
@@ -192,18 +191,35 @@ export class GeminiLiveService {
           },
           onclose: (e: any) => {
             if (!this.isActive) return;
+            const reason = e?.reason || "";
+            const code = e?.code;
+            
+            // MANDATORY API KEY RECOVERY:
+            // "Requested entity was not found" is a key/quota error.
+            // Reset the key and prompt the user to select one again.
+            if (reason.includes("Requested entity was not found")) {
+                this.dispatchLog(`Identity Resolution Failure: ${reason}. Resetting Auth Spectrum.`, 'error');
+                (window as any).aistudio?.openSelectKey();
+            }
+
             const wasIntentional = !this.session;
-            this.dispatchLog(`WebSocket Tunnel Closed. Code: ${e?.code || '---'} Reason: ${e?.reason || 'Protocol Termination'}`, wasIntentional ? 'info' : 'error', { category: 'LIVE_API' });
+            this.dispatchLog(`WebSocket Tunnel Closed. Code: ${code || '---'} Reason: ${reason || 'Protocol Termination'}`, wasIntentional ? 'info' : 'error', { category: 'LIVE_API' });
             this.cleanup();
             if (!wasIntentional) {
-               callbacks.onClose(e?.reason || "WebSocket closed unexpectedly", e?.code);
+               callbacks.onClose(reason || "WebSocket closed unexpectedly", code);
             }
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
-            this.dispatchLog(`Critical Transport Error: ${e?.message || String(e)}`, 'error', { category: 'LIVE_API' });
-            this.cleanup();
             const errMsg = e?.message || String(e);
+            
+            if (errMsg.includes("Requested entity was not found")) {
+                this.dispatchLog(`Identity Resolution Failure: ${errMsg}. Resetting Auth Spectrum.`, 'error');
+                (window as any).aistudio?.openSelectKey();
+            }
+
+            this.dispatchLog(`Critical Transport Error: ${errMsg}`, 'error', { category: 'LIVE_API' });
+            this.cleanup();
             callbacks.onError(errMsg);
           }
         }
@@ -219,79 +235,88 @@ export class GeminiLiveService {
     }
   }
 
-  public sendToolResponse(functionResponses: any) {
-      // CRITICAL FIX: The Live API expects an ARRAY of responses in the functionResponses key.
-      const responsesArray = Array.isArray(functionResponses) ? functionResponses : [functionResponses];
-      this.dispatchLog(`Tool Response Dispatched: ${responsesArray.map(r => r.name).join(', ')}`, 'output', { category: 'LIVE_API', meta: responsesArray });
-      this.sessionPromise?.then((session) => {
-          session.sendToolResponse({ functionResponses: responsesArray });
-      });
-  }
+  public startAudioInput(onVolumeUpdate: (volume: number) => void) {
+    if (!this.inputAudioContext || !this.stream) return;
 
-  public sendText(text: string) {
-    this.sessionPromise?.then((session) => {
-      session.sendRealtimeInput({
-        parts: [{ text }]
-      });
-    });
-  }
-
-  public sendMedia(data: string, mimeType: string) {
-    this.sessionPromise?.then((session) => {
-      session.sendRealtimeInput({
-        media: { data, mimeType }
-      });
-    });
-  }
-
-  private startAudioInput(onVolume: (v: number) => void) {
-    if (!this.inputAudioContext || !this.stream || !this.sessionPromise) return;
     this.source = this.inputAudioContext.createMediaStreamSource(this.stream);
     this.processor = this.inputAudioContext.createScriptProcessor(4096, 1, 1);
+
     this.processor.onaudioprocess = (e) => {
+      if (!this.isActive) return;
       const inputData = e.inputBuffer.getChannelData(0);
       
+      // Volume calculation for visualizer
       let sum = 0;
-      for(let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
-      onVolume(Math.sqrt(sum / inputData.length) * 5);
-      
+      for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
+      onVolumeUpdate(Math.sqrt(sum / inputData.length));
+
       const pcmBlob = createPcmBlob(inputData);
-      
-      this.sessionPromise?.then((session) => { 
-          session.sendRealtimeInput({ media: pcmBlob }); 
+      // Solely rely on sessionPromise resolves
+      this.sessionPromise?.then((session) => {
+        session.sendRealtimeInput({ media: pcmBlob });
       });
     };
-    
+
     this.source.connect(this.processor);
-    const silentGain = this.inputAudioContext.createGain();
-    silentGain.gain.value = 0;
-    this.processor.connect(silentGain);
-    silentGain.connect(this.inputAudioContext.destination);
+    this.processor.connect(this.inputAudioContext.destination);
   }
 
   private stopAllSources() {
-    for (const source of this.sources) { try { source.stop(); source.disconnect(); } catch(e) {} }
+    this.sources.forEach(s => {
+      try { s.stop(); s.disconnect(); } catch (e) {}
+    });
     this.sources.clear();
-  }
-
-  async disconnect() {
-    this.isActive = false;
-    if (this.session) { try { (this.session as any).close?.(); } catch(e) {} }
-    this.session = null;
-    this.cleanup();
   }
 
   private cleanup() {
     this.stopAllSources();
-    this.isPlayingResponse = false;
-    if (this.speakingTimer) clearTimeout(this.speakingTimer);
-    if (this.processor) { try { this.processor.disconnect(); this.processor.onaudioprocess = null; } catch(e) {} }
-    if (this.source) try { this.source.disconnect(); } catch(e) {}
-    this.stream?.getTracks().forEach(track => track.stop());
+    this.isActive = false;
+    this.session = null;
     this.sessionPromise = null;
-    this.stream = null;
-    this.processor = null;
-    this.source = null;
-    this.nextStartTime = 0;
+
+    if (this.processor) {
+      this.processor.disconnect();
+      this.processor = null;
+    }
+    if (this.source) {
+      this.source.disconnect();
+      this.source = null;
+    }
+    if (this.stream) {
+      this.stream.getTracks().forEach(t => t.stop());
+      this.stream = null;
+    }
+    if (this.inputAudioContext && this.inputAudioContext.state !== 'closed') {
+        this.inputAudioContext.close();
+        this.inputAudioContext = null;
+    }
+  }
+
+  public async disconnect() {
+    this.dispatchLog("Disconnecting session...", 'info');
+    if (this.session) {
+        try { await this.session.close(); } catch(e) {}
+    }
+    this.cleanup();
+  }
+
+  public sendText(text: string) {
+      this.sessionPromise?.then(session => {
+          session.sendRealtimeInput({ text });
+      });
+  }
+
+  public sendMedia(data: string, mimeType: string) {
+      this.sessionPromise?.then(session => {
+          session.sendRealtimeInput({ media: { data, mimeType } });
+      });
+  }
+
+  public sendToolResponse(functionResponses: any) {
+      const responsesArray = Array.isArray(functionResponses) ? functionResponses : [functionResponses];
+      this.dispatchLog(`Tool Response Dispatched: ${responsesArray.map(r => r.name || r.id).join(', ')}`, 'output');
+      this.sessionPromise?.then(session => {
+          session.sendToolResponse({ functionResponses: responsesArray[0] });
+      });
   }
 }

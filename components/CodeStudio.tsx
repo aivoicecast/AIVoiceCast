@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CodeProject, CodeFile, UserProfile, Channel, CursorPosition, CloudItem, TranscriptItem } from '../types';
-import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertCircle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, UserCheck, Play, Camera, MicOff } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight, ChevronDown, File, Folder, DownloadCloud, Loader2, CheckCircle, AlertCircle, Info, FolderPlus, FileCode, RefreshCw, LogIn, CloudUpload, Trash2, ArrowUp, Edit2, FolderOpen, MoreVertical, Send, MessageSquare, Bot, Mic, Sparkles, SidebarClose, SidebarOpen, Users, Eye, FileText as FileTextIcon, Image as ImageIcon, StopCircle, Minus, Maximize2, Minimize2, Lock, Unlock, Share2, Terminal, Copy, WifiOff, PanelRightClose, PanelRightOpen, PanelLeftClose, PanelLeftOpen, Monitor, Laptop, PenTool, Edit3, ShieldAlert, ZoomIn, ZoomOut, Columns, Rows, Grid2X2, Square as SquareIcon, GripVertical, GripHorizontal, FileSearch, Indent, Wand2, Check, UserCheck, Play, Camera, MicOff, Signal } from 'lucide-react';
 import { auth, db } from '../services/firebaseConfig';
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, moveCloudFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive, getCloudFileContent } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile } from '../services/googleDriveService';
@@ -14,7 +13,7 @@ import { GoogleGenAI, FunctionDeclaration, Type as GenType, Chat } from '@google
 import { GeminiLiveService } from '../services/geminiLive';
 import { Visualizer } from './Visualizer';
 import { ShareModal } from './ShareModal';
-import { generateSecureId } from '../utils/idUtils';
+import { generateSecureId, safeJsonStringify } from '../utils/idUtils';
 import { logger } from '../services/logger';
 import Editor from '@monaco-editor/react';
 
@@ -142,7 +141,7 @@ const FileTreeItem = ({ node, depth, activeId, onSelect, onToggle, onDelete, onR
     );
 };
 
-const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking, isLiveActive, onToggleLive, liveVolume }: any) => {
+const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking, isLiveActive, onToggleLive, liveVolume, isRecovering }: any) => {
     const [input, setInput] = useState('');
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -161,7 +160,9 @@ const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking, isL
                     </div>
                     <div className="flex flex-col">
                         <span className="font-black text-white text-xs uppercase tracking-widest">Code Partner</span>
-                        <span className="text-[8px] text-emerald-500 font-bold uppercase tracking-tighter">Handshake Active</span>
+                        <span className={`text-[8px] font-bold uppercase tracking-tighter ${isRecovering ? 'text-amber-500 animate-pulse' : 'text-emerald-500'}`}>
+                            {isRecovering ? 'Neural Link Recovery...' : 'Handshake Active'}
+                        </span>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -198,6 +199,14 @@ const AIChatPanel = ({ isOpen, onClose, messages, onSendMessage, isThinking, isL
                             <Loader2 className="animate-spin text-indigo-500" size={12}/>
                         </div>
                         <span className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Partner is analyzing code...</span>
+                    </div>
+                )}
+                {isRecovering && (
+                    <div className="flex items-center gap-3 animate-pulse">
+                        <div className="p-2 bg-amber-900/20 rounded-full border border-amber-500/30">
+                            <Signal className="text-amber-500" size={12}/>
+                        </div>
+                        <span className="text-amber-500 text-[10px] font-black uppercase tracking-widest">Re-establishing link...</span>
                     </div>
                 )}
             </div>
@@ -270,8 +279,11 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   // LIVE VOICE STATE
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [isAiConnected, setIsAiConnected] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
   const [liveVolume, setVolume] = useState(0);
   const liveServiceRef = useRef<GeminiLiveService | null>(null);
+  const autoReconnectAttempts = useRef(0);
+  const maxAutoRetries = 200; // Increased budget for long sessions
 
   // TERMINAL STATE
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
@@ -308,6 +320,11 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const centerContainerRef = useRef<HTMLDivElement>(null);
   const activeFile = activeSlots[focusedSlot];
   const chatRef = useRef<Chat | null>(null);
+  const projectFilesRef = useRef<CodeFile[]>(project.files);
+
+  useEffect(() => {
+    projectFilesRef.current = project.files;
+  }, [project.files]);
 
   /**
    * Neural Linguistic Refiner:
@@ -354,67 +371,74 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     }
   };
 
-  const codeTools = [{ functionDeclarations: [updateFileTool, writeFileTool] }];
+  const readFileTool: FunctionDeclaration = {
+      name: "read_file",
+      description: "Read the content of a specific file in the workspace. Use this to examine existing logic or verify a file was created correctly.",
+      parameters: {
+          type: GenType.OBJECT,
+          properties: {
+              path: { type: GenType.STRING, description: "Path of the file to read." }
+          },
+          required: ["path"]
+      }
+  };
+
+  const codeTools = [{ functionDeclarations: [updateFileTool, writeFileTool, readFileTool] }];
 
   const processAiToolCall = useCallback(async (name: string, args: any) => {
-    let targetPath = '';
-    let content = '';
-
     dispatchLog(`VFS HANDSHAKE: Processing Tool Call [${name}]`, 'info', { category: 'VFS' });
 
     if (name === 'update_active_file') {
         const active = activeSlots[focusedSlot];
-        if (!active) {
-            dispatchLog(`VFS SYNC FAULT: No file currently focused for update.`, 'error', { category: 'VFS' });
-            return { result: "Error: No file currently focused in editor." };
-        }
-        targetPath = active.path || active.name;
-        content = args.new_content;
+        if (!active) return { result: "Error: No file currently focused for update." };
+        const targetPath = active.path || active.name;
+        const content = args.new_content;
+
+        const newFile = { ...active, content, isModified: true };
+        setProject(prev => ({ ...prev, files: prev.files.map(f => (f.path || f.name) === targetPath ? newFile : f) }));
+        setActiveSlots(prev => prev.map((s, i) => i === focusedSlot ? newFile : s));
+        return { result: `Success. ${targetPath} updated.` };
+
     } else if (name === 'write_file') {
-        targetPath = args.path;
-        content = args.content;
-    } else {
-        dispatchLog(`VFS UNKNOWN TOOL: ${name}`, 'error', { category: 'VFS' });
-        return { result: "Error: Unknown tool." };
+        const targetPath = args.path;
+        const content = args.content;
+        const newFile: CodeFile = { 
+            name: targetPath.split('/').pop()!, 
+            path: targetPath, 
+            content: content, 
+            language: getLanguageFromExt(targetPath), 
+            loaded: true, 
+            isModified: true 
+        };
+
+        setProject(prev => {
+            const idx = prev.files.findIndex(f => (f.path || f.name) === targetPath);
+            const nextFiles = [...prev.files];
+            if (idx > -1) nextFiles[idx] = newFile; else nextFiles.push(newFile);
+            return { ...prev, files: nextFiles };
+        });
+
+        setActiveSlots(prevSlots => prevSlots.map(s => {
+            if (s && (s.path === targetPath || s.name === targetPath)) return newFile;
+            return s;
+        }));
+
+        if (activeTab === 'cloud' && currentUser) {
+            const lastSlash = targetPath.lastIndexOf('/');
+            const parentPath = lastSlash > -1 ? targetPath.substring(0, lastSlash) : '';
+            await saveProjectToCloud(parentPath, newFile.name, content, projectSessionId);
+        }
+        return { result: `Success. File ${targetPath} manifested.` };
+
+    } else if (name === 'read_file') {
+        const targetPath = args.path;
+        const file = projectFilesRef.current.find(f => (f.path === targetPath || f.name === targetPath));
+        if (file) return { result: file.content };
+        return { result: `Error: File ${targetPath} not found in current workspace.` };
     }
 
-    const newFile: CodeFile = { 
-        name: targetPath.split('/').pop()!, 
-        path: targetPath, 
-        content: content, 
-        language: getLanguageFromExt(targetPath), 
-        loaded: true, 
-        isModified: true 
-    };
-
-    setProject(prev => {
-        const idx = prev.files.findIndex(f => (f.path || f.name) === targetPath);
-        const nextFiles = [...prev.files];
-        if (idx > -1) nextFiles[idx] = newFile; else nextFiles.push(newFile);
-        return { ...prev, files: nextFiles };
-    });
-
-    // Update editor slots immediately
-    setActiveSlots(prevSlots => prevSlots.map(s => {
-        if (s && (s.path === targetPath || s.name === targetPath)) return newFile;
-        return s;
-    }));
-
-    dispatchLog(`VFS MANIFESTED: ${targetPath} updated (${Math.round(content.length/1024)} KB)`, 'success', { category: 'VFS', nodeId: targetPath });
-
-    // VFS Persist
-    if (activeTab === 'cloud' && currentUser) {
-        const lastSlash = targetPath.lastIndexOf('/');
-        const parentPath = lastSlash > -1 ? targetPath.substring(0, lastSlash) : '';
-        await saveProjectToCloud(parentPath, newFile.name, content, projectSessionId);
-    }
-
-    if (isSharedSession && (sessionId || projectSessionId)) {
-        await updateCodeFile(sessionId || projectSessionId, newFile);
-    }
-
-    return { result: `Success. Logic node ${targetPath} manifested in user workspace.` };
-  }, [activeSlots, focusedSlot, activeTab, currentUser, projectSessionId, isSharedSession, sessionId, dispatchLog]);
+    return { result: "Error: Unknown tool." };
+  }, [activeSlots, focusedSlot, activeTab, currentUser, projectSessionId]);
 
   // GitHub Repo Parsing from User Profile
   useEffect(() => {
@@ -656,7 +680,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
         });
         return () => unsubscribe();
     }
-  }, [sessionId, projectSessionId, clientId, dispatchLog]);
+  }, [sessionId, projectSessionId, clientId, dispatchLog, activeFile]);
 
   const handleShare = async (uids: string[], isPublic: boolean) => {
       let sid = sessionId || projectSessionId;
@@ -847,7 +871,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           if (!chatRef.current) {
-              const systemPrompt = `You are a Senior Code Partner. Use 'update_active_file' for modifications to focused slot or 'write_file' to manage workspace paths. PRIORITIZE tool usage over text descriptions. All code edits are manifested instantly.`;
+              const systemPrompt = `You are a Senior Code Partner. Use 'update_active_file' for modifications to focused slot or 'write_file' to manage workspace paths. Use 'read_file' to examine existing code. PRIORITIZE tool usage over text descriptions. All code edits are manifested instantly.`;
               chatRef.current = ai.chats.create({
                 model: 'gemini-3-pro-preview',
                 config: { systemInstruction: systemPrompt, tools: codeTools }
@@ -881,34 +905,68 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       } finally { setIsChatThinking(false); }
   };
 
-  const handleToggleLivePartner = async () => {
-    if (isLiveActive) { 
+  const handleToggleLivePartner = async (reconnect = false) => {
+    if (isLiveActive && !reconnect) { 
         dispatchLog(`LIVE API: Disconnecting Voice Link.`, 'info', { category: 'LIVE_API' });
         liveServiceRef.current?.disconnect(); 
         setIsLiveActive(false); 
         setIsAiConnected(false); 
+        setIsRecovering(false);
+        autoReconnectAttempts.current = 0;
         return; 
     }
-    dispatchLog(`LIVE API: Initiating Neural Voice Link Handshake...`, 'info', { category: 'LIVE_API' });
+
+    if (reconnect) {
+        setIsRecovering(true);
+        dispatchLog(`LIVE API: Protocol 1006 trapped. Re-establishing link (Attempt ${autoReconnectAttempts.current + 1})...`, 'warn', { category: 'LIVE_API' });
+    } else {
+        dispatchLog(`LIVE API: Initiating Neural Voice Link Handshake...`, 'info', { category: 'LIVE_API' });
+    }
+
     const service = new GeminiLiveService();
     liveServiceRef.current = service;
-    const sysPrompt = `Senior Code Partner. Emotive interaction. use 'write_file' or 'update_active_file' for all code changes. FOCUSED: ${activeFile?.name}. All VFS tool results are synced to the user screen.`;
+    const sysPrompt = `Senior Code Partner. Resilient interaction. use 'write_file', 'read_file' or 'update_active_file' for all code changes. FOCUSED: ${activeFile?.name}. All VFS tool results are synced to the user screen. If this is a reconnection, acknowledge and continue the current context.`;
 
     try {
         await service.connect('Zephyr', sysPrompt, {
             onOpen: () => { 
                 setIsLiveActive(true); 
                 setIsAiConnected(true); 
+                setIsRecovering(false);
+                autoReconnectAttempts.current = 0;
                 dispatchLog(`LIVE API: Voice Link Established.`, 'success', { category: 'LIVE_API' });
+                if (reconnect) {
+                    service.sendText("[RECONNECTION_PROTOCOL_ACTIVE] Neural link recovered. Continuing session.");
+                }
             },
-            onClose: () => { 
-                setIsLiveActive(false); 
+            onClose: (reason, code) => { 
                 setIsAiConnected(false); 
-                dispatchLog(`LIVE API: Voice Link Closed.`, 'warn', { category: 'LIVE_API' });
+                if (code === 1006 || code === 1001) {
+                    if (autoReconnectAttempts.current < maxAutoRetries) {
+                        autoReconnectAttempts.current++;
+                        setIsRecovering(true);
+                        // Calculate exponential backoff delay capped at 10s
+                        const delay = Math.min(1500 * Math.pow(1.1, autoReconnectAttempts.current), 10000);
+                        dispatchLog(`Network Jitter detected. Scheduling reconnection in ${Math.round(delay/1000)}s...`, 'warn');
+                        setTimeout(() => handleToggleLivePartner(true), delay);
+                        return;
+                    }
+                }
+                setIsLiveActive(false); 
+                setIsRecovering(false);
+                dispatchLog(`LIVE API: Voice Link Closed.`, 'warn', { category: 'LIVE_API', meta: { reason, code } });
             },
             onError: (err) => { 
-                setIsLiveActive(false); 
                 setIsAiConnected(false); 
+                if (autoReconnectAttempts.current < maxAutoRetries) {
+                    autoReconnectAttempts.current++;
+                    setIsRecovering(true);
+                    const delay = Math.min(2000 * Math.pow(1.1, autoReconnectAttempts.current), 12000);
+                    setTimeout(() => handleToggleLivePartner(true), delay);
+                    return;
+                }
+                setIsLiveActive(false); 
+                setIsRecovering(false);
                 dispatchLog(`LIVE API: Critical Fault: ${err}`, 'error', { category: 'LIVE_API' });
             },
             onVolumeUpdate: (v) => setVolume(v),
@@ -933,8 +991,14 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
             }
         }, codeTools);
     } catch (e: any) { 
-        setIsLiveActive(false); 
-        dispatchLog(`LIVE API: Handshake Failed: ${e.message}`, 'error', { category: 'LIVE_API' });
+        if (!reconnect) {
+            setIsLiveActive(false); 
+            setIsRecovering(false);
+            dispatchLog(`LIVE API: Handshake Failed: ${e.message}`, 'error', { category: 'LIVE_API' });
+        } else if (autoReconnectAttempts.current < maxAutoRetries) {
+            autoReconnectAttempts.current++;
+            setTimeout(() => handleToggleLivePartner(true), 3000);
+        }
     }
   };
 
@@ -1108,7 +1172,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           </div>
           <div onMouseDown={() => setIsDraggingRight(true)} className="w-1 cursor-col-resize hover:bg-indigo-500/50 transition-colors z-30 shrink-0 bg-slate-800/20 group relative"><div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 bg-indigo-500 p-0.5 rounded-full pointer-events-none"><GripVertical size={10}/></div></div>
           <div className={`${isZenMode ? 'hidden' : (isRightOpen ? '' : 'hidden')} bg-slate-950 flex flex-col shrink-0 overflow-hidden shadow-2xl`} style={{ width: `${rightWidth}px` }}>
-              <AIChatPanel messages={chatMessages} onSendMessage={handleSendMessage} isThinking={isChatThinking} isLiveActive={isLiveActive} onToggleLive={handleToggleLivePartner} liveVolume={liveVolume} onClose={() => setIsRightOpen(false)} />
+              <AIChatPanel messages={chatMessages} onSendMessage={handleSendMessage} isThinking={isChatThinking} isLiveActive={isLiveActive} onToggleLive={() => handleToggleLivePartner()} liveVolume={liveVolume} onClose={() => setIsRightOpen(false)} isRecovering={isRecovering} />
           </div>
       </div>
       <ShareModal isOpen={showShareModal} onClose={() => setShowShareModal(false)} onShare={handleShare} link={getShareLink()} title={project.name} currentAccess={project.accessLevel} currentAllowedUsers={project.allowedUserIds} currentUserUid={currentUser?.uid} />

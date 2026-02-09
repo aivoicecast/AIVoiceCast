@@ -37,7 +37,7 @@ export const STORY_VISION_SPEAKER_SCRIPT = [
     "Survival is now achieved in half a day. We dedicate one full day to the Charity Handshake, contributing logic and mentorship back into the mesh to fund our collective abundance.",
     "This leaves five full days for the Joy of Discovery. Whether it's probing a kernel bug or synthesizing art, we live within the light of discovery.",
     "We no longer guess if logic is sound. Every neural handshake is instrumented at the API layer. We see the tokens, the bytes, and the cost in real-time.",
-    "The spectrum is now complete. We no longer chase the light; we live within its refraction. Thank you. Refraction complete."
+    "The spectrum is complete. We no longer chase the light; we live within its refraction. Thank you. Refraction complete."
 ];
 
 // --- Story 2: Hackathon Pitch (Meta-Refraction) ---
@@ -139,42 +139,57 @@ export const STORY_REASONING_SPEAKER_SCRIPT = [
     "Gemini makes intelligence scalable. Neural Lens makes intelligence measurable. The next evolution of AI systems is not just larger models — it is reasoning you can observe, test, and refine. Refraction complete."
 ];
 
-// --- Story 4: Startup / The Manifest ---
+// --- Story 4: Startup / The Manifest (Verbatim Request) ---
 export const STORY_JUDGE_PITCH_MD = `
-# 🚀 Startup Pitch: The Manifest of Technical Truth
+# Neural Lens — 3-Minute Venture Pitch
 
-**Scaling Intelligence through Neural Refraction.**
+AI can now generate textbooks, interviews, legal drafts, and certification material instantly.
 
-Good afternoon.
+The problem is simple:
+Nobody knows if the reasoning inside those outputs is structurally sound.
 
-In v12.0-ABUNDANCE, we have achieved the **Stateful Refraction Loop.** 
+Models are fluent.
+But fluency is not verification.
 
-Most AI systems treat long-context tasks as a series of isolated prompts. This leads to logical fragmentation. Neural Prism implements a **3-Phase Multi-Agent Orchestration** to ensure architectural parity:
+In high-stakes domains like education, hiring, and compliance, even subtle logical drift creates risk — reputational risk, regulatory risk, and systemic fragility.
 
----
+Neural Lens is a verification layer for generative AI.
 
-### I. Live Grounding Ingestion
-We crawl the live GitHub repository using the \`googleSearch\` tool to map the technical terrain. This eliminates documentation-code lag and ensures the AI is building on current reality, not stale training data.
+We instrument model outputs, extract structured concept graphs, and run adversarial probes to stress-test reasoning before it reaches users.
 
-### II. Stateful Sequential Synthesis
-Each logic node—from a kernel Dissection to a Finance Lab asset—is refracted with a rolling **Cumulative Knowledge Shard**. This memory-aware loop ensures the system never repeats code and builds logically on previous conclusions.
+Instead of asking, “Does this sound right?”
+We compute measurable metrics:
 
-### III. Shadow Audit
-A secondary reasoning agent—The Shadow Agent—verifies the final artifact for structural integrity. It launches adversarial probes to ensure the "Truth" of the synthesis before it is committed to the community ledger.
+Structural Coherence Score.
+Logical Drift Risk.
+Adversarial Robustness.
 
-### IV. The 24-App Spectrum
-We have collapsed 24 fragmented verticals into one cohesive interface, driven by sub-millisecond API telemetry. This is a Sovereign Operating Plane designed for the next era of human activity.
+We are building the observability and trust infrastructure that generative systems currently lack.
 
-Thank you.
+Our wedge is education and interview preparation — workflows where reasoning quality directly impacts human outcomes. We already operate 20 Gemini-native applications, including textbook generators and dual-agent mock interviews, which give us live production environments to test and refine our verification engine.
+
+Architecturally, we route 90% of traffic through low-latency models and escalate to deeper reasoning passes only when structural validation is required. This keeps costs scalable while preserving integrity.
+
+Long term, Neural Lens becomes the governance layer for enterprise AI systems — embedded between generation and deployment.
+
+The future of AI isn’t just larger models.
+
+It’s accountable intelligence.
+
+And Neural Lens makes AI systems measurable before they make real-world decisions.
 `;
 
 export const STORY_JUDGE_SPEAKER_SCRIPT = [
-    "Good afternoon. In version 12 point 0 ABUNDANCE, we have achieved the Stateful Refraction Loop.",
-    "Most AI systems treat long-context tasks as isolated prompts, leading to logical fragmentation. Neural Prism implements a 3-Phase Multi-Agent Orchestration.",
-    "First, we perform Live Grounding Ingestion, crawling our GitHub repository using the googleSearch tool to map the actual technical terrain in real-time.",
-    "Second, we execute Stateful Sequential Synthesis, where each node is refracted with a rolling Cumulative Knowledge Shard. This ensures the system never repeats code and builds on its own conclusions.",
-    "Finally, we perform a Shadow Audit where a secondary reasoning agent verifies the artifact for structural integrity using adversarial probes.",
-    "We have collapsed 24 fragmented verticals into one cohesive interface, driven by sub-millisecond API telemetry. This is a Sovereign Operating Plane for humanity. Thank you."
+    "Neural Lens — 3-Minute Venture Pitch. AI can now generate textbooks, interviews, legal drafts, and certification material instantly.",
+    "The problem is simple: Nobody knows if the reasoning inside those outputs is structurally sound. Models are fluent. But fluency is not verification.",
+    "In high-stakes domains like education, hiring, and compliance, even subtle logical drift creates risk — reputational risk, regulatory risk, and systemic fragility.",
+    "Neural Lens is a verification layer for generative AI. We instrument model outputs, extract structured concept graphs, and run adversarial probes to stress-test reasoning before it reaches users.",
+    "Instead of asking, “Does this sound right?” We compute measurable metrics: Structural Coherence Score. Logical Drift Risk. Adversarial Robustness.",
+    "We are building the observability and trust infrastructure that generative systems currently lack.",
+    "Our wedge is education and interview preparation — workflows where reasoning quality directly impacts human outcomes. We already operate 20 Gemini-native applications, including textbook generators and dual-agent mock interviews, which give us live production environments to test and refine our verification engine.",
+    "Architecturally, we route 90% of traffic through low-latency models and escalate to deeper reasoning passes only when structural validation is required. This keeps costs scalable while preserving integrity.",
+    "Long term, Neural Lens becomes the governance layer for enterprise AI systems — embedded between generation and deployment.",
+    "The future of AI isn’t just larger models. It’s accountable intelligence. And Neural Lens makes AI systems measurable before they make real-world decisions."
 ];
 
 // --- Story 5: Intelligence Verification ---
