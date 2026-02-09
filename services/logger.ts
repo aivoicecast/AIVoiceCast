@@ -1,7 +1,6 @@
-
 import { safeJsonStringify } from '../utils/idUtils';
 
-export type LogType = 'info' | 'success' | 'warn' | 'error' | 'shadow' | 'audit' | 'input' | 'output' | 'trace';
+export type LogType = 'info' | 'success' | 'warn' | 'error' | 'shadow' | 'audit' | 'input' | 'output' | 'trace' | 'loop';
 
 export interface LogMetadata {
     category?: string;
@@ -16,13 +15,15 @@ export interface LogMetadata {
     preBalance?: number;
     postBalance?: number;
     totalTokens?: number;
+    machineContent?: any; // Strictly for AI-to-AI handshake
+    senderTool?: string;
+    receiverTool?: string;
     [key: string]: any; 
 }
 
 /**
- * Neural Logger Service (v12.5.0-TRACE)
- * Dispatches high-fidelity system telemetry to the Diagnostic Console.
- * Hardened with proactive circularity auditing.
+ * Neural Logger Service (v12.9.0-LOOP)
+ * Dispatches high-fidelity system telemetry and Machine Interface Protocol (MIP) logs.
  */
 export const logger = {
     info: (text: string, meta?: LogMetadata) => dispatch('info', text, meta),
@@ -36,29 +37,16 @@ export const logger = {
     audit: (text: string, meta?: LogMetadata) => dispatch('audit', text, meta),
     input: (text: string, meta?: LogMetadata) => dispatch('input', text, meta),
     output: (text: string, meta?: LogMetadata) => dispatch('output', text, meta),
-    trace: (text: string, meta?: LogMetadata) => dispatch('trace', text, meta)
+    trace: (text: string, meta?: LogMetadata) => dispatch('trace', text, meta),
+    loop: (text: string, meta?: LogMetadata) => dispatch('loop', text, meta)
 };
 
 function dispatch(type: LogType, text: string, meta?: LogMetadata) {
     let safeMeta = null;
     if (meta) {
         try {
-            // PROACTIVE AUDIT: 
-            // safeJsonStringify will now handle circular objects gracefully 
-            // and log specific paths to the console.
             const stringified = safeJsonStringify(meta);
             safeMeta = JSON.parse(stringified);
-            
-            // Check for circular reference indicators inserted by atomicClone
-            if (stringified.includes('[Circular_Ref')) {
-                window.dispatchEvent(new CustomEvent('neural-log', {
-                    detail: { 
-                        text: `[TRAP] Circular dependency neutralized in ${meta.category || 'unknown'} metadata. Check dev console for path trace.`, 
-                        type: 'warn', 
-                        meta: { category: 'DEBUG_AUDIT' } 
-                    }
-                }));
-            }
         } catch (e) {
             safeMeta = { 
                 error: "Metadata sanitization failure", 

@@ -35,11 +35,17 @@ In v12.0, we achieved a 1.0 ratio by offloading 90% of compute to Gemini 3 Flash
 
 Most AI applications suffer from a 'Black Box' problem. In v12.0, we implement the **Neural Telemetry Layer**. Every handshake with Gemini is instrumented at the lowest API interface.
 
+### The Self-Feedback Loop (Dyad Cycle)
+We have introduced Tool-to-Tool communication. 
+- **Tool A (Studio)**: The high-speed generator (Flash).
+- **Tool B (Lens)**: The deep auditor (Pro).
+
+These tools now communicate via **Machine Interface Protocol (MIP)** logs. When Tool A produces code or logic, Tool B automatically audits it and injects structured feedback back into the Studio's context window. This creates a recursive quality loop that eliminates **Agreeability Bias** without human intervention.
+
 ### Technical Implementation:
 We don't just log text. We perform **Functional Mass Comparison (FMC)**. 
 - **The Metric**: We measure the "Logical Density" of a refraction by extracting its Dependency Graph (Nodes/Links).
 - **The Audit**: If a model generates a response that sounds fluent but reduces the functional surface area (Logical Mass) by more than 20% without instruction, the system flags **Agreeability Bias**.
-- **Observability**: We track **Token Density** and **Volumetric Trace** (raw byte sizes) to detect silent logic drift before it is committed to the registry.
       `
     },
     {

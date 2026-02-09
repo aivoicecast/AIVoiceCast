@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Copy, Check, Image as ImageIcon, Loader2, Code as CodeIcon, ExternalLink, Sigma, Palette, Sun, Moon, Coffee } from 'lucide-react';
+import { Copy, Check, Image as ImageIcon, Loader2, Code as CodeIcon, ExternalLink, Sigma, Palette, Sun, Moon, Coffee, Maximize2 } from 'lucide-react';
 import { encodePlantUML } from '../utils/plantuml';
 import { ReaderTheme } from '../types';
 
@@ -102,10 +102,83 @@ const MermaidRenderer: React.FC<{ code: string, theme: ReaderTheme }> = ({ code,
         render();
     }, [code, theme]);
 
+    const handleOpenInNewWindow = () => {
+        const win = window.open('', '_blank');
+        if (!win) return;
+        
+        const title = "Neural Lens Diagram Zoom";
+        win.document.write(`
+            <!DOCTYPE html>
+            <html>
+                <head>
+                    <title>${title}</title>
+                    <style>
+                        body { 
+                            background: #020617; 
+                            color: white; 
+                            margin: 0; 
+                            display: flex; 
+                            flex-direction: column;
+                            justify-content: center; 
+                            align-items: center; 
+                            min-height: 100vh; 
+                            font-family: sans-serif; 
+                            overflow: auto;
+                        }
+                        .container {
+                            padding: 60px;
+                            width: 100%;
+                            display: flex;
+                            justify-content: center;
+                        }
+                        .controls {
+                            position: fixed;
+                            top: 20px;
+                            right: 20px;
+                            background: rgba(255,255,255,0.05);
+                            padding: 10px 20px;
+                            border-radius: 12px;
+                            font-size: 12px;
+                            color: #6366f1;
+                            font-weight: 800;
+                            text-transform: uppercase;
+                            letter-spacing: 0.1em;
+                            border: 1px solid rgba(255,255,255,0.1);
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="controls">Pinch or Ctrl+/- to Zoom</div>
+                    <div class="container">
+                        <div class="mermaid">
+                            ${code}
+                        </div>
+                    </div>
+                    <script type="module">
+                        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+                        mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+                    </script>
+                </body>
+            </html>
+        `);
+        win.document.close();
+    };
+
     if (error) return <div className="p-4 bg-red-900/20 text-red-400 text-[10px] rounded-lg border border-red-500/30 font-mono">Mermaid Syntax Error: {error}</div>;
 
     return (
-        <div className="my-4 flex justify-center bg-white/5 p-4 rounded-xl overflow-x-auto shadow-inner" dangerouslySetInnerHTML={{ __html: svg }} />
+        <div className="my-4 relative group/mermaid">
+            <div className="absolute top-4 right-4 z-10 opacity-0 group-hover/mermaid:opacity-100 transition-opacity">
+                <button 
+                    onClick={handleOpenInNewWindow}
+                    className="p-2 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-lg text-indigo-400 hover:text-white hover:bg-indigo-600 transition-all shadow-xl"
+                    title="Open in Zoomable Window"
+                >
+                    <Maximize2 size={16}/>
+                </button>
+            </div>
+            <div className="flex justify-center bg-white/5 p-4 rounded-xl overflow-x-auto shadow-inner" dangerouslySetInnerHTML={{ __html: svg }} />
+        </div>
     );
 };
 

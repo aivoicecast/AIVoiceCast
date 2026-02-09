@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video, User, ArrowLeft, Play, Gift, 
   Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Lock, Crown, ShieldCheck, Flame, Zap, RefreshCcw, Bug, ChevronUp, Fingerprint, Database, CheckCircle, Pause, PlayCircle as PlayIcon, Copy, BookText, Send, MessageCircle, FileUp, FileSignature, IdCard, Info, BarChart3, Target, Beaker, Ghost, Signal,
-  ShieldAlert, ChevronRight, ChevronLeft, ArrowDownRight, ArrowUpRight, Clock, ArrowRight
+  ShieldAlert, ChevronRight, ChevronLeft, ArrowDownRight, ArrowUpRight, Clock, ArrowRight,
+  Repeat, FileDown
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewID, TranscriptItem, CodeFile, UserFeedback, Comment, Attachment } from '../types';
@@ -63,9 +63,7 @@ import { ScribeStudio } from './ScribeStudio';
 import { NeuralLens } from './NeuralLens';
 
 import { auth, db } from '../services/firebaseConfig';
-// Fix: Standardized to use @firebase/auth for modular imports
 import { onAuthStateChanged } from '@firebase/auth';
-// Fix: Standardized to use @firebase/firestore for modular imports
 import { onSnapshot, doc } from '@firebase/firestore';
 import { getUserChannels, saveUserChannel } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
@@ -226,7 +224,7 @@ interface SystemLogMsg {
     id: string;
     time: string;
     text: string;
-    type: 'info' | 'error' | 'success' | 'warn' | 'shadow' | 'audit' | 'input' | 'output' | 'trace';
+    type: 'info' | 'error' | 'success' | 'warn' | 'shadow' | 'audit' | 'input' | 'output' | 'trace' | 'loop';
     meta?: any;
 }
 
@@ -238,7 +236,6 @@ const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const v = params.get('view') as ViewID;
     if (v) return v;
-    // Routing shorthand for shared code sessions
     if (params.get('session')) return 'code_studio';
     return 'dashboard';
   });
@@ -252,7 +249,7 @@ const App: React.FC = () => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const [showConsole, setShowConsole] = useState(false);
-  const [consoleTab, setConsoleTab] = useState<'trace' | 'feedback'>('trace');
+  const [consoleTab, setConsoleTab] = useState<'trace' | 'loop' | 'feedback'>('trace');
   const [isLogPaused, setIsLogPaused] = useState(false);
   const [visibleLogs, setVisibleLogs] = useState<SystemLogMsg[]>([]);
   const logBufferRef = useRef<SystemLogMsg[]>([]);
@@ -289,7 +286,6 @@ const App: React.FC = () => {
           } else if (text instanceof Error) {
               cleanText = `ERROR: ${text.message}\nSTACK: ${text.stack || 'No stack.'}`;
           } else if (text !== null && typeof text === 'object') {
-              // Enhanced safeJsonStringify with path tracking for better debugging
               cleanText = safeJsonStringify(text); 
           } else {
               cleanText = String(text);
@@ -298,19 +294,16 @@ const App: React.FC = () => {
           cleanText = "[Internal Log Processing Failure - Logic Gated]"; 
       }
 
-      // CRITICAL: Sanitize meta to prevent circular dependency crashes
-      // Use JSON.parse(safeJsonStringify) to flatten any remaining circularity
       let safeMeta = null;
       if (meta) {
           try {
-              // If meta looks like a User or other circular SDK object, safeJsonStringify handles it
               safeMeta = JSON.parse(safeJsonStringify(meta));
           } catch(e) {
               safeMeta = { error: "Meta sanitization failure" };
           }
       }
 
-      if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText) return;
+      if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText && type !== 'loop') return;
       logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type, meta: safeMeta });
   }, []);
 
@@ -320,20 +313,38 @@ const App: React.FC = () => {
         if (text) addSystemLog(text, type || 'info', meta);
     };
     window.addEventListener('neural-log', handleGlobalLog);
-
-    // Trap global unhandled errors for trace analysis
-    const handleGlobalError = (event: ErrorEvent) => {
-        if (event.message?.includes('Converting circular structure to JSON')) {
-            addSystemLog(`CRITICAL: Circular JSON fault trapped. Trace: ${event.message}`, 'error', { category: 'SYSTEM_FAULT' });
-        }
-    };
-    window.addEventListener('error', handleGlobalError);
-
-    return () => {
-        window.removeEventListener('neural-log', handleGlobalLog);
-        window.removeEventListener('error', handleGlobalError);
-    };
+    return () => window.removeEventListener('neural-log', handleGlobalLog);
   }, [addSystemLog]);
+
+  const handleExportLogs = () => {
+    if (visibleLogs.length === 0) return;
+    let md = `# Neural Diagnostics Audit Trace\n`;
+    md += `**Registry Context:** v12.9.5-LOOP\n`;
+    md += `**Extraction Date:** ${new Date().toLocaleString()}\n`;
+    md += `**Client ID:** ${currentUser?.uid || 'GUEST_PROBE'}\n\n`;
+    md += `---\n\n`;
+
+    visibleLogs.forEach(log => {
+        const icon = log.type === 'error' ? '❌' : log.type === 'warn' ? '⚠️' : log.type === 'success' ? '✅' : log.type === 'loop' ? '🔄' : 'ℹ️';
+        md += `### [${log.time}] ${icon} ${log.type.toUpperCase()}\n`;
+        md += `**Description:** ${log.text}\n`;
+        if (log.meta) {
+            md += `\n**Handshake Metadata:**\n\`\`\`json\n${safeJsonStringify(log.meta)}\n\`\`\`\n`;
+        }
+        md += `\n---\n\n`;
+    });
+
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Neural_Prism_Diagnostic_Trace_${Date.now()}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    addSystemLog("Registry Trace exported to local drive.", "success");
+  };
 
   const [currentUser, setCurrentUser] = useState<any>(() => getSovereignSession().user);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(() => getSovereignSession().profile);
@@ -357,14 +368,12 @@ const App: React.FC = () => {
         setObservedChannel(null);
         return;
     }
-
     const unsub = onSnapshot(doc(db, 'channels', idToObserve), (snap) => {
         if (snap.exists()) {
             const data = snap.data() as Channel;
             setObservedChannel(data);
         }
     });
-
     return () => unsub();
   }, [commentChannelId, editChannelId, activeChannelId]);
 
@@ -412,7 +421,6 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleGlobalResize = () => {
         const isSmall = window.innerWidth < 768;
-        // Bypassing mobile force-redirect if a specific workspace is being targeted
         if (isSmall && activeViewID === 'dashboard' && !activeSessionId) {
             handleSetViewState('directory');
             addSystemLog("Mobile Refraction Triggered: Switching to Podcast Feed Layout.", "info");
@@ -425,39 +433,25 @@ const App: React.FC = () => {
 
   const handleVote = useCallback(async (id: string, type: 'like' | 'dislike', e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!currentUser) {
-        alert("Please sign in to participate in the neural feedback loop.");
-        return;
-    }
-
+    if (!currentUser) return;
     try {
         await voteChannel(id, type);
         const currentLiked = userProfile?.likedChannelIds || [];
         let nextLiked = [...currentLiked];
-        if (type === 'like' && !nextLiked.includes(id)) {
-            nextLiked.push(id);
-        } else if (type === 'dislike') {
-            nextLiked = nextLiked.filter(cid => cid !== id);
-        }
+        if (type === 'like' && !nextLiked.includes(id)) nextLiked.push(id);
+        else if (type === 'dislike') nextLiked = nextLiked.filter(cid => cid !== id);
         await updateUserProfile(currentUser.uid, { likedChannelIds: nextLiked });
         addSystemLog(`Refraction Vote Registered: ${type.toUpperCase()} for ${id.substring(0, 8)}`, "success");
-    } catch (err: any) {
-        addSystemLog(`Vote Handshake Refused: ${err.message}`, "error");
-    }
+    } catch (err: any) { addSystemLog(`Vote Handshake Refused: ${err.message}`, "error"); }
   }, [currentUser, userProfile, addSystemLog]);
 
   const handleBookmarkToggle = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!currentUser) {
-        alert("Please sign in to secure your bookmarks.");
-        return;
-    }
-
+    if (!currentUser) return;
     try {
         const currentBookmarked = userProfile?.bookmarkedChannelIds || [];
         let nextBookmarked = [...currentBookmarked];
         const isBookmarking = !nextBookmarked.includes(id);
-
         if (isBookmarking) {
             nextBookmarked.push(id);
             addSystemLog(`Activity Secured: ${id.substring(0, 8)} added to vault.`, "success");
@@ -465,30 +459,17 @@ const App: React.FC = () => {
             nextBookmarked = nextBookmarked.filter(cid => cid !== id);
             addSystemLog(`Activity Refracted: ${id.substring(0, 8)} removed from vault.`, "info");
         }
-        
         await updateUserProfile(currentUser.uid, { bookmarkedChannelIds: nextBookmarked });
-    } catch (err: any) {
-        addSystemLog(`Vault Update Refused: ${err.message}`, "error");
-    }
+    } catch (err: any) { addSystemLog(`Vault Update Refused: ${err.message}`, "error"); }
   }, [currentUser, userProfile, addSystemLog]);
 
   const handleAddComment = useCallback(async (text: string, attachments: Attachment[]) => {
     if (!currentUser || !commentChannelId) return;
-
     try {
-        const newComment: Comment = {
-            id: generateSecureId(),
-            userId: currentUser.uid,
-            user: currentUser.displayName || 'Anonymous',
-            text,
-            timestamp: Date.now(),
-            attachments
-        };
+        const newComment: Comment = { id: generateSecureId(), userId: currentUser.uid, user: currentUser.displayName || 'Anonymous', text, timestamp: Date.now(), attachments };
         await addCommentToChannel(commentChannelId, newComment);
         addSystemLog(`Neural Reflection Shared. Local state syncing...`, "success");
-    } catch (err: any) {
-        addSystemLog(`Reflection Sync Refused: ${err.message}`, "error");
-    }
+    } catch (err: any) { addSystemLog(`Reflection Sync Refused: ${err.message}`, "error"); }
   }, [currentUser, commentChannelId, addSystemLog]);
 
   const handleDeleteComment = useCallback(async (commentId: string) => {
@@ -496,9 +477,7 @@ const App: React.FC = () => {
       try {
           await deleteCommentFromChannel(commentChannelId, commentId);
           addSystemLog(`Neural Reflection Purged.`, "info");
-      } catch (err: any) {
-          addSystemLog(`Purge Handshake Refused: ${err.message}`, "error");
-      }
+      } catch (err: any) { addSystemLog(`Purge Handshake Refused: ${err.message}`, "error"); }
   }, [currentUser, commentChannelId, addSystemLog]);
 
   const handleEditComment = useCallback(async (commentId: string, text: string, attachments: Attachment[]) => {
@@ -506,14 +485,11 @@ const App: React.FC = () => {
       try {
           await updateCommentInChannel(commentChannelId, commentId, text, attachments);
           addSystemLog(`Neural Reflection Modified.`, "success");
-      } catch (err: any) {
-          addSystemLog(`Modification Handshake Refused: ${err.message}`, "error");
-      }
+      } catch (err: any) { addSystemLog(`Modification Handshake Refused: ${err.message}`, "error"); }
   }, [currentUser, commentChannelId, addSystemLog]);
 
   const [liveSessionParams, setLiveSessionParams] = useState<any>(null);
 
-  // Verbatim Fix: Prevent recursive state updates in detail navigation
   const handleDetailBack = useCallback(() => {
     handleSetViewState('directory');
   }, [handleSetViewState]);
@@ -548,7 +524,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Sovereignty Protocols Active (v12.8.0-SYMBOLIC).", "info");
+    addSystemLog("Sovereignty Protocols Active (v12.9.0-LOOP).", "info");
     if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
         if (u) { 
@@ -563,28 +539,18 @@ const App: React.FC = () => {
   }, [addSystemLog]);
 
   useEffect(() => {
-      if (!currentUser?.uid) return;
-      if (!db) return;
+      if (!currentUser?.uid || !db) return;
       const unsub = onSnapshot(doc(db, 'users', currentUser.uid), s => { 
           if(s.exists()) {
               const profile = s.data() as UserProfile;
               setUserProfile(prev => {
                   if (!prev) return profile;
-
                   const arraysMatch = (a?: string[], b?: string[]) => {
                       if (!a || !b) return a === b;
                       if (a.length !== b.length) return false;
                       return a.every((v, i) => v === b[i]);
                   };
-
-                  const hasChanged = 
-                      prev.coinBalance !== profile.coinBalance || 
-                      prev.subscriptionTier !== profile.subscriptionTier ||
-                      prev.publicKey !== profile.publicKey ||
-                      prev.certificate !== profile.certificate ||
-                      !arraysMatch(prev.likedChannelIds, profile.likedChannelIds) ||
-                      !arraysMatch(prev.bookmarkedChannelIds, profile.bookmarkedChannelIds);
-
+                  const hasChanged = prev.coinBalance !== profile.coinBalance || prev.subscriptionTier !== profile.subscriptionTier || !arraysMatch(prev.likedChannelIds, profile.likedChannelIds) || !arraysMatch(prev.bookmarkedChannelIds, profile.bookmarkedChannelIds);
                   return hasChanged ? profile : prev;
               });
               if (profile.languagePreference && profile.languagePreference !== language) setLanguage(profile.languagePreference);
@@ -603,11 +569,7 @@ const App: React.FC = () => {
       HANDCRAFTED_CHANNELS.forEach(c => map.set(c.id, c));
       publicChannels.forEach(c => map.set(c.id, c));
       userChannels.forEach(c => map.set(c.id, c));
-      
-      if (observedChannel) {
-          map.set(observedChannel.id, observedChannel);
-      }
-      
+      if (observedChannel) map.set(observedChannel.id, observedChannel);
       return Array.from(map.values());
   }, [publicChannels, userChannels, observedChannel]);
 
@@ -627,7 +589,6 @@ const App: React.FC = () => {
   };
 
   const activeChannel = useMemo(() => allChannels.find(c => c.id === activeChannelId), [allChannels, activeChannelId]);
-  
   const commentChannel = useMemo(() => allChannels.find(c => c.id === commentChannelId), [allChannels, commentChannelId]);
   const editChannel = useMemo(() => allChannels.find(c => c.id === editChannelId), [allChannels, editChannelId]);
 
@@ -635,17 +596,7 @@ const App: React.FC = () => {
     if (!feedbackText.trim() || isSubmittingFeedback) return;
     setIsSubmittingFeedback(true);
     try {
-        const feedback: UserFeedback = {
-            id: generateSecureId(),
-            userId: currentUser?.uid || 'anonymous',
-            userName: currentUser?.displayName || 'Anonymous User',
-            viewId: activeViewID,
-            message: feedbackText,
-            type: feedbackType,
-            logs: visibleLogs.slice(0, 20),
-            timestamp: Date.now(),
-            status: 'open'
-        };
+        const feedback: UserFeedback = { id: generateSecureId(), userId: currentUser?.uid || 'anonymous', userName: currentUser?.displayName || 'Anonymous User', viewId: activeViewID, message: feedbackText, type: feedbackType, logs: visibleLogs.slice(0, 20), timestamp: Date.now(), status: 'open' };
         await saveUserFeedback(feedback);
         setFeedbackText('');
         setFeedbackSuccess(true);
@@ -692,9 +643,9 @@ const App: React.FC = () => {
           case 'warn': return 'text-amber-400 bg-amber-950/20 border-amber-500/20';
           case 'shadow': return 'text-purple-400 bg-purple-950/20 border-purple-500/20';
           case 'audit': return 'text-cyan-400 bg-cyan-950/20 border-cyan-500/20';
+          case 'loop': return 'text-indigo-100 bg-indigo-900/40 border-indigo-400/30';
           case 'input': return 'text-indigo-400 bg-indigo-950/10 border-indigo-500/10';
           case 'output': return 'text-blue-300 bg-blue-950/10 border-blue-500/10';
-          case 'trace': return 'text-slate-200 bg-slate-800/40 border-slate-700/40';
           default: return 'text-slate-400 bg-slate-900/40 border-slate-800/40';
       }
   };
@@ -705,10 +656,9 @@ const App: React.FC = () => {
           case 'success': return <CheckCircle size={10}/>;
           case 'shadow': return <Ghost size={10}/>;
           case 'audit': return <ShieldCheck size={10}/>;
+          case 'loop': return <Repeat size={10} className="animate-spin-slow"/>;
           case 'input': return <ChevronRight size={10}/>;
           case 'output': return <ChevronLeft size={10}/>;
-          case 'warn': return <AlertTriangle size={10}/>;
-          case 'trace': return <Activity size={10}/>;
           default: return <Info size={10}/>;
       }
   };
@@ -831,6 +781,7 @@ const App: React.FC = () => {
                     <div className="w-full md:w-80 border-r border-white/5 p-6 space-y-6 overflow-y-auto shrink-0 bg-black/60 scrollbar-hide">
                         <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
                             <button onClick={() => setConsoleTab('trace')} className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${consoleTab === 'trace' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Trace</button>
+                            <button onClick={() => setConsoleTab('loop')} className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${consoleTab === 'loop' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Loop</button>
                             <button onClick={() => setConsoleTab('feedback')} className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase rounded-lg transition-all ${consoleTab === 'feedback' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Feedback</button>
                         </div>
                         <div className="space-y-4">
@@ -841,7 +792,12 @@ const App: React.FC = () => {
                                 <div className="flex justify-between items-center py-1 border-b border-white/5"><span className="text-slate-500 uppercase">Clearance:</span><span className="text-indigo-400 font-bold uppercase">{userProfile?.subscriptionTier || 'LEVEL_0'}</span></div>
                             </div>
                         </div>
-                        <div className="pt-4 flex flex-col gap-2"><button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-2 bg-slate-800 text-slate-400 text-[9px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all shadow-lg active:scale-95">Clear Buffer</button></div>
+                        <div className="pt-4 flex flex-col gap-2">
+                            <button onClick={handleExportLogs} className="w-full py-2 bg-indigo-900/40 text-indigo-300 text-[9px] font-black uppercase rounded-lg border border-indigo-500/30 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                                <FileDown size={14}/> Dump Logs
+                            </button>
+                            <button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-2 bg-slate-800 text-slate-400 text-[9px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all shadow-lg active:scale-95">Clear Buffer</button>
+                        </div>
                     </div>
                     <div className="flex-1 flex flex-col min-w-0 bg-black/80">
                         {consoleTab === 'trace' ? (
@@ -851,8 +807,8 @@ const App: React.FC = () => {
                                     <button onClick={() => setIsLogPaused(!isLogPaused)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${isLogPaused ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}>{isLogPaused ? <PlayIcon size={12}/> : <Pause size={12}/>}{isLogPaused ? 'Resume' : 'Pause'}</button>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-6 space-y-3 scrollbar-thin scrollbar-thumb-white/10 text-left">
-                                    {visibleLogs.length === 0 && (<p className="text-slate-700 italic text-xs">Awaiting neural activity...</p>)}
-                                    {visibleLogs.map(log => (
+                                    {visibleLogs.filter(l => l.type !== 'loop').length === 0 && (<p className="text-slate-700 italic text-xs">Awaiting neural activity...</p>)}
+                                    {visibleLogs.filter(l => l.type !== 'loop').map(log => (
                                         <div key={log.id} className={`flex flex-col gap-2 p-3 rounded-2xl border transition-all hover:border-white/10 ${getLogColor(log.type)}`}>
                                             <div className="flex items-start justify-between gap-4">
                                                 <div className="flex items-start gap-3">
@@ -870,14 +826,12 @@ const App: React.FC = () => {
                                                 {log.meta?.latency !== undefined && (
                                                     <div className="text-right shrink-0">
                                                         <div className="flex items-center gap-1 text-[8px] font-black text-slate-500 uppercase">
-                                                            {/* Fix: Added missing Clock icon */}
                                                             <Clock size={8}/> {log.meta.latency}ms
                                                         </div>
                                                     </div>
                                                 )}
                                             </div>
                                             
-                                            {/* Technical Telemetry Shard */}
                                             {log.meta && (log.meta.inputTokens || log.meta.outputTokens || log.meta.postBalance !== undefined) && (
                                                 <div className="mt-2 pt-2 border-t border-current/10 grid grid-cols-2 sm:grid-cols-4 gap-4">
                                                     {(log.meta.inputTokens || log.meta.outputTokens) && (
@@ -903,7 +857,6 @@ const App: React.FC = () => {
                                                             <p className="text-[7px] font-black uppercase opacity-40">Neural Assets (VC)</p>
                                                             <div className="flex items-center gap-1.5 font-mono text-[9px] font-black">
                                                                 <span className="text-slate-400">{log.meta.preBalance}</span>
-                                                                {/* Fix: Added missing ArrowRight icon */}
                                                                 <ArrowRight size={8} className="opacity-30"/>
                                                                 <span className="text-emerald-400">{log.meta.postBalance}</span>
                                                             </div>
@@ -921,12 +874,45 @@ const App: React.FC = () => {
                                     ))}
                                 </div>
                             </>
+                        ) : consoleTab === 'loop' ? (
+                            <div className="flex-1 flex flex-col min-w-0 bg-black/80 animate-fade-in">
+                                <div className="px-6 py-3 border-b border-white/5 flex items-center justify-between bg-indigo-900/20">
+                                    <div className="flex items-center gap-2"><Repeat size={14} className="text-indigo-400 animate-spin-slow"/><span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">Dyad Self-Feedback Loop</span></div>
+                                    <button onClick={handleExportLogs} className="p-1.5 text-indigo-300 hover:text-white" title="Export Loop Logs"><FileDown size={14}/></button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide">
+                                    {visibleLogs.filter(l => l.type === 'loop').length === 0 && (
+                                        <div className="h-full flex flex-col items-center justify-center opacity-20 gap-4">
+                                            <Repeat size={48}/>
+                                            <p className="text-xs font-black uppercase tracking-widest">Awaiting Machine Handshake</p>
+                                        </div>
+                                    )}
+                                    {visibleLogs.filter(l => l.type === 'loop').map(log => (
+                                        <div key={log.id} className="bg-slate-900 border border-indigo-500/20 rounded-3xl p-6 space-y-4 shadow-xl">
+                                            <div className="flex justify-between items-center border-b border-white/5 pb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-[8px] font-black text-indigo-400 uppercase bg-indigo-500/10 px-2 py-0.5 rounded">FROM: {log.meta?.senderTool}</span>
+                                                    <ArrowRight size={10} className="text-slate-600"/>
+                                                    <span className="text-[8px] font-black text-emerald-400 uppercase bg-emerald-500/10 px-2 py-0.5 rounded">TO: {log.meta?.receiverTool}</span>
+                                                </div>
+                                                <span className="text-[9px] font-mono text-slate-500">{log.time}</span>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <p className="text-xs text-white font-bold">{log.text}</p>
+                                                <div className="bg-black rounded-2xl p-4 border border-white/5 font-mono text-[10px] text-indigo-300 overflow-x-auto">
+                                                    <pre>{safeJsonStringify(log.meta?.machineContent)}</pre>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         ) : (
                             <div className="flex-1 flex flex-col p-8 space-y-6 animate-fade-in">
                                 <div className="flex justify-between items-center"><h3 className="text-lg font-black text-white italic uppercase tracking-widest flex items-center gap-3"><MessageCircle className="text-indigo-400"/> Human Feedback</h3>{feedbackSuccess && (<div className="flex items-center gap-2 text-emerald-400 text-[10px] font-black uppercase bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-500/30 animate-fade-in"><CheckCircle size={14}/> {t.feedbackSuccess}</div>)}</div>
                                 <div className="grid grid-cols-3 gap-2">
                                     {(['general', 'bug', 'feature'] as const).map(type => (
-                                        <button key={type} onClick={() => setFeedbackType(type)} className={`py-2 rounded-xl text-[10px] font-black uppercase border transition-all ${feedbackType === type ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-900 border-slate-800 text-slate-50'}`}>{type}</button>
+                                        <button key={type} onClick={() => setFeedbackType(type)} className={`py-2 rounded-xl text-[10px] font-black uppercase border transition-all ${feedbackType === type ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-900 border-slate-800 text-slate-50'}`}>{type}</button>
                                     ))}
                                 </div>
                                 <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 rounded-[2rem] p-6 text-sm text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none shadow-inner leading-relaxed" placeholder="Report a bug, suggest a feature, or request a new Neural Lab..."/>
@@ -935,7 +921,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v12.8.0-SYMBOLIC</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v12.9.0-LOOP</p></div>
             </div>
         </div>
 

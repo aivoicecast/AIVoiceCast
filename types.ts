@@ -56,6 +56,7 @@ export interface NeuralLensAudit {
   version?: string;
   reportUuid?: string;
   contentHash?: string;
+  machineFeedback?: string; // Strictly for Tool-to-Tool handshake
 }
 
 export interface GeneratedLecture {
@@ -198,7 +199,6 @@ export interface SubTopic {
 export interface CommunityDiscussion {
   id: string;
   lectureId?: string;
-  // Fix: Added segmentIndex property to CommunityDiscussion interface to resolve type error in DiscussionModal.tsx
   segmentIndex?: number;
   channelId: string;
   userId: string;

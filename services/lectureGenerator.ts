@@ -10,12 +10,8 @@ const MAX_RETRIES = 3;
 /**
  * ARCHITECTURAL BREADCRUMB: NEURAL_PRISM_CORE_PROTOCOL
  * Implements the Stateful Refraction Loop.
- * Uses SHA-256 Content Fingerprinting for logical consistency.
  */
 
-/**
- * Computes a deterministic SHA-256 fingerprint for the lecture content.
- */
 async function computeContentHash(lecture: GeneratedLecture): Promise<string> {
     const raw = lecture.sections.map(s => `${s.speaker}:${s.text}`).join('|');
     const msgBuffer = new TextEncoder().encode(raw);
@@ -24,9 +20,6 @@ async function computeContentHash(lecture: GeneratedLecture): Promise<string> {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * Lowest-level API Orchestrator with Deep Telemetry.
- */
 async function runWithDeepTelemetry(
     operation: () => Promise<any>, 
     context: string, 
@@ -73,9 +66,6 @@ export async function summarizeLectureForContext(lecture: GeneratedLecture): Pro
     }
 }
 
-/**
- * Repairs PlantUML or Mermaid syntax errors using Gemini 3 Flash.
- */
 export async function repairPlantUML(brokenSource: string, format: 'puml' | 'mermaid' = 'mermaid'): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
@@ -85,9 +75,7 @@ export async function repairPlantUML(brokenSource: string, format: 'puml' | 'mer
             TASK: 
             1. Find the error.
             2. Re-write the code using the ABSOLUTE SIMPLEST syntax.
-            3. For Mermaid: Use 'graph TD'. Use node IDs like 'A[Label]'.
-            4. For PlantUML: Use 'rectangle' for nodes.
-            5. Return ONLY the corrected code without markdown wrappers.
+            3. Return ONLY the corrected code without markdown wrappers.
             
             BROKEN CODE:
             ${brokenSource}`,
@@ -100,9 +88,8 @@ export async function repairPlantUML(brokenSource: string, format: 'puml' | 'mer
 }
 
 /**
- * ARCHITECTURAL BREADCRUMB: NEURAL_LENS_INSTRUMENTATION_PROTOCOL
- * Implements the Shadow Agent Verification Loop.
- * Targets Grounding Root: https://github.com/aivoicecast/AIVoiceCast
+ * NEURAL SELF-FEEDBACK LOOP
+ * Ingests Tool A (Studio) output into Tool B (Lens) and provides Machine Interface feedback.
  */
 export async function performNeuralLensAudit(
     lecture: GeneratedLecture, 
@@ -112,7 +99,6 @@ export async function performNeuralLensAudit(
     const category = 'SHADOW_AUDIT';
     const model = 'gemini-3-pro-image-preview';
     const reportUuid = generateSecureId();
-    const version = "12.9.5-INTEGRITY";
     
     if (!lecture.sections || lecture.sections.length === 0) {
         logger.error("Shadow Audit Refused: Empty logic node.", null, { category });
@@ -126,45 +112,25 @@ export async function performNeuralLensAudit(
             logger.audit(`BYPASS [Node: ${lecture.topic}]: Fingerprint Match. Refraction Bypassed.`, { 
                 category: 'BYPASS_LEDGER', 
                 topic: lecture.topic,
-                hash: currentHash.substring(0, 8),
-                integrity: 'verified'
+                hash: currentHash.substring(0, 8)
             });
-            return {
-                ...lecture.audit,
-                timestamp: Date.now()
-            };
+            return { ...lecture.audit, timestamp: Date.now() };
         }
 
-        // MANDATORY API KEY SELECTION
         if (typeof window !== 'undefined' && (window as any).aistudio) {
             const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-            if (!hasKey) {
-                await (window as any).aistudio.openSelectKey();
-            }
+            if (!hasKey) await (window as any).aistudio.openSelectKey();
         }
 
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const content = lecture.sections.map(s => `${s.speaker}: ${s.text}`).join('\n');
 
-        const systemInstruction = `You are the Shadow Agent verifier for Neural Prism.
-Your task is to perform an ADVERSARIAL AUDIT:
-1. Extract architectural concepts and represent them as a DAG logic mesh.
-2. DEFAULT DIAGRAM: Use Mermaid.js (graph TD).
-3. LEGACY DIAGRAM: Provide PlantUML (rectangle nodes only).
-4. CRITICAL SYMBOLIC PARITY: Node IDs must be alphanumeric and simple.
-5. MERMAID SYNTAX: Use 'graph TD' as the root. Use A[Label] --> B[Label]. Avoid custom keywords.
-6. AUDIT: Verify against the official repository at https://github.com/aivoicecast/AIVoiceCast.
-7. BIAS CHECK: Flag "Agreeability Bias" if the content skips technical friction or relies on utopian claims without implementation detail.
-8. RUNTIME TRACE: Generate a Mermaid sequenceDiagram for the internal app handshakes performed.
-
-Return valid JSON.`;
-
-        logger.info(`INIT_AUDIT [ID: ${reportUuid.substring(0,8)}]: Probing Node "${lecture.topic}"...`, { 
-            category, 
-            reportUuid,
-            topic: lecture.topic,
-            mass: `${(content.length / 1024).toFixed(2)}KB`
-        });
+        const systemInstruction = `You are the Shadow Agent verifier (Tool B) for Neural Prism.
+Your task is to perform an ADVERSARIAL AUDIT on input from Tool A (Studio Generator).
+1. Extract architectural concepts and represent them as a DAG logic mesh (Mermaid graph TD).
+2. BIAS CHECK: Flag "Agreeability Bias" if Tool A skips technical friction.
+3. MACHINE INTERFACE: Provide strictly formatted JSON for the self-feedback loop.
+Verify against the official repository at https://github.com/aivoicecast/AIVoiceCast.`;
 
         const { response, latency, inputSize } = await runWithDeepTelemetry(async () => {
             return await ai.models.generateContent({
@@ -184,6 +150,7 @@ Return valid JSON.`;
                             mermaid: { type: Type.STRING },
                             plantuml: { type: Type.STRING },
                             runtime_trace_mermaid: { type: Type.STRING },
+                            machineFeedback: { type: Type.STRING }, // Strictly for Tool-to-Tool handshake
                             graph: {
                                 type: Type.OBJECT,
                                 properties: {
@@ -227,43 +194,37 @@ Return valid JSON.`;
                                 }
                             }
                         },
-                        required: ["StructuralCoherenceScore", "LogicalDriftRisk", "AdversarialRobustness", "mermaid", "plantuml", "runtime_trace_mermaid", "graph", "probes"]
+                        required: ["StructuralCoherenceScore", "LogicalDriftRisk", "AdversarialRobustness", "machineFeedback", "graph", "probes"]
                     }
                 }
             });
         }, "Integrity Audit Refraction", category, content);
 
-        if (!response.text) throw new Error("Null reasoning shard.");
-
-        const audit = JSON.parse(response.text.replace(/^```json\s*|```\s*$/g, '').trim());
-        const usage = response.usageMetadata;
-
-        logger.success(`AUDIT_SECURED [ID: ${reportUuid.substring(0,8)}]: "${lecture.topic}" verified.`, {
-            category,
-            topic: lecture.topic,
-            model,
-            latency: Math.round(latency),
-            inputTokens: usage?.promptTokenCount,
-            outputTokens: usage?.candidatesTokenCount,
-            totalTokens: usage?.totalTokenCount,
-            inputSizeBytes: inputSize,
-            outputSizeBytes: new TextEncoder().encode(response.text).length,
-            coherence: `${audit.StructuralCoherenceScore}%`,
-            searchApplied: !!response.candidates?.[0]?.groundingMetadata
-        });
+        const audit = JSON.parse(response.text.trim());
         
+        // DISPATCH MACHINE INTERFACE HANDSHAKE
+        logger.loop(`Tool B (Lens) feedback dispatched to Tool A (Studio).`, {
+            category: 'SELF_FEEDBACK_LOOP',
+            senderTool: 'NeuralLens_Verifier',
+            receiverTool: 'Studio_Generator',
+            machineContent: {
+                coherence: audit.StructuralCoherenceScore,
+                drift: audit.LogicalDriftRisk,
+                feedback: audit.machineFeedback
+            }
+        });
+
         return { 
             ...audit, 
             coherenceScore: audit.StructuralCoherenceScore,
             driftRisk: audit.LogicalDriftRisk,
             robustness: audit.AdversarialRobustness,
             timestamp: Date.now(),
-            version,
             reportUuid,
             contentHash: currentHash
         };
     } catch (e: any) {
-        logger.error(`Audit Fault [Node: ${lecture.topic}]`, e, { category, reportUuid });
+        logger.error(`Audit Fault [Node: ${lecture.topic}]`, e, { category });
         return null;
     }
 }
@@ -283,19 +244,15 @@ export async function generateLectureScript(
 
   try {
     const contentUid = await generateContentUid(topic, channelContext, language);
-    
     if (!force) {
       const cached = await getCloudCachedLecture(channelId || 'global', contentUid, language);
       if (cached) return cached;
     }
 
-    const preProfile = auth.currentUser ? await getUserProfile(auth.currentUser.uid) : null;
-    const preBalance = preProfile?.coinBalance || 0;
-
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Topic: "${topic}"\nKnowledge Base Context: "${channelContext}"\n${cumulativeContext ? `KNOWLEDGE ALREADY COVERED: "${cumulativeContext}"` : ''}`;
 
-    const { response, latency, inputSize } = await runWithDeepTelemetry(async () => {
+    const { response } = await runWithDeepTelemetry(async () => {
         return await ai.models.generateContent({
             model, 
             contents: prompt,
@@ -326,9 +283,7 @@ export async function generateLectureScript(
         });
     }, "Node Refraction", category, prompt);
 
-    const parsed = JSON.parse(response.text.replace(/^```json\s*|```\s*$/g, '').trim());
-    const usage = response.usageMetadata;
-
+    const parsed = JSON.parse(response.text.trim());
     const result: GeneratedLecture = {
       uid: contentUid, 
       topic, 
@@ -340,27 +295,9 @@ export async function generateLectureScript(
     const audit = await performNeuralLensAudit(result, language);
     if (audit) result.audit = audit;
 
-    let postBalance = preBalance;
     if (auth.currentUser) {
-        incrementApiUsage(auth.currentUser.uid);
-        const updatedProfile = await deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
-        postBalance = updatedProfile?.coinBalance || (preBalance - AI_COSTS.TEXT_REFRACTION);
         await saveCloudCachedLecture(channelId || 'global', contentUid, language, result);
     }
-
-    logger.info(`CORE_SYNTHESIS: Node "${topic}" manifested.`, {
-        category,
-        model,
-        latency: Math.round(latency),
-        inputTokens: usage?.promptTokenCount,
-        outputTokens: usage?.candidatesTokenCount,
-        totalTokens: usage?.totalTokenCount,
-        inputSizeBytes: inputSize,
-        outputSizeBytes: new TextEncoder().encode(response.text).length,
-        preBalance,
-        postBalance,
-        cost: AI_COSTS.TEXT_REFRACTION
-    });
     
     return result;
   } catch (error: any) {
