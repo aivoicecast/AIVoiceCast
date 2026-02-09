@@ -15,11 +15,11 @@ export const NEURAL_PRISM_BOOK: BookData = {
 
 Neural Prism v12.0 represents the transition from **Generative AI** to **Recursive Verified Intelligence**. The platform no longer acts as a simple wrapper; it functions as a **Reasoning Instrument** that instruments the raw power of Google Gemini into a spectrum of 24 specialized human activities.
 
-### 🔍 Official Repository & Grounding Root
-All architectural claims in this manifest are verified against the live source code in our official repository:
-**[https://github.com/aivoicecast/AIVoiceCast](https://github.com/aivoicecast/AIVoiceCast)**
-
-The core breakthrough of this release is the **Stateful Refraction Loop**, which solves the long-context logical decay problem. In traditional transformer interactions, as the context window fills, the model's 'Agreeability Bias' increases. We solved this by implementing a rolling **Knowledge Shard** architecture.
+### 🔍 Grounding Bridge: The SPH Protocol
+The **Symbolic Parity Handshake (SPH)** is the specific protocol used to resolve semantic discrepancies between documentation and code.
+1. **Intent Extraction**: Decomposing unstructured docs into "Logical Invariants" (rules that cannot be broken).
+2. **Recursive URI Verification (RUV)**: Using the 'googleSearch' tool to crawl **[https://github.com/aivoicecast/AIVoiceCast](https://github.com/aivoicecast/AIVoiceCast)**. The tool performs a structural parse by identifying the VFS manifest and mapping implementation files to invariants.
+3. **Parity Reconciliation**: Comparing the "Intended Logic" against "Actual Logic" discovered via RUV to compute the Coherence Score.
 
 ### Thermodynamic Honesty
 We measure our success by the **Harmony Ratio (H)**:
@@ -43,9 +43,9 @@ We have introduced Tool-to-Tool communication.
 These tools now communicate via **Machine Interface Protocol (MIP)** logs. When Tool A produces code or logic, Tool B automatically audits it and injects structured feedback back into the Studio's context window. This creates a recursive quality loop that eliminates **Agreeability Bias** without human intervention.
 
 ### Technical Implementation:
-We don't just log text. We perform **Functional Mass Comparison (FMC)**. 
-- **The Metric**: We measure the "Logical Density" of a refraction by extracting its Dependency Graph (Nodes/Links).
-- **The Audit**: If a model generates a response that sounds fluent but reduces the functional surface area (Logical Mass) by more than 20% without instruction, the system flags **Agreeability Bias**.
+We perform **Functional Mass Comparison (FMC)** using the **Cyclomatic Cognitive Complexity (CCC)** metric. 
+- **CCC Metric**: We calculate the ratio of logical decision nodes to recursive links within the extracted Dependency Graph.
+- **The Audit**: If a model generates a response that sounds fluent but reduces the CCC score by more than 20%, the system flags **Agreeability Bias** and rejects the handshake.
       `
     },
     {
@@ -53,13 +53,12 @@ We don't just log text. We perform **Functional Mass Comparison (FMC)**.
       content: String.raw`
 # 🧱 Chapter 2: The BCP Protocol
 
-Our greatest engineering hurdle was the 1MB document limit in Firestore. For a technical hub that generates 5,000-word manuscripts and 30-minute audio sessions, 1MB is insufficient.
+Our greatest engineering hurdle was the 1MB document limit in Firestore. For a technical hub that generates 30-minute audio sessions, 1MB is insufficient.
 
-### The Binary Chunking Protocol (BCP)
-We sharded our logic to match the Gemini Flash native window size (128KB).
-1. **Sharding**: Raw text and audio bytes are split into deterministic **750,000-byte segments**.
-2. **Indexing**: A parent 'Manifest Node' is registered in the Firestore ledger. It contains SHA-256 hashes for all child shards.
-3. **Re-hydration**: Our edge engine parallel-fetches the shards and reconstructs the data URI in the user's buffer.
+### The Binary Chunking Protocol (BCP v2)
+1. **Sharding**: Binary data is sharded into **750,000-byte segments**.
+2. **Memory Management**: To prevent RAM exhaustion, the client-side engine uses **Stream-to-Blob** re-hydration. Shards are streamed into a temporary Blob URL that is discarded immediately after playback, shifting the bottleneck away from long-term RAM occupancy.
+3. **Flash Alignment**: BCP shards are deterministic, allowing Gemini Flash to perform parallel "Sub-Sample Verification" of segment hashes without loading the entire 100MB file into the context window.
       `
     },
     {
@@ -67,7 +66,10 @@ We sharded our logic to match the Gemini Flash native window size (128KB).
       content: String.raw`
 # ⚠️ Chapter 3: The Refactoring Entropy Event
 
-During development, the model silently purged 500 lines of PDF code while "cleaning" a sidebar. We caught this via **FMC (Functional Mass Comparison)**. By auditing the reasoning mesh before the commit, we identified a 40% drop in conceptual nodes, revealing a fatal hallucination in the model's 'optimization' logic.
+During development, the model silently purged 500 lines of PDF code while "cleaning" a sidebar. We caught this via **FMC (Functional Mass Comparison)**.
+
+### Refraction Refusal
+The "Refusal" mechanism is based on the **Invariant Guardrail**. Any request to modify code that results in a drop of "Logical Mass" (CCC score) without a corresponding **Intent Certificate** (a specific 'REFACTOR' flag in the prompt) is blocked. This prevents prompt injection attacks from bypassing safety checks under the guise of "optimization."
         `
     },
     {
@@ -89,15 +91,15 @@ To drive marginal logic costs toward zero, we implement the **N-Factor Refractio
       content: String.raw`
 # 🔍 Chapter 5: The Independent Drive Model
 
-To satisfy the logic of **State Sovereignty**, we utilize three independent **Virtual Storage Drives**. We reject auto-sync between these silos to prevent **State Contamination** and ensure user-governed data privacy.
+To satisfy the logic of **State Sovereignty**, we utilize three independent **Virtual Storage Drives**.
 
-### The 3-Drive Silo Map:
-- **Drive A: The Registry (Firebase)**: Handles metadata, social fabric, and the N-Factor cache. It is the "Search Index."
-- **Drive B: The Vault (Google Drive)**: Stores user-owned binary artifacts (PDFs, Audio Exports). It is the "Personal Filing Cabinet."
-- **Drive C: The Workflow (GitHub)**: Manages developer source code and repository state. It is the "Actionable Logic."
+### Single-Source Ownership (SSO)
+We eliminate state divergence through the **SSO Principle**:
+- **Metadata** resides exclusively in **Drive A (Registry)**.
+- **Binary Artifacts** reside exclusively in **Drive B (Vault)**.
+- **Actionable Logic (Code)** resides exclusively in **Drive C (Workflow)**.
 
-### Eliminating Divergence:
-Divergence is not solved by syncing; it is solved by **Single-Source Ownership**. A PDF artifact only exists in Drive B. Its metadata only exists in Drive A. There is no "Duplicate State" to diverge. The VFS layer acts as the orchestrator, pulling from the correct drive for the specific activity.
+Divergence is impossible because no two silos share the same data type. The **SHA-256 Grounding Bridge** cryptographically links these silos by embedding the SHA-256 hash of the Drive B artifact and the Drive C commit into the Drive A document. This creates a "Logical Chain" without the thermal waste of active synchronization.
         `
     },
     {
@@ -119,7 +121,7 @@ In v12.9.0, we instrumented reasoning using **Mermaid.js (graph TD)**. This prov
       content: String.raw`
 # 🌍 Chapter 7: The Open Source Refraction
 
-The Neural Prism is an **Open Source Movement**. We believe super-intelligence should not be a proprietary black box. Transparency in the "Reasoning Mesh" allows the community to audit the **Harmony Ratio** and contribute new logic shards to the global ledger.
+The Neural Prism is an **Open Source Movement**. Transparency in the "Reasoning Mesh" allows the community to audit the **Harmony Ratio** and contribute new logic shards to the global ledger.
       `
     },
     {
@@ -138,7 +140,7 @@ We introduced **Content-Addressable Auditing (CAA)**.
       content: String.raw`
 # ✒️ Chapter 9: The Verifiable Reasoning Loop
 
-Every complete audit now generates a **Sovereign Notary Shard**. The high-dimensional Dependency Graph is signed using the user's on-device **ECDSA P-256** key. This binds the "Reasoning" to a specific user identity, making technical claims legally and technically verifiable.
+Every complete audit now generates a **Sovereign Notary Shard**. The high-dimensional Dependency Graph is signed using the user's on-device **ECDSA P-256** key (implemented in 'PdfSigner.tsx' and 'cryptoUtils.ts'). This binds the "Reasoning" to a specific user identity, making technical claims legally and technically verifiable.
       `
     },
     {
@@ -164,13 +166,11 @@ To maximize $H$, we route 90% of activity to **Gemini 3 Flash** (Efficiency Pole
 
 By 2036, we will achieve the **10:1 Resident/Hub ratio**. 
 
-### The Hub Technical Spec:
-- **Placement**: Located adjacent to communal Electricity Hubs for direct high-wattage coupling.
-- **Autonomy**: Equipped with 450kWh Battery Planes providing 72 hours of complete energy and compute sovereignty.
-- **Service Density**: One Hub serves 10 to 100 **Residents** in the immediate vicinity.
-- **The Resident Unit**: 1 Resident = 1 Family unit (approx. 4 humans).
-
-In this era, a Hub provides the thermodynamic floor for survival—power, heat, and super-intelligence—allowing the community to shift from survival to the **Joy of Discovery**.
+### Economic Model: The Social Proof Handshake
+"Free at the point of use" is sustained by the **Social Proof Handshake**. 
+1. **Member Contribution**: Residents contribute one full day of logic refractions back to the mesh.
+2. **Tokenized Abundance**: These refractions fund the N-Factor cache, collapsing the inference cost for the other nine residents.
+3. **Collective Sovereignty**: Decentralized management of Hub nodes ensures that the community owns the compute infrastructure, bypassing the centralized "Inference Tax" of the old world.
       `
     }
   ]

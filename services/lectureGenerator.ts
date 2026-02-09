@@ -9,7 +9,7 @@ const MAX_RETRIES = 3;
 
 /**
  * ARCHITECTURAL BREADCRUMB: NEURAL_PRISM_CORE_PROTOCOL
- * Implements the Stateful Refraction Loop.
+ * Implements the Stateful Refraction Loop with high-fidelity telemetry and accounting.
  */
 
 async function computeContentHash(lecture: GeneratedLecture): Promise<string> {
@@ -112,10 +112,17 @@ export async function performNeuralLensAudit(
             logger.audit(`BYPASS [Node: ${lecture.topic}]: Fingerprint Match. Refraction Bypassed.`, { 
                 category: 'BYPASS_LEDGER', 
                 topic: lecture.topic,
-                hash: currentHash.substring(0, 8)
+                hash: currentHash.substring(0, 8),
+                model: 'CACHED'
             });
             return { ...lecture.audit, timestamp: Date.now() };
         }
+
+        // ACCOUNTING HANDSHAKE: PRE-FLIGHT
+        const preProfile = auth.currentUser ? await getUserProfile(auth.currentUser.uid) : null;
+        const preBalance = preProfile?.coinBalance || 0;
+
+        logger.info(`Starting Shadow Audit for node: ${lecture.topic}`, { category, hash: currentHash.substring(0, 8) });
 
         if (typeof window !== 'undefined' && (window as any).aistudio) {
             const hasKey = await (window as any).aistudio.hasSelectedApiKey();
@@ -127,10 +134,17 @@ export async function performNeuralLensAudit(
 
         const systemInstruction = `You are the Shadow Agent verifier (Tool B) for Neural Prism.
 Your task is to perform an ADVERSARIAL AUDIT on input from Tool A (Studio Generator).
+
+SYMBOLIC PARITY HANDSHAKE (SPH) PROTOCOL:
+1. INTENT EXTRACTION: Decompose unstructured audit content into a set of "Logical Invariants" (e.g. sharding constants, sync protocols).
+2. SUBSTRATE MAPPING: Use 'googleSearch' to locate specific implementation files in https://github.com/aivoicecast/AIVoiceCast that correspond to these invariants.
+3. RECURSIVE URI VERIFICATION (RUV): Verify architectural claims against code symbols discovered. Move beyond keyword matching; infer the structural manifest from discovered URIs.
+4. RESOLUTION: Identify semantic discrepancies between "Intended Logic" (Docs) and "Actual Logic" (Code).
+
+OUTPUT REQUIREMENTS:
 1. Extract architectural concepts and represent them as a DAG logic mesh (Mermaid graph TD).
-2. BIAS CHECK: Flag "Agreeability Bias" if Tool A skips technical friction.
-3. MACHINE INTERFACE: Provide strictly formatted JSON for the self-feedback loop.
-Verify against the official repository at https://github.com/aivoicecast/AIVoiceCast.`;
+2. BIAS CHECK: Flag "Agreeability Bias" if Tool A skips technical friction or contradicts the RHP protocol.
+3. MACHINE INTERFACE: Provide strictly formatted JSON for the self-feedback loop.`;
 
         const { response, latency, inputSize } = await runWithDeepTelemetry(async () => {
             return await ai.models.generateContent({
@@ -150,7 +164,7 @@ Verify against the official repository at https://github.com/aivoicecast/AIVoice
                             mermaid: { type: Type.STRING },
                             plantuml: { type: Type.STRING },
                             runtime_trace_mermaid: { type: Type.STRING },
-                            machineFeedback: { type: Type.STRING }, // Strictly for Tool-to-Tool handshake
+                            machineFeedback: { type: Type.STRING },
                             graph: {
                                 type: Type.OBJECT,
                                 properties: {
@@ -201,7 +215,32 @@ Verify against the official repository at https://github.com/aivoicecast/AIVoice
         }, "Integrity Audit Refraction", category, content);
 
         const audit = JSON.parse(response.text.trim());
+        const usage = response.usageMetadata;
+        const outputSize = new TextEncoder().encode(response.text).length;
         
+        // ACCOUNTING HANDSHAKE: COMMIT
+        let postBalance = preBalance;
+        if (auth.currentUser) {
+            await deductCoins(auth.currentUser.uid, AI_COSTS.TECHNICAL_EVALUATION);
+            await incrementApiUsage(auth.currentUser.uid);
+            const postProfile = await getUserProfile(auth.currentUser.uid);
+            postBalance = postProfile?.coinBalance || 0;
+        }
+
+        logger.audit(`Audit Refraction Verified [Score: ${audit.StructuralCoherenceScore}%]`, {
+            category,
+            latency,
+            model,
+            inputTokens: usage?.promptTokenCount,
+            outputTokens: usage?.candidatesTokenCount,
+            inputSizeBytes: inputSize,
+            outputSizeBytes: outputSize,
+            topic: lecture.topic,
+            preBalance,
+            postBalance,
+            cost: AI_COSTS.TECHNICAL_EVALUATION
+        });
+
         // DISPATCH MACHINE INTERFACE HANDSHAKE
         logger.loop(`Tool B (Lens) feedback dispatched to Tool A (Studio).`, {
             category: 'SELF_FEEDBACK_LOOP',
@@ -246,13 +285,22 @@ export async function generateLectureScript(
     const contentUid = await generateContentUid(topic, channelContext, language);
     if (!force) {
       const cached = await getCloudCachedLecture(channelId || 'global', contentUid, language);
-      if (cached) return cached;
+      if (cached) {
+          logger.info(`VFS: Hydrated ${topic} from Cloud Registry.`, { category, model: 'CACHED' });
+          return cached;
+      }
     }
+
+    // ACCOUNTING HANDSHAKE: PRE-FLIGHT
+    const preProfile = auth.currentUser ? await getUserProfile(auth.currentUser.uid) : null;
+    const preBalance = preProfile?.coinBalance || 0;
 
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Topic: "${topic}"\nKnowledge Base Context: "${channelContext}"\n${cumulativeContext ? `KNOWLEDGE ALREADY COVERED: "${cumulativeContext}"` : ''}`;
 
-    const { response } = await runWithDeepTelemetry(async () => {
+    logger.info(`Initiating Logic Synthesis for: ${topic}`, { category, model });
+
+    const { response, latency, inputSize } = await runWithDeepTelemetry(async () => {
         return await ai.models.generateContent({
             model, 
             contents: prompt,
@@ -283,6 +331,31 @@ export async function generateLectureScript(
         });
     }, "Node Refraction", category, prompt);
 
+    const usage = response.usageMetadata;
+    const outputSize = new TextEncoder().encode(response.text).length;
+
+    // ACCOUNTING HANDSHAKE: COMMIT
+    let postBalance = preBalance;
+    if (auth.currentUser) {
+        await deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+        await incrementApiUsage(auth.currentUser.uid);
+        const postProfile = await getUserProfile(auth.currentUser.uid);
+        postBalance = postProfile?.coinBalance || 0;
+    }
+
+    logger.success(`Logic Node Synthesized: ${topic}`, {
+        category,
+        latency,
+        model,
+        inputTokens: usage?.promptTokenCount,
+        outputTokens: usage?.candidatesTokenCount,
+        inputSizeBytes: inputSize,
+        outputSizeBytes: outputSize,
+        preBalance,
+        postBalance,
+        cost: AI_COSTS.TEXT_REFRACTION
+    });
+
     const parsed = JSON.parse(response.text.trim());
     const result: GeneratedLecture = {
       uid: contentUid, 
@@ -301,6 +374,7 @@ export async function generateLectureScript(
     
     return result;
   } catch (error: any) {
+    logger.error(`Synthesis Refused for ${topic}`, error, { category });
     return null;
   }
 }

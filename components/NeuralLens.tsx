@@ -99,6 +99,8 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
         
         setCloudAudits(audits);
         setChannels(chanData);
+        
+        dispatchLog(`Hydrated ${audits.length} audit nodes from cloud.`, 'success', { category: 'REGISTRY' });
     } catch (e: any) {
         dispatchLog(`Ledger Sync Failure: ${e.message}`, 'error');
     } finally {
@@ -357,6 +359,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
       setActiveAudit(null);
       setActiveTab('holistic');
       setExpandedSectors(prev => ({ ...prev, [sector.id]: !prev[sector.id] }));
+      dispatchLog(`Focused Sector: ${sector.title}`, 'info', { category: 'LENS_UI', nodeId: sector.id });
   };
 
   const handleSelectNode = (node: any) => {
@@ -372,6 +375,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
     } else {
         setEditedSource('');
     }
+    dispatchLog(`Observing Logic Node: ${node.topic}`, 'info', { category: 'LENS_UI', topic: node.topic });
   };
 
   const handleRegenerateOrVerifySector = async (force: boolean = false) => {
@@ -379,7 +383,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
     setIsBatchAuditing(true);
     setBatchProgress({ current: 0, total: selectedSector.shards.length });
 
-    dispatchLog(force ? `FORCE RE-VERIFICATION INITIATED: Bypassing fingerprint cache for ${selectedSector.title}.` : `Verification cycle started for ${selectedSector.title}.`, 'warn');
+    dispatchLog(force ? `FORCE RE-VERIFICATION INITIATED: Bypassing fingerprint cache for ${selectedSector.title}.` : `Verification cycle started for ${selectedSector.title}.`, 'warn', { category: 'LENS_AUDIT' });
 
     try {
         const shards = [...selectedSector.shards];
@@ -388,6 +392,9 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
             await Promise.all(chunk.map(async (node, chunkIdx) => {
                 const globalIdx = i + chunkIdx;
                 let lecture: GeneratedLecture | null = null;
+                
+                dispatchLog(`[BATCH] Syncing Node ${globalIdx + 1}/${shards.length}: ${node.topic}`, 'trace');
+
                 if (node.sections && node.sections.length > 0) {
                     lecture = { 
                         topic: node.topic, 
@@ -417,6 +424,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                             else next.push(finalized);
                             return next;
                         });
+                        dispatchLog(`[BATCH] Node Secured: ${node.topic} (Integrity: ${audit.StructuralCoherenceScore}%)`, 'success');
                     }
                 }
                 setBatchProgress(prev => ({ ...prev, current: prev.current + 1 }));
@@ -424,7 +432,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
             await new Promise(r => setTimeout(r, 200));
         }
         setSelectedSector({ ...selectedSector, shards });
-        dispatchLog(`Sector "${selectedSector.title}" verification finalized. Total nodes: ${shards.length}.`, 'success');
+        dispatchLog(`Sector "${selectedSector.title}" verification finalized. Total nodes: ${shards.length}.`, 'success', { category: 'LENS_AUDIT' });
     } catch (e: any) {
         dispatchLog(`Batch Fault: ${e.message}`, 'error');
     } finally {
@@ -464,7 +472,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    dispatchLog(`Audit probes exported for ${selectedSector.title}`, 'success');
+    dispatchLog(`Audit probes exported for ${selectedSector.title}`, 'success', { category: 'REGISTRY' });
   };
 
   const containerBg = useMemo(() => {

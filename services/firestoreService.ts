@@ -1,4 +1,3 @@
-
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -17,6 +16,7 @@ import {
 import { SYSTEM_BLOG_POSTS } from '../utils/blogContent';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { generateSecureId, safeJsonStringify } from '../utils/idUtils';
+import { logger } from './logger';
 
 // Collections
 const USERS_COLLECTION = 'users';
@@ -360,8 +360,24 @@ export async function checkAndGrantMonthlyCoins(uid: string) {
 export async function deductCoins(uid: string, amount: number): Promise<UserProfile | null> {
     if (!db) return null;
     const userRef = doc(db, USERS_COLLECTION, uid);
+    
+    // Capture pre-balance for telemetry
+    const preSnap = await getDoc(userRef);
+    const preBalance = preSnap.data()?.coinBalance || 0;
+    
     await updateDoc(userRef, { coinBalance: increment(-amount) });
-    return await getUserProfile(uid);
+    const postProfile = await getUserProfile(uid);
+    const postBalance = postProfile?.coinBalance || 0;
+
+    // Dispatched to Diagnostic Console
+    logger.info(`Neural Ledger Update: ${amount} VC Refracted.`, {
+        category: 'LEDGER',
+        preBalance,
+        postBalance,
+        cost: amount
+    });
+
+    return postProfile;
 }
 
 export async function saveCustomBook(book: BookData): Promise<string> {

@@ -204,14 +204,14 @@ export const STORY_VERIFICATION_MD = `
 
 The greatest risk of autonomous AI is **Silent Drift.** A model can remain perfectly fluent while its internal logic begins to diverge from technical truth.
 
-### I. The Verification Protocol
-Neural Prism implements the **Shadow-Critic Handshake.**
-- **Grounding Bridge**: We use live search to verify documentation against the source repository at https://github.com/aivoicecast/AIVoiceCast.
-- **Recursive Extraction**: We extract concepts into a high-dimensional Dependency Graph using Gemini 3 Pro.
-- **Adversarial Probing**: A second, independent "Shadow" instance probes every logic gate for contradictions.
+### I. The Symbolic Parity Handshake (SPH)
+Neural Prism implements the **SPH Protocol** to resolve semantic discrepancies between unstructured documentation and structured code.
+- **Intent Extraction**: Decomposing natural language into discrete "Logical Invariants" (rules that must never be broken).
+- **Substrate Mapping**: Using the 'googleSearch' tool for **Recursive URI Verification (RUV)**. We structurally parse the GitHub repository by identifying URI manifests and mapping symbol dependencies.
+- **Parity Audit**: Comparing the "Intended Logic" of the spec against the "Actual Logic" of the code to compute a **Structural Coherence Score.**
 
 ### II. Verifiable Chain of Thought
-This isn't just about outputting text. It's about providing a **Verifiable Chain of Thought.** We instrument the reasoning so you can audit the "Why" behind every logic node in the spectrum. We eliminate "Agreeability Bias" by measuring **Functional Mass** deltas between refractions.
+This isn't just about outputting text. It's about providing a **Verifiable Chain of Thought.** We instrument the reasoning so you can audit the "Why" behind every logic node in the spectrum. We move beyond simple keyword matching to **Functional Mass Comparison**, identifying omitted logic gates in real-time.
 
 ### III. Harmony Ratio (H)
 We measure success via the **Harmony Ratio**, ensuring we produce more utility than thermal waste. By routing 90% of activity to Gemini 3 Flash, we achieve an 18x scaling advantage, securing the future of the Abundance Mesh.
@@ -221,9 +221,9 @@ Refraction complete.
 
 export const STORY_VERIFICATION_SPEAKER_SCRIPT = [
     "The greatest risk of autonomous AI is Silent Drift. A model can remain perfectly fluent while its internal logic begins to diverge from technical truth.",
-    "Neural Prism implements the Shadow-Critic Handshake and Grounding Bridge to ensure logical invariants. We use live search to verify our documentation against the source.",
-    "We perform recursive extraction of concepts into a high-dimensional Dependency Graph. A second, independent Shadow instance then probes every logic gate for contradictions.",
-    "This isn't just about outputting text. It's about providing a Verifiable Chain of Thought. We instrument the reasoning via Functional Mass comparison to eliminate Agreeability Bias.",
+    "Neural Prism implements the Symbolic Parity Handshake and Recursive URI Verification to resolve semantic discrepancies.",
+    "We extract 'Logical Invariants' from documentation and use the googleSearch tool to structurally parse the GitHub repository, mapping symbol dependencies directly from URI manifests.",
+    "This isn't just about outputting text. It's about providing a Verifiable Chain of Thought. We instrument the reasoning via Functional Mass comparison to identify omitted logic gates.",
     "We also measure the Harmony Ratio, ensuring more utility than thermal waste. Our routing logic achieves an 18x scaling advantage, securing the future of the Abundance Mesh. Refraction complete."
 ];
 

@@ -303,7 +303,14 @@ const App: React.FC = () => {
           }
       }
 
-      if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText && type !== 'loop') return;
+      // Allow similar text for 'loop' and 'trace' if metadata is different to capture detailed sequence
+      const isRepeated = logBufferRef.current.length > 0 && 
+                        logBufferRef.current[0].text === cleanText && 
+                        type !== 'loop' && 
+                        type !== 'trace';
+
+      if (isRepeated) return;
+      
       logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type, meta: safeMeta });
   }, []);
 
@@ -524,7 +531,7 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Sovereignty Protocols Active (v12.9.0-LOOP).", "info");
+    addSystemLog("Sovereignty Protocols Active (v12.9.5-TELEMETRY).", "info");
     if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
         if (u) { 
@@ -809,7 +816,7 @@ const App: React.FC = () => {
                                 <div className="flex-1 overflow-y-auto p-6 space-y-3 scrollbar-thin scrollbar-thumb-white/10 text-left">
                                     {visibleLogs.filter(l => l.type !== 'loop').length === 0 && (<p className="text-slate-700 italic text-xs">Awaiting neural activity...</p>)}
                                     {visibleLogs.filter(l => l.type !== 'loop').map(log => (
-                                        <div key={log.id} className={`flex flex-col gap-2 p-3 rounded-2xl border transition-all hover:border-white/10 ${getLogColor(log.type)}`}>
+                                        <div key={log.id} className={`flex flex-col gap-2 p-4 rounded-2xl border transition-all hover:border-white/20 ${getLogColor(log.type)}`}>
                                             <div className="flex items-start justify-between gap-4">
                                                 <div className="flex items-start gap-3">
                                                     <div className="mt-1 shrink-0">{getLogIcon(log.type)}</div>
@@ -819,24 +826,25 @@ const App: React.FC = () => {
                                                             <span className="text-[9px] font-black uppercase tracking-widest">{log.type}</span>
                                                             {log.meta?.category && <span className="px-1.5 py-0.5 bg-black/20 rounded text-[7px] font-black uppercase tracking-tighter">{log.meta.category}</span>}
                                                             {log.meta?.model && <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-[7px] font-mono">{log.meta.model}</span>}
+                                                            {log.meta?.hash && <span className="text-[7px] font-mono text-slate-500">#${log.meta.hash}</span>}
                                                         </div>
                                                         <p className="text-[11px] font-mono whitespace-pre-wrap leading-relaxed selection:bg-indigo-500/30">{log.text}</p>
                                                     </div>
                                                 </div>
                                                 {log.meta?.latency !== undefined && (
                                                     <div className="text-right shrink-0">
-                                                        <div className="flex items-center gap-1 text-[8px] font-black text-slate-500 uppercase">
-                                                            <Clock size={8}/> {log.meta.latency}ms
+                                                        <div className="flex items-center gap-1 text-[8px] font-black text-slate-500 uppercase bg-black/20 px-2 py-0.5 rounded-full border border-white/5">
+                                                            <Clock size={8}/> {Math.round(log.meta.latency)}ms
                                                         </div>
                                                     </div>
                                                 )}
                                             </div>
                                             
                                             {log.meta && (log.meta.inputTokens || log.meta.outputTokens || log.meta.postBalance !== undefined) && (
-                                                <div className="mt-2 pt-2 border-t border-current/10 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                                <div className="mt-3 pt-3 border-t border-current/10 grid grid-cols-2 sm:grid-cols-4 gap-4">
                                                     {(log.meta.inputTokens || log.meta.outputTokens) && (
                                                         <div className="space-y-1">
-                                                            <p className="text-[7px] font-black uppercase opacity-40">Token Density</p>
+                                                            <p className="text-[7px] font-black uppercase opacity-40 tracking-wider">Token Density</p>
                                                             <div className="flex items-center gap-2 font-mono text-[9px] font-bold">
                                                                 <span title="Input" className="text-indigo-400">IN: {log.meta.inputTokens || 0}</span>
                                                                 <span className="opacity-20">|</span>
@@ -846,15 +854,15 @@ const App: React.FC = () => {
                                                     )}
                                                     {log.meta.inputSizeBytes && (
                                                         <div className="space-y-1">
-                                                            <p className="text-[7px] font-black uppercase opacity-40">I/O Payload</p>
+                                                            <p className="text-[7px] font-black uppercase opacity-40 tracking-wider">Payload Mass</p>
                                                             <p className="font-mono text-[9px] font-bold uppercase tracking-tighter">
-                                                                {Math.round(log.meta.inputSizeBytes / 1024)}KB -> {Math.round((log.meta.outputSizeBytes || 0) / 1024)}KB
+                                                                {Math.round(log.meta.inputSizeBytes / 1024)}KB → {Math.round((log.meta.outputSizeBytes || 0) / 1024)}KB
                                                             </p>
                                                         </div>
                                                     )}
                                                     {log.meta.postBalance !== undefined && (
                                                         <div className="space-y-1">
-                                                            <p className="text-[7px] font-black uppercase opacity-40">Neural Assets (VC)</p>
+                                                            <p className="text-[7px] font-black uppercase opacity-40 tracking-wider">Neural Ledger (VC)</p>
                                                             <div className="flex items-center gap-1.5 font-mono text-[9px] font-black">
                                                                 <span className="text-slate-400">{log.meta.preBalance}</span>
                                                                 <ArrowRight size={8} className="opacity-30"/>
@@ -862,10 +870,12 @@ const App: React.FC = () => {
                                                             </div>
                                                         </div>
                                                     )}
-                                                    {log.meta.cost && (
+                                                    {log.meta.retryCount > 1 && (
                                                         <div className="space-y-1">
-                                                            <p className="text-[7px] font-black uppercase opacity-40">Refraction Tax</p>
-                                                            <p className="font-mono text-[9px] font-black text-red-400">-{log.meta.cost} VC</p>
+                                                            <p className="text-[7px] font-black uppercase opacity-40 tracking-wider">Retry Cycle</p>
+                                                            <div className="flex items-center gap-1.5 font-mono text-[9px] font-black text-amber-400">
+                                                                <RefreshCw size={8}/> <span>Attempt {log.meta.retryCount}</span>
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
@@ -921,7 +931,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v12.9.0-LOOP</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v12.9.5-TELEMETRY</p></div>
             </div>
         </div>
 

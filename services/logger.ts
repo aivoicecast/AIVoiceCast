@@ -18,11 +18,13 @@ export interface LogMetadata {
     machineContent?: any; // Strictly for AI-to-AI handshake
     senderTool?: string;
     receiverTool?: string;
+    topic?: string;
+    hash?: string;
     [key: string]: any; 
 }
 
 /**
- * Neural Logger Service (v12.9.0-LOOP)
+ * Neural Logger Service (v12.9.5-TELEMETRY)
  * Dispatches high-fidelity system telemetry and Machine Interface Protocol (MIP) logs.
  */
 export const logger = {
@@ -45,6 +47,7 @@ function dispatch(type: LogType, text: string, meta?: LogMetadata) {
     let safeMeta = null;
     if (meta) {
         try {
+            // High-fidelity clone to ensure metadata isn't stripped by environment limits
             const stringified = safeJsonStringify(meta);
             safeMeta = JSON.parse(stringified);
         } catch (e) {
