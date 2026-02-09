@@ -60,7 +60,8 @@ export async function summarizeLectureForContext(lecture: GeneratedLecture): Pro
 
 export async function performNeuralLensAudit(lecture: GeneratedLecture, language: 'en' | 'zh' = 'en'): Promise<NeuralLensAudit | null> {
     const category = 'SHADOW_AUDIT';
-    const model = 'gemini-3-pro-preview';
+    // Upgrade to gemini-3-pro-image-preview for googleSearch support
+    const model = 'gemini-3-pro-image-preview';
     
     if (!lecture.sections || lecture.sections.length === 0) {
         logger.error("Shadow Audit Refused: Empty logic node.", null, { category });
@@ -68,6 +69,15 @@ export async function performNeuralLensAudit(lecture: GeneratedLecture, language
     }
 
     try {
+        // MANDATORY API KEY SELECTION CHECK FOR PRO-IMAGE MODELS
+        if (typeof window !== 'undefined' && (window as any).aistudio) {
+            const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+            if (!hasKey) {
+                logger.warn("Shadow Audit Paused: Model requires Paid API Key Selection for Grounding.");
+                await (window as any).aistudio.openSelectKey();
+            }
+        }
+
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const content = lecture.sections.map(s => `${s.speaker}: ${s.text}`).join('\n');
 
@@ -80,6 +90,7 @@ Your task is to:
    Score = 100 - (5 * contradictions) - (3 * disconnected_nodes) - (2 * cycles).
    Drift Risk: Disconnected nodes % (<15% Low, 15-30% Medium, >30% High).
    Robustness: Simulating high-centrality node removal impact.
+5. GROUNDING: If URLs (GitHub/Docs) are found in the content, use the googleSearch tool to VERIFY claims against live technical truth.
 Return strictly valid JSON.`;
 
         const { response, attempts, latency, inputSize } = await runWithDeepTelemetry(async () => {
@@ -89,6 +100,7 @@ Return strictly valid JSON.`;
                 config: { 
                     systemInstruction, 
                     responseMimeType: 'application/json',
+                    tools: [{ googleSearch: {} }], // Enable Grounding Bridge
                     responseSchema: {
                         type: Type.OBJECT,
                         properties: {
@@ -146,6 +158,13 @@ Return strictly valid JSON.`;
         }, "Audit Node Refraction", category, content);
 
         if (!response.text) throw new Error("Null reasoning shard.");
+
+        // Log Grounding Citations for Observability
+        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+        if (groundingChunks && groundingChunks.length > 0) {
+            const uris = groundingChunks.map((c: any) => c.web?.uri).filter(Boolean);
+            logger.audit(`Neural Grounding Verified: Audit synchronized with ${uris.length} external nodes.`, { category: 'GROUNDING_LEDGER', uris });
+        }
         
         const audit = JSON.parse(response.text.replace(/^```json\s*|```\s*$/g, '').trim());
         

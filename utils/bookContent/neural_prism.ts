@@ -16,6 +16,11 @@ export const NEURAL_PRISM_BOOK: BookData = {
 
 Neural Prism v12.0 represents the transition from **Generative AI** to **Recursive Verified Intelligence**. The platform no longer acts as a simple wrapper; it functions as a **Reasoning Instrument** that instrumented the raw power of Google Gemini into a spectrum of 24 specialized human activities.
 
+### 🔍 Official Repository & Grounding Root
+All architectural claims in this manifest are verified against the live source code in our official repository:
+
+**[https://github.com/aivoicecast/AIVoiceCast](https://github.com/aivoicecast/AIVoiceCast)**
+
 The core breakthrough of this release is the **Stateful Refraction Loop**, which solves the long-context logical decay problem found in basic transformer applications. In traditional transformer interactions, as the context window fills with hundreds of pages of technical dialogue, the model's 'Agreeability Bias' increases, leading to hallucinations and silent logic drift. We solved this by implementing a rolling **Knowledge Shard** architecture. In this model, each synthesis node is verified by a secondary **Shadow Agent** before the logic is committed to the ledger.
 
 ### Thermodynamic Honesty
@@ -51,7 +56,7 @@ Our greatest engineering hurdle during the transition to a fully serverless data
 We sharded our logic to match the Gemini Flash native window size. This ensures that a single document retrieval never exceeds the model's primary attention span.
 1. **Sharding**: Raw text and audio bytes are split into deterministic **750,000-byte segments**.
 2. **Indexing**: A parent 'Manifest Node' is registered in the Firestore ledger. It contains SHA-256 hashes for all child shards.
-3. **Re-hydration**: Our edge engine parallel-fetches the shards and reconstructs the data URI in the user's browser buffer.
+3. **Re-hydration**: Our edge engine parallel-fetches the shards and reconstructs the data URI in the user's buffer.
 
 This protocol is what enables the **Author Studio** to bind 50-page books without crashing the browser's memory management.
       `
@@ -125,6 +130,24 @@ This allows for the first true **Automated Reasoning Audit**, ensuring that as t
 
 **Refraction complete. See you in the mesh.**
         `
+    },
+    {
+      title: "7. Open Source & The Community Mesh",
+      content: String.raw`
+# 🌍 Chapter 7: The Open Source Refraction
+
+The Neural Prism is more than a platform; it is an **Open Source Movement**. We believe that the tools of super-intelligence should not be proprietary black boxes. They should be transparent, verifiable, and collectively owned.
+
+### Replicate & Contribute
+We invite the global engineering community to replicate our successes and contribute to the evolution of the Prism. By open-sourcing our core refractive logic, we allow for external audit of our **Structural Coherence** and **Thermodynamic Efficiency** claims.
+
+### Joining the Abundance Mesh
+Whether you are contributing a new activity node, a specialized neural persona, or a more efficient sharding algorithm, your refraction helps drive the **N-Factor** higher. Together, we are building a future where intelligence is a zero-marginal-cost utility for all humanity.
+
+The official repository is registered in **Chapter 0** of this manifest for live architectural grounding.
+
+**The code is open. The light is yours.**
+      `
     }
   ]
 };

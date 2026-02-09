@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture, TtsProvider } from '../types';
-import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCw, Scroll, Lock, Crown, Settings2, Globe, Cpu, Speaker, Search, X, ArrowLeft, Smartphone, Wand2 } from 'lucide-react';
+// Added BookText to lucide-react imports
+import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCw, Scroll, Lock, Crown, Settings2, Globe, Cpu, Speaker, Search, X, ArrowLeft, Smartphone, Wand2, ShieldCheck, BookText } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { CreatorProfileModal } from './CreatorProfileModal';
 import { PodcastListTable, SortKey } from './PodcastListTable';
@@ -32,7 +33,6 @@ interface PodcastFeedProps {
   onUpdateChannel?: (channel: Channel) => Promise<void>;
   language?: 'en' | 'zh';
   onMagicCreate?: () => void;
-  // Added onOpenManual prop to fix type error in App.tsx
   onOpenManual?: () => void;
   t: any;
 }
@@ -125,9 +125,11 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
             
             // 3. Iterate Chapters -> SubTopics
             for (const chapter of chaptersToPlay) {
+                // Fix: Replace non-existent playbackSessionRef with localSessionIdRef
                 if (localSession !== localSessionIdRef.current) break;
 
                 for (const sub of chapter.subTopics) {
+                    // Fix: Replace non-existent playbackSessionRef with localSessionIdRef
                     if (localSession !== localSessionIdRef.current) break;
 
                     setPlaybackState('buffering');
@@ -153,6 +155,7 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
 
                         setPlaybackState('playing');
                         for (let i = 0; i < lecture.sections.length; i++) {
+                            // Fix: Replace non-existent playbackSessionRef with localSessionIdRef
                             if (localSession !== localSessionIdRef.current) break;
                             
                             const section = lecture.sections[i];
@@ -167,9 +170,11 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
                         }
                     }
                 }
+                // Fix: Replace non-existent playbackSessionRef with localSessionIdRef
                 if (localSession !== localSessionIdRef.current) break;
             }
 
+            // Fix: Replace non-existent playbackSessionRef with localSessionIdRef
             if (localSession === localSessionIdRef.current && mountedRef.current) {
                 dispatchLog(`Channel sequence finalized. Transitioning to next node.`, 'success');
                 onFinish?.();
@@ -287,6 +292,7 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
 
                 {isAutoplayBlocked && (
                     <div className="px-8 py-6 flex flex-col gap-4 shrink-0">
+                        {/* Fixed typo in handleRetryUnmute call */}
                         <button onClick={handleRetryUnmute} className="w-full py-6 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-3xl shadow-[0_20px_50px_rgba(255,255,255,0.2)] animate-pulse flex items-center justify-center gap-3">
                             <Volume2 size={24}/> Initialize Neural Fabric
                         </button>
@@ -409,6 +415,16 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                       <p className="text-slate-400 text-sm mt-1">Explore {channels.length} activity nodes in the neural spectrum.</p>
                   </div>
                   <div className="flex items-center gap-3">
+                      {onNavigate && (
+                          <button 
+                            onClick={() => onNavigate('neural_lens')}
+                            className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-indigo-900/40 to-slate-800 border border-indigo-500/30 text-indigo-400 hover:text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 group relative overflow-hidden"
+                          >
+                            <div className="absolute inset-0 bg-indigo-500/5 group-hover:bg-indigo-500/10 transition-colors animate-pulse"></div>
+                            <ShieldCheck size={16} className="relative z-10" />
+                            <span className="relative z-10">Neural Lens</span>
+                          </button>
+                      )}
                       {onMagicCreate && (
                           <button 
                             onClick={onMagicCreate}
@@ -424,6 +440,22 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                           <button onClick={() => setViewMode('mobile')} className={`p-2 rounded-lg transition-all ${viewMode === 'mobile' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`} title="Mobile Feed"><Smartphone size={18}/></button>
                       </div>
                   </div>
+              </div>
+
+              {/* QUICK SHORTCUT ROW */}
+              <div className="flex items-center gap-4 py-2 border-y border-slate-800/50 bg-slate-950/30 -mx-8 px-8">
+                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 shrink-0">
+                    <Zap size={10} className="text-amber-500" /> Specialized Nodes:
+                  </span>
+                  <button onClick={() => onNavigate?.('neural_lens')} className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-400 hover:text-white transition-colors bg-indigo-900/10 px-3 py-1 rounded-full border border-indigo-500/20">
+                    <ShieldCheck size={12}/> Neural Lens Audit
+                  </button>
+                  <button onClick={() => onNavigate?.('code_studio')} className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 hover:text-white transition-colors bg-emerald-900/10 px-3 py-1 rounded-full border border-indigo-500/20">
+                    <Terminal size={12}/> Builder Studio
+                  </button>
+                  <button onClick={() => onNavigate?.('book_studio')} className="flex items-center gap-1.5 text-[10px] font-bold text-amber-400 hover:text-white transition-colors bg-amber-900/10 px-3 py-1 rounded-full border border-indigo-500/20">
+                    <BookText size={12}/> Author Studio
+                  </button>
               </div>
 
               <div className="flex flex-wrap items-center gap-4">
@@ -442,7 +474,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                           <button 
                             key={cat} 
                             onClick={() => setActiveCategory(cat)}
-                            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${activeCategory === cat ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600'}`}
+                            className={`whitespace-nowrap px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${activeCategory === cat ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-600'}`}
                           >
                               {cat}
                           </button>

@@ -1,11 +1,12 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
+// Added Database to lucide-react imports
 import { 
   Terminal, Code, Video, LayoutGrid, FileText, Wallet, MessageSquare, 
   Briefcase, Truck, AppWindow, Book, PenTool, Rss, Gift, Rocket, BookOpen, 
   Activity, Scroll, GraduationCap, Cpu, Star, Coins, Zap, ShieldCheck,
   Globe, Users, Clock, Sparkles, ChevronRight, Crown, Lock, Radio,
-  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard, Info, TrendingUp, BarChart3, Binary, Github, Scale, Thermometer, Shield, Play, Layout, UserCircle, Target, Beaker
+  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard, Info, TrendingUp, BarChart3, Binary, Github, Scale, Thermometer, Shield, Play, Layout, UserCircle, Target, Beaker, Database
 } from 'lucide-react';
 import { ViewID, UserProfile, PlatformMetrics } from '../types';
 import { Visualizer } from './Visualizer';
@@ -256,13 +257,46 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
             </section>
         </div>
 
+        {/* QUICK ACCESS SHORTCUT BAR */}
+        <div className="flex items-center gap-4 py-3 bg-slate-900/40 border border-white/5 rounded-3xl px-8 shadow-inner animate-fade-in">
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 shrink-0">
+                <Zap size={14} className="text-amber-500" /> Quick Access:
+            </span>
+            <div className="flex flex-wrap gap-3 overflow-hidden">
+                <button 
+                    onClick={() => onNavigate('neural_lens')}
+                    className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95"
+                >
+                    <ShieldCheck size={14}/> Neural Lens
+                </button>
+                <button 
+                    onClick={() => onNavigate('code_studio')}
+                    className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95"
+                >
+                    <Terminal size={14}/> Builder Studio
+                </button>
+                <button 
+                    onClick={() => onNavigate('book_studio')}
+                    className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95"
+                >
+                    <BookText size={14}/> Author Studio
+                </button>
+                <button 
+                    onClick={() => onNavigate('scripture_ingest')}
+                    className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95"
+                >
+                    <Database size={14}/> Scripture Ingest
+                </button>
+            </div>
+        </div>
+
         {/* NEURAL LENS HERO SECTION */}
         <section className="bg-gradient-to-r from-emerald-900/40 via-indigo-900/40 to-slate-900 border border-emerald-500/30 rounded-[3.5rem] p-10 shadow-2xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-32 bg-emerald-500/10 blur-[100px] rounded-full group-hover:scale-110 transition-transform duration-1000"></div>
             <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
                 <div className="space-y-4 text-center md:text-left flex-1">
                     <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded-full text-emerald-400 text-[9px] font-black uppercase tracking-widest">
-                        <Shield size={10} fill="currentColor"/> v10.8.0-ABUNDANCE
+                        <Shield size={10} fill="currentColor"/> v12.1.0-INTEGRITY
                     </div>
                     <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">{t.judgeHeroTitle}</h2>
                     <p className="text-slate-400 text-lg leading-relaxed font-medium">{t.judgeHeroDesc}</p>
@@ -274,7 +308,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                     <button onClick={() => onNavigate('story', { section: 'verification' })} className="px-8 py-5 bg-emerald-600 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl transition-all hover:bg-emerald-500 active:scale-95 flex items-center justify-center gap-3">
                         <BarChart3 size={20}/> {t.verificationAction}
                     </button>
-                    <button onClick={() => onNavigate('neural_lens')} className="px-8 py-5 bg-indigo-600 text-white font-black uppercase tracking-[0.2em] rounded-2xl border border-white/10 shadow-xl transition-all hover:bg-indigo-500 active:scale-95 flex items-center justify-center gap-3">
+                    <button onClick={() => onNavigate('neural_lens')} className="px-8 py-5 bg-indigo-600 text-white font-black uppercase tracking-[0.2em] rounded-2xl border border-white/10 shadow-xl transition-all hover:bg-indigo-50 active:scale-95 flex items-center justify-center gap-3">
                         <Activity size={20} /> {t.judgeAction}
                     </button>
                 </div>

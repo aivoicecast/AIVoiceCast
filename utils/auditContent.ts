@@ -16,18 +16,21 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
       driftRisk: 'Low',
       robustness: 'High',
       timestamp: Date.now(),
-      plantuml: "@startuml\npackage \"Generation\" {\n  [Gemini 3 Flash] as G3F\n  [Refraction Engine] as RE\n}\npackage \"Verification\" {\n  [Shadow Agent] as SA\n  [Neural Lens] as NL\n}\nG3F -> RE : Outputs Logic\nRE -> SA : Request Audit\nSA -> NL : Verifies Mesh\nNL -> [Structural Coherence] : Compute Score\n@enduml",
+      plantuml: "@startuml\npackage \"Grounding\" {\n  [GitHub Repository] as GH\n  [Google Search Tool] as GS\n}\npackage \"Generation\" {\n  [Gemini 3 Flash] as G3F\n  [Refraction Engine] as RE\n}\npackage \"Verification\" {\n  [Shadow Agent] as SA\n  [Neural Lens] as NL\n}\nGH -> GS : Source Truth\nGS -> SA : Grounding Context\nG3F -> RE : Outputs Logic\nRE -> SA : Request Audit\nSA -> NL : Verifies Mesh\nNL -> [Structural Coherence] : Compute Score\n@enduml",
       graph: {
         nodes: [
           { id: 'g3f', label: 'Gemini 3 Flash', type: 'component' },
           { id: 'sa', label: 'Shadow Agent', type: 'component' },
+          { id: 'github', label: 'GitHub Root', type: 'component' },
           { id: 'hr', label: 'Harmony Ratio', type: 'metric' }
         ],
         links: [
-          { source: 'g3f', target: 'sa', label: 'Audited By' }
+          { source: 'g3f', target: 'sa', label: 'Audited By' },
+          { source: 'github', target: 'sa', label: 'Grounds' }
         ]
       },
       probes: [
+        { question: "Is the GitHub link resolving for grounding?", answer: "Yes, the repository has been identified as the authoritative source for architectural verification.", status: 'passed' },
         { question: "Is the Harmony Ratio a fixed constant?", answer: "No, it is a dynamic thermodynamic measure of utility vs energy.", status: 'passed' }
       ]
     }

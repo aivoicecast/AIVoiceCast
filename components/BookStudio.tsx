@@ -4,7 +4,7 @@ import {
   ArrowLeft, BookText, Download, Loader2, BookOpen, 
   ChevronLeft, ChevronRight, FileDown, ShieldCheck, 
   Sparkles, CheckCircle, RefreshCw, RefreshCcw, Layers, Printer, X, Barcode, QrCode,
-  Palette, Type, AlignLeft, Hash, Fingerprint, Activity, Terminal, Shield, Check, Library, Search, Filter, Grid, Book, Clock, Zap, Upload, Cloud, Save, Trash2, Image as ImageIcon, Info
+  Palette, Type, AlignLeft, Hash, Fingerprint, Activity, Terminal, Shield, Check, Library, Search, Filter, Grid, Book, Clock, Zap, Upload, Cloud, Save, Trash2, Image as ImageIcon, Info, FileText
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -22,44 +22,29 @@ interface BookStudioProps {
   onOpenManual?: () => void;
 }
 
-const STYLE_CONFIGS: Record<BookStyle, { 
+// Keeping only Minimalist Modern as requested
+const STYLE_CONFIGS: Partial<Record<BookStyle, { 
     label: string, 
     desc: string, 
     font: string, 
     coverBg: string, 
     accent: string,
     border: string 
-}> = {
-    brutalist: { 
-        label: 'Technical Brutalist', 
-        desc: 'High contrast, bold mono lines.',
-        font: 'font-mono-tech', 
-        coverBg: 'bg-black', 
-        accent: 'bg-indigo-600',
-        border: 'border-white border-8' 
-    },
-    academic: { 
-        label: 'Academic Classic', 
-        desc: 'Traditional serif typography.',
-        font: 'font-serif', 
-        coverBg: 'bg-[#1e293b]', 
-        accent: 'bg-amber-600',
-        border: 'border-indigo-500/20 border-2'
-    },
+}>> = {
     minimal: { 
         label: 'Minimalist Modern', 
-        desc: 'Clean sans-serif, wide margins.',
+        desc: 'Clean sans-serif, wide margins, pure white background.',
         font: 'font-sans', 
-        coverBg: 'bg-slate-50', 
-        accent: 'bg-emerald-500',
-        border: 'border-slate-200 border'
+        coverBg: 'bg-white', 
+        accent: 'bg-indigo-600',
+        border: 'border-slate-100 border'
     }
 };
 
 const processMarkdownForPdf = (text: string, currentStyle: BookStyle) => {
     if (!text) return '';
     
-    let html = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, tex) => {
+    let html = text.replace(/\$$([\s\S]+?)\$\$/g, (match, tex) => {
         try {
             return `<div class="pdf-atomic" style="margin: 15px 0; text-align: center; color: #4338ca;">${(window as any).katex.renderToString(tex, { displayMode: true, throwOnError: false })}</div>`;
         } catch (e) { return `<pre>${tex}</pre>`; }
@@ -75,9 +60,9 @@ const processMarkdownForPdf = (text: string, currentStyle: BookStyle) => {
     html = html.replace(/```(\w*)\n([\s\S]+?)```/g, (match, lang, code) => {
         const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
         const styledBlock = `
-            <div class="pdf-atomic" style="background: #0f172a; color: #e2e8f0; padding: 15px 20px; border-radius: 12px; margin: 15px 0; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; border-left: 6px solid #6366f1; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <div style="font-size: 8px; font-weight: 900; color: #475569; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.2em; display: flex; align-items: center; gap: 4px;">
-                    <div style="width: 5px; height: 5px; border-radius: 50%; background: #ef4444;"></div>
+            <div class="pdf-atomic" style="background: #f8fafc; color: #1e293b; padding: 15px 20px; border-radius: 12px; margin: 15px 0; font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap; border: 1px solid #e2e8f0; overflow: hidden;">
+                <div style="font-size: 8px; font-weight: 900; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.2em; display: flex; align-items: center; gap: 4px;">
+                    <div style="width: 5px; height: 5px; border-radius: 50%; background: #6366f1;"></div>
                     <span>LOGIC ARTIFACT // ${lang || 'SOURCE'}</span>
                 </div>
                 ${code.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}
@@ -92,12 +77,12 @@ const processMarkdownForPdf = (text: string, currentStyle: BookStyle) => {
 
     let finalHtml = html.split('\n').map(line => {
         const trimmed = line.trim();
-        if (line.startsWith('# ')) return `<h2 class="pdf-atomic" style="font-size: 28px; margin-top: 30px; margin-bottom: 15px; font-weight: 900; color: #000; border-bottom: 4px solid #f1f5f9; padding-bottom: 8px; text-transform: uppercase; letter-spacing: -0.02em;">${line.substring(2)}</h2>`;
-        if (line.startsWith('## ')) return `<h3 class="pdf-atomic" style="font-size: 20px; margin-top: 25px; margin-bottom: 12px; font-weight: 800; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em;">${line.substring(3)}</h3>`;
-        if (trimmed.startsWith('- ')) return `<li class="pdf-atomic" style="margin-left: 24px; margin-bottom: 6px; list-style-type: square; color: #334155; font-size: 16px; line-height: 1.6;">${trimmed.substring(2)}</li>`;
+        if (line.startsWith('# ')) return `<h2 class="pdf-atomic" style="font-size: 24px; margin-top: 30px; margin-bottom: 15px; font-weight: 800; color: #000; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; text-transform: uppercase; letter-spacing: -0.01em;">${line.substring(2)}</h2>`;
+        if (line.startsWith('## ')) return `<h3 class="pdf-atomic" style="font-size: 18px; margin-top: 25px; margin-bottom: 12px; font-weight: 700; color: #1e293b;">${line.substring(3)}</h3>`;
+        if (trimmed.startsWith('- ')) return `<li class="pdf-atomic" style="margin-left: 24px; margin-bottom: 6px; list-style-type: disc; color: #334155; font-size: 14px; line-height: 1.6;">${trimmed.substring(2)}</li>`;
         if (trimmed === '') return '<div class="pdf-spacer" style="height: 8px;"></div>';
         if (trimmed.startsWith('__CODE_BLOCK_')) return trimmed;
-        return `<p class="pdf-atomic" style="margin-bottom: 12px; font-size: 16px; line-height: 1.7; color: #334155; text-align: justify; widows: 3; orphans: 3;">${line}</p>`;
+        return `<p class="pdf-atomic" style="margin-bottom: 12px; font-size: 14px; line-height: 1.6; color: #334155; text-align: justify; widows: 3; orphans: 3;">${line}</p>`;
     }).join('');
 
     codeBlocks.forEach((block, i) => {
@@ -115,7 +100,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
   const [isSavingToCloud, setIsSavingToCloud] = useState(false);
-  const [currentStyle, setCurrentStyle] = useState<BookStyle>('academic');
+  const [currentStyle] = useState<BookStyle>('minimal');
   const [searchQuery, setSearchQuery] = useState('');
   const [synthesisSteps, setSynthesisSteps] = useState<string[]>([]);
   const [generatingCovers, setGeneratingCovers] = useState<Set<string>>(new Set());
@@ -123,7 +108,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
   
   const currentUser = auth?.currentUser;
   const allBooks = useMemo(() => [...systemBooksState, ...customBooks], [systemBooksState, customBooks]);
-  const style = STYLE_CONFIGS[currentStyle];
+  const style = STYLE_CONFIGS.minimal!;
 
   const loadBooks = useCallback(async () => {
     setIsHydrating(true);
@@ -160,7 +145,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
     setGeneratingCovers(prev => new Set(prev).add(book.id));
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const prompt = `Artistic minimal book cover for "${book.title}". Subtitle: "${book.subtitle}". Technical refraction style, centered, high contrast, 8k. No text.`;
+        const prompt = `Professional minimal book cover for "${book.title}". Subtitle: "${book.subtitle}". Clean white background, high-end technical publication style, 8k. No text.`;
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
             contents: prompt,
@@ -223,25 +208,25 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
       captureHost.style.cssText = 'position:fixed; left:-5000px; top:0; width:800px;';
       document.body.appendChild(captureHost);
 
-      const fontStack = currentStyle === 'academic' ? SERIF_FONT_STACK : (currentStyle === 'brutalist' ? 'monospace' : 'sans-serif');
+      const fontStack = 'sans-serif';
 
       addStep("Synthesizing Cover...");
       const coverHtml = `
-        <div style="width: 800px; height: 1131px; background: #020617; color: white; padding: 140px 100px; font-family: ${style.font}; display: flex; flex-direction: column; justify-content: space-between; border: 40px solid #0f172a; box-sizing: border-box; position: relative;">
-            ${activeBook.coverImage ? `<img src="${activeBook.coverImage}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.5;" />` : ''}
+        <div style="width: 800px; height: 1131px; background: #ffffff; color: #0f172a; padding: 140px 100px; font-family: ${fontStack}; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid #f1f5f9; box-sizing: border-box; position: relative;">
+            ${activeBook.coverImage ? `<img src="${activeBook.coverImage}" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.1;" />` : ''}
             <div style="position: relative; z-index: 10;">
-                <p style="text-transform: uppercase; letter-spacing: 0.8em; font-size: 14px; font-weight: 900; color: #818cf8; margin-bottom: 30px;">NEURAL PRISM PUBLICATION</p>
-                <h1 style="font-size: 72px; font-weight: 900; margin: 0; line-height: 1.0; text-transform: uppercase; letter-spacing: -0.04em; font-style: italic; text-shadow: 0 10px 30px rgba(0,0,0,0.5);">${activeBook.title}</h1>
-                <p style="font-size: 24px; color: #94a3b8; margin-top: 30px; font-weight: 500;">${activeBook.subtitle}</p>
-                <div style="width: 140px; height: 12px; background: #6366f1; margin-top: 50px; border-radius: 6px;"></div>
+                <p style="text-transform: uppercase; letter-spacing: 0.8em; font-size: 14px; font-weight: 900; color: #6366f1; margin-bottom: 30px;">NEURAL PRISM PUBLICATION</p>
+                <h1 style="font-size: 60px; font-weight: 900; margin: 0; line-height: 1.1; text-transform: uppercase; letter-spacing: -0.04em;">${activeBook.title}</h1>
+                <p style="font-size: 20px; color: #64748b; margin-top: 25px; font-weight: 500;">${activeBook.subtitle}</p>
+                <div style="width: 100px; height: 4px; background: #6366f1; margin-top: 40px;"></div>
             </div>
             <div style="display: flex; align-items: flex-end; justify-content: space-between; position: relative; z-index: 10;">
                 <div>
-                    <p style="text-transform: uppercase; letter-spacing: 0.2em; font-size: 12px; color: #64748b; font-weight: 900; margin-bottom: 8px;">AUTHOR REGISTERED AS</p>
-                    <p style="font-size: 36px; font-weight: 900; margin: 0; color: #fff;">@${activeBook.author}</p>
+                    <p style="text-transform: uppercase; letter-spacing: 0.2em; font-size: 12px; color: #94a3b8; font-weight: 900; margin-bottom: 8px;">AUTHOR REGISTERED AS</p>
+                    <p style="font-size: 28px; font-weight: 900; margin: 0; color: #0f172a;">@${activeBook.author}</p>
                 </div>
-                <div style="text-align: right; background: white; padding: 20px; border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.4);">
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=NP-${activeBook.id}" style="width: 80px; height: 80px;" />
+                <div style="text-align: right; background: white; padding: 15px; border: 1px solid #f1f5f9; border-radius: 12px;">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=NP-${activeBook.id}" style="width: 60px; height: 60px;" />
                 </div>
             </div>
         </div>
@@ -262,16 +247,16 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
           pageContainer.style.cssText = `width: 800px; height: 1131px; padding: 70px 80px; box-sizing: border-box; background: white; font-family: ${fontStack}; display: flex; flex-direction: column; overflow: hidden;`;
           
           const header = `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 30px; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; shrink: 0;">
-                <span style="font-size: 10px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 0.15em;">${activeBook.title}</span>
-                <span style="font-size: 10px; font-weight: 900; color: #94a3b8; text-transform: uppercase;">CHAPTER 0${i+1}</span>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 30px; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px; shrink: 0;">
+                <span style="font-size: 9px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em;">${activeBook.title}</span>
+                <span style="font-size: 9px; font-weight: 800; color: #94a3b8; text-transform: uppercase;">CHAPTER ${i+1}</span>
             </div>
           `;
           
           const footer = `
-            <div style="margin-top: auto; padding-top: 15px; border-top: 2px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; shrink: 0;">
-                <p style="font-size: 8px; color: #cbd5e1; font-weight: 900; letter-spacing: 0.2em; margin: 0;">NP MANUSCRIPT // ${sessionHash}</p>
-                <p style="font-size: 10px; color: #64748b; font-weight: 900; margin: 0;">PAGE ${pdfPageCounter}</p>
+            <div style="margin-top: auto; padding-top: 15px; border-top: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; shrink: 0;">
+                <p style="font-size: 8px; color: #cbd5e1; font-weight: 800; letter-spacing: 0.1em; margin: 0;">NP MANUSCRIPT // ${sessionHash}</p>
+                <p style="font-size: 9px; color: #94a3b8; font-weight: 800; margin: 0;">${pdfPageCounter}</p>
             </div>
           `;
 
@@ -291,22 +276,22 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
       addStep("Generating Artifact Summary...");
       const barcodeUrl = `https://barcodeapi.org/api/128/NP-${sessionHash}`;
       captureHost.innerHTML = `
-        <div style="width: 800px; height: 1131px; background-color: #020617; color: #ffffff; font-family: ${CHINESE_FONT_STACK}; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 200px; box-sizing: border-box; border: 40px solid #0f172a; position: relative; text-align: center;">
+        <div style="width: 800px; height: 1131px; background-color: #ffffff; color: #0f172a; font-family: ${fontStack}; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 200px; box-sizing: border-box; border: 1px solid #f1f5f9; position: relative; text-align: center;">
             <div style="position: relative; z-index: 10; display: flex; flex-direction: column; align-items: center;">
-                <div style="width: 80px; height: 8px; background: #6366f1; margin-bottom: 50px; border-radius: 4px;"></div>
-                <h2 style="font-size: 52px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.02em; margin-bottom: 30px;">Neural Artifact</h2>
-                <p style="font-size: 22px; color: #94a3b8; line-height: 1.8; max-width: 550px;">
-                    This document is a sovereign technical refraction synthesized via the ${style.label} engine. All content is stored and verified on the community ledger.
+                <div style="width: 60px; height: 4px; background: #6366f1; margin-bottom: 40px;"></div>
+                <h2 style="font-size: 36px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.02em; margin-bottom: 25px;">Neural Artifact</h2>
+                <p style="font-size: 18px; color: #64748b; line-height: 1.6; max-width: 450px;">
+                    This document is a sovereign technical refraction synthesized via the Minimalist Modern engine. All content is stored and verified on the community ledger.
                 </p>
             </div>
-            <div style="margin-top: 100px; background: white; color: black; padding: 60px; border-radius: 50px; display: flex; flex-direction: column; align-items: center; gap: 30px; box-shadow: 0 40px 100px rgba(0,0,0,0.6); width: 100%;">
+            <div style="margin-top: 80px; background: white; color: black; padding: 40px; border: 1px solid #f1f5f9; border-radius: 24px; display: flex; flex-direction: column; align-items: center; gap: 25px; width: 100%;">
                 <div style="text-align: center;">
-                    <p style="font-size: 24px; font-weight: 900; margin: 0; color: #000; letter-spacing: -0.01em;">NEURAL PRISM PUBLISHING</p>
-                    <p style="font-size: 10px; font-weight: 800; color: #64748b; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.2em;">Authenticated Refraction System</p>
+                    <p style="font-size: 20px; font-weight: 900; margin: 0; color: #0f172a; letter-spacing: -0.01em;">NEURAL PRISM PUBLISHING</p>
+                    <p style="font-size: 9px; font-weight: 800; color: #94a3b8; margin-top: 8px; text-transform: uppercase; letter-spacing: 0.1em;">Authenticated Refraction System</p>
                 </div>
-                <div style="text-align: center; border-top: 2px solid #f1f5f9; padding-top: 30px; width: 100%;">
-                    <img src="${barcodeUrl}" style="height: 60px; width: 220px; margin-bottom: 15px;" />
-                    <p style="font-size: 11px; font-weight: 900; color: #000; letter-spacing: 0.3em; margin: 0;">VERIFIED BINDING</p>
+                <div style="text-align: center; border-top: 1px solid #f1f5f9; padding-top: 25px; width: 100%;">
+                    <img src="${barcodeUrl}" style="height: 40px; width: 180px; margin-bottom: 12px;" />
+                    <p style="font-size: 9px; font-weight: 900; color: #0f172a; letter-spacing: 0.2em; margin: 0;">VERIFIED BINDING</p>
                 </div>
             </div>
         </div>
@@ -319,6 +304,31 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
       pdf.save(`${activeBook.title.replace(/\s+/g, '_')}.pdf`);
       addStep("Dispatch Complete.");
     } catch (e: any) { addStep(`ERROR: ${e.message}`); } finally { setIsExporting(false); }
+  };
+
+  const handleExportMarkdown = () => {
+    if (!activeBook) return;
+    let md = `# ${activeBook.title}\n\n`;
+    md += `**${activeBook.subtitle}**\n\n`;
+    md += `*Author: ${activeBook.author}*\n`;
+    md += `*Version: ${activeBook.version}*\n\n`;
+    md += `---\n\n`;
+    
+    activeBook.pages.forEach((page, idx) => {
+        md += `## Section ${idx + 1}: ${page.title}\n\n`;
+        md += `${page.content}\n\n`;
+        md += `---\n\n`;
+    });
+    
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${activeBook.title.replace(/\s+/g, '_')}_Manifest.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleSaveToCloud = async () => {
@@ -371,11 +381,12 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
               {viewState === 'studio' && activeBook && (
                   <div className="flex items-center gap-2">
                       <button onClick={handleExportJSON} className="p-2 bg-slate-800 hover:bg-indigo-600 text-slate-400 hover:text-white rounded-lg transition-colors border border-slate-700" title="Download Book Data" > <Download size={18}/> </button>
+                      <button onClick={handleExportMarkdown} className="p-2 bg-slate-800 hover:bg-indigo-600 text-slate-400 hover:text-white rounded-lg transition-colors border border-slate-700" title="Download Markdown" > <FileText size={18}/> </button>
                       <button onClick={handleSaveToCloud} disabled={isSavingToCloud} className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-indigo-600 text-slate-300 rounded-lg text-xs font-bold transition-all border border-slate-700" >
                           {isSavingToCloud ? <Loader2 size={14} className="animate-spin"/> : <Cloud size={14}/>}
                           <span>Cloud Sync</span>
                       </button>
-                      <button onClick={handleExportPDF} disabled={isExporting} className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-2xl transition-all active:scale-95 disabled:opacity-50" >
+                      <button onClick={handleExportPDF} disabled={isExporting} className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-50 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-2xl transition-all active:scale-95 disabled:opacity-50" >
                           {isExporting ? <Loader2 size={16} className="animate-spin"/> : <FileDown size={16}/>}
                           <span>Synthesize PDF</span>
                       </button>
@@ -394,17 +405,6 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
               
               {viewState === 'studio' && activeBook && (
                   <>
-                    <div className="space-y-4">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Style Engine</label>
-                        <div className="grid grid-cols-1 gap-2">
-                            {(Object.keys(STYLE_CONFIGS) as BookStyle[]).map(s => (
-                                <button key={s} onClick={() => setCurrentStyle(s)} className={`p-3 rounded-xl text-left border transition-all flex flex-col gap-0.5 ${currentStyle === s ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-500 hover:bg-slate-800'}`}>
-                                    <span className="text-[10px] font-black uppercase tracking-wider">{STYLE_CONFIGS[s].label}</span>
-                                    <span className="text-[8px] opacity-60">{STYLE_CONFIGS[s].desc}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
                     <div className="space-y-4">
                         <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] px-1">Sectors</h3>
                         <div className="space-y-1">
