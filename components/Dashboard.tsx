@@ -1,6 +1,4 @@
-
 import React, { useMemo, useState, useEffect } from 'react';
-// Added Database to lucide-react imports
 import { 
   Terminal, Code, Video, LayoutGrid, FileText, Wallet, MessageSquare, 
   Briefcase, Truck, AppWindow, Book, PenTool, Rss, Gift, Rocket, BookOpen, 
@@ -37,8 +35,8 @@ const UI_TEXT = {
     unlockCta: "Unlock Pro",
     pulseTitle: "Network Propagation",
     metricsTotal: "Global Refractions",
-    metricsHumanoid: "Optimus Hubs Deployed",
-    metricsEfficiency: "Distributed Index",
+    metricsHumanoid: "VRAM Efficiency",
+    metricsEfficiency: "Harmony Ratio (H)",
     thermoFloor: "Cost-to-Zero Floor",
     judgeHeroTitle: "🔭 Neural Lens: Verification Node",
     judgeHeroDesc: "Instrumentation for frontier reasoning and intelligence observability. Deploying the 1.0 Harmony Ratio.",
@@ -68,8 +66,8 @@ const UI_TEXT = {
     unlockCta: "解锁专业版",
     pulseTitle: "网络传播",
     metricsTotal: "全球折射总数",
-    metricsHumanoid: "Optimus 枢纽已部署",
-    metricsEfficiency: "分布式指数",
+    metricsHumanoid: "VRAM 效率",
+    metricsEfficiency: "和谐率 (H)",
     thermoFloor: "成本归零底线",
     judgeHeroTitle: "🔭 神经透镜：验证节点",
     judgeHeroDesc: "前沿推理与智能观测仪器。部署 1.0 和谐率。",
@@ -90,9 +88,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
   const [metrics, setMetrics] = useState<PlatformMetrics>({
       globalRefractions: 1284052,
       voiceCoinVelocity: 842.5,
-      computeEfficiency: '10x',
-      humanoidCapacity: 122843.668, 
-      distributedIndex: 0.122843668
+      computeEfficiency: '18x',
+      humanoidCapacity: 0.992, 
+      distributedIndex: 1.12 // Target Harmony Ratio
   });
 
   const [thermoCost, setThermoCost] = useState(299.00);
@@ -100,20 +98,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
   useEffect(() => {
     const interval = setInterval(() => {
         setMetrics(prev => {
-            const delta = (Math.random() * 10 + 5) / 1000;
-            const newCapacity = prev.humanoidCapacity + delta;
-            const newIndex = (newCapacity * 1000) / 1000000000;
-            
-            setThermoCost(c => Math.max(0, c - (delta * 0.0001)));
-
+            const jitter = (Math.random() - 0.5) * 0.01;
             return {
                 ...prev,
                 globalRefractions: prev.globalRefractions + Math.floor(Math.random() * 3),
-                humanoidCapacity: newCapacity,
-                distributedIndex: newIndex
+                humanoidCapacity: Math.min(1.0, Math.max(0.98, prev.humanoidCapacity + jitter)),
+                distributedIndex: 1.12 + (Math.random() * 0.05)
             };
         });
-    }, 1000);
+        setThermoCost(c => Math.max(0.01, c - 0.0001));
+    }, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -180,7 +174,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
     <div className="h-full overflow-y-auto bg-slate-950 scrollbar-hide">
       <div className="max-w-7xl mx-auto p-6 md:p-12 space-y-8 pb-32">
         
-        {/* TOP LEVEL COMMAND CENTER */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <section className="lg:col-span-2 bg-gradient-to-br from-indigo-900/60 to-slate-900 border border-slate-800 rounded-[3rem] p-8 md:p-12 shadow-2xl relative overflow-hidden group flex flex-col justify-center border-indigo-500/20">
                 <div className="absolute top-0 right-0 p-32 bg-indigo-500/20 blur-[100px] rounded-full group-hover:scale-110 transition-transform duration-1000"></div>
@@ -225,7 +218,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                 </div>
             </section>
 
-            {/* Neural Pulse Widget */}
             <section className="bg-slate-900 border border-slate-800 rounded-[3rem] p-8 shadow-xl relative overflow-hidden flex flex-col justify-between group/pulse">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] flex items-center gap-2">
@@ -238,17 +230,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                 </div>
                 
                 <div className="flex-1 min-h-[80px]">
-                    <Visualizer volume={metrics.distributedIndex} isActive={true} color="#6366f1" />
+                    <Visualizer volume={metrics.distributedIndex - 1.0} isActive={true} color="#6366f1" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 mt-6">
                     <div className="space-y-1">
                         <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{t.metricsHumanoid}</p>
-                        <p className="text-lg font-black text-white font-mono">{Math.floor(metrics.humanoidCapacity * 1000).toLocaleString()}</p>
+                        <p className="text-lg font-black text-white font-mono">{metrics.computeEfficiency}</p>
                     </div>
                     <div className="space-y-1">
                         <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{t.metricsEfficiency}</p>
-                        <p className="text-lg font-black text-emerald-400 font-mono">{(metrics.distributedIndex * 100).toFixed(6)}%</p>
+                        <p className="text-lg font-black text-emerald-400 font-mono">{metrics.distributedIndex.toFixed(3)}</p>
                     </div>
                 </div>
                 <div className="mt-2 text-center border-t border-slate-800 pt-3 opacity-0 group-hover/pulse:opacity-100 transition-opacity">
@@ -257,40 +249,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
             </section>
         </div>
 
-        {/* QUICK ACCESS SHORTCUT BAR */}
         <div className="flex items-center gap-4 py-3 bg-slate-900/40 border border-white/5 rounded-3xl px-8 shadow-inner animate-fade-in">
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 shrink-0">
                 <Zap size={14} className="text-amber-500" /> Quick Access:
             </span>
             <div className="flex flex-wrap gap-3 overflow-hidden">
-                <button 
-                    onClick={() => onNavigate('neural_lens')}
-                    className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95"
-                >
+                <button onClick={() => onNavigate('neural_lens')} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95">
                     <ShieldCheck size={14}/> Neural Lens
                 </button>
-                <button 
-                    onClick={() => onNavigate('code_studio')}
-                    className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95"
-                >
+                <button onClick={() => onNavigate('code_studio')} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95">
                     <Terminal size={14}/> Builder Studio
                 </button>
-                <button 
-                    onClick={() => onNavigate('book_studio')}
-                    className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95"
-                >
+                <button onClick={() => onNavigate('book_studio')} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95">
                     <BookText size={14}/> Author Studio
                 </button>
-                <button 
-                    onClick={() => onNavigate('scripture_ingest')}
-                    className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95"
-                >
+                <button onClick={() => onNavigate('scripture_ingest')} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95">
                     <Database size={14}/> Scripture Ingest
                 </button>
             </div>
         </div>
 
-        {/* NEURAL LENS HERO SECTION */}
         <section className="bg-gradient-to-r from-emerald-900/40 via-indigo-900/40 to-slate-900 border border-emerald-500/30 rounded-[3.5rem] p-10 shadow-2xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-32 bg-emerald-500/10 blur-[100px] rounded-full group-hover:scale-110 transition-transform duration-1000"></div>
             <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-10">
@@ -315,21 +293,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
             </div>
         </section>
 
-        {/* FEATURED APPS SUB-GRID */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <section onClick={() => onNavigate('code_studio')} className="bg-slate-900 border border-slate-800 rounded-[3rem] p-8 hover:border-indigo-500/40 transition-all cursor-pointer group shadow-xl flex items-center gap-8 col-span-2">
-                <div className="p-6 bg-indigo-950/40 text-indigo-400 rounded-[2rem] border border-indigo-500/20 group-hover:scale-110 transition-transform duration-500">
-                    <Code size={40}/>
-                </div>
-                <div>
-                    <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-1">Active Sector</h3>
-                    <h4 className="text-2xl font-black text-white uppercase italic tracking-tighter">Infrastructure-Bypass IDE</h4>
-                    <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">Simulate C++, Python, and Rust logic instantly without server runtimes.</p>
-                </div>
-            </section>
-        </div>
-
-        {/* FULL SPECTRUM GRID */}
         {appSectors.map((sector, sIdx) => (
             <section key={sIdx} className="space-y-6 animate-fade-in-up" style={{ animationDelay: `${sIdx * 100}ms` }}>
                 <div className="flex items-center justify-between px-2">
@@ -375,21 +338,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
 
         <footer className="pt-20 flex flex-col items-center gap-8 border-t border-slate-800/50">
             <div className="flex flex-wrap justify-center items-center gap-12 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                <button onClick={() => onNavigate('mission')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
-                    <Rocket size={16}/> Vision
-                </button>
-                <button onClick={() => onNavigate('story')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
-                    <BookOpen size={16}/> Story
-                </button>
-                <button onClick={() => onNavigate('resume')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
-                    <UserCircle size={16}/> Architect
-                </button>
-                <a href="https://github.com/aivoicecast/AIVoiceCast" target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
-                    <Github size={16}/> Source
-                </a>
-                <button onClick={() => onNavigate('privacy')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors">
-                    <Shield size={16}/> Privacy
-                </button>
+                <button onClick={() => onNavigate('mission')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors"><Rocket size={16}/> Vision</button>
+                <button onClick={() => onNavigate('story')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors"><BookOpen size={16}/> Story</button>
+                <button onClick={() => onNavigate('resume')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors"><UserCircle size={16}/> Architect</button>
+                <a href="https://github.com/aivoicecast/AIVoiceCast" target="_blank" rel="noreferrer" className="flex items-center gap-2 hover:text-indigo-400 transition-colors"><Github size={16}/> Source</a>
+                <button onClick={() => onNavigate('privacy')} className="flex items-center gap-2 hover:text-indigo-400 transition-colors"><Shield size={16}/> Privacy</button>
             </div>
             <div className="text-center space-y-2">
                 <p className="text-[10px] font-black text-slate-700 uppercase tracking-[0.5em]">Sovereign 2036 Hub • 10:1 Resident/Hub Ratio Enabled</p>

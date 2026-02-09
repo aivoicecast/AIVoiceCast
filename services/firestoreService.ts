@@ -1,4 +1,3 @@
-
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -580,11 +579,13 @@ export async function claimCodeProjectLock(projectId: string, clientId: string) 
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { activeClientId: clientId });
 }
 
+// Fix: Removed duplicate implementations of updateProjectActiveFile
 export async function updateProjectActiveFile(projectId: string, filePath: string) {
     if (!db) return;
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { activeFilePath: filePath });
 }
 
+// Fix: Removed duplicate implementations of updateProjectAccess
 export async function updateProjectAccess(projectId: string, level: 'public' | 'restricted', allowedUserIds?: string[]) {
     if (!db) return;
     await updateDoc(doc(db, CODE_PROJECTS_COLLECTION, projectId), { accessLevel: level, allowedUserIds: allowedUserIds || [] });
@@ -1127,7 +1128,7 @@ export async function updateAllChannelDatesToToday() {
 
 export async function deleteFirestoreDoc(col: string, id: string) {
     if (!db) return;
-    await deleteDoc(doc(col, id));
+    await deleteDoc(doc(db, col, id));
 }
 
 export async function getDebugCollectionDocs(col: string, l: number = 50): Promise<any[]> {

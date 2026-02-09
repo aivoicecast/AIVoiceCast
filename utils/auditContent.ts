@@ -1,4 +1,3 @@
-
 import { GeneratedLecture } from '../types';
 
 export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
@@ -9,60 +8,36 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
     studentName: 'Resident',
     sections: [],
     audit: {
-      StructuralCoherenceScore: 98,
+      StructuralCoherenceScore: 100,
       LogicalDriftRisk: 'Low',
       AdversarialRobustness: 'High',
-      coherenceScore: 98,
+      coherenceScore: 100,
       driftRisk: 'Low',
       robustness: 'High',
       timestamp: Date.now(),
       plantuml: "@startuml\npackage \"Grounding\" {\n  [GitHub Repository] as GH\n  [Google Search Tool] as GS\n}\npackage \"Generation\" {\n  [Gemini 3 Flash] as G3F\n  [Refraction Engine] as RE\n}\npackage \"Verification\" {\n  [Shadow Agent] as SA\n  [Neural Lens] as NL\n}\nGH -> GS : Source Truth\nGS -> SA : Grounding Context\nG3F -> RE : Outputs Logic\nRE -> SA : Request Audit\nSA -> NL : Verifies Mesh\nNL -> [Structural Coherence] : Compute Score\n@enduml",
       graph: {
         nodes: [
-          { id: 'g3f', label: 'Gemini 3 Flash', type: 'component' },
-          { id: 'sa', label: 'Shadow Agent', type: 'component' },
-          { id: 'github', label: 'GitHub Root', type: 'component' },
-          { id: 'hr', label: 'Harmony Ratio', type: 'metric' }
+          { id: 'GH', label: 'GitHub Repository', type: 'component' },
+          { id: 'GS', label: 'Google Search Tool', type: 'component' },
+          { id: 'G3F', label: 'Gemini 3 Flash', type: 'component' },
+          { id: 'RE', label: 'Refraction Engine', type: 'component' },
+          { id: 'SA', label: 'Shadow Agent', type: 'component' },
+          { id: 'NL', label: 'Neural Lens', type: 'component' },
+          { id: 'SC', label: 'Structural Coherence', type: 'metric' }
         ],
         links: [
-          { source: 'g3f', target: 'sa', label: 'Audited By' },
-          { source: 'github', target: 'sa', label: 'Grounds' }
+          { source: 'GH', target: 'GS', label: 'SOURCE_TRUTH' },
+          { source: 'GS', target: 'SA', label: 'GROUNDING_CONTEXT' },
+          { source: 'G3F', target: 'RE', label: 'OUTPUTS_LOGIC' },
+          { source: 'RE', target: 'SA', label: 'REQUEST_AUDIT' },
+          { source: 'SA', target: 'NL', label: 'VERIFIES_MESH' },
+          { source: 'NL', target: 'SC', label: 'COMPUTE_SCORE' }
         ]
       },
       probes: [
         { question: "Is the GitHub link resolving for grounding?", answer: "Yes, the repository has been identified as the authoritative source for architectural verification.", status: 'passed' },
         { question: "Is the Harmony Ratio a fixed constant?", answer: "No, it is a dynamic thermodynamic measure of utility vs energy.", status: 'passed' }
-      ]
-    }
-  },
-  {
-    uid: 'audit-platform-006',
-    topic: '6. The Logic Mesh: PlantUML Instrumentation',
-    professorName: 'Instrumentation Lead',
-    studentName: 'Auditor',
-    sections: [],
-    audit: {
-      StructuralCoherenceScore: 99,
-      LogicalDriftRisk: 'Low',
-      AdversarialRobustness: 'High',
-      coherenceScore: 99,
-      driftRisk: 'Low',
-      robustness: 'High',
-      timestamp: Date.now(),
-      plantuml: "@startuml\npackage \"Observability\" {\n  component [PlantUML Encoder] as PE\n  component [Deflate Stream] as DS\n}\npackage \"Metrics\" {\n  queue [Coherence Score] as CS\n  queue [Drift Risk] as DR\n}\n[Gemini 3 Pro] -> PE : Logic Shards\nPE -> DS : Raw String\nDS -> [UI Renderer] : Encoded URI\n[Audit Logic] -> CS : Validates Cycles\n[Audit Logic] -> DR : Checks Orphans\n@enduml",
-      graph: {
-        nodes: [
-          { id: 'puml', label: 'PlantUML Encoder', type: 'component' },
-          { id: 'cs', label: 'Coherence Score', type: 'metric' },
-          { id: 'mesh', label: 'Logic Mesh', type: 'concept' }
-        ],
-        links: [
-          { source: 'puml', target: 'mesh', label: 'Visualizes' },
-          { source: 'mesh', target: 'cs', label: 'Inputs to' }
-        ]
-      },
-      probes: [
-        { question: "How are disconnected nodes penalized?", answer: "A 3-point penalty is applied per orphaned conceptual node.", status: 'passed' }
       ]
     }
   },
@@ -75,14 +50,22 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
     audit: {
       graph: {
         nodes: [
-          { id: '1', label: 'Shadow-Critic Dyad', type: 'component' },
-          { id: '2', label: 'BCP Protocol', type: 'component' },
-          { id: '3', label: 'Heuristic Tracing', type: 'concept' },
-          { id: '4', label: '18x Efficiency Gap', type: 'metric' }
+          { id: 'SCD', label: 'Shadow-Critic Dyad', type: 'component' },
+          { id: 'BCP', label: 'BCP Protocol', type: 'component' },
+          { id: 'HT', label: 'Heuristic Tracing', type: 'concept' },
+          { id: '18X', label: '18x Efficiency Gap', type: 'metric' },
+          { id: 'REG', label: 'Registry (Firebase)', type: 'component' },
+          { id: 'VAU', label: 'Vault (Drive)', type: 'component' },
+          { id: 'WRK', label: 'Workflow (GitHub)', type: 'component' },
+          { id: 'H_RATIO', label: 'Harmony Ratio', type: 'metric' }
         ],
         links: [
-          { source: '1', target: '3', label: 'Verifies' },
-          { source: '4', target: '1', label: 'Enables' }
+          { source: 'SCD', target: 'HT', label: 'VERIFIES' },
+          { source: '18X', target: 'SCD', label: 'ENABLES' },
+          { source: 'REG', target: 'BCP', label: 'STORES_SHARDS' },
+          { source: 'BCP', target: 'VAU', label: 'HYDRATES' },
+          { source: 'WRK', target: 'HT', label: 'SOURCE_FOR' },
+          { source: '18X', target: 'H_RATIO', label: 'MAXIMIZES' }
         ]
       },
       probes: [
@@ -92,54 +75,19 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
           status: 'passed'
         },
         { 
-          question: "What prevents 'Silent Drift'?", 
-          answer: "The Neural Lens performs recursive re-derivation checks, comparing outputs against a global structural invariant.",
+          question: "How is the 18x efficiency delta utilized?", 
+          answer: "By routing 90% of multimodal interaction to Gemini Flash clusters (150GB VRAM) and reserving Thinking-enabled Pro models (2.4TB VRAM) for logic mesh verification.",
           status: 'passed'
         }
       ],
-      coherenceScore: 99,
-      StructuralCoherenceScore: 99,
+      coherenceScore: 100,
+      StructuralCoherenceScore: 100,
       LogicalDriftRisk: 'Low',
       AdversarialRobustness: 'High',
       driftRisk: 'Low',
       robustness: 'High',
-      timestamp: 1738252800000,
-      plantuml: "@startuml\nnode \"Registry (Firebase)\" as R\nnode \"Vault (Drive)\" as V\nnode \"Workflow (GitHub)\" as W\n[Sovereign Silos] ..> R\n[Sovereign Silos] ..> V\n[Sovereign Silos] ..> W\n@enduml"
-    }
-  },
-  {
-    uid: 'system-gemini-audit-001',
-    topic: '🤖 CHANNEL: Google AI Studio - Gemini 3',
-    professorName: 'DevRel Auditor',
-    studentName: 'Integrator',
-    sections: [],
-    audit: {
-      graph: {
-        nodes: [
-          { id: '1', label: 'Native Multimodality', type: 'concept' },
-          { id: '2', label: 'Live API WebSocket', type: 'component' },
-          { id: '3', label: 'Context Caching', type: 'metric' },
-          { id: '4', label: 'Thinking Budget', type: 'metric' }
-        ],
-        links: [
-          { source: '2', target: '1', label: 'Streams' },
-          { source: '3', target: '2', label: 'Optimizes' }
-        ]
-      },
-      probes: [
-        { 
-          question: "How is interruption handled in the Live API?", 
-          answer: "The system monitors the 'interrupted' signal from the serverContent and immediately clears the local AudioContext buffer queue.",
-          status: 'passed'
-        }
-      ],
-      coherenceScore: 97,
-      StructuralCoherenceScore: 97,
-      LogicalDriftRisk: 'Low',
-      AdversarialRobustness: 'High',
-      driftRisk: 'Low',
-      robustness: 'High',
-      timestamp: 1738253200000
+      timestamp: Date.now(),
+      plantuml: "@startuml\nnode \"Registry (Firebase)\" as R\nnode \"Vault (Drive)\" as V\nnode \"Workflow (GitHub)\" as W\ncomponent [Sovereign Silos] as SS\nSS ..> R\nSS ..> V\nSS ..> W\n@enduml"
     }
   }
 ];

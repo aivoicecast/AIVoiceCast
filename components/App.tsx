@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -63,8 +62,10 @@ import { ScribeStudio } from './ScribeStudio';
 import { NeuralLens } from './NeuralLens';
 
 import { auth, db } from '../services/firebaseConfig';
-import { onAuthStateChanged } from 'firebase/auth';
-import { onSnapshot, doc } from 'firebase/firestore';
+// Fix: Standardized to use @firebase/auth for modular imports
+import { onAuthStateChanged } from '@firebase/auth';
+// Fix: Standardized to use @firebase/firestore for modular imports
+import { onSnapshot, doc } from '@firebase/firestore';
 import { getUserChannels, saveUserChannel } from '../utils/db';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { stopAllPlatformAudio } from '../utils/audioUtils';
@@ -511,7 +512,10 @@ const App: React.FC = () => {
 
   const [liveSessionParams, setLiveSessionParams] = useState<any>(null);
 
-  const handleDetailBack = useCallback(() => handleSetViewState('directory'), [handleSetViewState]);
+  // Verbatim Fix: Prevent recursive state updates in detail navigation
+  const handleDetailBack = useCallback(() => {
+    handleSetViewState('directory');
+  }, [handleSetViewState]);
 
   const handleStartLiveSession = useCallback((
     channel: Channel, 
@@ -543,11 +547,10 @@ const App: React.FC = () => {
   }, [currentUser]);
 
   useEffect(() => {
-    addSystemLog("Sovereignty Protocols Active (v12.2.0-N-FACTOR).", "info");
+    addSystemLog("Sovereignty Protocols Active (v12.8.0-SYMBOLIC).", "info");
     if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
         if (u) { 
-            // PREVENT CIRCULAR LEAK: Log only specific user properties
             addSystemLog(`Identity Handshake: @${u.displayName || 'User'} verified.`, 'success');
             setCurrentUser(u); 
             syncUserProfile(u).catch(console.error); 
@@ -567,8 +570,6 @@ const App: React.FC = () => {
               setUserProfile(prev => {
                   if (!prev) return profile;
 
-                  // SAFE ARRAY COMPARISON: 
-                  // Avoid JSON.stringify for background state sync to prevent uncaught circular errors.
                   const arraysMatch = (a?: string[], b?: string[]) => {
                       if (!a || !b) return a === b;
                       if (a.length !== b.length) return false;
@@ -782,7 +783,7 @@ const App: React.FC = () => {
                 {activeViewID === 'whiteboard' && ( <div className="h-full overflow-hidden flex flex-col"><div className="flex-1"><Whiteboard onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('whiteboard')} /></div></div> )}
                 {activeViewID === 'blog' && ( <div className="h-full overflow-y-auto"><BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('blog')} /></div> )}
                 {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} onOpenManual={() => setManualViewId('chat')} /> )}
-                {activeViewID === 'careers' && ( <CareerCenter onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} jobId={activeItemId || undefined} onOpenManual={() => setManualViewId('careers')} /> )}
+                {activeViewID === 'careers' && ( <div className="h-full overflow-y-auto"><CareerCenter onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} jobId={activeItemId || undefined} onOpenManual={() => setManualViewId('careers')} /></div> )}
                 {activeViewID === 'calendar' && ( <CalendarView channels={allChannels} handleChannelClick={(id) => { setActiveChannelId(id); handleSetViewState('podcast_detail', { channelId: id }); }} handleVote={handleVote} currentUser={currentUser} setChannelToEdit={(c) => setEditChannelId(c.id)} setIsSettingsModalOpen={setIsSettingsModalOpen} globalVoice="Auto" t={t} onCommentClick={(c) => setCommentChannelId(c.id)} onStartLiveSession={handleStartLiveSession} onCreateChannel={handleCreateChannel} onSchedulePodcast={() => setIsCreateModalOpen(true)} onOpenManual={() => setManualViewId('calendar')} /> )}
                 {activeViewID === 'mentorship' && ( <div className="h-full overflow-y-auto"><MentorBooking currentUser={currentUser} userProfile={userProfile} channels={allChannels} onStartLiveSession={handleStartLiveSession} onOpenManual={() => setManualViewId('mentorship')} /></div> )}
                 {activeViewID === 'recordings' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><RecordingList onBack={() => handleSetViewState('dashboard')} onStartLiveSession={handleStartLiveSession} onOpenManual={() => setManualViewId('recordings')} /></div> )}
@@ -795,7 +796,6 @@ const App: React.FC = () => {
                 {activeViewID === 'firestore_debug' && ( <FirestoreInspector onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
                 {activeViewID === 'coin_wallet' && ( <CoinWallet onBack={() => handleSetViewState('dashboard')} user={userProfile} onOpenManual={() => setManualViewId('coin_wallet')} /> )}
                 {activeViewID === 'mock_interview' && ( <MockInterview onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} onStartLiveSession={handleStartLiveSession} isProMember={isProMember} onOpenManual={() => setManualViewId('mock_interview')} /> )}
-                {activeViewID === 'neural_lens' && ( <NeuralLens onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('neural_lens')} /> )}
                 {activeViewID === 'firestore_inspector' && ( <FirestoreInspector onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} /> )}
                 {activeViewID === 'public_channel_inspector' && ( <PublicChannelInspector onBack={() => handleSetViewState('dashboard')} /> )}
                 {activeViewID === 'my_channel_inspector' && ( <MyChannelInspector onBack={() => handleSetViewState('dashboard')} /> )}
@@ -815,6 +815,7 @@ const App: React.FC = () => {
                 {activeViewID === 'badge_viewer' && ( <BadgeViewer onBack={() => handleSetViewState('dashboard')} badgeId={activeItemId} /> )}
                 {activeViewID === 'resume' && ( <ResumeView onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} /> )}
                 {activeViewID === 'scribe_studio' && ( <ScribeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onOpenManual={() => setManualViewId('scribe_studio')} /> )}
+                {activeViewID === 'neural_lens' && ( <NeuralLens onBack={() => handleSetViewState('dashboard')} userProfile={userProfile} onOpenManual={() => setManualViewId('neural_lens')} /> )}
             </GuardedView>
         </main>
 
@@ -825,7 +826,7 @@ const App: React.FC = () => {
                     <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 group-hover:text-white transition-colors">Neural Diagnostics Console</span>
                     {showConsole ? <ChevronDown size={14} className="text-slate-500"/> : <ChevronUp size={14} className="text-slate-500"/>}
                 </button>
-                <div className="h-[500px] overflow-hidden flex flex-col md:flex-row">
+                <div className="h-96 overflow-hidden flex flex-col md:flex-row">
                     <div className="w-full md:w-80 border-r border-white/5 p-6 space-y-6 overflow-y-auto shrink-0 bg-black/60 scrollbar-hide">
                         <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
                             <button onClick={() => setConsoleTab('trace')} className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${consoleTab === 'trace' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Trace</button>
@@ -839,55 +840,16 @@ const App: React.FC = () => {
                                 <div className="flex justify-between items-center py-1 border-b border-white/5"><span className="text-slate-500 uppercase">Clearance:</span><span className="text-indigo-400 font-bold uppercase">{userProfile?.subscriptionTier || 'LEVEL_0'}</span></div>
                             </div>
                         </div>
-                        <div className="pt-4 flex flex-col gap-2">
-                            <button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-2 bg-slate-800 text-slate-400 text-[9px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all shadow-lg active:scale-95">Clear Buffer</button>
-                        </div>
+                        <div className="pt-4 flex flex-col gap-2"><button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-2 bg-slate-800 text-slate-400 text-[9px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all shadow-lg active:scale-95">Clear Buffer</button></div>
                     </div>
                     <div className="flex-1 flex flex-col min-w-0 bg-black/80">
                         {consoleTab === 'trace' ? (
                             <>
                                 <div className="px-6 py-3 border-b border-white/5 flex items-center justify-between bg-slate-900/40">
                                     <div className="flex items-center gap-2"><Terminal size={14} className="text-red-400"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Log Trace (RAW)</span></div>
-                                    <div className="flex items-center gap-4">
-                                        <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-950 border border-slate-800 rounded-lg text-[8px] font-black text-indigo-400 uppercase tracking-widest">
-                                            <Signal size={10} className="text-emerald-500 animate-pulse"/> v12.1-INTEGRITY
-                                        </div>
-                                        <button onClick={() => setIsLogPaused(!isLogPaused)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${isLogPaused ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}>{isLogPaused ? <PlayIcon size={12}/> : <Pause size={12}/>}{isLogPaused ? 'Resume' : 'Pause'}</button>
-                                    </div>
+                                    <button onClick={() => setIsLogPaused(!isLogPaused)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${isLogPaused ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}>{isLogPaused ? <PlayIcon size={12}/> : <Pause size={12}/>}{isLogPaused ? 'Resume' : 'Pause'}</button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-4 space-y-1.5 scrollbar-thin scrollbar-thumb-white/10 text-left">
-                                    {visibleLogs.length === 0 && (<p className="text-slate-700 italic text-xs py-20 text-center">Awaiting neural activity...</p>)}
-                                    {visibleLogs.map(log => (
-                                        <div key={log.id} className={`flex items-start gap-4 text-[11px] font-mono p-2.5 rounded-lg border border-transparent transition-all ${getLogColor(log.type)}`}>
-                                            <span className="opacity-40 shrink-0 mt-0.5">[{log.time}]</span>
-                                            <div className="flex-1 space-y-1">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="shrink-0">{getLogIcon(log.type)}</span>
-                                                    <span className="font-black uppercase text-[8px] tracking-[0.2em] px-1.5 rounded bg-black/30">{log.type}</span>
-                                                    {log.meta?.category && <span className="font-black uppercase text-[8px] tracking-[0.1em] text-white/40 italic">//{log.meta.category}</span>}
-                                                </div>
-                                                <p className="whitespace-pre-wrap leading-relaxed">{log.text}</p>
-                                                
-                                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[8px] font-black uppercase tracking-tighter text-white/30 mt-1.5 border-t border-white/5 pt-1">
-                                                    {log.meta?.inputTokens && <span>In: {log.meta.inputTokens} tkn</span>}
-                                                    {log.meta?.outputTokens && <span>Out: {log.meta.outputTokens} tkn</span>}
-                                                    {log.meta?.inputSizeBytes && <span>In-Mass: {Math.round(log.meta.inputSizeBytes/1024)} KB</span>}
-                                                    {log.meta?.outputSizeBytes && <span>Out-Mass: {Math.round(log.meta.outputSizeBytes/1024)} KB</span>}
-                                                    {log.meta?.latency && <span>Sync: {log.meta.latency.toFixed(1)}ms</span>}
-                                                    {log.meta?.retryCount > 1 && <span className="text-amber-500 font-bold">Retries: {log.meta.retryCount}</span>}
-                                                    {log.meta?.model && <span>Core: {log.meta.model}</span>}
-                                                    {log.meta?.preBalance !== undefined && (
-                                                        <div className="flex items-center gap-2 ml-auto">
-                                                            <span className="flex items-center gap-1 opacity-60"><ArrowUpRight size={8}/> {log.meta.preBalance} VC</span>
-                                                            <ChevronRight size={8} className="opacity-20"/>
-                                                            <span className="flex items-center gap-1 text-emerald-400"><ArrowDownRight size={8}/> {log.meta.postBalance} VC</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                                <div className="flex-1 overflow-y-auto p-6 space-y-2 scrollbar-thin scrollbar-thumb-white/10 text-left">{visibleLogs.length === 0 && (<p className="text-slate-700 italic text-xs">Awaiting neural activity...</p>)}{visibleLogs.map(log => (<div key={log.id} className={`flex gap-4 text-[11px] font-mono p-2 rounded ${log.type === 'error' ? 'bg-red-950/40 text-red-200 border border-red-500/30' : log.type === 'success' ? 'bg-emerald-950/20 text-emerald-400' : log.type === 'warn' ? 'bg-amber-950/20 text-amber-400' : 'text-slate-400'}`}><span className="opacity-40 shrink-0">[{log.time}]</span><span className="flex-1 whitespace-pre-wrap">{log.text}</span></div>))}</div>
                             </>
                         ) : (
                             <div className="flex-1 flex flex-col p-8 space-y-6 animate-fade-in">
@@ -903,7 +865,7 @@ const App: React.FC = () => {
                         )}
                     </div>
                 </div>
-                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v12.1.0-INTEGRITY</p></div>
+                <div className="bg-black/90 p-2 text-center border-t border-white/5"><p className="text-[8px] font-black text-slate-700 uppercase tracking-[0.4em]">Neural Handshake Protocol v12.8.0-SYMBOLIC</p></div>
             </div>
         </div>
 

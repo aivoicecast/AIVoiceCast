@@ -8,6 +8,17 @@ import { logger } from './logger';
 const MAX_RETRIES = 3;
 
 /**
+ * Computes a deterministic SHA-256 fingerprint for the lecture content.
+ */
+async function computeContentHash(lecture: GeneratedLecture): Promise<string> {
+    const raw = lecture.sections.map(s => `${s.speaker}:${s.text}`).join('|');
+    const msgBuffer = new TextEncoder().encode(raw);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
  * Lowest-level API Orchestrator with Deep Telemetry.
  */
 async function runWithDeepTelemetry(
@@ -34,7 +45,6 @@ async function runWithDeepTelemetry(
                 logger.error(`Critical Circuit Breaker triggered for ${context}. Node terminated.`, e, { category, retryCount: attempts });
                 throw e;
             }
-            // Exponential backoff with jitter
             await new Promise(r => setTimeout(r, Math.pow(2, attempts) * 1000 + Math.random() * 1000));
         }
     }
@@ -57,11 +67,28 @@ export async function summarizeLectureForContext(lecture: GeneratedLecture): Pro
     }
 }
 
+/**
+ * Repairs PlantUML syntax errors using Gemini 3 Flash.
+ */
+export async function repairPlantUML(brokenPuml: string): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: `The following PlantUML code has a syntax error. Fix it using the SIMPLEST possible syntax (e.g. node "Label" as ID). Maintain original logical relationships. Return ONLY fixed code without markdown wrappers.\n\nCODE:\n${brokenPuml}`,
+            config: { thinkingConfig: { thinkingBudget: 0 } }
+        });
+        return response.text?.replace(/```plantuml\n|```/g, '').trim() || brokenPuml;
+    } catch (e) {
+        return brokenPuml;
+    }
+}
+
 export async function performNeuralLensAudit(lecture: GeneratedLecture, language: 'en' | 'zh' = 'en'): Promise<NeuralLensAudit | null> {
     const category = 'SHADOW_AUDIT';
     const model = 'gemini-3-pro-image-preview';
     const reportUuid = generateSecureId();
-    const version = "12.5.0-PULSE";
+    const version = "12.9.5-INTEGRITY";
     
     if (!lecture.sections || lecture.sections.length === 0) {
         logger.error("Shadow Audit Refused: Empty logic node.", null, { category });
@@ -69,11 +96,24 @@ export async function performNeuralLensAudit(lecture: GeneratedLecture, language
     }
 
     try {
-        // MANDATORY API KEY SELECTION CHECK FOR PRO-IMAGE MODELS
+        const currentHash = await computeContentHash(lecture);
+
+        if (lecture.audit && lecture.audit.contentHash === currentHash) {
+            logger.audit(`Logic Node Validated via Fingerprint: Redundant Refraction Bypassed.`, { 
+                category: 'BYPASS_LEDGER', 
+                topic: lecture.topic,
+                hash: currentHash.substring(0, 8)
+            });
+            return {
+                ...lecture.audit,
+                timestamp: Date.now()
+            };
+        }
+
+        // MANDATORY API KEY SELECTION
         if (typeof window !== 'undefined' && (window as any).aistudio) {
             const hasKey = await (window as any).aistudio.hasSelectedApiKey();
             if (!hasKey) {
-                logger.warn("Shadow Audit Paused: Model requires Paid API Key Selection for Grounding.");
                 await (window as any).aistudio.openSelectKey();
             }
         }
@@ -81,21 +121,20 @@ export async function performNeuralLensAudit(lecture: GeneratedLecture, language
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const content = lecture.sections.map(s => `${s.speaker}: ${s.text}`).join('\n');
 
-        const systemInstruction = `You are implementing a structural reasoning instrumentation layer for the Neural Prism platform.
-Your task is to:
-1. Extract top 15–25 architectural concepts.
-2. Construct a directed dependency graph (GENERATES, REQUIRES, DEPENDS_ON, EXTRACTS, VALIDATES, STRESS_TESTS, COMPUTES, OPTIMIZES, ROUTES_TO).
-3. Generate strict PlantUML (Packages: Generation, Observability, Verification, Metrics).
-4. Compute metrics: 
-   Score = 100 - (5 * contradictions) - (3 * disconnected_nodes) - (2 * cycles).
-   Drift Risk: Disconnected nodes % (<15% Low, 15-30% Medium, >30% High).
-   Robustness: Simulating high-centrality node removal impact.
-5. GROUNDING: If URLs (GitHub/Docs) are found in the content, use the googleSearch tool to VERIFY claims against live technical truth.
-Return strictly valid JSON.`;
+        const systemInstruction = `You are the Shadow Agent verifier for Neural Prism.
+Your task is to perform an ADVERSARIAL AUDIT:
+1. Extract architectural concepts and represent them as a DAG logic mesh.
+2. CRITICAL SYMBOLIC PARITY: Node IDs must be uppercase (e.g. FS_SYNC).
+3. PLANTUML SYNC: Match JSON 'id' to PlantUML aliases. Use SIMPLEST syntax: node "Label" as ID. 
+4. Avoid skinparams if unsure. Use: ID1 -> ID2 : label.
+5. AUDIT: Verify against the official repository at https://github.com/aivoicecast/AIVoiceCast.
+6. BIAS CHECK: Flag "Agreeability Bias" if the content skips technical friction for user comfort.
+7. THERMODYNAMICS: Score efficiency based on routing intent (Flash vs Pro).
+Return valid JSON.`;
 
-        logger.info(`Initiating Neural Refraction Audit [ID: ${reportUuid.substring(0,8)}]...`, { category, reportUuid });
+        logger.info(`Initiating Integrity Audit [ID: ${reportUuid.substring(0,8)}]...`, { category, reportUuid });
 
-        const { response, attempts, latency, inputSize } = await runWithDeepTelemetry(async () => {
+        const { response } = await runWithDeepTelemetry(async () => {
             return await ai.models.generateContent({
                 model,
                 contents: `AUDIT CONTENT:\n\n${content}`,
@@ -103,6 +142,8 @@ Return strictly valid JSON.`;
                     systemInstruction, 
                     responseMimeType: 'application/json',
                     tools: [{ googleSearch: {} }], 
+                    // HIGH-REASONING CONFIG: Enable thinking for "Smart" verification
+                    thinkingConfig: { thinkingBudget: 12000 },
                     responseSchema: {
                         type: Type.OBJECT,
                         properties: {
@@ -157,37 +198,24 @@ Return strictly valid JSON.`;
                     }
                 }
             });
-        }, "Audit Node Refraction", category, content);
+        }, "Integrity Audit Refraction", category, content);
 
         if (!response.text) throw new Error("Null reasoning shard.");
 
-        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-        if (groundingChunks && groundingChunks.length > 0) {
-            const uris = groundingChunks.map((c: any) => c.web?.uri).filter(Boolean);
-            logger.audit(`Neural Grounding Verified: Audit synchronized with ${uris.length} external nodes.`, { category: 'GROUNDING_LEDGER', uris });
-        }
-        
         const audit = JSON.parse(response.text.replace(/^```json\s*|```\s*$/g, '').trim());
         
-        const finalAudit: NeuralLensAudit = { 
+        return { 
             ...audit, 
             coherenceScore: audit.StructuralCoherenceScore,
             driftRisk: audit.LogicalDriftRisk,
             robustness: audit.AdversarialRobustness,
             timestamp: Date.now(),
             version,
-            reportUuid
+            reportUuid,
+            contentHash: currentHash
         };
-
-        logger.audit(`Shadow Audit Secured: ${lecture.topic}`, { 
-            category, latency, model, reportUuid, version,
-            inputTokens: response.usageMetadata?.promptTokenCount,
-            outputTokens: response.usageMetadata?.candidatesTokenCount
-        });
-        
-        return finalAudit;
     } catch (e: any) {
-        logger.error(`Shadow Audit Fault [ID: ${reportUuid.substring(0,8)}]`, e, { category, reportUuid });
+        logger.error(`Audit Fault`, e, { category, reportUuid });
         return null;
     }
 }
@@ -210,31 +238,18 @@ export async function generateLectureScript(
     
     if (!force) {
       const cached = await getCloudCachedLecture(channelId || 'global', contentUid, language);
-      if (cached) {
-          logger.success(`Registry Cache Hit: ${contentUid}`, { category: 'VFS_LEDGER' });
-          return cached;
-      }
+      if (cached) return cached;
     }
 
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `
-        Topic: "${topic}"
-        Knowledge Base Context: "${channelContext}"
-        ${cumulativeContext ? `KNOWLEDGE ALREADY COVERED (DO NOT REPEAT): "${cumulativeContext}"` : ''}
-        
-        INSTRUCTION:
-        1. Synthesize a deep Socratic technical lecture.
-        2. BRIDGE from the previous context if available.
-        3. Do NOT repeat code or concepts already summarized in the knowledge base.
-        4. Focus on NEW advanced details.
-    `;
+    const prompt = `Topic: "${topic}"\nKnowledge Base Context: "${channelContext}"\n${cumulativeContext ? `KNOWLEDGE ALREADY COVERED: "${cumulativeContext}"` : ''}`;
 
-    const { response, attempts, latency, inputSize } = await runWithDeepTelemetry(async () => {
+    const { response } = await runWithDeepTelemetry(async () => {
         return await ai.models.generateContent({
             model, 
             contents: prompt,
             config: { 
-                systemInstruction: customSystemInstruction || "You are an expert technical educator. Respond in JSON format.",
+                systemInstruction: customSystemInstruction || "Expert technical educator. Respond in JSON.",
                 responseMimeType: 'application/json',
                 thinkingConfig: { thinkingBudget: 8000 },
                 responseSchema: {
@@ -252,9 +267,7 @@ export async function generateLectureScript(
                                 },
                                 required: ["speaker", "text"]
                             }
-                        },
-                        readingMaterial: { type: Type.STRING },
-                        homework: { type: Type.STRING }
+                        }
                     },
                     required: ["professorName", "studentName", "sections"]
                 }
@@ -262,31 +275,16 @@ export async function generateLectureScript(
         });
     }, "Node Refraction", category, prompt);
 
-    const text = response.text;
-    if (!text) return null;
-
-    let parsed;
-    try {
-        parsed = JSON.parse(text.replace(/^```json\s*|```\s*$/g, '').trim());
-    } catch (e) {
-        logger.error("JSON parse failure in refraction", e);
-        return null;
-    }
+    const parsed = JSON.parse(response.text.replace(/^```json\s*|```\s*$/g, '').trim());
     
     const result: GeneratedLecture = {
       uid: contentUid, 
       topic, 
       professorName: parsed.professorName || "Professor",
       studentName: parsed.studentName || "Student", 
-      sections: Array.isArray(parsed.sections) ? parsed.sections : [],
-      readingMaterial: parsed.readingMaterial, 
-      homework: parsed.homework
+      sections: parsed.sections || []
     };
 
-    if (result.sections.length === 0) {
-        result.sections = [{ speaker: 'Teacher', text: "Logical synchronization in progress. Please refresh the node." }];
-    }
-    
     const audit = await performNeuralLensAudit(result, language);
     if (audit) result.audit = audit;
 
@@ -296,15 +294,8 @@ export async function generateLectureScript(
         await saveCloudCachedLecture(channelId || 'global', contentUid, language, result);
     }
 
-    logger.success(`Refactor Step Secured: ${topic}`, { 
-        category, latency, model, retryCount: attempts,
-        inputTokens: response.usageMetadata?.promptTokenCount,
-        outputTokens: response.usageMetadata?.candidatesTokenCount
-    });
-
     return result;
   } catch (error: any) {
-    logger.error(`Refactor Logic Fault for ${topic}`, error, { category });
     return null;
   }
 }
@@ -315,10 +306,7 @@ export async function generateDesignDocFromTranscript(
     language: 'en' | 'zh' = 'en'
 ): Promise<string | null> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const transcriptStr = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n').substring(0, 30000);
-    const langPrompt = language === 'zh' ? 'Output in Simplified Chinese.' : 'Output in English.';
-    
-    const prompt = `Synthesize a comprehensive Technical Specification based on this transcript.\n\nMETADATA:\n- Date: ${meta.date}\n- Topic: ${meta.topic}\n\n${langPrompt}\n\nTRANSCRIPT:\n${transcriptStr}`;
+    const prompt = `Synthesize a comprehensive Technical Specification based on this transcript.\n\nMETADATA:\n- Date: ${meta.date}\n- Topic: ${meta.topic}\n\nTRANSCRIPT:\n${transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n')}`;
 
     try {
         const response = await ai.models.generateContent({
@@ -333,13 +321,10 @@ export async function generateDesignDocFromTranscript(
 
 export async function summarizeDiscussionAsSection(transcript: TranscriptItem[]): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const text = transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n').substring(0, 10000);
-    
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: `Summarize this technical discussion into a single concise paragraph. Focus on key decisions.\n\nTRANSCRIPT:\n${text}`,
-            config: { thinkingConfig: { thinkingBudget: 0 } }
+            contents: `Summarize this technical discussion concisely.\n\nTRANSCRIPT:\n${transcript.map(t => t.text).join('\n')}`,
         });
         return response.text || '';
     } catch (e) {
