@@ -14,6 +14,8 @@ This repository is optimized for **Intelligence Observability**. Use the **Neura
 The platform implements a **Grounding Bridge** via the Gemini 3 Pro `googleSearch` tool. 
 - **Implementation**: Located in `services/lectureGenerator.ts` (`performNeuralLensAudit`).
 - **Mechanism**: When an audit is triggered, the model enables its search tool to browse the live source at **https://github.com/aivoicecast/AIVoiceCast**, read this `README.md`, and inspect the implementation of the **Binary Chunking Protocol (BCP)**.
+- **Protocol**: Implements **Recursive URI Verification (RUV)**.
+- **Latency Note**: RUV is bound by the Google Search Indexing cycle. Fresh commits may not be visible for several minutes/hours.
 - **Goal**: Eliminates documentation-code lag and provides 100% architectural parity during neural synthesis.
 - **Metrics**: Generates a **Structural Coherence Score** by extracting a high-dimensional logic mesh from raw model outputs.
 

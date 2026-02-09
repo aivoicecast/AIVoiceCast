@@ -9,7 +9,7 @@ import {
   Layout, BookOpen, ChevronDown, Signal, Library, BookText, Gauge, BarChart, History,
   Maximize2, Share2, Clipboard, Share, Palette, Eye, Code, Copy, ExternalLink, Clock, Tag,
   Check, FileSignature, Stamp, Shield, User, PenTool, Edit, AlignLeft, ShieldAlert,
-  Maximize
+  Maximize, Info as InfoIcon
 } from 'lucide-react';
 import { collection, query, getDocs, limit, orderBy, where } from '@firebase/firestore';
 import { db, auth } from '../services/firebaseConfig';
@@ -410,7 +410,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                     if (chan) lecture = await generateLectureScript(node.topic, chan.description, 'en', chan.id, chan.voiceName);
                 }
                 if (lecture) {
-                    // Pass force flag to the audit function
                     const audit = await performNeuralLensAudit(lecture, 'en', force);
                     if (audit) {
                         const finalized: GeneratedLecture = { ...lecture, audit };
@@ -590,6 +589,17 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
 
               {selectedNode ? (
                   <div id="pdf-export-content" className="max-w-4xl w-full mx-auto space-y-12 animate-fade-in-up">
+                      {/* NEW: Indexing Lag Warning */}
+                      <div className="bg-amber-900/10 border border-amber-500/30 p-4 rounded-2xl flex items-start gap-4 animate-fade-in">
+                          <InfoIcon size={20} className="text-amber-500 shrink-0 mt-0.5" />
+                          <div className="space-y-1">
+                              <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest">Indexing Lag Detected</p>
+                              <p className="text-[10px] text-slate-400 leading-relaxed font-medium">
+                                  Neural Grounding utilizes the Google Search index. External repository updates (GitHub) may take minutes to reflect in the reasoning mesh.
+                              </p>
+                          </div>
+                      </div>
+
                       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-800 pb-8">
                           <div className="space-y-3 text-left">
                               <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">{selectedNode.topic}</h2>

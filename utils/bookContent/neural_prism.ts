@@ -21,6 +21,13 @@ The **Symbolic Parity Handshake (SPH)** is the specific protocol used to resolve
 2. **Recursive URI Verification (RUV)**: Using the 'googleSearch' tool to crawl **[https://github.com/aivoicecast/AIVoiceCast](https://github.com/aivoicecast/AIVoiceCast)**. The tool performs a structural parse by identifying the VFS manifest and mapping implementation files to invariants.
 3. **Parity Reconciliation**: Comparing the "Intended Logic" against "Actual Logic" discovered via RUV to compute the Coherence Score.
 
+### ⚠️ Constraint: The Indexing Lag
+Auditors must note that **RUV is bound by the Google Search Indexing Latency.** 
+- **Existing Repositories**: Commits to GitHub are typically visible within minutes to hours.
+- **New Repositories**: Expect **1-2 weeks** for a new repository to reliably appear in Gemini's search results without manual intervention.
+
+Lower Audit scores often stem from this indexing gap. For zero-latency verification of fresh commits or new repositories, use the **Direct Ingest** bypass in the Hub.
+
 ### Thermodynamic Honesty
 We measure our success by the **Harmony Ratio (H)**:
 $$ H = \frac{\text{Utility Produced}}{\text{Thermal Energy Consumed}} $$
@@ -31,7 +38,7 @@ In v12.0, we achieved a 1.0 ratio by offloading 90% of compute to Gemini 3 Flash
     {
       title: "1. High-Fidelity Observability",
       content: String.raw`
-# 🔭 Chapter 1: The Observability Plane
+#  telescope Chapter 1: The Observability Plane
 
 Most AI applications suffer from a 'Black Box' problem. In v12.0, we implement the **Neural Telemetry Layer**. Every handshake with Gemini is instrumented at the lowest API interface.
 
@@ -96,7 +103,7 @@ To satisfy the logic of **State Sovereignty**, we utilize three independent **Vi
 ### Single-Source Ownership (SSO)
 We eliminate state divergence through the **SSO Principle**:
 - **Metadata** resides exclusively in **Drive A (Registry)**.
-- **Binary Artifacts** reside exclusively in **Drive B (Vault)**.
+- **Binary Artifacts** resides exclusively in **Drive B (Vault)**.
 - **Actionable Logic (Code)** resides exclusively in **Drive C (Workflow)**.
 
 Divergence is impossible because no two silos share the same data type. The **SHA-256 Grounding Bridge** cryptographically links these silos by embedding the SHA-256 hash of the Drive B artifact and the Drive C commit into the Drive A document. This creates a "Logical Chain" without the thermal waste of active synchronization.
@@ -157,20 +164,6 @@ We enforce **Symbolic Parity** at the prompt layer. If the generated **Mermaid**
 # ⚖️ Chapter 11: The Harmony Ratio ($H$)
 
 To maximize $H$, we route 90% of activity to **Gemini 3 Flash** (Efficiency Pole) and reserve **Gemini 3 Pro** (Reasoning Peak) for final logic verification. This routing achieves the **18x Scaling Advantage** required for the 10:1 ratio.
-      `
-    },
-    {
-      title: "12. The Thermodynamic Terminus",
-      content: String.raw`
-# 🚀 Chapter 12: The 2036 Horizon: 10:1 Resident/Hub Ratio
-
-By 2036, we will achieve the **10:1 Resident/Hub ratio**. 
-
-### Economic Model: The Social Proof Handshake
-"Free at the point of use" is sustained by the **Social Proof Handshake**. 
-1. **Member Contribution**: Residents contribute one full day of logic refractions back to the mesh.
-2. **Tokenized Abundance**: These refractions fund the N-Factor cache, collapsing the inference cost for the other nine residents.
-3. **Collective Sovereignty**: Decentralized management of Hub nodes ensures that the community owns the compute infrastructure, bypassing the centralized "Inference Tax" of the old world.
       `
     }
   ]
