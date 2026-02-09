@@ -24,7 +24,7 @@ The **Symbolic Parity Handshake (SPH)** is the specific protocol used to resolve
 ### ⚠️ Constraint: The Indexing Lag
 Auditors must note that **RUV is bound by the Google Search Indexing Latency.** 
 - **Existing Repositories**: Commits to GitHub are typically visible within minutes to hours.
-- **New Repositories**: Expect **1-2 weeks** for a new repository to reliably appear in Gemini's search results without manual intervention.
+- **New Repositories**: Expect 1-2 weeks for a new repository to reliably appear in Gemini's search results without manual intervention.
 
 Lower Audit scores often stem from this indexing gap. For zero-latency verification of fresh commits or new repositories, use the **Direct Ingest** bypass in the Hub.
 

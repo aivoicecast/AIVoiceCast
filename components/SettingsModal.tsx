@@ -15,6 +15,8 @@ import {
     Edit2,
     Edit3,
     ExternalLink,
+    Eye,
+    EyeOff,
     Feather,
     FileCheck,
     FileUp,
@@ -97,8 +99,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [selectedInterests, setSelectedInterests] = useState<string[]>(user.interests || []);
   const [languagePreference, setLanguagePreference] = useState<'en' | 'zh'>(user.languagePreference || 'en');
   const [preferredScriptureView, setPreferredScriptureView] = useState<'dual' | 'en' | 'zh'>(user.preferredScriptureView || 'dual');
-  const [cloudTtsApiKey, setCloudTtsApiKey] = useState(user.cloudTtsApiKey || '');
   
+  // API Keys state
+  const [geminiApiKey, setGeminiApiKey] = useState(user.geminiApiKey || '');
+  const [openaiApiKey, setOpenaiApiKey] = useState(user.openaiApiKey || '');
+  const [gcpApiKey, setGcpApiKey] = useState(user.gcpApiKey || '');
+  const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+
   const [isTestingVoice, setIsTestingVoice] = useState(false);
   const [testText, setTestText] = useState(() => localStorage.getItem('last_audio_test_text') || 'Neural Prism audio handshake successful. 这是一个神经棱镜音频测试。');
   const [testResult, setTestResult] = useState<{ status: 'idle' | 'success' | 'error' | 'syncing', msg: string, provider?: string }>({ status: 'idle', msg: '' });
@@ -148,7 +155,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setLinkedinUrl(user.linkedinUrl || '');
           setResumeText(user.resumeText || '');
           setAvailability(user.availability || { days: [1,2,3,4,5], startHour: 9, endHour: 18, enabled: true });
-          setCloudTtsApiKey(user.cloudTtsApiKey || '');
+          setGeminiApiKey(user.geminiApiKey || '');
+          setOpenaiApiKey(user.openaiApiKey || '');
+          setGcpApiKey(user.gcpApiKey || '');
           setResumeUploadStatus('idle');
           setResumeStatusMsg('');
           setTestResult({ status: 'idle', msg: '' });
@@ -171,7 +180,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       localStorage.setItem('last_audio_test_text', testText);
       const ctx = getGlobalAudioContext();
 
-      // SMARTER TEXT SEGMENTATION FOR DUAL-TRACK AUDIT
       const englishParts = testText.match(/[a-zA-Z0-9\s.,!?'"]+/g)?.join(' ') || "Neural Prism.";
       const chineseParts = testText.match(/[\u4e00-\u9fa5\s。，！？“”]+/g)?.join('') || "神经棱镜。";
 
@@ -181,10 +189,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           
           if (currentSession !== playbackSessionIdRef.current) return;
 
-          // Perform EN audit
           if (preferredScriptureView === 'dual' || preferredScriptureView === 'en') {
               addTestLog(`Handshake Phase 2: Dispatching English Track to ${ttsProvider.toUpperCase()} engine...`);
-              await runNeuralAudit(ttsProvider, englishParts, ctx, 'en', cloudTtsApiKey);
+              await runNeuralAudit(ttsProvider, englishParts, ctx, 'en', gcpApiKey);
               
               if (currentSession === playbackSessionIdRef.current && preferredScriptureView === 'dual') {
                   addTestLog("Sync Pause: Transitioning language spectrum...");
@@ -192,11 +199,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               }
           }
 
-          // Perform ZH audit
           if (currentSession === playbackSessionIdRef.current && (preferredScriptureView === 'dual' || preferredScriptureView === 'zh')) {
               addTestLog(`Handshake Phase 3: Dispatching Chinese Track to ${ttsProvider.toUpperCase()} engine...`);
-              // Gemini TTS handles Chinese well if we send ONLY the Chinese text to the ZH voice
-              await runNeuralAudit(ttsProvider, chineseParts, ctx, 'zh', cloudTtsApiKey);
+              await runNeuralAudit(ttsProvider, chineseParts, ctx, 'zh', gcpApiKey);
           }
           
           if (currentSession === playbackSessionIdRef.current) {
@@ -321,7 +326,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               linkedinUrl,
               resumeText,
               availability,
-              cloudTtsApiKey
+              geminiApiKey,
+              openaiApiKey,
+              gcpApiKey
           };
 
           await updateUserProfile(user.uid, updateData);
@@ -394,6 +401,61 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <div><p className="text-xs font-black text-slate-500 uppercase tracking-widest">Tier</p><p className={`text-sm font-bold ${isPaid ? 'text-emerald-400' : 'text-slate-300'}`}>{currentTier.toUpperCase()}</p></div>
                                 </div>
                                 {!isPaid && <button onClick={onUpgradeClick} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase rounded-lg shadow-lg">Upgrade</button>}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-end px-1">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Key size={16} className="text-indigo-400"/> Security & API Keys</h4>
+                        </div>
+                        <div className="bg-slate-950 border border-slate-800 rounded-3xl p-6 space-y-6 shadow-inner">
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Google Gemini Key</label>
+                                    <div className="relative">
+                                        <input 
+                                            type={showKeys.gemini ? "text" : "password"}
+                                            value={geminiApiKey} 
+                                            onChange={e => setGeminiApiKey(e.target.value)} 
+                                            placeholder="Custom Model Override (Optional)"
+                                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-indigo-300 font-mono focus:ring-1 focus:ring-indigo-500 outline-none"
+                                        />
+                                        <button onClick={() => setShowKeys({...showKeys, gemini: !showKeys.gemini})} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">
+                                            {showKeys.gemini ? <EyeOff size={14}/> : <Eye size={14}/>}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">GCP API Key (Enterprise TTS)</label>
+                                    <div className="relative">
+                                        <input 
+                                            type={showKeys.gcp ? "text" : "password"}
+                                            value={gcpApiKey} 
+                                            onChange={e => setGcpApiKey(e.target.value)} 
+                                            placeholder="Google Cloud Platform Key"
+                                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-indigo-300 font-mono focus:ring-1 focus:ring-indigo-500 outline-none"
+                                        />
+                                        <button onClick={() => setShowKeys({...showKeys, gcp: !showKeys.gcp})} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">
+                                            {showKeys.gcp ? <EyeOff size={14}/> : <Eye size={14}/>}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">OpenAI API Key</label>
+                                    <div className="relative">
+                                        <input 
+                                            type={showKeys.openai ? "text" : "password"}
+                                            value={openaiApiKey} 
+                                            onChange={e => setOpenaiApiKey(e.target.value)} 
+                                            placeholder="sk-..."
+                                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-emerald-300 font-mono focus:ring-1 focus:ring-emerald-500 outline-none"
+                                        />
+                                        <button onClick={() => setShowKeys({...showKeys, openai: !showKeys.openai})} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">
+                                            {showKeys.openai ? <EyeOff size={14}/> : <Eye size={14}/>}
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -503,22 +565,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <button onClick={() => setPreferredScriptureView('zh')} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all ${preferredScriptureView === 'zh' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-50'}`}>Chinese</button>
                         </div>
                     </div>
-
-                    <div className="space-y-4">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2"><Key size={16} className="text-amber-400"/> Dedicated Cloud TTS Key</h4>
-                        <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
-                            <p className="text-[10px] text-slate-400 leading-relaxed">If you are getting "API key not valid" on enterprise voices, enter a dedicated GCP console key here.</p>
-                            <div className="relative">
-                                <input 
-                                    type="password" 
-                                    value={cloudTtsApiKey} 
-                                    onChange={e => setCloudTtsApiKey(e.target.value)} 
-                                    placeholder="GCP Enterprise Key (AIza...)"
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-xs text-indigo-300 font-mono focus:ring-1 focus:ring-indigo-500 outline-none"
-                                />
-                            </div>
-                        </div>
-                    </div>
                 </div>
             )}
 
@@ -562,7 +608,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4 flex items-center gap-3"><Calendar className="text-indigo-400" size={24}/><div><h3 className="text-sm font-bold text-white">Office Hours</h3><p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-0.5">Manage appointment requests</p></div></div>
                     <div className="space-y-6">
                         <div className="flex items-center justify-between p-4 bg-slate-950 border border-slate-800 rounded-2xl shadow-inner"><div><p className="text-sm font-bold text-white">Accept Appointments</p></div><button onClick={() => setAvailability({...availability, enabled: !availability.enabled})} className={`w-12 h-6 rounded-full transition-all relative ${availability.enabled ? 'bg-indigo-600' : 'bg-slate-700'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${availability.enabled ? 'right-1' : 'left-1'}`}></div></button></div>
-                        <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 px-1">Available Days</label><div className="flex gap-2">{DAYS.map((day, i) => (<button key={day} onClick={() => toggleDay(i)} className={`flex-1 py-3 rounded-xl border text-xs font-black transition-all ${availability.days.includes(i) ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{day.charAt(0)}</button>))}</div></div>
+                        <div><label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 px-1">Available Days</label><div className="flex gap-2">{DAYS.map((day, i) => (<button key={day} onClick={() => toggleDay(i)} className={`flex-1 py-3 rounded-xl border text-xs font-black transition-all ${availability.days.includes(i) ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : 'bg-slate-950 border border-slate-800 text-slate-600'}`}>{day.charAt(0)}</button>))}</div></div>
                     </div>
                 </div>
             )}

@@ -121,6 +121,9 @@ export interface UserProfile {
   preferredReaderTheme?: ReaderTheme;
   preferredRecordingTarget?: 'youtube' | 'drive';
   cloudTtsApiKey?: string;
+  geminiApiKey?: string;
+  openaiApiKey?: string;
+  gcpApiKey?: string;
   apiUsageCount?: number;
   lastCoinGrantAt?: number;
   preferredAiProvider?: 'gemini' | 'openai';
