@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
   Home, Video, User, ArrowLeft, Play, Gift, 
   Calendar, Briefcase, Users, Disc, FileText, Code, Wand2, PenTool, Rss, Loader2, MessageSquare, AppWindow, Square, Menu, X, Shield, Plus, Rocket, Book, AlertTriangle, Terminal, Trash2, LogOut, Truck, Maximize2, Minimize2, Wallet, Sparkles, Coins, Cloud, ChevronDown, Command, Activity, BookOpen, Scroll, GraduationCap, Cpu, Star, Lock, Crown, ShieldCheck, Flame, Zap, RefreshCcw, Bug, ChevronUp, Fingerprint, Database, CheckCircle, Pause, PlayCircle as PlayIcon, Copy, BookText, Send, MessageCircle, FileUp, FileSignature, IdCard, Info, BarChart3, Target, Beaker, Ghost, Signal,
-  ShieldAlert, ChevronRight, ChevronLeft, ArrowDownRight, ArrowUpRight
+  ShieldAlert, ChevronRight, ChevronLeft, ArrowDownRight, ArrowUpRight, Clock, ArrowRight
 } from 'lucide-react';
 
 import { Channel, UserProfile, ViewID, TranscriptItem, CodeFile, UserFeedback, Comment, Attachment } from '../types';
@@ -849,7 +850,76 @@ const App: React.FC = () => {
                                     <div className="flex items-center gap-2"><Terminal size={14} className="text-red-400"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Log Trace (RAW)</span></div>
                                     <button onClick={() => setIsLogPaused(!isLogPaused)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${isLogPaused ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}>{isLogPaused ? <PlayIcon size={12}/> : <Pause size={12}/>}{isLogPaused ? 'Resume' : 'Pause'}</button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-6 space-y-2 scrollbar-thin scrollbar-thumb-white/10 text-left">{visibleLogs.length === 0 && (<p className="text-slate-700 italic text-xs">Awaiting neural activity...</p>)}{visibleLogs.map(log => (<div key={log.id} className={`flex gap-4 text-[11px] font-mono p-2 rounded ${log.type === 'error' ? 'bg-red-950/40 text-red-200 border border-red-500/30' : log.type === 'success' ? 'bg-emerald-950/20 text-emerald-400' : log.type === 'warn' ? 'bg-amber-950/20 text-amber-400' : 'text-slate-400'}`}><span className="opacity-40 shrink-0">[{log.time}]</span><span className="flex-1 whitespace-pre-wrap">{log.text}</span></div>))}</div>
+                                <div className="flex-1 overflow-y-auto p-6 space-y-3 scrollbar-thin scrollbar-thumb-white/10 text-left">
+                                    {visibleLogs.length === 0 && (<p className="text-slate-700 italic text-xs">Awaiting neural activity...</p>)}
+                                    {visibleLogs.map(log => (
+                                        <div key={log.id} className={`flex flex-col gap-2 p-3 rounded-2xl border transition-all hover:border-white/10 ${getLogColor(log.type)}`}>
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="mt-1 shrink-0">{getLogIcon(log.type)}</div>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <span className="text-[8px] font-black uppercase tracking-widest opacity-40">[{log.time}]</span>
+                                                            <span className="text-[9px] font-black uppercase tracking-widest">{log.type}</span>
+                                                            {log.meta?.category && <span className="px-1.5 py-0.5 bg-black/20 rounded text-[7px] font-black uppercase tracking-tighter">{log.meta.category}</span>}
+                                                            {log.meta?.model && <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-[7px] font-mono">{log.meta.model}</span>}
+                                                        </div>
+                                                        <p className="text-[11px] font-mono whitespace-pre-wrap leading-relaxed selection:bg-indigo-500/30">{log.text}</p>
+                                                    </div>
+                                                </div>
+                                                {log.meta?.latency !== undefined && (
+                                                    <div className="text-right shrink-0">
+                                                        <div className="flex items-center gap-1 text-[8px] font-black text-slate-500 uppercase">
+                                                            {/* Fix: Added missing Clock icon */}
+                                                            <Clock size={8}/> {log.meta.latency}ms
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Technical Telemetry Shard */}
+                                            {log.meta && (log.meta.inputTokens || log.meta.outputTokens || log.meta.postBalance !== undefined) && (
+                                                <div className="mt-2 pt-2 border-t border-current/10 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                                    {(log.meta.inputTokens || log.meta.outputTokens) && (
+                                                        <div className="space-y-1">
+                                                            <p className="text-[7px] font-black uppercase opacity-40">Token Density</p>
+                                                            <div className="flex items-center gap-2 font-mono text-[9px] font-bold">
+                                                                <span title="Input" className="text-indigo-400">IN: {log.meta.inputTokens || 0}</span>
+                                                                <span className="opacity-20">|</span>
+                                                                <span title="Completion" className="text-emerald-400">OUT: {log.meta.outputTokens || 0}</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {log.meta.inputSizeBytes && (
+                                                        <div className="space-y-1">
+                                                            <p className="text-[7px] font-black uppercase opacity-40">I/O Payload</p>
+                                                            <p className="font-mono text-[9px] font-bold uppercase tracking-tighter">
+                                                                {Math.round(log.meta.inputSizeBytes / 1024)}KB -> {Math.round((log.meta.outputSizeBytes || 0) / 1024)}KB
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {log.meta.postBalance !== undefined && (
+                                                        <div className="space-y-1">
+                                                            <p className="text-[7px] font-black uppercase opacity-40">Neural Assets (VC)</p>
+                                                            <div className="flex items-center gap-1.5 font-mono text-[9px] font-black">
+                                                                <span className="text-slate-400">{log.meta.preBalance}</span>
+                                                                {/* Fix: Added missing ArrowRight icon */}
+                                                                <ArrowRight size={8} className="opacity-30"/>
+                                                                <span className="text-emerald-400">{log.meta.postBalance}</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {log.meta.cost && (
+                                                        <div className="space-y-1">
+                                                            <p className="text-[7px] font-black uppercase opacity-40">Refraction Tax</p>
+                                                            <p className="font-mono text-[9px] font-black text-red-400">-{log.meta.cost} VC</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
                             </>
                         ) : (
                             <div className="flex-1 flex flex-col p-8 space-y-6 animate-fade-in">

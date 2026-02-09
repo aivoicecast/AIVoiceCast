@@ -10,12 +10,12 @@ Neural Prism is a high-fidelity, multi-model orchestration platform built on 100
 
 This repository is optimized for **Intelligence Observability**. Use the **Neural Lens** within the platform to verify these architectural claims against live API telemetry.
 
-### 🔍 Core Innovation: Live GitHub Grounding
+### 🔍 Core Innovation: Gemini Reasoning Instrumentation
 The platform implements a **Grounding Bridge** via the Gemini 3 Pro `googleSearch` tool. 
-- **Implementation**: Located in `services/channelGenerator.ts` (`generateChannelFromDocument`).
-- **Mechanism**: When a public GitHub URI (like https://github.com/aivoicecast/AIVoiceCast) is provided, the model enables its search tool to browse the live source, read this `README.md`, and inspect the file structure.
+- **Implementation**: Located in `services/lectureGenerator.ts` (`performNeuralLensAudit`).
+- **Mechanism**: When an audit is triggered, the model enables its search tool to browse the live source at **https://github.com/aivoicecast/AIVoiceCast**, read this `README.md`, and inspect the implementation of the **Binary Chunking Protocol (BCP)**.
 - **Goal**: Eliminates documentation-code lag and provides 100% architectural parity during neural synthesis.
-- **Billing Note**: This tool requires a **Paid Gemini API Key**. No secondary "Search Console" or "Custom Search" APIs are required; grounding is a native capability of the Gemini 3 Pro model family.
+- **Metrics**: Generates a **Structural Coherence Score** by extracting a high-dimensional logic mesh from raw model outputs.
 
 ---
 
@@ -37,7 +37,7 @@ The **Builder Studio** IDE (`components/CodeStudio.tsx`) bypasses physical compi
 Reasoning is verified through a dual-agent handshake (`services/lectureGenerator.ts`).
 - **Agent A (The Lead)**: Generates high-frequency interaction and content via Gemini 3 Flash.
 - **Agent B (The Shadow)**: Audits Agent A using a **Thinking-Enabled Gemini 3 Pro** instance. 
-- **Metrics**: Generates a **Structural Coherence Score** (0-100) based on conceptual mesh integrity and adversarial probing.
+- **Instrumentation**: Every audit extracts a logic mesh (Dependency Graph) to verify conceptual consistency.
 
 ### 4. Sovereign Scribe Protocol
 High-fidelity activity recording for professional evaluation (`components/LiveSession.tsx`).

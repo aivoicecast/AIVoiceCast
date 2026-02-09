@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Copy, Check, Image as ImageIcon, Loader2, Code as CodeIcon, ExternalLink, Sigma, Palette, Sun, Moon, Coffee } from 'lucide-react';
 import { encodePlantUML } from '../utils/plantuml';
@@ -42,7 +41,7 @@ const THEME_CONFIG: Record<ReaderTheme, { container: string, prose: string, icon
     }
 };
 
-const LatexRenderer: React.FC<{ tex: string, theme: ReaderTheme }> = ({ tex, theme }) => {
+const LatexRenderer: React.FC<{ tex: string, theme: ReaderTheme }> = ({ theme, tex }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -75,11 +74,45 @@ const LatexRenderer: React.FC<{ tex: string, theme: ReaderTheme }> = ({ tex, the
     );
 };
 
+const MermaidRenderer: React.FC<{ code: string, theme: ReaderTheme }> = ({ code, theme }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [svg, setSvg] = useState<string>('');
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const render = async () => {
+            if (typeof window !== 'undefined' && (window as any).mermaid) {
+                const mermaid = (window as any).mermaid;
+                mermaid.initialize({
+                    startOnLoad: false,
+                    theme: theme === 'light' || theme === 'sepia' ? 'default' : 'dark',
+                    securityLevel: 'loose',
+                });
+                try {
+                    const id = `mermaid-${Math.random().toString(36).substring(7)}`;
+                    const { svg } = await mermaid.render(id, code);
+                    setSvg(svg);
+                    setError(null);
+                } catch (e: any) {
+                    console.error("Mermaid error", e);
+                    setError(e.message || "Syntax error");
+                }
+            }
+        };
+        render();
+    }, [code, theme]);
+
+    if (error) return <div className="p-4 bg-red-900/20 text-red-400 text-[10px] rounded-lg border border-red-500/30 font-mono">Mermaid Syntax Error: {error}</div>;
+
+    return (
+        <div className="my-4 flex justify-center bg-white/5 p-4 rounded-xl overflow-x-auto shadow-inner" dangerouslySetInnerHTML={{ __html: svg }} />
+    );
+};
+
 const PlantUMLRenderer: React.FC<{ code: string, theme: ReaderTheme }> = ({ code, theme }) => {
     const [url, setUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [showCode, setShowCode] = useState(false);
-    const [copied, setCopied] = useState(false);
     const isDark = theme === 'slate' || theme === 'dark';
 
     useEffect(() => {
@@ -96,14 +129,6 @@ const PlantUMLRenderer: React.FC<{ code: string, theme: ReaderTheme }> = ({ code
         });
         return () => { isMounted = false; };
     }, [code]);
-
-    const handleCopyUrl = () => {
-        if (url) {
-            navigator.clipboard.writeText(url);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        }
-    };
 
     return (
         <div className={`my-4 border rounded-xl overflow-hidden shadow-md group ${
@@ -194,7 +219,7 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, initialThem
   };
 
   const renderContent = (text: string) => {
-    const parts = text.split(/(```[\s\S]*?```|\$\$[\s\S]*?\$\$)/g);
+    const parts = text.split(/(```[\s\S]*?```|\$\$[\s\S]*?\$$)/g);
     return parts.map((part, index) => {
       if (part.startsWith('```')) {
         const codeContent = part.replace(/^```\w*\s*\n?/, '').replace(/```\s*$/, '');
@@ -203,6 +228,10 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, initialThem
         
         if (language === 'plantuml' || language === 'puml') {
             return <PlantUMLRenderer key={index} code={codeContent} theme={theme} />;
+        }
+
+        if (language === 'mermaid') {
+            return <MermaidRenderer key={index} code={codeContent} theme={theme} />;
         }
 
         return (

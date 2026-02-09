@@ -1,3 +1,4 @@
+
 import { 
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, query, where, 
   orderBy, limit, onSnapshot, runTransaction, increment, arrayUnion, arrayRemove, 
@@ -356,9 +357,11 @@ export async function checkAndGrantMonthlyCoins(uid: string) {
     }
 }
 
-export async function deductCoins(uid: string, amount: number) {
-    if (!db) return;
-    await updateDoc(doc(db, USERS_COLLECTION, uid), { coinBalance: increment(-amount) });
+export async function deductCoins(uid: string, amount: number): Promise<UserProfile | null> {
+    if (!db) return null;
+    const userRef = doc(db, USERS_COLLECTION, uid);
+    await updateDoc(userRef, { coinBalance: increment(-amount) });
+    return await getUserProfile(uid);
 }
 
 export async function saveCustomBook(book: BookData): Promise<string> {
@@ -817,8 +820,18 @@ export async function respondToInvitation(invite: Invitation, accept: boolean) {
                 tx.update(userRef, { coinBalance: increment(invite.amount || 0) });
                 tx.update(inviteRef, { status: 'accepted' });
                 const txRef = doc(collection(db, TRANSACTIONS_COLLECTION));
+                // Fix: Define missing variables by using data from the invitation and current user
                 tx.set(txRef, sanitizeData({
-                    id: txRef.id, fromId: 'system', fromName: 'AIVoiceCast Escrow', toId: auth.currentUser.uid, toName: auth.currentUser.displayName, amount: invite.amount, type: 'transfer', memo: `Escrow Release: ${invite.memo}`, timestamp: Date.now(), isVerified: true
+                    id: txRef.id, 
+                    fromId: 'system', 
+                    fromName: 'AIVoiceCast Escrow', 
+                    toId: auth.currentUser.uid, 
+                    toName: auth.currentUser.displayName || 'Recipient', 
+                    amount: invite.amount || 0, 
+                    type: 'transfer', 
+                    memo: `Escrow Release: ${invite.memo}`, 
+                    timestamp: Date.now(), 
+                    isVerified: true
                 }));
             });
         } else {

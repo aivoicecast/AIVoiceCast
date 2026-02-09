@@ -1,5 +1,5 @@
 
-import { BookData } from '../bookContent';
+import { BookData } from '../../types';
 
 export const C_PROGRAMMING_BOOK: BookData = {
   id: 'c-programming-college',
@@ -11,7 +11,7 @@ export const C_PROGRAMMING_BOOK: BookData = {
   pages: [
     {
       title: "1. Foundations & Environment",
-      content: `
+      content: String.raw`
 # 🖥️ Lecture 1: Foundations
 
 C is a low-level, procedural language that serves as the foundation for modern operating systems like Linux and Windows.
@@ -24,35 +24,35 @@ Unlike interpreted languages (Python/JS), C must be compiled into machine-readab
 4. **Linking**: Combines object files into an Executable.
 
 ### Example: Hello World
-\`\`\`c
+${'```'}c
 #include <stdio.h>
 
 int main() {
     printf("Hello, Neural Prism!\\n");
     return 0;
 }
-\`\`\`
+${'```'}
 
 ### Homework
-- Install \`gcc\` or use the **Builder Studio** in this platform.
+- Install ${"`"}gcc${"`"} or use the **Builder Studio** in this platform.
 - Modify the example to print your name and student ID.
       `
     },
     {
       title: "2. Data Types & Variables",
-      content: `
+      content: String.raw`
 # 📦 Lecture 2: Data Types
 
 C is statically typed. You must declare the "size" of a variable before using it.
 
 ### Core Types
-- \`int\`: Integers (typically 4 bytes).
-- \`float\`: Single-precision floating point.
-- \`char\`: A single byte (stores ASCII characters).
-- \`double\`: Double-precision (8 bytes).
+- ${"`"}int${"`"}: Integers (typically 4 bytes).
+- ${"`"}float${"`"}: Single-precision floating point.
+- ${"`"}char${"`"}: A single byte (stores ASCII characters).
+- ${"`"}double${"`"}: Double-precision (8 bytes).
 
 ### Example: Memory Sizes
-\`\`\`c
+${'```'}c
 #include <stdio.h>
 
 int main() {
@@ -60,29 +60,29 @@ int main() {
     printf("Size of int: %zu bytes\\n", sizeof(a));
     return 0;
 }
-\`\`\`
+${'```'}
 
 ### Homework
-Write a program that calculates the area of a circle using a \`double\` for radius and a constant for PI.
+Write a program that calculates the area of a circle using a ${"`"}double${"`"} for radius and a constant for PI.
       `
     },
     {
       title: "3. Operators & Logic",
-      content: `
+      content: String.raw`
 # 🔢 Lecture 3: Operators
 
 C supports arithmetic, relational, and logical operators.
 
 ### Arithmetic
-\`+\`, \`-\`, \`*\`, \`/\`, \`%\` (Modulus).
+${"`"}+${"`"}, ${"`"}-${"`"}, ${"`"}*${"`"}, ${"`"}/${"`"}, ${"`"}%${"`"} (Modulus).
 
 ### Logical
-- \`&&\`: AND
-- \`||\`: OR
-- \`!\`: NOT
+- ${"`"}&&${"`"}: AND
+- ${"`"}||${"`"}: OR
+- ${"`"}!${"`"}: NOT
 
 ### Example: Even or Odd
-\`\`\`c
+${'```'}c
 #include <stdio.h>
 
 int main() {
@@ -94,7 +94,7 @@ int main() {
     }
     return 0;
 }
-\`\`\`
+${'```'}
 
 ### Homework
 Create a simple calculator that takes two numbers and an operator (+, -, *, /) as input and outputs the result.
@@ -102,13 +102,13 @@ Create a simple calculator that takes two numbers and an operator (+, -, *, /) a
     },
     {
       title: "4. Control Flow (Conditionals)",
-      content: `
+      content: String.raw`
 # 🚦 Lecture 4: Control Flow
 
-Decision making in C uses \`if\`, \`else if\`, \`else\`, and \`switch\`.
+Decision making in C uses ${"`"}if${"`"}, ${"`"}else if${"`"}, ${"`"}else${"`"}, and ${"`"}switch${"`"}.
 
 ### Example: Grade Evaluation
-\`\`\`c
+${'```'}c
 #include <stdio.h>
 
 int main() {
@@ -120,7 +120,7 @@ int main() {
     }
     return 0;
 }
-\`\`\`
+${'```'}
 
 ### Homework
 Write a program to find the largest of three numbers provided by the user.
@@ -128,18 +128,18 @@ Write a program to find the largest of three numbers provided by the user.
     },
     {
       title: "5. Iteration & Loops",
-      content: `
+      content: String.raw`
 # 🔄 Lecture 5: Iteration
 
 Loops repeat code until a condition is met.
 
 ### Loop Types
-- \`for\`: Best when the number of iterations is known.
-- \`while\`: Best for event-driven logic.
-- \`do-while\`: Guarantees at least one execution.
+- ${"`"}for${"`"}: Best when the number of iterations is known.
+- ${"`"}while${"`"}: Best for event-driven logic.
+- ${"`"}do-while${"`"}: Guarantees at least one execution.
 
 ### Example: Factorial
-\`\`\`c
+${'```'}c
 #include <stdio.h>
 
 int main() {
@@ -150,50 +150,50 @@ int main() {
     printf("Factorial: %d", fact);
     return 0;
 }
-\`\`\`
+${'```'}
 
 ### Homework
-Generate the first 10 numbers of the Fibonacci sequence using a \`while\` loop.
+Generate the first 10 numbers of the Fibonacci sequence using a ${"`"}while${"`"} loop.
       `
     },
     {
       title: "6. Functions & Scope",
-      content: `
+      content: String.raw`
 # 🛠️ Lecture 6: Modular Code
 
 Functions allow you to reuse logic and manage complexity.
 
 ### Syntax
-\`return_type name(parameters) { body }\`
+${"`"}return_type name(parameters) { body }${"`"}
 
 ### Scope
 Variables declared inside a function are local to that function.
 
 ### Example: Power Function
-\`\`\`c
+${'```'}c
 int power(int base, int exp) {
     int res = 1;
     while(exp--) res *= base;
     return res;
 }
-\`\`\`
+${'```'}
 
 ### Homework
-Write a function \`isPrime(int n)\` that returns 1 if a number is prime and 0 otherwise.
+Write a function ${"`"}isPrime(int n)${"`"} that returns 1 if a number is prime and 0 otherwise.
       `
     },
     {
       title: "7. Arrays & Strings",
-      content: `
+      content: String.raw`
 # 📊 Lecture 7: Collections
 
 An array is a contiguous block of memory holding multiple items of the same type.
 
 ### Strings
-In C, a string is simply a \`char\` array terminated by a null character (\`'\\0'\`).
+In C, a string is simply a ${"`"}char${"`"} array terminated by a null character (${"`"}'\\0'${"`"}).
 
 ### Example: Array Average
-\`\`\`c
+${'```'}c
 #include <stdio.h>
 
 int main() {
@@ -203,31 +203,31 @@ int main() {
     printf("Avg: %d", sum/5);
     return 0;
 }
-\`\`\`
+${'```'}
 
 ### Homework
-Write a program that reverses a string without using library functions like \`strrev\`.
+Write a program that reverses a string without using library functions like ${"`"}strrev${"`"}.
       `
     },
     {
       title: "8. Pointers: The Neural Core",
-      content: `
+      content: String.raw`
 # 📍 Lecture 8: Pointers
 
 Pointers are variables that store the memory address of another variable. This is C's "Superpower."
 
 ### Key Symbols
-- \`&\`: Address-of operator.
-- \`*\`: Dereference operator.
+- ${"`"}&${"`"}: Address-of operator.
+- ${"`"}*${"`"}: Dereference operator.
 
 ### Example: Swapping
-\`\`\`c
+${'```'}c
 void swap(int *a, int *b) {
     int temp = *a;
     *a = *b;
     *b = temp;
 }
-\`\`\`
+${'```'}
 
 ### Homework
 Explain the difference between a pointer to an integer and an array name in terms of memory.
@@ -235,17 +235,17 @@ Explain the difference between a pointer to an integer and an array name in term
     },
     {
       title: "9. Dynamic Memory Management",
-      content: `
+      content: String.raw`
 # 🧠 Lecture 9: Dynamic Memory
 
-Memory allocated on the **Heap** persists until manually freed. Use \`stdlib.h\`.
+Memory allocated on the **Heap** persists until manually freed. Use ${"`"}stdlib.h${"`"}.
 
 ### Functions
-- \`malloc(size)\`: Allocate bytes.
-- \`free(ptr)\`: Release memory.
+- ${"`"}malloc(size)${"`"}: Allocate bytes.
+- ${"`"}free(ptr)${"`"}: Release memory.
 
 ### Example: Dynamic Array
-\`\`\`c
+${'```'}c
 #include <stdlib.h>
 
 int main() {
@@ -255,7 +255,7 @@ int main() {
     free(arr); 
     return 0;
 }
-\`\`\`
+${'```'}
 
 ### Homework
 Create a program that allows the user to specify the size of an array at runtime, fills it with numbers, and then calculates the sum.
@@ -263,13 +263,13 @@ Create a program that allows the user to specify the size of an array at runtime
     },
     {
       title: "10. Structures & Unions",
-      content: `
+      content: String.raw`
 # 🏛️ Lecture 10: User-Defined Types
 
-Structures (\`struct\`) allow you to group variables of different types.
+Structures (${"`"}struct${"`"}) allow you to group variables of different types.
 
 ### Example: Student Record
-\`\`\`c
+${'```'}c
 struct Student {
     char name[50];
     int age;
@@ -277,26 +277,26 @@ struct Student {
 };
 
 struct Student s1 = {"Alice", 20, 3.8};
-\`\`\`
+${'```'}
 
 ### Homework
-Define a struct for a \`Rectangle\` with length and width. Write a function that takes a Rectangle struct and returns its area.
+Define a struct for a ${"`"}Rectangle${"`"} with length and width. Write a function that takes a Rectangle struct and returns its area.
       `
     },
     {
       title: "11. File Handling",
-      content: `
+      content: String.raw`
 # 💾 Lecture 11: Persistence
 
-Reading and writing to the disk using \`FILE\` pointers.
+Reading and writing to the disk using ${"`"}FILE${"`"} pointers.
 
 ### Mode
-- \`"r"\`: Read
-- \`"w"\`: Write (overwrite)
-- \`"a"\`: Append
+- ${"`"}"r"${"`"}: Read
+- ${"`"}"w"${"`"}: Write (overwrite)
+- ${"`"}"a"${"`"}: Append
 
 ### Example: Logging
-\`\`\`c
+${'```'}c
 #include <stdio.h>
 
 int main() {
@@ -306,7 +306,7 @@ int main() {
     fclose(f);
     return 0;
 }
-\`\`\`
+${'```'}
 
 ### Homework
 Write a program that reads a text file and counts how many words are in it.
@@ -314,16 +314,16 @@ Write a program that reads a text file and counts how many words are in it.
     },
     {
       title: "12. Advanced Systems Programming",
-      content: `
+      content: String.raw`
 # 🚀 Lecture 12: Advanced Topics
 
 The final refraction: Macros, Bitwise manipulation, and Typedefs.
 
 ### Bitwise Operators
-\`&\` (AND), \`|\` (OR), \`^\` (XOR), \`<<\` (Shift Left).
+${"`"}&${"`"} (AND), ${"`"}|${"`"} (OR), ${"`"}^${"`"} (XOR), ${"`"}<<${"`"} (Shift Left).
 
 ### Example: Bit Masking
-\`\`\`c
+${'```'}c
 #define FLAG_A 0x01
 
 int main() {
@@ -331,10 +331,10 @@ int main() {
     status |= FLAG_A; // Set bit 0
     return 0;
 }
-\`\`\`
+${'```'}
 
 ### Homework
-Write a macro \`SQUARE(x)\` that returns the square of a number. Then, write a program that uses bitwise operators to check if a number is a power of two.
+Write a macro ${"`"}SQUARE(x)${"`"} that returns the square of a number. Then, write a program that uses bitwise operators to check if a number is a power of two.
 
 **Congratulations on completing the C Refraction!**
       `

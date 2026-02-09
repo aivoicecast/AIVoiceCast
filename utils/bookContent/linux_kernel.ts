@@ -1,5 +1,5 @@
 
-import { BookData } from '../bookContent';
+import { BookData } from '../../types';
 
 export const LINUX_KERNEL_BOOK: BookData = {
   id: 'linux-kernel-core',
@@ -146,12 +146,12 @@ While Namespaces manage what a process *sees*, Control Groups manage what a proc
         content: String.raw`
 # 🕸️ Chapter 8: The sk_buff Lifecycle
 
-At the core of the networking stack is the \`sk_buff\` (socket buffer). This structure is the "Passport" for every packet. It tracks a packet from the NIC driver, through the protocol layers (IP, TCP/UDP), to the application socket. It is the most complex data structure in the kernel.
+At the core of the networking stack is the ${"`"}sk_buff${"`"} (socket buffer). This structure is the "Passport" for every packet. It tracks a packet from the NIC driver, through the protocol layers (IP, TCP/UDP), to the application socket. It is the most complex data structure in the kernel.
 
 ### Zero-Copy Refinement
 To minimize latency and CPU overhead, modern drivers use **NAPI (New API)** and **XDP**. XDP allows for packet filtering and redirection directly in the NIC driver's receive ring, bypassing the heavy protocol stack entirely for known traffic patterns. 
 
-The \`sk_buff\` uses a clever pointer-based architecture (\`data\`, \`head\`, \`tail\`, \`end\`) to avoid copying data. As a packet moves up the stack, the kernel simply increments a pointer to "strip" headers. The data stays in the same physical memory buffer from the NIC to the user's application. This "Zero-Copy" philosophy is what allows Linux to handle 100Gbps traffic on commodity hardware. It is 'Throughput without Friction'.
+The ${"`"}sk_buff${"`"} uses a clever pointer-based architecture (${"`"}data${"`"}, ${"`"}head${"`"}, ${"`"}tail${"`"}, ${"`"}end${"`"}) to avoid copying data. As a packet moves up the stack, the kernel simply increments a pointer to "strip" headers. The data stays in the same physical memory buffer from the NIC to the user's application. This "Zero-Copy" philosophy is what allows Linux to handle 100Gbps traffic on commodity hardware. It is 'Throughput without Friction'.
         `
     },
     {
@@ -177,7 +177,7 @@ For read-heavy data structures (like routing tables), **RCU** is the ultimate op
 Signals are the primary mechanism for the kernel to notify processes of asynchronous events. They are the software equivalent of hardware interrupts, allowing for immediate reaction to external stimuli.
 
 ### Delivery Logic
-When a signal is sent (e.g., SIGKILL, SIGSEGV), the kernel updates the \`pending\` bitmask in the target task's struct. The signal is not delivered immediately. Instead, the kernel checks for pending signals every time a process transitions from kernel-space back to user-space (e.g., after a syscall or a timer interrupt). This ensures that the process is in a safe state before the handler is invoked.
+When a signal is sent (e.g., SIGKILL, SIGSEGV), the kernel updates the ${"`"}pending${"`"} bitmask in the target task's struct. The signal is not delivered immediately. Instead, the kernel checks for pending signals every time a process transitions from kernel-space back to user-space (e.g., after a syscall or a timer interrupt). This ensures that the process is in a safe state before the handler is invoked.
 
 ### Signal Stacks
 To handle signals safely, processes can define a specialized **Signal Stack**. This prevents stack overflows from crashing the signal handler if the main application stack is already full. This is a critical safety feature for high-scale applications like our Code Studio, where thousands of simulated logical events are processed every second. It is 'Event-Driven Safety' for the modern era.
@@ -192,9 +192,9 @@ The boot process is the most complex handshake in the kernel's lifecycle. It is 
 
 ### The Stages of Refraction
 1. **Real Mode**: The kernel starts in 16-bit real mode (a legacy requirement from the original x86 spec).
-2. **Protected Mode**: The \`compressed/head.S\` routine switches to 32-bit protected mode and decompresses the main kernel image in memory.
+2. **Protected Mode**: The ${"`"}compressed/head.S${"`"} routine switches to 32-bit protected mode and decompresses the main kernel image in memory.
 3. **Paging Initialization**: The kernel sets up the initial page tables, enters 64-bit Long Mode, and jumps to the C code entrance.
-4. **Kernel Entry**: The \`start_kernel()\` function is called, which initializes all core subsystems (CFS, MMU, VFS, IRQ) in a deterministic sequence.
+4. **Kernel Entry**: The ${"`"}start_kernel()${"`"} function is called, which initializes all core subsystems (CFS, MMU, VFS, IRQ) in a deterministic sequence.
 
 Understanding the boot process is essential for kernel architects. It is the foundation upon which all technical utility is built. We've optimized the v6.8.5 boot sequence to achieve "Sub-Second" readiness for our Edge Robotics vision, ensuring the 'Prism' is ready the moment the power is applied.
         `

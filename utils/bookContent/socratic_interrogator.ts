@@ -1,5 +1,5 @@
 
-import { BookData } from '../bookContent';
+import { BookData } from '../../types';
 
 export const MOCK_INTERVIEW_BOOK: BookData = {
   id: 'mock-interview-core',
@@ -74,7 +74,7 @@ This maintains a "Stable Dream" of the project across the entire 45-minute sessi
       content: String.raw`
 # 📹 Chapter 6: Scribe Architecture
 
-To capture a "Staff-Level Performance Record," we record a hidden 1920x1080 canvas. Our compositor stitches the workspace, camera, and a Gaussian-blurred backdrop into a single **8Mbps VP9 stream**.
+To capture a "Staff-Level Performance Record," we record a hidden 1920x1080 canvas. Our compositor stitches the workspace, a camera and a Gaussian-blurred backdrop into a single **8Mbps VP9 stream**.
 
 ### Sovereignty
 This stream is archived directly to the user's sovereign YouTube vault. This provides a verifiable, frame-perfect record of the interrogation for later review by the candidate or a human recruiter. It proves you can perform under professional pressure.

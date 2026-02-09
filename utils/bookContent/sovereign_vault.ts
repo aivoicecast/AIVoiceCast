@@ -1,4 +1,5 @@
-import { BookData } from '../bookContent';
+
+import { BookData } from '../../types';
 
 export const SOVEREIGN_VAULT_MANUAL: BookData = {
     id: 'vault-manual',
@@ -100,9 +101,9 @@ We follow the principle of "Least Privilege." We do not want access to your enti
 
 ### Granular Scopes
 When you sign in, we request only the specific scopes needed for the Sovereign Vault:
-- \`drive.file\`: This restricts the Prism to *only* see and modify files that it has created. We cannot read your personal taxes, private photos, or other documents stored elsewhere in your Drive.
-- \`youtube.upload\`: The ability to archive your "Scribe" sessions to your own channel for permanent playback.
-- \`gmail.send\`: Automated notification dispatch for your mentorship bookings, ensuring you never miss a handshake.
+- ${"`"}drive.file${"`"}: This restricts the Prism to *only* see and modify files that it has created. We cannot read your personal taxes, private photos, or other documents stored elsewhere in your Drive.
+- ${"`"}youtube.upload${"`"}: The ability to archive your "Scribe" sessions to your own channel for permanent playback.
+- ${"`"}gmail.send${"`"}: Automated notification dispatch for your mentorship bookings, ensuring you never miss a handshake.
 
 Your access tokens are never stored in our backend database. They reside strictly in your session memory or encrypted browser local storage. When you log out, the "Handshake" is broken, and our access to your cloud is instantly revoked. This is security through transparency.
             `
@@ -129,7 +130,7 @@ You can continue building in the Studio while completely offline. Keystrokes and
 The Vault isn't just for storage; it's for interoperability. In a traditional workflow, your code is in one place, your design documents in another, and your videos in a third. The Neural Prism unifies them through the **VFS Layer**.
 
 ### VFS Normalization
-The Studio normalizes files from all four tiers into a single \`CodeFile\` interface. This allows the AI to "Reflect" on a GitHub repo and a Google Drive document simultaneously. 
+The Studio normalizes files from all four tiers into a single ${"`"}CodeFile${"`"} interface. This allows the AI to "Reflect" on a GitHub repo and a Google Drive document simultaneously. 
 - **Use Case**: "Review my Python code in GitHub and ensure it matches the technical specification I just wrote in Drive."
 
 ### Multi-Tenant Sync

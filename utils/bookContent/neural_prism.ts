@@ -1,4 +1,4 @@
-import { BookData } from '../bookContent';
+import { BookData } from '../../types';
 
 export const NEURAL_PRISM_BOOK: BookData = {
   id: 'platform-core',
@@ -13,7 +13,7 @@ export const NEURAL_PRISM_BOOK: BookData = {
       content: String.raw`
 # 🏛️ Chapter 0: Executive Refraction
 
-Neural Prism v12.0 represents the transition from **Generative AI** to **Recursive Verified Intelligence**. The platform no longer acts as a simple wrapper; it functions as a **Reasoning Instrument** that instrumented the raw power of Google Gemini into a spectrum of 24 specialized human activities.
+Neural Prism v12.0 represents the transition from **Generative AI** to **Recursive Verified Intelligence**. The platform no longer acts as a simple wrapper; it functions as a **Reasoning Instrument** that instruments the raw power of Google Gemini into a spectrum of 24 specialized human activities.
 
 ### 🔍 Official Repository & Grounding Root
 All architectural claims in this manifest are verified against the live source code in our official repository:
@@ -33,14 +33,13 @@ In v12.0, we achieved a 1.0 ratio by offloading 90% of compute to Gemini 3 Flash
       content: String.raw`
 # 🔭 Chapter 1: The Observability Plane
 
-Most AI applications suffer from a 'Black Box' problem. The developer sees the input and the output, but the middle reasoning is invisible. In v12.0, we implement the **Neural Telemetry Layer**. Every handshake with Gemini is instrumented at the lowest API interface.
+Most AI applications suffer from a 'Black Box' problem. In v12.0, we implement the **Neural Telemetry Layer**. Every handshake with Gemini is instrumented at the lowest API interface.
 
-### The Metrics Spectrum:
-- **Temporal Resolution**: Tracking sub-millisecond latency for every refactor step. This allows us to detect 'Model Stalls' before they impact user UX.
-- **Token Density**: Real-time extraction of prompt and candidate token counts. We use this to calculate the 'Information Density' of our synthesis.
-- **Volumetric Trace**: Measuring raw byte sizes. We've discovered that the **1MB document wall** in NoSQL databases is the primary bottleneck for technical records, leading to our Binary Chunking Protocol (BCP).
-
-This data allows for perfect technical truth in auditing. We don't just prompt; we monitor. We have turned the 'Liar's Computer' into a verifiable system of record.
+### Technical Implementation:
+We don't just log text. We perform **Functional Mass Comparison (FMC)**. 
+- **The Metric**: We measure the "Logical Density" of a refraction by extracting its Dependency Graph (Nodes/Links).
+- **The Audit**: If a model generates a response that sounds fluent but reduces the functional surface area (Logical Mass) by more than 20% without instruction, the system flags **Agreeability Bias**.
+- **Observability**: We track **Token Density** and **Volumetric Trace** (raw byte sizes) to detect silent logic drift before it is committed to the registry.
       `
     },
     {
@@ -48,15 +47,13 @@ This data allows for perfect technical truth in auditing. We don't just prompt; 
       content: String.raw`
 # 🧱 Chapter 2: The BCP Protocol
 
-Our greatest engineering hurdle during the transition to a fully serverless data plane was the 1MB document limit in Firestore. For a technical hub that generates 5,000-word technical manuscripts, high-resolution security stamps, and 30-minute audio sessions, a 1MB container is functionally useless.
+Our greatest engineering hurdle was the 1MB document limit in Firestore. For a technical hub that generates 5,000-word manuscripts and 30-minute audio sessions, 1MB is insufficient.
 
 ### The Binary Chunking Protocol (BCP)
-We sharded our logic to match the Gemini Flash native window size. This ensures that a single document retrieval never exceeds the model's primary attention span.
+We sharded our logic to match the Gemini Flash native window size (128KB).
 1. **Sharding**: Raw text and audio bytes are split into deterministic **750,000-byte segments**.
 2. **Indexing**: A parent 'Manifest Node' is registered in the Firestore ledger. It contains SHA-256 hashes for all child shards.
 3. **Re-hydration**: Our edge engine parallel-fetches the shards and reconstructs the data URI in the user's buffer.
-
-This protocol is what enables the **Author Studio** to bind 50-page books without crashing the browser's memory management.
       `
     },
     {
@@ -64,13 +61,7 @@ This protocol is what enables the **Author Studio** to bind 50-page books withou
       content: String.raw`
 # ⚠️ Chapter 3: The Refactoring Entropy Event
 
-During the development of v12.0, a critical logic regression occurred. We call it **'The Hallucinated Deletion.'** While requesting a minimal update to the sidebar hierarchy, the primary AI model silently purged the entire 'Generate Book' and 'Text Export' logic—over 500 lines of production code.
-
-### The Root Cause
-This failure was caused by a combination of **Agreeability Bias** and context window pressure. The model, attempting to fulfill a request for 'cleaner code,' viewed existing complex PDF synthesis logic as 'noise' and discarded it to stay within its output token limit.
-
-### The Mitigation: Symbolic Flow Checks
-We now implement **Functional Mass Comparison**. Before every code refraction is committed to the registry, the Neural Lens compares the 'Logical Mass' of the new source against the previous state. If a significant drop in functional surface area is detected without an explicit request, the handshake is refused.
+During development, the model silently purged 500 lines of PDF code while "cleaning" a sidebar. We caught this via **FMC (Functional Mass Comparison)**. By auditing the reasoning mesh before the commit, we identified a 40% drop in conceptual nodes, revealing a fatal hallucination in the model's 'optimization' logic.
         `
     },
     {
@@ -78,44 +69,43 @@ We now implement **Functional Mass Comparison**. Before every code refraction is
       content: String.raw`
 # ⚖️ Chapter 4: The Economics of Abundance
 
-In the realm of large-scale intelligence, we must confront the **KV Cache Tax**. Every concurrent user of a transformer model occupies a specific slice of TPU memory. For high-reasoning models like **Gemini 3 Pro**, this footprint is massive—typically 18x larger than the high-speed **Gemini 3 Flash** variant.
+In the realm of large-scale intelligence, we must confront the **KV Cache Tax**. Every concurrent user of Gemini 3 Pro occupies a massive TPU footprint—typically 18x larger than the high-speed Gemini 3 Flash variant.
 
 ### The N-Factor Breakthrough
 To drive marginal logic costs toward zero, we implement the **N-Factor Refraction Protocol**. 
-1. **Refactor Once**: A technical problem is refracted once by a member.
-2. **Share N Times**: The resulting logic shard is notarized and stored in the **Community Cache**. 
-3. **Cost Collapse**: If N members share this refraction, the total energy cost is divided by N. For N > 100, a $300 annual compute tax collapses to less than $3.
+1. **Refactor Once**: A technical problem is refracted once.
+2. **Share N Times**: The resulting logic shard is notarized in the **Community Cache**. 
+3. **Cost Collapse**: Total energy cost is divided by N. For N > 100, a $300 annual compute tax collapses to less than $3.
       `
     },
     {
       title: "5. Technical Truth & Sovereign Silos",
       content: String.raw`
-# 🔍 Chapter 5: Sovereign Persistence
+# 🔍 Chapter 5: The Independent Drive Model
 
-Architectural truth in v12.2 is grounded in the **SHA-256 Grounding Bridge** and the principle of **Sovereign Silos**. We have eliminated documentation lag and state divergence while protecting user privacy.
+To satisfy the logic of **State Sovereignty**, we utilize three independent **Virtual Storage Drives**. We reject auto-sync between these silos to prevent **State Contamination** and ensure user-governed data privacy.
 
-### Explicit Siloing
-We intentionally maintain three independent storage backends:
-- **Ledger (Firebase)**: Metadata, social fabric, and the N-Factor cache.
-- **Vault (Drive)**: User-owned binary artifacts and generated PDFs.
-- **Workflow (GitHub)**: Developer source code and repository state.
+### The 3-Drive Silo Map:
+- **Drive A: The Registry (Firebase)**: Handles metadata, social fabric, and the N-Factor cache. It is the "Search Index."
+- **Drive B: The Vault (Google Drive)**: Stores user-owned binary artifacts (PDFs, Audio Exports). It is the "Personal Filing Cabinet."
+- **Drive C: The Workflow (GitHub)**: Manages developer source code and repository state. It is the "Actionable Logic."
 
-We NEVER auto-sync between these silos. Each environment acts as a discrete drive, ensuring that a compromise in one does not spill into the other. 
+### Eliminating Divergence:
+Divergence is not solved by syncing; it is solved by **Single-Source Ownership**. A PDF artifact only exists in Drive B. Its metadata only exists in Drive A. There is no "Duplicate State" to diverge. The VFS layer acts as the orchestrator, pulling from the correct drive for the specific activity.
         `
     },
     {
-      title: "6. The Logic Mesh: PlantUML Instrumentation",
+      title: "6. The Logic Mesh: Mermaid Instrumentation",
       content: String.raw`
-# 💎 Chapter 6: Structural Instrumentation (V2)
+# 💎 Chapter 6: Structural Instrumentation (V3)
 
-In v12.2.0, we introduced **Structural Reasoning Instrumentation**. This protocol moves beyond textual summaries and instead extracts the **Logic Mesh**—a directed dependency graph of technical concepts.
+In v12.9.0, we instrumented reasoning using **Mermaid.js (graph TD)**. This provides a formal, machine-readable logic substrate for every refraction.
 
-### High-Fidelity Topology
-The **Neural Lens** uses Gemini 3 Pro to identify top-level architectural nodes and their relationships (e.g., *REQUIRES*, *VALIDATES*). This graph is then encoded into **PlantUML** format. 
-
-### Verification Formula
-We calculate the **Structural Coherence Score** using a deterministic penalty model:
-$$ \text{Score} = 100 - (5 \times \text{Contradictions}) - (3 \times \text{Disconnected Nodes}) - (2 \times \text{Cycles}) $$
+### The Logic Extraction Pipeline:
+1. **Ingest**: Gemini 3 Pro reads the technical dialogue.
+2. **Token Heatmapping**: The model identifies high-entropy technical keywords.
+3. **Graphing**: Keywords are mapped as Nodes; logical dependencies are mapped as Links.
+4. **Verification**: If the graph is disconnected or contains cycles where a linear logic is required, the "Structural Coherence Score" is penalized.
         `
     },
     {
@@ -123,13 +113,7 @@ $$ \text{Score} = 100 - (5 \times \text{Contradictions}) - (3 \times \text{Disco
       content: String.raw`
 # 🌍 Chapter 7: The Open Source Refraction
 
-The Neural Prism is more than a platform; it is an **Open Source Movement**. We believe that the tools of super-intelligence should not be proprietary black boxes. They should be transparent, verifiable, and collectively owned.
-
-### Replicate & Contribute
-We invite the global engineering community to replicate our successes and contribute to the evolution of the Prism. By open-sourcing our core refractive logic, we allow for external audit of our **Structural Coherence** and **Thermodynamic Efficiency** claims.
-
-### Joining the Abundance Mesh
-Whether you are contributing a new activity node, a specialized neural persona, or a more efficient sharding algorithm, your refraction helps drive the **N-Factor** higher. Together, we are building a future where intelligence is a zero-marginal-cost utility for all humanity.
+The Neural Prism is an **Open Source Movement**. We believe super-intelligence should not be a proprietary black box. Transparency in the "Reasoning Mesh" allows the community to audit the **Harmony Ratio** and contribute new logic shards to the global ledger.
       `
     },
     {
@@ -137,13 +121,10 @@ Whether you are contributing a new activity node, a specialized neural persona, 
       content: String.raw`
 # ⚡ Chapter 8: Neural Fingerprinting (CAA)
 
-In v12.6.0, we introduced **Content-Addressable Auditing (CAA)** to the Neural Lens. This optimization targets the energy ceiling of high-wattage reasoning.
-
-### Neural Fingerprinting Protocol
-We treat logical nodes as immutable cryptographic blocks:
-1. **Fingerprinting**: Before an audit is triggered, the system computes a SHA-256 hash of the verbatim content (Speakers + Text).
-2. **Registry Check**: The Neural Lens performs a "Pre-Flight Handshake" with the community ledger.
-3. **Idempotent Bypass**: If a verified audit already exists for that exact fingerprint, the AI call is bypassed. We return the notarized logic mesh in **0ms**.
+We introduced **Content-Addressable Auditing (CAA)**. 
+1. **SHA-256 Fingerprinting**: Every logical node is hashed before auditing.
+2. **Cache Handshake**: If the hash exists in the ledger, we bypass the AI call entirely.
+3. **Zero-Watt Logic**: This ensures we never waste energy re-solving a known technical problem.
       `
     },
     {
@@ -151,13 +132,7 @@ We treat logical nodes as immutable cryptographic blocks:
       content: String.raw`
 # ✒️ Chapter 9: The Verifiable Reasoning Loop
 
-In v12.7.0, we integrated the **Neural Signer** directly into the **Neural Lens** workflow. This marks the shift from "Temporary Observation" to "Permanent Verifiable Logic."
-
-### Notarized Refractions
-An AI generated technical specification or textbook is only useful if its reasoning is stable. By default, every complete audit now generates a **Sovereign Notary Shard**:
-1. **Mesh Hashing**: The high-dimensional Dependency Graph (nodes, links, and scores) is hashed using SHA-256.
-2. **Identity Handshake**: The user's on-device **ECDSA P-256** key signs the resulting hash.
-3. **Binding**: This signature is baked into the ledger entry and any exported PDF reports.
+Every complete audit now generates a **Sovereign Notary Shard**. The high-dimensional Dependency Graph is signed using the user's on-device **ECDSA P-256** key. This binds the "Reasoning" to a specific user identity, making technical claims legally and technically verifiable.
       `
     },
     {
@@ -165,13 +140,7 @@ An AI generated technical specification or textbook is only useful if its reason
       content: String.raw`
 # 💎 Chapter 10: The Symbolic Handshake
 
-In v12.8.0, we addressed the **Representation Divergence** problem. When an AI generates a logic mesh and a visualization string (like PlantUML) separately, they often drift apart.
-
-### Symbolic Logic Locking
-We now enforce **Symbolic Parity** at the prompt layer. 
-1. **Deterministic Symbols**: The Shadow Agent is instructed to use immutable logical symbols as IDs (e.g., \`FS_SYNC\`, \`BCP_GATE\`).
-2. **Divergence Block**: If the generated PlantUML alias does not match the JSON node ID, the refraction is flagged as "Stale" and re-derived.
-3. **Holistic Sync**: This allows the **Neural Lens** to merge thousands of disparate knowledge shards into a single, coherent **Composite Mesh** without duplicating nodes or ghosting old graph data.
+We enforce **Symbolic Parity** at the prompt layer. If the generated **Mermaid** node IDs do not match the JSON schema for the logic mesh, the refraction is re-derived. This ensures that the visual representation and the logical data are perfectly synchronized.
       `
     },
     {
@@ -179,44 +148,23 @@ We now enforce **Symbolic Parity** at the prompt layer.
       content: String.raw`
 # ⚖️ Chapter 11: The Harmony Ratio ($H$)
 
-In v12.9.5, we formally define the measure of a super-intelligence hub. We call it the **Harmony Ratio ($H$)**. This is the ratio of human utility produced per unit of thermal energy consumed.
-
-### The Equation of Abundance
-$$ H = \frac{\sum_{i=1}^{n} (\text{Refractions}_i \times N_i)}{\text{Joules}_{\text{Flash}} + \text{Joules}_{\text{Pro}}} $$
-
-### Strategic Routing
-To maximize $H$, we route 90% of all activity—transcription, basic chat, and UI interactions—to **Gemini 3 Flash** clusters. We reserve the high-wattage **Gemini 3 Pro** reasoning exclusively for final logic verification and the Shadow Agent audit loop.
-
-This routing strategy creates an **18x scaling advantage**. By ensuring that high-reasoning TPUs are only active for high-stakes verification, we drive the marginal cost of intelligence toward the carbon-neutral horizon of 2036.
+To maximize $H$, we route 90% of activity to **Gemini 3 Flash** (Efficiency Pole) and reserve **Gemini 3 Pro** (Reasoning Peak) for final logic verification. This routing achieves the **18x Scaling Advantage** required for the 10:1 ratio.
       `
     },
     {
       title: "12. The Thermodynamic Terminus",
       content: String.raw`
-# 🚀 Chapter 12: The 2036 Horizon
+# 🚀 Chapter 12: The 2036 Horizon: 10:1 Resident/Hub Ratio
 
-Neural Prism is the bridge to the **10:1 Resident/Hub ratio**. 
+By 2036, we will achieve the **10:1 Resident/Hub ratio**. 
 
-In this era, intelligence is no longer a "Service" provided by a corporation; it is a **Public Refraction** managed by the community. We have proven that by instrumenting the reasoning of Gemini, we can build a future where logic is measurable, verifiable, and free at the point of use.
+### The Hub Technical Spec:
+- **Placement**: Located adjacent to communal Electricity Hubs for direct high-wattage coupling.
+- **Autonomy**: Equipped with 450kWh Battery Planes providing 72 hours of complete energy and compute sovereignty.
+- **Service Density**: One Hub serves 10 to 100 **Residents** in the immediate vicinity.
+- **The Resident Unit**: 1 Resident = 1 Family unit (approx. 4 humans).
 
-**The code is open. The light is yours.**
-      `
-    },
-    {
-      title: "13. The Smart Verify Protocol",
-      content: String.raw`
-#  telescope: Chapter 13: Adversarial Refraction
-
-In v12.9.5, we introduced the **Smart Verify** protocol to the Neural Lens. This represents the pinnacle of intelligence observability.
-
-### Recursive Audit Loop
-When a sector is "Smart Verified," the system does not simply reload data. It initiates a **Recursive Audit Loop**:
-1. **Batch Concurrency**: The system partitions the sector into chunks and launches parallel **Shadow Agent** handshakes.
-2. **Adversarial Probing**: The Shadow Agent (Gemini 3 Pro) is granted an **Expanded Thinking Budget** to challenge the Lead Agent's (Gemini 3 Flash) initial reasoning.
-3. **Delta Detection**: The Lens calculates the delta between "Agreeable Fluency" and "Structural Truth." Any logical drift is automatically flagged for re-refraction.
-
-### Why "Smart"?
-It is "Smart" because it uses **Meta-Cognition.** The system evaluates its own understanding by looking for internal contradictions across multiple knowledge shards. If Node A claims B, but Node C implies not-B, the Smart Verify protocol identifies the conflict and triggers a resolution handshake.
+In this era, a Hub provides the thermodynamic floor for survival—power, heat, and super-intelligence—allowing the community to shift from survival to the **Joy of Discovery**.
       `
     }
   ]

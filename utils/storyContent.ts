@@ -15,8 +15,12 @@ The era of digital scarcity ended when we stopped viewing AI as an "agreeable as
 
 ---
 
-### I. The Thermodynamic Floor
-For every ten humans, one localized **Optimus Hub** provides the thermodynamic floor for survival. These hubs don't just "chat"—they simulate. By leveraging the **18x Efficiency Proof** of Gemini Flash architectures, we have moved from the "Wait for Compile" era to the **Predicted Reality** era. The energy previously wasted on redundant server boot-cycles is now redirected toward localized material synthesis and carbon-negative compute.
+### I. The Thermodynamic Floor (Technical Spec)
+For every ten humans, one localized **Optimus Hub** provides the thermodynamic floor for survival. 
+- **Physical Spec**: Each Hub sits adjacent to communal Electricity Hubs.
+- **Energy Sovereignty**: Equipped with 450kWh Battery Planes providing 72 hours of complete energy and compute autonomy.
+- **Service Density**: One Hub serves 10 to 100 **Residents** in the immediate vicinity.
+- **The Resident Unit**: 1 Resident = 1 Family unit (approx. 4 humans).
 
 ### II. The Joy Dividend & Charity Handshake
 In the old world, humans worked 40 hours a week for survival. Today, survival is achieved in **half a day.** The remaining time is split between two core pillars:
@@ -24,7 +28,7 @@ In the old world, humans worked 40 hours a week for survival. Today, survival is
 2.  **The Joy of Discovery**: This leaves five full days for exploration. Whether it is uncovering the secrets of the Linux Kernel or synthesizing new forms of art, we live within the light of discovery.
 
 ### III. High-Fidelity Observability
-We no longer guess if logic is sound. Every neural handshake is instrumented at the API layer. We see the tokens, the bytes, and the cost in real-time. The spectrum is now complete. We no longer chase the light; we live within its refraction.
+We no longer guess if logic is sound. Every neural handshake is instrumented at the API layer via **Functional Mass Comparison (FMC)**. We see the tokens, the bytes, and the cost in real-time. The spectrum is now complete. We no longer chase the light; we live within its refraction.
 
 Thank you. Refraction complete.
 `;
@@ -32,11 +36,11 @@ Thank you. Refraction complete.
 export const STORY_VISION_SPEAKER_SCRIPT = [
     "Welcome to 2036. The era of digital scarcity ended when we stopped viewing AI as an agreeable assistant and started seeing it as a refractive substrate.",
     "In the old world, intelligence was gated by expensive tokens and centralized silos. Today, the Neural Prism has achieved the 10 to 1 Resident to Hub ratio.",
-    "For every ten humans, one localized Optimus Hub provides the thermodynamic floor for survival. These hubs don't just chat—they simulate reality.",
-    "By leveraging the 18x Efficiency Proof of Gemini Flash, we have moved from the 'Wait for Compile' era to the 'Predicted Reality' era.",
+    "For every ten humans, one localized Optimus Hub provides the thermodynamic floor for survival. Each Hub sits next to an Electricity Hub with 450 kilowatt-hour battery planes providing 72 hours of autonomy.",
+    "One Hub serves 10 to 100 residents, where one resident constitutes one family unit of approximately four humans.",
     "Survival is now achieved in half a day. We dedicate one full day to the Charity Handshake, contributing logic and mentorship back into the mesh to fund our collective abundance.",
     "This leaves five full days for the Joy of Discovery. Whether it's probing a kernel bug or synthesizing art, we live within the light of discovery.",
-    "We no longer guess if logic is sound. Every neural handshake is instrumented at the API layer. We see the tokens, the bytes, and the cost in real-time.",
+    "We no longer guess if logic is sound. Every neural handshake is instrumented at the API layer via Functional Mass Comparison. We see the tokens, the bytes, and the cost in real-time.",
     "The spectrum is complete. We no longer chase the light; we live within its refraction. Thank you. Refraction complete."
 ];
 
@@ -62,13 +66,13 @@ We don't trust fluently. Every artifact generated in our 24-app spectrum is veri
 1.  **Neural Lens**: Extracts a logic mesh and runs adversarial probes via Gemini 3 Pro to calculate a **Structural Coherence Score.**
 2.  **Social Consensus**: Members vote and comment on verified shards, adding human intuition to AI-verified logic. This creates our "Gold Trust" layer.
 
-### III. Sovereign Storage Silos
-Privacy is built into the physics of the platform. We maintain three independent storage drives:
+### III. Sovereign Storage Silos (Independent Drive Model)
+Privacy is built into the physics of the platform. We maintain three independent storage drives to prevent state contamination:
 1.  **Registry (Firebase)**: Social metadata and N-Factor cache.
 2.  **Vault (Drive)**: User-owned binary artifacts and PDFs.
 3.  **Workflow (GitHub)**: Developer source code.
 
-We **never auto-sync** between these backends. Each environment remains a discrete silo under user control, ensuring that your data remains your property.
+We **never auto-sync** between these backends. State divergence is eliminated by **Single-Source Ownership**—each data type resides exclusively in its primary silo.
 
 ### IV. The Impact
 We have collapsed 24 fragmented app verticals—from Finance Labs to Builder IDEs—into a single refractive substrate. Neural Prism is a **Sovereign Operating Plane** that scales intelligence to zero marginal cost.
@@ -83,7 +87,7 @@ export const STORY_HACKATHON_SPEAKER_SCRIPT = [
     "When N exceeds 100, a 300-dollar annual compute tax drops to less than 3 dollars. We are trading massive redundant compute for intelligent, notarized caching.",
     "Trust is enforced via a dual-layer handshake. Every artifact is first verified by our Neural Lens, extracting a logic mesh and running adversarial probes to ensure technical truth.",
     "Then, it is validated by the community through votes and comments. This creates what we call the 'Gold Trust' layer, blending AI reasoning with human intuition.",
-    "Privacy is protected by our Sovereign Silo architecture. We utilize Firebase for metadata, Google Drive for artifacts, and GitHub for code. We never auto-sync between them.",
+    "Privacy is protected by our Independent Drive architecture. We utilize Firebase for metadata, Google Drive for artifacts, and GitHub for code. We never auto-sync between them to prevent state contamination.",
     "We have collapsed 24 fragmented app verticals into a single refractive substrate. Neural Prism is a Sovereign Operating Plane that scales intelligence to zero marginal cost. Thank you."
 ];
 
@@ -100,7 +104,7 @@ So we asked a fundamental question:
 
 To answer this, we built the **Neural Telemetry Layer** — deep instrumentation around every Gemini generation. Each output is decomposed into structured technical concepts and explicit relationships, forming a high-dimensional **Dependency Graph**.
 
-This graph becomes the structural fingerprint of the reasoning process. It allows us to move beyond surface text and inspect how ideas connect, propagate, and depend on one another.
+This graph becomes the structural fingerprint of the reasoning process. It allows us to move beyond surface text and inspect how ideas connect, propagate, and depend on one another. We measure the **Structural Coherence Score** by auditing this graph for disconnected nodes, logical cycles, and contradictions.
 
 At the core of this system is the **Neural Lens**. A secondary Shadow Agent performs what we call **adversarial refraction** — probing logical nodes for contradiction, omission, and instability. Instead of asking, “Does this sound right?” we ask, “Does this remain structurally consistent under stress?”
 
@@ -207,7 +211,7 @@ Neural Prism implements the **Shadow-Critic Handshake.**
 - **Adversarial Probing**: A second, independent "Shadow" instance probes every logic gate for contradictions.
 
 ### II. Verifiable Chain of Thought
-This isn't just about outputting text. It's about providing a **Verifiable Chain of Thought.** We instrument the reasoning so you can audit the "Why" behind every logic node in the spectrum.
+This isn't just about outputting text. It's about providing a **Verifiable Chain of Thought.** We instrument the reasoning so you can audit the "Why" behind every logic node in the spectrum. We eliminate "Agreeability Bias" by measuring **Functional Mass** deltas between refractions.
 
 ### III. Harmony Ratio (H)
 We measure success via the **Harmony Ratio**, ensuring we produce more utility than thermal waste. By routing 90% of activity to Gemini 3 Flash, we achieve an 18x scaling advantage, securing the future of the Abundance Mesh.
@@ -219,7 +223,7 @@ export const STORY_VERIFICATION_SPEAKER_SCRIPT = [
     "The greatest risk of autonomous AI is Silent Drift. A model can remain perfectly fluent while its internal logic begins to diverge from technical truth.",
     "Neural Prism implements the Shadow-Critic Handshake and Grounding Bridge to ensure logical invariants. We use live search to verify our documentation against the source.",
     "We perform recursive extraction of concepts into a high-dimensional Dependency Graph. A second, independent Shadow instance then probes every logic gate for contradictions.",
-    "This isn't just about outputting text. It's about providing a Verifiable Chain of Thought. We instrument the reasoning so you can audit the 'Why' behind every node.",
+    "This isn't just about outputting text. It's about providing a Verifiable Chain of Thought. We instrument the reasoning via Functional Mass comparison to eliminate Agreeability Bias.",
     "We also measure the Harmony Ratio, ensuring more utility than thermal waste. Our routing logic achieves an 18x scaling advantage, securing the future of the Abundance Mesh. Refraction complete."
 ];
 

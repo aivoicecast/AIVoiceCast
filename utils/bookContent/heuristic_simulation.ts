@@ -1,5 +1,5 @@
 
-import { BookData } from '../bookContent';
+import { BookData } from '../../types';
 
 export const HEURISTIC_SIMULATION_BOOK: BookData = {
     id: 'heuristic-sim',
@@ -24,7 +24,7 @@ $$
 $$
 
 ### Accuracy Parity
-For 98% of algorithmic and system design tasks, the simulation parity with a real GCC or Python runtime is indistinguishable. The model knows exactly what \`printf("%d", 5 + 5)\` or a complex recursive DFS should output because it has essentially 'pre-calculated' every common logical permutation. This allows us to provide an IDE experience that is zero-infrastructure, zero-risk, and near-zero latency.
+For 98% of algorithmic and system design tasks, the simulation parity with a real GCC or Python runtime is indistinguishable. The model knows exactly what ${"`"}printf("%d", 5 + 5)${"`"} or a complex recursive DFS should output because it has essentially 'pre-calculated' every common logical permutation. This allows us to provide an IDE experience that is zero-infrastructure, zero-risk, and near-zero latency.
             `
         },
         {
@@ -121,7 +121,7 @@ The Simulation engine is deeply linked to our **Virtual File System (VFS).** To 
 The VFS only fetches file content when needed to save bandwidth, but the Simulation engine can "see" the entire tree via the **Neural Snapshot**. It understands imports, header includes, and resource paths across 100+ files without the browser needing to download the entire repository. This 'Metadata Awareness' is critical for accurate simulation of complex systems.
 
 ### State Reconciliation
-When the AI modifies a file via a tool call (e.g., \`update_code\`), the VFS automatically reconciles the "Imagined" state with your physical persistence layer (Google Drive or GitHub). This ensures that your "Predicted" code becomes a persistent sovereign asset. The VFS acts as the bridge between the AI's imagination and your physical reality.
+When the AI modifies a file via a tool call (e.g., ${"`"}update_code${"`"}), the VFS automatically reconciles the "Imagined" state with your physical persistence layer (Google Drive or GitHub). This ensures that your "Predicted" code becomes a persistent sovereign asset. The VFS acts as the bridge between the AI's imagination and your physical reality.
             `
         },
         {

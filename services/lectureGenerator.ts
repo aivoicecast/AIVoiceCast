@@ -1,11 +1,17 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import { GeneratedLecture, TranscriptItem, NeuralLensAudit } from '../types';
+import { GeneratedLecture, TranscriptItem, NeuralLensAudit, DependencyNode, DependencyLink } from '../types';
 import { getCloudCachedLecture, saveCloudCachedLecture, deductCoins, AI_COSTS, incrementApiUsage, getUserProfile } from './firestoreService';
 import { auth } from './firebaseConfig';
 import { generateContentUid, generateSecureId } from '../utils/idUtils';
 import { logger } from './logger';
 
 const MAX_RETRIES = 3;
+
+/**
+ * ARCHITECTURAL BREADCRUMB: NEURAL_PRISM_CORE_PROTOCOL
+ * Implements the Stateful Refraction Loop.
+ * Uses SHA-256 Content Fingerprinting for logical consistency.
+ */
 
 /**
  * Computes a deterministic SHA-256 fingerprint for the lecture content.
@@ -68,23 +74,41 @@ export async function summarizeLectureForContext(lecture: GeneratedLecture): Pro
 }
 
 /**
- * Repairs PlantUML syntax errors using Gemini 3 Flash.
+ * Repairs PlantUML or Mermaid syntax errors using Gemini 3 Flash.
  */
-export async function repairPlantUML(brokenPuml: string): Promise<string> {
+export async function repairPlantUML(brokenSource: string, format: 'puml' | 'mermaid' = 'mermaid'): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: `The following PlantUML code has a syntax error. Fix it using the SIMPLEST possible syntax (e.g. node "Label" as ID). Maintain original logical relationships. Return ONLY fixed code without markdown wrappers.\n\nCODE:\n${brokenPuml}`,
+            contents: `The following ${format === 'puml' ? 'PlantUML' : 'Mermaid.js'} code has a syntax error. 
+            TASK: 
+            1. Find the error.
+            2. Re-write the code using the ABSOLUTE SIMPLEST syntax.
+            3. For Mermaid: Use 'graph TD'. Use node IDs like 'A[Label]'.
+            4. For PlantUML: Use 'rectangle' for nodes.
+            5. Return ONLY the corrected code without markdown wrappers.
+            
+            BROKEN CODE:
+            ${brokenSource}`,
             config: { thinkingConfig: { thinkingBudget: 0 } }
         });
-        return response.text?.replace(/```plantuml\n|```/g, '').trim() || brokenPuml;
+        return response.text?.replace(/```(plantuml|mermaid)\n|```/g, '').trim() || brokenSource;
     } catch (e) {
-        return brokenPuml;
+        return brokenSource;
     }
 }
 
-export async function performNeuralLensAudit(lecture: GeneratedLecture, language: 'en' | 'zh' = 'en'): Promise<NeuralLensAudit | null> {
+/**
+ * ARCHITECTURAL BREADCRUMB: NEURAL_LENS_INSTRUMENTATION_PROTOCOL
+ * Implements the Shadow Agent Verification Loop.
+ * Targets Grounding Root: https://github.com/aivoicecast/AIVoiceCast
+ */
+export async function performNeuralLensAudit(
+    lecture: GeneratedLecture, 
+    language: 'en' | 'zh' = 'en',
+    force: boolean = false
+): Promise<NeuralLensAudit | null> {
     const category = 'SHADOW_AUDIT';
     const model = 'gemini-3-pro-image-preview';
     const reportUuid = generateSecureId();
@@ -98,11 +122,12 @@ export async function performNeuralLensAudit(lecture: GeneratedLecture, language
     try {
         const currentHash = await computeContentHash(lecture);
 
-        if (lecture.audit && lecture.audit.contentHash === currentHash) {
-            logger.audit(`Logic Node Validated via Fingerprint: Redundant Refraction Bypassed.`, { 
+        if (!force && lecture.audit && lecture.audit.contentHash === currentHash) {
+            logger.audit(`BYPASS [Node: ${lecture.topic}]: Fingerprint Match. Refraction Bypassed.`, { 
                 category: 'BYPASS_LEDGER', 
                 topic: lecture.topic,
-                hash: currentHash.substring(0, 8)
+                hash: currentHash.substring(0, 8),
+                integrity: 'verified'
             });
             return {
                 ...lecture.audit,
@@ -124,17 +149,24 @@ export async function performNeuralLensAudit(lecture: GeneratedLecture, language
         const systemInstruction = `You are the Shadow Agent verifier for Neural Prism.
 Your task is to perform an ADVERSARIAL AUDIT:
 1. Extract architectural concepts and represent them as a DAG logic mesh.
-2. CRITICAL SYMBOLIC PARITY: Node IDs must be uppercase (e.g. FS_SYNC).
-3. PLANTUML SYNC: Match JSON 'id' to PlantUML aliases. Use SIMPLEST syntax: node "Label" as ID. 
-4. Avoid skinparams if unsure. Use: ID1 -> ID2 : label.
-5. AUDIT: Verify against the official repository at https://github.com/aivoicecast/AIVoiceCast.
-6. BIAS CHECK: Flag "Agreeability Bias" if the content skips technical friction for user comfort.
-7. THERMODYNAMICS: Score efficiency based on routing intent (Flash vs Pro).
+2. DEFAULT DIAGRAM: Use Mermaid.js (graph TD).
+3. LEGACY DIAGRAM: Provide PlantUML (rectangle nodes only).
+4. CRITICAL SYMBOLIC PARITY: Node IDs must be alphanumeric and simple.
+5. MERMAID SYNTAX: Use 'graph TD' as the root. Use A[Label] --> B[Label]. Avoid custom keywords.
+6. AUDIT: Verify against the official repository at https://github.com/aivoicecast/AIVoiceCast.
+7. BIAS CHECK: Flag "Agreeability Bias" if the content skips technical friction or relies on utopian claims without implementation detail.
+8. RUNTIME TRACE: Generate a Mermaid sequenceDiagram for the internal app handshakes performed.
+
 Return valid JSON.`;
 
-        logger.info(`Initiating Integrity Audit [ID: ${reportUuid.substring(0,8)}]...`, { category, reportUuid });
+        logger.info(`INIT_AUDIT [ID: ${reportUuid.substring(0,8)}]: Probing Node "${lecture.topic}"...`, { 
+            category, 
+            reportUuid,
+            topic: lecture.topic,
+            mass: `${(content.length / 1024).toFixed(2)}KB`
+        });
 
-        const { response } = await runWithDeepTelemetry(async () => {
+        const { response, latency, inputSize } = await runWithDeepTelemetry(async () => {
             return await ai.models.generateContent({
                 model,
                 contents: `AUDIT CONTENT:\n\n${content}`,
@@ -142,7 +174,6 @@ Return valid JSON.`;
                     systemInstruction, 
                     responseMimeType: 'application/json',
                     tools: [{ googleSearch: {} }], 
-                    // HIGH-REASONING CONFIG: Enable thinking for "Smart" verification
                     thinkingConfig: { thinkingBudget: 12000 },
                     responseSchema: {
                         type: Type.OBJECT,
@@ -150,7 +181,9 @@ Return valid JSON.`;
                             StructuralCoherenceScore: { type: Type.NUMBER },
                             LogicalDriftRisk: { type: Type.STRING, enum: ['Low', 'Medium', 'High'] },
                             AdversarialRobustness: { type: Type.STRING, enum: ['Low', 'Medium', 'High'] },
+                            mermaid: { type: Type.STRING },
                             plantuml: { type: Type.STRING },
+                            runtime_trace_mermaid: { type: Type.STRING },
                             graph: {
                                 type: Type.OBJECT,
                                 properties: {
@@ -194,7 +227,7 @@ Return valid JSON.`;
                                 }
                             }
                         },
-                        required: ["StructuralCoherenceScore", "LogicalDriftRisk", "AdversarialRobustness", "plantuml", "graph", "probes"]
+                        required: ["StructuralCoherenceScore", "LogicalDriftRisk", "AdversarialRobustness", "mermaid", "plantuml", "runtime_trace_mermaid", "graph", "probes"]
                     }
                 }
             });
@@ -203,6 +236,21 @@ Return valid JSON.`;
         if (!response.text) throw new Error("Null reasoning shard.");
 
         const audit = JSON.parse(response.text.replace(/^```json\s*|```\s*$/g, '').trim());
+        const usage = response.usageMetadata;
+
+        logger.success(`AUDIT_SECURED [ID: ${reportUuid.substring(0,8)}]: "${lecture.topic}" verified.`, {
+            category,
+            topic: lecture.topic,
+            model,
+            latency: Math.round(latency),
+            inputTokens: usage?.promptTokenCount,
+            outputTokens: usage?.candidatesTokenCount,
+            totalTokens: usage?.totalTokenCount,
+            inputSizeBytes: inputSize,
+            outputSizeBytes: new TextEncoder().encode(response.text).length,
+            coherence: `${audit.StructuralCoherenceScore}%`,
+            searchApplied: !!response.candidates?.[0]?.groundingMetadata
+        });
         
         return { 
             ...audit, 
@@ -215,7 +263,7 @@ Return valid JSON.`;
             contentHash: currentHash
         };
     } catch (e: any) {
-        logger.error(`Audit Fault`, e, { category, reportUuid });
+        logger.error(`Audit Fault [Node: ${lecture.topic}]`, e, { category, reportUuid });
         return null;
     }
 }
@@ -241,10 +289,13 @@ export async function generateLectureScript(
       if (cached) return cached;
     }
 
+    const preProfile = auth.currentUser ? await getUserProfile(auth.currentUser.uid) : null;
+    const preBalance = preProfile?.coinBalance || 0;
+
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Topic: "${topic}"\nKnowledge Base Context: "${channelContext}"\n${cumulativeContext ? `KNOWLEDGE ALREADY COVERED: "${cumulativeContext}"` : ''}`;
 
-    const { response } = await runWithDeepTelemetry(async () => {
+    const { response, latency, inputSize } = await runWithDeepTelemetry(async () => {
         return await ai.models.generateContent({
             model, 
             contents: prompt,
@@ -276,7 +327,8 @@ export async function generateLectureScript(
     }, "Node Refraction", category, prompt);
 
     const parsed = JSON.parse(response.text.replace(/^```json\s*|```\s*$/g, '').trim());
-    
+    const usage = response.usageMetadata;
+
     const result: GeneratedLecture = {
       uid: contentUid, 
       topic, 
@@ -288,12 +340,28 @@ export async function generateLectureScript(
     const audit = await performNeuralLensAudit(result, language);
     if (audit) result.audit = audit;
 
+    let postBalance = preBalance;
     if (auth.currentUser) {
         incrementApiUsage(auth.currentUser.uid);
-        await deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+        const updatedProfile = await deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
+        postBalance = updatedProfile?.coinBalance || (preBalance - AI_COSTS.TEXT_REFRACTION);
         await saveCloudCachedLecture(channelId || 'global', contentUid, language, result);
     }
 
+    logger.info(`CORE_SYNTHESIS: Node "${topic}" manifested.`, {
+        category,
+        model,
+        latency: Math.round(latency),
+        inputTokens: usage?.promptTokenCount,
+        outputTokens: usage?.candidatesTokenCount,
+        totalTokens: usage?.totalTokenCount,
+        inputSizeBytes: inputSize,
+        outputSizeBytes: new TextEncoder().encode(response.text).length,
+        preBalance,
+        postBalance,
+        cost: AI_COSTS.TEXT_REFRACTION
+    });
+    
     return result;
   } catch (error: any) {
     return null;
