@@ -1,4 +1,3 @@
-
 export type SubscriptionTier = 'free' | 'pro';
 export type ChannelVisibility = 'public' | 'private' | 'group';
 export type ReaderTheme = 'slate' | 'light' | 'dark' | 'sepia';
@@ -44,14 +43,16 @@ export interface NeuralLensAudit {
     links: DependencyLink[];
   };
   probes: AdversarialProbe[];
-  coherenceScore: number; // For backward compatibility with existing UI components
+  coherenceScore: number; 
   StructuralCoherenceScore: number;
   LogicalDriftRisk: 'Low' | 'Medium' | 'High';
   AdversarialRobustness: 'Low' | 'Medium' | 'High';
   plantuml?: string;
-  driftRisk: 'Low' | 'Medium' | 'High'; // Legacy support
-  robustness: 'Low' | 'Medium' | 'High'; // Legacy support
+  driftRisk: 'Low' | 'Medium' | 'High'; 
+  robustness: 'Low' | 'Medium' | 'High'; 
   timestamp: number;
+  version?: string;
+  reportUuid?: string;
 }
 
 export interface GeneratedLecture {
@@ -65,7 +66,6 @@ export interface GeneratedLecture {
   audit?: NeuralLensAudit;
 }
 
-// ... remaining interfaces ...
 export interface Comment {
   id: string;
   userId: string;
@@ -268,7 +268,7 @@ export interface Attachment {
   name?: string;
 }
 
-export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view' | 'pdf_signer' | 'badge_studio' | 'badge_viewer' | 'resume' | 'scribe_studio' | 'cloud_sql_inspector' | 'mock_interview' | 'neural_lens';
+export type ViewID = 'dashboard' | 'directory' | 'podcast_detail' | 'live_session' | 'docs' | 'code_studio' | 'whiteboard' | 'blog' | 'chat' | 'careers' | 'calendar' | 'mentorship' | 'recordings' | 'check_designer' | 'check_viewer' | 'shipping_labels' | 'icon_generator' | 'notebook_viewer' | 'card_workshop' | 'card_viewer' | 'mission' | 'firestore_debug' | 'coin_wallet' | 'graph_studio' | 'story' | 'privacy' | 'user_guide' | 'bible_study' | 'scripture_ingest' | 'groups' | 'book_studio' | 'feedback_manager' | 'firestore_inspector' | 'public_channel_inspector' | 'my_channel_inspector' | 'cloud_debug' | 'debug_view' | 'pdf_signer' | 'badge_studio' | 'badge_viewer' | 'resume' | 'scribe_studio' | 'mock_interview' | 'neural_lens';
 
 export interface Group {
   id: string;

@@ -1,9 +1,8 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import { GeneratedLecture, TranscriptItem, NeuralLensAudit } from '../types';
 import { getCloudCachedLecture, saveCloudCachedLecture, deductCoins, AI_COSTS, incrementApiUsage, getUserProfile } from './firestoreService';
 import { auth } from './firebaseConfig';
-import { generateContentUid } from '../utils/idUtils';
+import { generateContentUid, generateSecureId } from '../utils/idUtils';
 import { logger } from './logger';
 
 const MAX_RETRIES = 3;
@@ -60,8 +59,9 @@ export async function summarizeLectureForContext(lecture: GeneratedLecture): Pro
 
 export async function performNeuralLensAudit(lecture: GeneratedLecture, language: 'en' | 'zh' = 'en'): Promise<NeuralLensAudit | null> {
     const category = 'SHADOW_AUDIT';
-    // Upgrade to gemini-3-pro-image-preview for googleSearch support
     const model = 'gemini-3-pro-image-preview';
+    const reportUuid = generateSecureId();
+    const version = "12.5.0-PULSE";
     
     if (!lecture.sections || lecture.sections.length === 0) {
         logger.error("Shadow Audit Refused: Empty logic node.", null, { category });
@@ -93,6 +93,8 @@ Your task is to:
 5. GROUNDING: If URLs (GitHub/Docs) are found in the content, use the googleSearch tool to VERIFY claims against live technical truth.
 Return strictly valid JSON.`;
 
+        logger.info(`Initiating Neural Refraction Audit [ID: ${reportUuid.substring(0,8)}]...`, { category, reportUuid });
+
         const { response, attempts, latency, inputSize } = await runWithDeepTelemetry(async () => {
             return await ai.models.generateContent({
                 model,
@@ -100,7 +102,7 @@ Return strictly valid JSON.`;
                 config: { 
                     systemInstruction, 
                     responseMimeType: 'application/json',
-                    tools: [{ googleSearch: {} }], // Enable Grounding Bridge
+                    tools: [{ googleSearch: {} }], 
                     responseSchema: {
                         type: Type.OBJECT,
                         properties: {
@@ -159,7 +161,6 @@ Return strictly valid JSON.`;
 
         if (!response.text) throw new Error("Null reasoning shard.");
 
-        // Log Grounding Citations for Observability
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
         if (groundingChunks && groundingChunks.length > 0) {
             const uris = groundingChunks.map((c: any) => c.web?.uri).filter(Boolean);
@@ -168,24 +169,25 @@ Return strictly valid JSON.`;
         
         const audit = JSON.parse(response.text.replace(/^```json\s*|```\s*$/g, '').trim());
         
-        logger.audit(`Shadow Audit Verified: ${lecture.topic}`, { 
-            category, latency, model, retryCount: attempts,
-            inputTokens: response.usageMetadata?.promptTokenCount,
-            outputTokens: response.usageMetadata?.candidatesTokenCount,
-            inputSizeBytes: inputSize, 
-            outputSizeBytes: new TextEncoder().encode(response.text).length
-        });
-        
-        // Map for backward compatibility
-        return { 
+        const finalAudit: NeuralLensAudit = { 
             ...audit, 
             coherenceScore: audit.StructuralCoherenceScore,
             driftRisk: audit.LogicalDriftRisk,
             robustness: audit.AdversarialRobustness,
-            timestamp: Date.now() 
+            timestamp: Date.now(),
+            version,
+            reportUuid
         };
+
+        logger.audit(`Shadow Audit Secured: ${lecture.topic}`, { 
+            category, latency, model, reportUuid, version,
+            inputTokens: response.usageMetadata?.promptTokenCount,
+            outputTokens: response.usageMetadata?.candidatesTokenCount
+        });
+        
+        return finalAudit;
     } catch (e: any) {
-        console.error("[ShadowAudit] Fault:", e);
+        logger.error(`Shadow Audit Fault [ID: ${reportUuid.substring(0,8)}]`, e, { category, reportUuid });
         return null;
     }
 }
@@ -271,7 +273,6 @@ export async function generateLectureScript(
         return null;
     }
     
-    // GUARANTEE: Ensure sections array is never missing
     const result: GeneratedLecture = {
       uid: contentUid, 
       topic, 
@@ -283,12 +284,9 @@ export async function generateLectureScript(
     };
 
     if (result.sections.length === 0) {
-        logger.warn(`Zero-Section Fragment detected for ${topic}. Attempting heuristic repair...`);
-        // Basic repair: inject a placeholder so the Neural Lens doesn't crash
         result.sections = [{ speaker: 'Teacher', text: "Logical synchronization in progress. Please refresh the node." }];
     }
     
-    // Automatic reasoning verification
     const audit = await performNeuralLensAudit(result, language);
     if (audit) result.audit = audit;
 
@@ -301,9 +299,7 @@ export async function generateLectureScript(
     logger.success(`Refactor Step Secured: ${topic}`, { 
         category, latency, model, retryCount: attempts,
         inputTokens: response.usageMetadata?.promptTokenCount,
-        outputTokens: response.usageMetadata?.candidatesTokenCount,
-        inputSizeBytes: inputSize, 
-        outputSizeBytes: new TextEncoder().encode(text).length
+        outputTokens: response.usageMetadata?.candidatesTokenCount
     });
 
     return result;
