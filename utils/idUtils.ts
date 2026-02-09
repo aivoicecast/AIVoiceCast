@@ -1,3 +1,4 @@
+
 /**
  * Generates a URL-safe, cryptographically secure 44-character ID.
  * Based on 32 bytes of randomness (256-bit), matching high-security document URI formats.
@@ -36,8 +37,8 @@ export async function generateContentUid(topic: string, context: string, lang: s
 /**
  * Deep Atomic Cloner:
  * Manually clones objects to a maximum depth while stripping all non-serializable 
- * and circular references. Hardened for v9.8.0 with aggressive minified 
- * constructor scrubbing (Y, Ka, Ra, etc.) to prevent circular JSON errors.
+ * and circular references. Hardened for v12.2.1 with aggressive minified 
+ * constructor scrubbing and WeakSet tracking to prevent circular JSON errors.
  */
 function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = new WeakSet()): any {
     // 1. Primitives and Null
@@ -45,7 +46,7 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = n
         return val;
     }
 
-    // 2. Circular Reference Guard
+    // 2. Circular Reference Guard (WeakSet is the most reliable browser mechanism)
     if (seen.has(val)) {
         return '[Circular_Ref]';
     }
@@ -75,21 +76,17 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = n
     if (val instanceof ArrayBuffer) return `[ArrayBuffer]`;
 
     // 7. Prototype/Internal SDK Instance Guard
-    // CRITICAL FIX: Aggressively scrub minified constructors (1-2 chars) which 
-    // are common in Google/Firebase obfuscated SDKs and often close circular loops.
+    // Aggressively scrub minified constructors (1-2 chars) which are common in 
+    // Google/Firebase bundles and frequently form circular parent-child loops.
     const constructorName = val.constructor?.name;
-    const isObfuscated = constructorName && constructorName.length <= 2;
-    const isSdkInternal = constructorName && (
+    if (constructorName && (
+        constructorName.length <= 2 ||
         constructorName.includes('Firebase') ||
         constructorName.includes('Google') ||
-        constructorName.includes('Firestore') ||
-        constructorName === 'Y' || 
-        constructorName === 'Ka' || 
-        constructorName === 'Ra'
-    );
-
-    if (isObfuscated || isSdkInternal) {
-        return `[Internal_SDK_Object: ${constructorName || 'Anonymous'}]`;
+        constructorName.includes('Firestore')
+    )) {
+        // Return summary instead of full internal object
+        return `[Internal_Artifact: ${constructorName}]`;
     }
 
     // 8. Recursive Clone
@@ -100,18 +97,23 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = n
     const result: any = {};
     try {
         const keys = Object.keys(val);
-        // Safety limit on number of properties to clone per level
         const propertyLimit = 50;
         const keysToProcess = keys.slice(0, propertyLimit);
 
         for (const key of keysToProcess) {
             const lowerKey = key.toLowerCase();
-            // Aggressive blacklist for properties that frequently point to complex, circular SDK objects
-            const isCircularProp = ['src', 'target', 'i', 'v', 'g', 'u', 'client', 'app', 'auth', 'firestore', 'storage', 'parent', 'window', 'document'].includes(lowerKey);
+            // Expanded blacklist for common circular triggers in minified JS
+            const isCircularProp = [
+                'src', 'target', 'i', 'v', 'g', 'u', 'client', 'app', 'auth', 
+                'firestore', 'storage', 'parent', 'window', 'document', 'node',
+                'prev', 'next'
+            ].includes(lowerKey);
+            
             const isInternalProp = key.startsWith('_');
             
             if (isCircularProp || isInternalProp) {
-                result[key] = `[Filtered_Property: ${key}]`;
+                // Return key name but not the value
+                result[key] = `[Filtered_Prop]`;
                 continue;
             }
             
@@ -138,7 +140,8 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = n
  */
 export function safeJsonStringify(obj: any, indent: number = 2): string {
     try {
-        const safeObj = atomicClone(obj);
+        // We use a private WeakSet per stringification attempt to track circularity accurately
+        const safeObj = atomicClone(obj, 0, 4, new WeakSet());
         return JSON.stringify(safeObj, null, indent);
     } catch (err) {
         return JSON.stringify({

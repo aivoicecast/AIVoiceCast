@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   ShieldCheck, Activity, BrainCircuit, Globe, 
   ChevronRight, AlertTriangle, CheckCircle2, 
@@ -7,11 +7,12 @@ import {
   ArrowLeft, Search, RefreshCw, Loader2, Info, Star, X,
   FileText, Wand2, Layers, Cpu, Sparkles, FileSearch,
   Filter, ZapOff, Fingerprint, SearchCode, Beaker, Terminal, Download, FileCode, FileDown,
-  Layout, BookOpen, ChevronDown, Signal, Library, BookText, Gauge, BarChart, History
+  Layout, BookOpen, ChevronDown, Signal, Library, BookText, Gauge, BarChart, History,
+  Maximize2, Share2, Clipboard, Share, Palette, Eye, Code, Copy
 } from 'lucide-react';
 import { collection, query, getDocs, limit, orderBy, where } from 'firebase/firestore';
-import { db } from '../services/firebaseConfig';
-import { GeneratedLecture, Channel, SubTopic, NeuralLensAudit } from '../types';
+import { db, auth } from '../services/firebaseConfig';
+import { GeneratedLecture, Channel, SubTopic, NeuralLensAudit, DependencyNode, DependencyLink } from '../types';
 import { SYSTEM_AUDIT_NODES } from '../utils/auditContent';
 import { generateLectureScript, performNeuralLensAudit, summarizeLectureForContext } from '../services/lectureGenerator';
 import { generateCurriculum } from '../services/curriculumGenerator';
@@ -19,6 +20,9 @@ import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
 import { logger } from '../services/logger';
 import { HANDCRAFTED_CHANNELS } from '../utils/initialData';
 import { SYSTEM_BOOKS } from '../utils/bookContent';
+import { saveCloudCachedLecture } from '../services/firestoreService';
+import { generateContentUid, safeJsonStringify } from '../utils/idUtils';
+import { MarkdownView } from './MarkdownView';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -36,6 +40,8 @@ interface HierarchyNode {
     priority: number;
 }
 
+type GraphTheme = 'neon-void' | 'solarized' | 'monokai-plus';
+
 export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) => {
   const [cloudAudits, setCloudAudits] = useState<GeneratedLecture[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -47,28 +53,39 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
   const [activeAudit, setActiveAudit] = useState<GeneratedLecture | null>(null);
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAuditing, setIsAuditing] = useState(false);
-  const [isDemoRunning, setIsDemoRunning] = useState(false);
+  const [isBatchAuditing, setIsBatchAuditing] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
+  
   const [activeTab, setActiveTab] = useState<'audit' | 'script' | 'holistic'>('holistic');
+  const [graphTheme, setGraphTheme] = useState<GraphTheme>('neon-void');
+  const [showPumlSource, setShowPumlSource] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [expandedSectors, setExpandedSectors] = useState<Record<string, boolean>>({
       'platform-core': true,
       'judge-deep-dive': true
   });
 
-  const dispatchLog = (text: string, type: any = 'info', meta?: any) => {
-      logger[type as keyof typeof logger](text, { category: 'NEURAL_LENS', ...meta });
+  const cycleTheme = () => {
+      const themes: GraphTheme[] = ['neon-void', 'solarized', 'monokai-plus'];
+      const next = themes[(themes.indexOf(graphTheme) + 1) % themes.length];
+      setGraphTheme(next);
+      dispatchLog(`Graph Theme cycled to: ${next}`, 'info');
   };
 
-  const loadData = async () => {
+  const dispatchLog = (text: string, type: any = 'info', meta?: any) => {
+      const safeMeta = meta ? JSON.parse(safeJsonStringify(meta)) : null;
+      logger[type as keyof typeof logger](text, safeMeta);
+  };
+
+  const loadData = useCallback(async () => {
     if (!db) {
         setLoading(false);
         return;
     }
     setLoading(true);
     try {
-        const auditQ = query(collection(db, 'lecture_cache'), orderBy('audit.timestamp', 'desc'), limit(100));
-        const channelQ = query(collection(db, 'channels'), limit(50));
+        const auditQ = query(collection(db, 'lecture_cache'), limit(200));
+        const channelQ = query(collection(db, 'channels'), limit(100));
         const [auditSnap, channelSnap] = await Promise.all([getDocs(auditQ), getDocs(channelQ)]);
 
         const audits = auditSnap.docs.map(d => d.data() as GeneratedLecture).filter(l => !!l.audit);
@@ -82,9 +99,9 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
     } finally {
         setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [loadData]);
 
   const formatScore = (score: number) => {
       if (score === undefined || score === null) return '0';
@@ -92,64 +109,159 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
       return val.toString();
   };
 
+  const generatePlantUMLFromGraph = (nodes: DependencyNode[], links: DependencyLink[]): string => {
+      if (!nodes || nodes.length === 0) return '';
+      
+      let puml = '```plantuml\n@startuml\n';
+      puml += 'skinparam backgroundColor transparent\n';
+      puml += 'skinparam defaultFontName "JetBrains Mono"\n';
+      puml += 'skinparam defaultFontSize 12\n';
+      puml += 'skinparam roundcorner 20\n';
+      puml += 'skinparam shadowing false\n';
+      puml += 'skinparam ArrowThickness 3.5\n'; // Ultra clear lines
+
+      // Theme-specific logic
+      if (graphTheme === 'neon-void') {
+          puml += 'skinparam ArrowColor #00f2ff\n';
+          puml += 'skinparam ArrowFontColor #00f2ff\n';
+          puml += 'skinparam ArrowFontSize 11\n';
+          puml += 'skinparam componentStyle rectangle\n';
+          puml += 'skinparam NoteBackgroundColor #1e1b4b\n';
+          puml += 'skinparam NoteBorderColor #6366f1\n\n';
+      } else if (graphTheme === 'solarized') {
+          puml += 'skinparam ArrowColor #cb4b16\n';
+          puml += 'skinparam ArrowFontColor #586e75\n';
+          puml += 'skinparam ArrowFontSize 11\n';
+          puml += 'skinparam componentStyle rectangle\n\n';
+      } else if (graphTheme === 'monokai-plus') {
+          puml += 'skinparam ArrowColor #a6e22e\n';
+          puml += 'skinparam ArrowFontColor #f92672\n';
+          puml += 'skinparam ArrowFontSize 12\n\n';
+      }
+
+      const nodeColors = {
+          'neon-void': { component: '#6366f1', metric: '#10b981', concept: '#06b6d4', text: '#ffffff' },
+          'solarized': { component: '#268bd2', metric: '#859900', concept: '#b58900', text: '#fdf6e3' },
+          'monokai-plus': { component: '#66d9ef', metric: '#e6db74', concept: '#ae81ff', text: '#f8f8f2' }
+      }[graphTheme];
+
+      nodes.forEach(node => {
+          const cleanLabel = node.label.replace(/"/g, "'");
+          const safeId = node.id.replace(/[^a-zA-Z0-9]/g, '_');
+          const color = nodeColors[node.type] || nodeColors.concept;
+          
+          if (node.type === 'component') {
+              puml += `component "${cleanLabel}" as ${safeId} ${color}\n`;
+          } else if (node.type === 'metric') {
+              puml += `queue "${cleanLabel}" as ${safeId} ${color}\n`;
+          } else {
+              puml += `node "${cleanLabel}" as ${safeId} ${color}\n`;
+          }
+      });
+
+      puml += '\n';
+
+      links.forEach(link => {
+          const src = link.source.replace(/[^a-zA-Z0-9]/g, '_');
+          const tgt = link.target.replace(/[^a-zA-Z0-9]/g, '_');
+          const lbl = link.label ? ` : "${link.label}"` : '';
+          
+          // Apply bold high-contrast arrows
+          const arrowColor = {
+              'neon-void': '#00f2ff',
+              'solarized': '#cb4b16',
+              'monokai-plus': '#a6e22e'
+          }[graphTheme];
+
+          puml += `${src} -[${arrowColor},bold]-> ${tgt}${lbl}\n`;
+      });
+
+      puml += '@enduml\n```';
+      return puml;
+  };
+
+  const activePlantUML = useMemo(() => {
+      if (!activeAudit?.audit?.graph) return '';
+      return generatePlantUMLFromGraph(activeAudit.audit.graph.nodes, activeAudit.audit.graph.links);
+  }, [activeAudit, graphTheme]);
+
   const hierarchy = useMemo(() => {
     const sectors: Record<string, HierarchyNode> = {};
-    const getChan = (id: string) => channels.find(c => c.id === id) || HANDCRAFTED_CHANNELS.find(c => c.id === id);
+    const allAvailableChannels = [...HANDCRAFTED_CHANNELS, ...channels];
 
-    [...HANDCRAFTED_CHANNELS, ...channels].forEach(c => {
+    allAvailableChannels.forEach(c => {
         if (!sectors[c.id]) {
             sectors[c.id] = { id: c.id, title: c.title, description: c.description, shards: [], type: 'podcast', priority: c.id === 'judge-deep-dive' ? 100 : 0 };
         }
     });
-
     SYSTEM_BOOKS.forEach(b => {
         if (!sectors[b.id]) {
             sectors[b.id] = { id: b.id, title: b.title, description: b.subtitle, shards: [], type: 'book', priority: b.id === 'platform-core' ? 100 : 0 };
         }
     });
 
+    const neuralRegistryMap = new Map<string, GeneratedLecture>();
     [...SYSTEM_AUDIT_NODES, ...cloudAudits].forEach(item => {
-        if (!item?.topic) return;
-        const parentId = (item as any).channelId || (item as any).bookId || 'system-artifacts';
-        if (!sectors[parentId]) {
-            sectors[parentId] = { id: parentId, title: 'System Shards', description: 'Internal platform logic.', shards: [], type: 'podcast', priority: 0 };
-        }
-        sectors[parentId].shards.push({ ...item, status: 'audited' });
+        if (item?.topic) neuralRegistryMap.set(item.topic, item);
     });
 
-    Object.entries(SPOTLIGHT_DATA).forEach(([chanId, data]) => {
-        if (!sectors[chanId]) {
-            const chan = getChan(chanId);
-            sectors[chanId] = { id: chanId, title: chan?.title || chanId, description: chan?.description || '', shards: [], type: 'podcast', priority: chanId === 'judge-deep-dive' ? 100 : 0 };
+    const findParentIdByTopic = (topic: string): string => {
+        for (const [id, data] of Object.entries(SPOTLIGHT_DATA)) {
+            if (data.lectures[topic]) return id;
+            if (data.curriculum.some(ch => ch.subTopics.some(st => st.title === topic))) return id;
         }
+        for (const book of SYSTEM_BOOKS) {
+            if (book.pages.some(p => p.title === topic)) return book.id;
+        }
+        for (const chan of allAvailableChannels) {
+            if (chan.chapters?.some(ch => ch.subTopics.some(st => st.title === topic))) return chan.id;
+        }
+        return 'system-artifacts';
+    };
+
+    Object.entries(SPOTLIGHT_DATA).forEach(([chanId, data]) => {
+        if (!sectors[chanId]) sectors[chanId] = { id: chanId, title: chanId, description: '', shards: [], type: 'podcast', priority: 0 };
         Object.keys(data.lectures).forEach(topic => {
-            const alreadyIn = sectors[chanId].shards.some(s => s.topic === topic);
-            if (!alreadyIn) sectors[chanId].shards.push({ topic, status: 'staged', lecture: data.lectures[topic] });
+            const auditData = neuralRegistryMap.get(topic);
+            sectors[chanId].shards.push({ topic, status: auditData ? 'audited' : 'staged', audit: auditData?.audit, sections: auditData?.sections });
         });
     });
 
     SYSTEM_BOOKS.forEach(book => {
         book.pages.forEach(page => {
-            const alreadyIn = sectors[book.id].shards.some(s => s.topic === page.title);
-            if (!alreadyIn) sectors[book.id].shards.push({ topic: page.title, status: 'ghost' });
+            const auditData = neuralRegistryMap.get(page.title);
+            sectors[book.id].shards.push({ topic: page.title, status: auditData ? 'audited' : 'ghost', audit: auditData?.audit, sections: auditData?.sections || [{ speaker: 'Teacher', text: page.content }] });
         });
     });
 
-    [...HANDCRAFTED_CHANNELS, ...channels].forEach(chan => {
+    allAvailableChannels.forEach(chan => {
         chan.chapters?.forEach(chapter => {
             chapter.subTopics.forEach(sub => {
                 const alreadyIn = sectors[chan.id].shards.some(s => s.topic === sub.title);
-                if (!alreadyIn) sectors[chan.id].shards.push({ topic: sub.title, status: 'ghost' });
+                if (!alreadyIn) {
+                    const auditData = neuralRegistryMap.get(sub.title);
+                    sectors[chan.id].shards.push({ topic: sub.title, status: auditData ? 'audited' : 'ghost', audit: auditData?.audit, sections: auditData?.sections });
+                }
             });
         });
     });
 
-    const results = Object.values(sectors).filter(s => s.shards.length > 0);
-    return results.sort((a, b) => {
-        if (a.type !== b.type) return a.type === 'book' ? -1 : 1;
-        if (a.priority !== b.priority) return b.priority - a.priority;
-        return a.title.localeCompare(b.title);
+    neuralRegistryMap.forEach((lecture, topic) => {
+        const parentId = (lecture as any).channelId || (lecture as any).bookId || findParentIdByTopic(topic);
+        if (parentId === 'system-artifacts') {
+            if (!sectors['system-artifacts']) sectors['system-artifacts'] = { id: 'system-artifacts', title: 'Independent Shards', description: 'Neural artifacts.', shards: [], type: 'podcast', priority: -1 };
+            if (!sectors['system-artifacts'].shards.some(s => s.topic === topic)) {
+                sectors['system-artifacts'].shards.push({ topic, status: 'audited', audit: lecture.audit, sections: lecture.sections });
+            }
+        }
     });
+
+    return Object.values(sectors)
+        .filter(s => s.shards.length > 0)
+        .sort((a, b) => {
+            if (a.type !== b.type) return a.type === 'book' ? -1 : 1;
+            return b.priority - a.priority || a.title.localeCompare(b.title);
+        });
   }, [cloudAudits, channels]);
 
   const filteredHierarchy = useMemo(() => {
@@ -161,48 +273,69 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
     })).filter(sector => sector.shards.length > 0 || sector.title.toLowerCase().includes(q));
   }, [hierarchy, searchQuery]);
 
-  // Aggregated Sector View
   const sectorIntegrity = useMemo(() => {
       if (!selectedSector) return null;
-      const audited = selectedSector.shards.filter(s => s.status === 'audited' && s.audit);
-      if (audited.length === 0) return { score: 0, drift: 'Unknown', robustness: 'Unknown', total: selectedSector.shards.length, audited: 0 };
+      const audited = selectedSector.shards.filter(s => !!s.audit);
       
-      const sum = audited.reduce((acc, curr) => acc + (curr.audit.coherenceScore <= 1 ? curr.audit.coherenceScore * 100 : curr.audit.coherenceScore), 0);
-      const avg = Math.round(sum / audited.length);
+      const score = audited.length === 0 ? 0 : Math.round(audited.reduce((acc, curr) => {
+          const s = curr.audit.coherenceScore || 0;
+          const normalized = s <= 1 ? s * 100 : s;
+          return acc + normalized;
+      }, 0) / audited.length);
       
       const risks = audited.map(s => s.audit.driftRisk);
       const worstRisk = risks.includes('High') ? 'High' : risks.includes('Medium') ? 'Medium' : 'Low';
       
       const robustness = audited.map(s => s.audit.robustness);
-      const avgRobustness = robustness.filter(r => r === 'High').length > audited.length / 2 ? 'High' : 'Medium';
+      const avgRobustness = robustness.filter(r => r === 'High').length >= audited.length / 2 ? 'High' : 'Medium';
 
-      // Combined Mesh
-      const allNodes = Array.from(new Set(audited.flatMap(a => a.audit.graph.nodes.map((n: any) => JSON.stringify(n))))).map(s => JSON.parse(s));
-      const allLinks = Array.from(new Set(audited.flatMap(a => a.audit.graph.links.map((l: any) => JSON.stringify(l))))).map(s => JSON.parse(s));
+      // Aggregating unique nodes and links for the composite mesh
+      const allNodesMap = new Map<string, DependencyNode>();
+      const allLinksMap = new Map<string, DependencyLink>();
+
+      audited.forEach(shard => {
+          if (shard.audit?.graph) {
+              shard.audit.graph.nodes.forEach((n: DependencyNode) => allNodesMap.set(n.id, n));
+              shard.audit.graph.links.forEach((l: DependencyLink) => {
+                  const linkKey = `${l.source}-${l.target}-${l.label}`;
+                  allLinksMap.set(linkKey, l);
+              });
+          }
+      });
 
       return {
-          score: avg,
-          drift: worstRisk,
-          robustness: avgRobustness,
+          score,
+          drift: audited.length > 0 ? worstRisk : 'Unknown',
+          robustness: audited.length > 0 ? avgRobustness : 'Unknown',
           total: selectedSector.shards.length,
           audited: audited.length,
-          mesh: { nodes: allNodes, links: allLinks },
+          mesh: { 
+              nodes: Array.from(allNodesMap.values()),
+              links: Array.from(allLinksMap.values())
+          },
           history: audited.map(s => ({ topic: s.topic, score: s.audit.coherenceScore }))
       };
   }, [selectedSector]);
+
+  const holisticPlantUML = useMemo(() => {
+      if (!sectorIntegrity?.mesh) return '';
+      // Slice for performance on composite view
+      return generatePlantUMLFromGraph(sectorIntegrity.mesh.nodes.slice(0, 35), sectorIntegrity.mesh.links.slice(0, 45));
+  }, [sectorIntegrity, graphTheme]);
 
   const handleSelectSector = (sector: HierarchyNode) => {
       setSelectedSector(sector);
       setSelectedNode(null);
       setActiveAudit(null);
       setActiveTab('holistic');
-      setExpandedSectors(prev => ({ ...prev, [sector.id]: true }));
+      setShowPumlSource(false);
+      setExpandedSectors(prev => ({ ...prev, [sector.id]: !prev[sector.id] }));
   };
 
   const handleSelectNode = (node: any) => {
     setSelectedNode(node);
-    setSelectedSector(null);
-    if (node.status === 'audited' && node.audit) {
+    setShowPumlSource(false);
+    if (node.audit) {
         setActiveAudit(node);
         setActiveTab('audit');
     } else {
@@ -211,53 +344,49 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
     }
   };
 
-  const handleTriggerAudit = async (node: any) => {
-      setIsAuditing(true);
-      setActiveAudit(null);
-      dispatchLog(`Targeting Node Identity: ${node.topic}...`, 'info');
-      
-      try {
-          let lecture: GeneratedLecture | null = null;
-          if (node.status === 'audited') lecture = node;
-          else if (node.status === 'staged' && node.lecture) lecture = node.lecture;
-          else {
-              const spotlightMatch = Object.values(SPOTLIGHT_DATA).find(data => data.lectures[node.topic]);
-              if (spotlightMatch) lecture = spotlightMatch.lectures[node.topic];
-              else {
-                  const bookMatch = SYSTEM_BOOKS.find(b => b.pages.some(p => p.title === node.topic));
-                  if (bookMatch) {
-                      const page = bookMatch.pages.find(p => p.title === node.topic);
-                      lecture = {
-                          topic: node.topic,
-                          professorName: bookMatch.author,
-                          studentName: "Staff Auditor",
-                          sections: [{ speaker: 'Teacher', text: page?.content || bookMatch.subtitle }]
-                      };
-                  }
-              }
-          }
+  const handleRegenerateSector = async () => {
+    if (!selectedSector || isBatchAuditing) return;
+    setIsBatchAuditing(true);
+    setBatchProgress({ current: 0, total: selectedSector.shards.length });
+    dispatchLog(`Initiating Batch Spectrum Audit: ${selectedSector.title}`, 'warn');
 
-          if (!lecture) {
-              const chan = channels.find(c => c.chapters?.some(ch => ch.subTopics.some(st => st.title === node.topic))) ||
-                           HANDCRAFTED_CHANNELS.find(c => c.chapters?.some(ch => ch.subTopics.some(st => st.title === node.topic)));
-              if (!chan) throw new Error("Node context missing.");
-              lecture = await generateLectureScript(node.topic, chan.description, 'en', chan.id, chan.voiceName);
-          }
+    try {
+        const shards = [...selectedSector.shards];
+        for (let i = 0; i < shards.length; i++) {
+            setBatchProgress({ current: i + 1, total: shards.length });
+            const node = shards[i];
+            
+            let lecture: GeneratedLecture | null = null;
+            if (node.sections && node.sections.length > 0) {
+                lecture = { topic: node.topic, sections: node.sections, professorName: 'Auditor', studentName: 'System' };
+            }
 
-          if (!lecture) throw new Error("AI Refraction failed.");
-          const audit = await performNeuralLensAudit(lecture);
-          if (audit) {
-              const finalized = { ...lecture, audit };
-              setActiveAudit(finalized);
-              setSelectedNode({ ...finalized, status: 'audited' });
-              dispatchLog(`Formal Handshake Finalized. Logic Integrity: ${formatScore(audit.coherenceScore)}%`, 'success');
-              loadData(); 
-          }
-      } catch (e: any) {
-          dispatchLog(`Audit Interrupted: ${e.message}`, 'error');
-      } finally {
-          setIsAuditing(false);
-      }
+            if (!lecture) {
+                const chan = channels.find(c => c.id === selectedSector.id) || HANDCRAFTED_CHANNELS.find(c => c.id === selectedSector.id);
+                if (chan) lecture = await generateLectureScript(node.topic, chan.description, 'en', chan.id, chan.voiceName);
+            }
+
+            if (lecture) {
+                const audit = await performNeuralLensAudit(lecture);
+                if (audit) {
+                    const finalized = { ...lecture, audit };
+                    shards[i] = { ...node, audit, status: 'audited' };
+                    const contentUid = await generateContentUid(node.topic, selectedSector.description || '', 'en');
+                    await saveCloudCachedLecture(selectedSector.id, contentUid, 'en', finalized);
+                    dispatchLog(`Verified & Vaulted: ${node.topic}`, 'success');
+                }
+            }
+            await new Promise(r => setTimeout(r, 600));
+        }
+        
+        setSelectedSector({ ...selectedSector, shards });
+        await loadData();
+        dispatchLog(`Spectrum Integrity Finalized for ${selectedSector.title}.`, 'success');
+    } catch (e: any) {
+        dispatchLog(`Batch Fault: ${e.message}`, 'error');
+    } finally {
+        setIsBatchAuditing(false);
+    }
   };
 
   const handleExportPDF = async () => {
@@ -278,9 +407,15 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
     }
   };
 
+  const containerBg = useMemo(() => {
+    if (graphTheme === 'solarized') return 'bg-[#fdf6e3]';
+    if (graphTheme === 'monokai-plus') return 'bg-[#272822]';
+    return 'bg-[#020617]';
+  }, [graphTheme]);
+
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-30">
+      <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
               <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>
               <div>
@@ -289,6 +424,10 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
               </div>
           </div>
           <div className="flex items-center gap-3">
+              <button onClick={cycleTheme} className="flex items-center gap-2 px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg border border-slate-700">
+                  <Palette size={14} className="text-indigo-400"/>
+                  <span className="hidden sm:inline">Scheme: {graphTheme.replace('-', ' ')}</span>
+              </button>
               <button onClick={loadData} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-all"><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /></button>
               {onOpenManual && <button onClick={onOpenManual} className="p-2 text-slate-400 hover:text-white" title="Lens Manual"><Info size={18}/></button>}
           </div>
@@ -299,7 +438,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
               <div className="p-4 border-b border-slate-800 space-y-4 bg-slate-950/40">
                   <div className="relative group">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-indigo-400" size={14}/>
-                      <input type="text" placeholder="Search sectors or shards..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-8 py-2.5 text-[10px] text-white outline-none focus:ring-1 focus:ring-indigo-500 shadow-inner"/>
+                      <input type="text" placeholder="Search sectors or shards..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-sm text-white outline-none focus:ring-1 focus:ring-indigo-500 shadow-inner"/>
                   </div>
               </div>
 
@@ -309,82 +448,97 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                           <Loader2 className="animate-spin text-indigo-500" size={24} /><span className="text-[8px] font-black uppercase text-slate-600 tracking-widest">Hydrating Ledger...</span>
                       </div>
                   ) : (
-                      <>
-                        {/* SECTION: DISCOVERY SPECTRUM */}
-                        <div className="space-y-4">
-                            <h3 className="px-3 text-[9px] font-black text-slate-500 uppercase tracking-[0.4em] flex items-center gap-2 border-b border-slate-800/50 pb-2"> Discovery Spectrum</h3>
-                            {filteredHierarchy.map((sector) => {
-                                const isFocused = selectedSector?.id === sector.id;
-                                const isExpanded = expandedSectors[sector.id];
-                                return (
-                                <div key={sector.id} className="space-y-1 px-1">
-                                    <button 
-                                      onClick={() => handleSelectSector(sector)}
-                                      className={`w-full text-left flex items-center justify-between px-3 py-3 rounded-2xl group transition-all border ${isFocused ? 'bg-indigo-600 border-indigo-400 text-white shadow-xl' : 'bg-slate-900/40 border-transparent hover:bg-slate-800/50'}`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            {sector.type === 'book' ? <BookText size={16} className={isFocused ? 'text-white' : 'text-emerald-400'}/> : <Layout size={16} className={isFocused ? 'text-white' : 'text-indigo-400'}/>}
-                                            <span className="text-[11px] font-black uppercase tracking-widest truncate max-w-[160px]">{sector.title}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[8px] font-mono font-bold opacity-60">{sector.shards.length} Nodes</span>
-                                            <ChevronRight size={14} className={`text-slate-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                                        </div>
-                                    </button>
-                                    
-                                    {isExpanded && (
-                                        <div className="pl-6 space-y-1 animate-fade-in border-l border-slate-800 ml-5 mt-1">
-                                            {sector.shards.map((shard, i) => {
-                                                const isNodeFocused = selectedNode?.topic === shard.topic;
-                                                return (
-                                                    <button 
-                                                      key={i} 
-                                                      onClick={() => handleSelectNode(shard)}
-                                                      className={`w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between ${isNodeFocused ? 'bg-slate-800 border-indigo-500 text-white shadow-lg' : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-800/40'}`}
-                                                    >
-                                                        <div className="flex items-center gap-2 min-w-0">
-                                                            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${shard.status === 'audited' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : shard.status === 'staged' ? 'bg-amber-500' : 'bg-slate-800'}`}></div>
-                                                            <span className="text-[10px] font-bold uppercase truncate">{shard.topic}</span>
-                                                        </div>
-                                                        {shard.status === 'audited' && <span className="text-[8px] font-mono font-bold opacity-60 ml-2">{formatScore(shard.audit?.coherenceScore || shard.score)}%</span>}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            )})}
-                        </div>
-                      </>
+                      <div className="space-y-4">
+                          <h3 className="px-3 text-[9px] font-black text-slate-500 uppercase tracking-[0.4em] flex items-center gap-2 border-b border-slate-800/50 pb-2"> Discovery Spectrum</h3>
+                          {filteredHierarchy.map((sector) => {
+                              const isFocused = selectedSector?.id === sector.id;
+                              const isExpanded = expandedSectors[sector.id];
+                              return (
+                              <div key={sector.id} className="space-y-1 px-1">
+                                  <button 
+                                    onClick={() => handleSelectSector(sector)}
+                                    className={`w-full text-left flex items-center justify-between px-3 py-3 rounded-2xl group transition-all border ${isFocused ? 'bg-indigo-600 border-indigo-400 text-white shadow-xl' : 'bg-slate-900/40 border-transparent hover:bg-slate-800/50'}`}
+                                  >
+                                      <div className="flex items-center gap-3">
+                                          {sector.type === 'book' ? <BookText size={16} className={isFocused ? 'text-white' : 'text-emerald-400'}/> : <Layout size={16} className={isFocused ? 'text-white' : 'text-indigo-400'}/>}
+                                          <span className="text-[11px] font-black uppercase tracking-widest truncate max-w-[160px]">{sector.title}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                          <span className="text-[8px] font-mono font-bold opacity-60">{sector.shards.length} Nodes</span>
+                                          <ChevronRight size={14} className={`text-slate-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                      </div>
+                                  </button>
+                                  
+                                  {isExpanded && (
+                                      <div className="pl-6 space-y-1 animate-fade-in border-l border-slate-800 ml-5 mt-1">
+                                          {sector.shards.map((shard, i) => {
+                                              const isNodeFocused = selectedNode?.topic === shard.topic;
+                                              const hasAudit = !!shard.audit;
+                                              return (
+                                                  <button 
+                                                    key={i} 
+                                                    onClick={() => handleSelectNode(shard)}
+                                                    className={`w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between ${isNodeFocused ? 'bg-slate-800 border-indigo-500 text-white shadow-lg' : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-800/40'}`}
+                                                  >
+                                                      <div className="flex items-center gap-2 min-w-0">
+                                                          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasAudit ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : shard.status === 'staged' ? 'bg-amber-500' : 'bg-slate-800'}`}></div>
+                                                          <span className="text-[10px] font-bold uppercase truncate">{shard.topic}</span>
+                                                      </div>
+                                                      {hasAudit && <span className="text-[8px] font-mono font-bold opacity-60 ml-2">{formatScore(shard.audit?.coherenceScore)}%</span>}
+                                                  </button>
+                                              );
+                                          })}
+                                      </div>
+                                  )}
+                              </div>
+                          )})}
+                      </div>
                   )}
               </div>
           </aside>
 
           <main className="flex-1 bg-black/20 overflow-y-auto scrollbar-hide p-8 lg:p-12 relative flex flex-col items-center">
-              {(isAuditing || isDemoRunning) && (
+              {isBatchAuditing && (
                   <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-[100] flex flex-col items-center justify-center gap-10 animate-fade-in">
                       <div className="relative">
                           <div className="w-28 h-28 border-4 border-indigo-500/10 rounded-full"></div>
                           <div className="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                           <div className="absolute inset-0 flex items-center justify-center"><Activity size={40} className="text-indigo-400 animate-pulse" /></div>
                       </div>
-                      <div className="text-center space-y-2"><h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Handshaking Shadow Agent</h3><p className="text-xs text-slate-500 font-bold uppercase tracking-[0.2em]">Verifying logic gates against structural invariants...</p></div>
+                      <div className="text-center space-y-4">
+                          <div className="space-y-1">
+                              <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Spectrum Refraction in Progress</h3>
+                              <p className="text-xs text-slate-500 font-bold uppercase tracking-[0.2em]">Auditing logical shards for: {selectedSector?.title}</p>
+                          </div>
+                          <div className="w-64 h-1.5 bg-slate-800 rounded-full overflow-hidden mx-auto">
+                              <div className="h-full bg-indigo-500 transition-all duration-500" style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}></div>
+                          </div>
+                          <p className="text-[10px] font-mono text-indigo-400 uppercase font-black">{batchProgress.current} / {batchProgress.total} Nodes Verified</p>
+                      </div>
                   </div>
               )}
 
-              {selectedSector && sectorIntegrity ? (
-                  <div className="max-w-5xl w-full mx-auto space-y-12 animate-fade-in-up">
+              {selectedSector && sectorIntegrity && activeTab === 'holistic' ? (
+                  <div id="pdf-export-content" className="max-w-5xl w-full mx-auto space-y-12 animate-fade-in-up">
                       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-800 pb-10">
                           <div className="space-y-4 text-left">
                               <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-900/30 border border-indigo-500/30 rounded-full text-indigo-400 text-[9px] font-black uppercase tracking-widest">
-                                  <Signal size={12} className="animate-pulse"/> Holistic Architectural Verification
+                                  <Signal size={12} className="animate-pulse"/> Holistic Spectrum Audit
                               </div>
                               <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">{selectedSector.title}</h2>
                               <p className="text-slate-400 text-lg max-w-xl">{selectedSector.description}</p>
+                              <div className="pt-2 flex gap-4">
+                                  <button onClick={handleRegenerateSector} disabled={isBatchAuditing} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50">
+                                      <Zap size={14} fill="currentColor"/> Regenerate Sector Integrity
+                                  </button>
+                                  <button onClick={cycleTheme} className="flex items-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
+                                      <Palette size={14}/> Cycle Scheme
+                                  </button>
+                              </div>
                           </div>
                           <div className="bg-slate-900 border border-slate-800 p-8 rounded-[3.5rem] shadow-2xl text-center relative overflow-hidden group">
                               <div className="absolute top-0 right-0 p-12 bg-emerald-500/5 blur-3xl rounded-full"></div>
-                              <p className="text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest relative z-10">Spectrum Integrity</p>
+                              <p className="text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest relative z-10">Aggregate Integrity</p>
                               <p className="text-7xl font-black text-emerald-400 italic tracking-tighter relative z-10">{sectorIntegrity.score}%</p>
                               <div className="w-full h-1 bg-slate-800 rounded-full mt-6 overflow-hidden relative z-10">
                                   <div className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)] transition-all duration-1000" style={{ width: `${sectorIntegrity.score}%` }}></div>
@@ -400,46 +554,69 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                           </div>
                           <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] flex flex-col items-center text-center gap-4">
                               <div className="p-3 bg-red-900/20 text-red-400 rounded-2xl"><Activity size={24}/></div>
-                              <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Aggregate Drift Risk</h4>
+                              <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Worst Drift Risk</h4>
                               <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${sectorIntegrity.drift === 'Low' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-950/20 text-amber-400 border-amber-500/30'}`}>{sectorIntegrity.drift} Risk</div>
                           </div>
                           <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] flex flex-col items-center text-center gap-4">
                               <div className="p-3 bg-purple-900/20 text-purple-400 rounded-2xl"><ShieldCheck size={24}/></div>
-                              <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Spectral Robustness</h4>
+                              <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Global Robustness</h4>
                               <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${sectorIntegrity.robustness === 'High' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-950/20 text-amber-400'}`}>{sectorIntegrity.robustness} Rank</div>
                           </div>
                       </div>
 
-                      <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-12 shadow-2xl relative overflow-hidden group">
-                          <div className="absolute top-0 right-0 p-24 bg-indigo-500/5 blur-[100px] rounded-full"></div>
-                          <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] mb-12 flex items-center gap-3">
-                              <Network size={18} className="text-indigo-400"/> Holistic Dependency Mesh
-                          </h4>
-                          <div className="flex flex-wrap gap-6 justify-center items-center py-6 relative z-10">
-                              {sectorIntegrity.mesh?.nodes.slice(0, 15).map((node: any) => (
-                                  <div key={node.id} className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-[1.5rem] shadow-xl flex flex-col items-center hover:border-indigo-500 transition-all group/node">
-                                      <span className="text-[8px] font-black text-slate-600 uppercase mb-1 group-hover/node:text-indigo-400 transition-colors">{node.type}</span>
-                                      <span className="text-xs font-bold text-white uppercase">{node.label}</span>
-                                  </div>
-                              ))}
+                      {/* HOLISTIC COMPOSITE MESH */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-12 shadow-2xl relative overflow-hidden group text-left">
+                          <div className="absolute top-0 right-0 p-24 bg-indigo-500/5 blur-[100px] rounded-full group-hover:bg-indigo-500/10 transition-colors"></div>
+                          <div className="flex justify-between items-center mb-12 relative z-10">
+                            <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] flex items-center gap-3">
+                                <Network size={18} className="text-indigo-400"/> Composite Dependency Mesh (Holistic)
+                            </h4>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setShowPumlSource(!showPumlSource)} className={`p-2 rounded-lg transition-all border ${showPumlSource ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-white'}`} title="View PlantUML Source">
+                                    {showPumlSource ? <Eye size={16}/> : <Code size={16}/>}
+                                </button>
+                                <button onClick={() => { if(holisticPlantUML) { navigator.clipboard.writeText(holisticPlantUML.replace(/```plantuml\n|```/g, '')); alert("Source Copied!"); } }} className="p-2 bg-slate-950 border border-slate-800 text-slate-500 hover:text-white rounded-lg" title="Copy Source">
+                                    <Copy size={16}/>
+                                </button>
+                            </div>
                           </div>
-                          <div className="mt-12 pt-8 border-t border-slate-800 grid grid-cols-2 md:grid-cols-4 gap-4">
-                              {sectorIntegrity.history?.map((h, i) => (
-                                  <div key={i} className="bg-black/20 p-4 rounded-2xl border border-white/5 space-y-2">
-                                      <p className="text-[9px] font-bold text-slate-500 truncate uppercase">{h.topic}</p>
-                                      <div className="flex items-end gap-2">
-                                          <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
-                                              <div className="h-full bg-indigo-500" style={{ width: `${formatScore(h.score)}%` }}></div>
+                          <div className={`relative z-10 ${containerBg} rounded-[2.5rem] p-8 border border-white/5 shadow-inner transition-colors duration-500`}>
+                              {holisticPlantUML ? (
+                                  showPumlSource ? (
+                                    <pre className="p-6 bg-black/60 rounded-2xl text-[10px] font-mono text-indigo-300 whitespace-pre-wrap overflow-x-auto shadow-inner leading-relaxed border border-indigo-500/20 animate-fade-in">
+                                        {holisticPlantUML.replace(/```plantuml\n|```/g, '')}
+                                    </pre>
+                                  ) : (
+                                    <div className="animate-fade-in">
+                                        <MarkdownView content={holisticPlantUML} initialTheme="dark" showThemeSwitcher={false} compact={true} />
+                                    </div>
+                                  )
+                              ) : (
+                                  <div className="py-12 flex flex-col items-center gap-4 opacity-30">
+                                      <Fingerprint size={64}/>
+                                      <p className="text-[10px] font-black uppercase tracking-widest">Mesh pending refraction</p>
+                                  </div>
+                              )}
+                          </div>
+                          {sectorIntegrity.history?.length > 0 && (
+                              <div className="mt-12 pt-8 border-t border-slate-800 grid grid-cols-2 md:grid-cols-4 gap-4">
+                                  {sectorIntegrity.history.map((h, i) => (
+                                      <div key={i} className="bg-black/20 p-4 rounded-2xl border border-white/5 space-y-2">
+                                          <p className="text-[9px] font-bold text-slate-500 truncate uppercase">{h.topic}</p>
+                                          <div className="flex items-end gap-2">
+                                              <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
+                                                  <div className="h-full bg-indigo-500" style={{ width: `${formatScore(h.score)}%` }}></div>
+                                              </div>
+                                              <span className="text-[10px] font-mono font-black text-indigo-400">{formatScore(h.score)}%</span>
                                           </div>
-                                          <span className="text-[10px] font-mono font-black text-indigo-400">{formatScore(h.score)}%</span>
                                       </div>
-                                  </div>
-                              ))}
-                          </div>
+                                  ))}
+                              </div>
+                          )}
                       </div>
                   </div>
               ) : activeAudit?.audit ? (
-                  <div className="max-w-4xl w-full mx-auto space-y-12 animate-fade-in-up">
+                  <div id="pdf-export-content" className="max-w-4xl w-full mx-auto space-y-12 animate-fade-in-up">
                       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-800 pb-8">
                           <div className="space-y-3 text-left">
                               <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">{activeAudit.topic}</h2>
@@ -447,36 +624,83 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                                   <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 shadow-inner">
                                       <button onClick={() => setActiveTab('audit')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${activeTab === 'audit' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Reasoning Mesh</button>
                                       <button onClick={() => setActiveTab('script')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${activeTab === 'script' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Source Script</button>
+                                      <button onClick={() => setActiveTab('holistic')} className="px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all text-slate-500 hover:text-slate-300">Sector Home</button>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <button onClick={cycleTheme} className="p-2 bg-slate-900 hover:bg-slate-800 text-indigo-400 rounded-xl transition-all border border-slate-700" title="Cycle Graph Colors">
+                                        <Palette size={16}/>
+                                    </button>
+                                    <button onClick={() => setShowPumlSource(!showPumlSource)} className={`p-2 rounded-xl transition-all border ${showPumlSource ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-900 border-slate-700 text-slate-500'}`} title="View Source">
+                                        <Code size={16}/>
+                                    </button>
                                   </div>
                               </div>
                           </div>
                           <div className="bg-slate-900 border border-slate-800 px-8 py-4 rounded-[2.5rem] shadow-inner text-center">
-                              <p className="text-[8px] font-black text-slate-600 uppercase mb-1 tracking-widest">Coherence Score</p>
+                              <p className="text-[8px] font-black text-slate-600 uppercase mb-1 tracking-widest">Node Integrity</p>
                               <p className="text-4xl font-black text-emerald-400 italic tracking-tighter">{formatScore(activeAudit.audit.coherenceScore)}%</p>
                           </div>
                       </div>
 
                       {activeTab === 'audit' ? (
-                        <div className="space-y-12 animate-fade-in">
+                        <div className="space-y-12 animate-fade-in text-left">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 shadow-xl flex flex-col items-center text-center gap-4 group hover:border-indigo-500/20 transition-all">
+                                <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 shadow-xl flex flex-col items-center text-center gap-4">
                                     <div className="p-3 bg-indigo-900/30 text-indigo-400 rounded-2xl"><Activity size={24}/></div>
                                     <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Logical Drift Risk</h4>
                                     <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${activeAudit.audit.driftRisk === 'Low' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-950/20 text-amber-400'}`}>{activeAudit.audit.driftRisk} Risk</div>
                                 </div>
-                                <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 shadow-xl flex flex-col items-center text-center gap-4 group hover:border-purple-500/20 transition-all">
-                                    <div className="p-3 bg-purple-900/30 text-purple-400 rounded-2xl"><ShieldCheck size={24}/></div>
+                                <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 shadow-xl flex flex-col items-center text-center gap-4">
+                                    <div className="p-3 bg-purple-900/20 text-purple-400 rounded-2xl"><ShieldCheck size={24}/></div>
                                     <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Model Robustness</h4>
                                     <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${activeAudit.audit.robustness === 'High' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-950/20 text-amber-400'}`}>{activeAudit.audit.robustness} Rank</div>
                                 </div>
                             </div>
 
+                            {/* DYNAMIC PLANTUML TOPOLOGY */}
+                            {activePlantUML && (
+                                <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-24 bg-indigo-500/5 blur-[100px] rounded-full group-hover:bg-indigo-500/10 transition-colors"></div>
+                                    <div className="flex justify-between items-center mb-10 relative z-10">
+                                        <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] flex items-center gap-3">
+                                            <Layers size={18} className="text-indigo-400"/> Logic Topology (PlantUML)
+                                        </h4>
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => setShowPumlSource(!showPumlSource)} className={`p-2 rounded-lg transition-all border ${showPumlSource ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-white'}`} title="Show Source">
+                                                {showPumlSource ? <Eye size={16}/> : <Code size={16}/>}
+                                            </button>
+                                            <button 
+                                                onClick={() => {
+                                                    const blob = new Blob([activePlantUML.replace(/```plantuml\n|```/g, '')], { type: 'text/plain' });
+                                                    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${activeAudit.topic}_topology.puml`; a.click();
+                                                }}
+                                                className="p-2 bg-slate-950 border border-slate-800 text-slate-500 hover:text-white rounded-lg transition-all"
+                                                title="Download .puml Source"
+                                            >
+                                                <FileCode size={16}/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className={`relative z-10 ${containerBg} rounded-3xl p-8 shadow-inner overflow-hidden border border-white/5 transition-colors duration-500`}>
+                                        {showPumlSource ? (
+                                            <pre className="p-6 bg-black/40 rounded-2xl text-[10px] font-mono text-emerald-400 whitespace-pre-wrap overflow-x-auto shadow-inner leading-relaxed border border-emerald-500/20 animate-fade-in">
+                                                {activePlantUML.replace(/```plantuml\n|```/g, '')}
+                                            </pre>
+                                        ) : (
+                                            <div className="flex justify-center animate-fade-in">
+                                                <MarkdownView content={activePlantUML} initialTheme="dark" showThemeSwitcher={false} compact={true} />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden group">
                                 <div className="absolute top-0 right-0 p-24 bg-indigo-500/5 blur-[100px] rounded-full group-hover:bg-indigo-500/10 transition-colors"></div>
-                                <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] mb-12 flex items-center gap-3"><Network size={18} className="text-indigo-400"/> Reasoning Dependency Mesh</h4>
+                                <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] mb-12 flex items-center gap-3"><Network size={18} className="text-indigo-400"/> Conceptual Shards</h4>
                                 <div className="flex flex-wrap gap-6 justify-center items-center py-6 relative z-10">
-                                    {activeAudit.audit.graph.nodes.map(node => (
-                                        <div key={node.id} className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-[1.5rem] shadow-xl flex flex-col items-center hover:border-indigo-500 transition-all group/node">
+                                    {activeAudit.audit.graph.nodes.map((node: any, idx: number) => (
+                                        <div key={idx} className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-[1.5rem] shadow-xl flex flex-col items-center hover:border-indigo-500 transition-all group/node">
                                             <span className="text-[8px] font-black text-slate-600 uppercase mb-1 group-hover/node:text-indigo-400 transition-colors">{node.type}</span>
                                             <span className="text-xs font-bold text-white uppercase">{node.label}</span>
                                         </div>
@@ -485,7 +709,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                             </div>
                         </div>
                       ) : (
-                        <div className="space-y-8 animate-fade-in-up">
+                        <div className="space-y-8 animate-fade-in-up text-left">
                             <div className="flex justify-between items-center bg-slate-900/40 p-6 rounded-3xl border border-white/5">
                                 <div className="flex items-center gap-4">
                                     <div className="p-3 bg-indigo-600/10 text-indigo-400 rounded-2xl border border-indigo-500/20"><FileCode size={24}/></div>
@@ -496,34 +720,42 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                                 </div>
                             </div>
                             <div className="space-y-8 max-w-2xl mx-auto pb-40">
-                                {activeAudit.sections.map((s, i) => (
+                                {activeAudit.sections && activeAudit.sections.length > 0 ? activeAudit.sections.map((s: any, i: number) => (
                                     <div key={i} className={`flex flex-col ${s.speaker === 'Teacher' ? 'items-start' : 'items-end'} group`}>
                                         <div className="flex items-center gap-2 mb-2 px-4"><span className={`text-[9px] font-black uppercase tracking-widest ${s.speaker === 'Teacher' ? 'text-indigo-400' : 'text-slate-400'}`}>{s.speaker === 'Teacher' ? activeAudit.professorName : activeAudit.studentName}</span></div>
                                         <div className={`px-6 py-4 rounded-3xl shadow-xl transition-all ${s.speaker === 'Teacher' ? 'bg-slate-900 border border-indigo-500/20 text-white rounded-tl-sm' : 'bg-slate-900/50 text-slate-300 rounded-tr-sm'}`}>
                                             <p className="text-sm leading-relaxed antialiased font-medium">{s.text}</p>
                                         </div>
                                     </div>
-                                ))}
+                                )) : (
+                                    <div className="py-20 text-center text-slate-500 italic">No transcript shards present in this node.</div>
+                                )}
                             </div>
                         </div>
                       )}
                   </div>
-              ) : selectedNode ? (
-                  <div className="max-w-xl w-full mx-auto space-y-10 animate-fade-in-up py-20 text-center">
-                        <div className="relative inline-block mb-6">
-                            <div className={`w-32 h-32 rounded-[3rem] border-4 flex items-center justify-center shadow-2xl transition-all ${selectedNode.status === 'staged' ? 'bg-amber-900/10 border-amber-500/30 text-amber-400' : 'bg-slate-900 border-slate-800 text-slate-500'}`}>
-                                {selectedNode.status === 'staged' ? <Terminal size={56} /> : <Fingerprint size={56} />}
+              ) : selectedSector ? (
+                  <div className="h-full w-full flex flex-col items-center justify-center text-center space-y-12 animate-fade-in">
+                       <div className="space-y-6">
+                            <div className="relative inline-block">
+                                <div className="w-32 h-32 bg-slate-900 border-4 border-slate-800 rounded-[3.5rem] flex items-center justify-center text-slate-600 shadow-2xl">
+                                    <Library size={64}/>
+                                </div>
+                                <div className="absolute -bottom-2 -right-2 p-3 bg-indigo-600 rounded-2xl border-4 border-slate-950 text-white shadow-xl animate-pulse"><Target size={24}/></div>
                             </div>
-                            <div className="absolute -bottom-2 -right-2 p-2 bg-indigo-600 rounded-2xl border-4 border-slate-950 text-white shadow-xl"><Zap size={20} fill="currentColor"/></div>
-                        </div>
-                        <div className="space-y-3">
-                            <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">{selectedNode.topic}</h2>
-                            <p className="text-slate-500 text-sm font-medium leading-relaxed px-10">This logic shard requires a formal audit by the Shadow Agent to verify reasoning depth.</p>
-                        </div>
-                        <button onClick={() => handleTriggerAudit(selectedNode)} disabled={isAuditing} className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase tracking-[0.2em] shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3">
-                            {isAuditing ? <Loader2 size={24} className="animate-spin" /> : <Sparkles size={24}/>}
-                            <span>Refract Logic Shard</span>
-                        </button>
+                            <div className="space-y-2">
+                                <h2 className="text-4xl font-black text-white italic uppercase tracking-tighter">{selectedSector.title}</h2>
+                                <p className="text-slate-500 max-w-md mx-auto text-sm leading-relaxed font-medium">Holistic Spectrum Integrity is currently unrefracted. Initialize a batch audit to compute sector metrics.</p>
+                            </div>
+                       </div>
+                       <button 
+                         onClick={handleRegenerateSector} 
+                         disabled={isBatchAuditing}
+                         className="px-12 py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase tracking-[0.2em] shadow-2xl shadow-indigo-900/40 transition-all active:scale-95 flex items-center gap-4"
+                       >
+                           {isBatchAuditing ? <Loader2 className="animate-spin" size={24}/> : <Sparkles size={24}/>}
+                           <span>Regenerate Spectrum Integrity</span>
+                       </button>
                   </div>
               ) : (
                   <div className="h-full flex flex-col items-center justify-center text-slate-800 space-y-12 opacity-30">

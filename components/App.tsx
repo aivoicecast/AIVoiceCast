@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -138,45 +139,35 @@ const UI_TEXT = {
     feedbackSuccess: "Feedback Refracted to AI Studio. Self-Enhancement in progress."
   },
   zh: {
-    appTitle: "神经棱镜",
-    directory: "发现",
-    search: "搜索活动...",
-    magic: "智能语音",
-    podcasts: "活动中心",
-    mission: "愿景",
-    code: "构建者工作室",
-    whiteboard: "视觉画布",
-    chat: "团队空间",
-    careers: "人才中心",
-    notebooks: "研究实验室",
-    cards: "礼物工坊",
-    icons: "品牌实验室",
-    shipping: "物流实验室",
-    checks: "财务实验室",
-    wallet: "神经资产",
-    mockInterview: "模拟面试",
-    graph: "逻辑可视化",
-    story: "项目故事",
-    bible: "经文",
-    bibleIngest: "经文录入",
-    mentorship: "专家导师",
-    docs: "文档空间",
-    bookStudio: "作家工作室",
-    proRequired: "需要 Pro 权限",
-    upgradeNow: "解锁全光谱",
-    proDesc: "20+ 专业神经工具仅限 Pro 会员使用。",
-    standardHub: "标准中心",
-    lockedSpectrum: "已锁定的神经光谱",
-    fullSpectrum: "全神经光谱",
-    verifiedMember: "Pro 会员已验证",
-    upgradeBtn: "升级解锁 24 个应用",
-    dashboard: "棱镜主页",
-    systemLog: "系统日志追踪 (RAW)",
-    diagnosticConsole: "神经诊断控制台 (探测器活跃)",
-    awaitingActivity: "等待神经 activity...",
-    featureRequest: "请求重构",
-    submitFeedback: "派遣至 AI 工作室",
-    feedbackSuccess: "反馈已折射至 AI 工作室。自我提升进行中。"
+    greeting: "欢迎回来，",
+    status: "神经连接状态：活跃",
+    balance: "资产",
+    discoverySector: "发现与知识",
+    logicSector: "逻辑与开发",
+    financeSector: "财务与物流",
+    creativeSector: "创意工作室",
+    careerSector: "职业与成长",
+    archiveSector: "存档与社区",
+    proBadge: "精英权限",
+    freeBadge: "标准",
+    launch: "启动",
+    unlockCta: "解锁专业版",
+    pulseTitle: "网络传播",
+    metricsTotal: "全球折射总数",
+    metricsHumanoid: "Optimus 枢纽已部署",
+    metricsEfficiency: "分布式指数",
+    thermoFloor: "成本归零底线",
+    judgeHeroTitle: "🔭 神经透镜：验证节点",
+    judgeHeroDesc: "前沿推理与智能观测仪器。部署 1.0 和谐率。",
+    judgeAction: "运行审计",
+    pitchAction: "启动推介",
+    judgePitchAction: "宣言",
+    visionAction: "愿景",
+    techBookAction: "技术书籍",
+    featuredTitle: "精选实验室",
+    featuredDesc: "活跃扇区",
+    reasoningAction: "推理",
+    verificationAction: "验证"
   }
 };
 
@@ -288,8 +279,11 @@ const App: React.FC = () => {
           cleanText = "[Internal Log Processing Failure - Logic Gated]"; 
       }
 
+      // CRITICAL: Sanitize meta to prevent circular dependency crashes
+      const safeMeta = meta ? JSON.parse(safeJsonStringify(meta)) : null;
+
       if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText) return;
-      logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type, meta });
+      logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type, meta: safeMeta });
   }, []);
 
   useEffect(() => {

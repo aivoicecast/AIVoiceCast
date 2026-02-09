@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ArrowLeft, BookOpen, Rocket, Sparkles, Globe, ShieldCheck, Play, Pause, Volume2, Clock, Loader2, FileText, LayoutList, Speaker, ChevronDown, Check, Zap, Trophy, Layout, Target, Beaker, BarChart3 } from 'lucide-react';
+import { ArrowLeft, BookOpen, Rocket, Sparkles, Globe, ShieldCheck, Play, Pause, Volume2, Clock, Loader2, FileText, LayoutList, Speaker, ChevronDown, Check, Zap, Trophy, Layout, Target, Beaker, BarChart3, MessageSquare, BookText, AlignLeft, Headphones } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { MarkdownView } from './MarkdownView';
 import { 
@@ -24,9 +24,11 @@ interface ProjectStoryProps {
 }
 
 type PitchVersion = 'hackathon' | 'judge' | 'vision' | 'deep-dive' | 'reasoning' | 'verification';
+type DisplayMode = 'markdown' | 'transcript';
 
 export const ProjectStory: React.FC<ProjectStoryProps> = ({ onBack }) => {
   const [activeVersion, setActiveVersion] = useState<PitchVersion>('hackathon');
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('markdown');
   const [isReading, setIsReading] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [liveVolume, setLiveVolume] = useState(0);
@@ -44,6 +46,17 @@ export const ProjectStory: React.FC<ProjectStoryProps> = ({ onBack }) => {
           case 'reasoning': return STORY_REASONING_MD;
           case 'verification': return STORY_VERIFICATION_MD;
           default: return STORY_DEEP_DIVE_MD;
+      }
+  }, [activeVersion]);
+
+  const currentTranscript = useMemo(() => {
+      switch(activeVersion) {
+          case 'hackathon': return STORY_HACKATHON_SPEAKER_SCRIPT;
+          case 'judge': return STORY_JUDGE_SPEAKER_SCRIPT;
+          case 'vision': return STORY_VISION_SPEAKER_SCRIPT;
+          case 'reasoning': return STORY_REASONING_SPEAKER_SCRIPT;
+          case 'verification': return STORY_VERIFICATION_SPEAKER_SCRIPT;
+          default: return ["Detailed technical manifest available in deep-dive mode."];
       }
   }, [activeVersion]);
 
@@ -95,14 +108,7 @@ export const ProjectStory: React.FC<ProjectStoryProps> = ({ onBack }) => {
 
       try {
           if (activeVersion !== 'deep-dive') {
-              let script: string[] = [];
-              switch(activeVersion) {
-                  case 'hackathon': script = STORY_HACKATHON_SPEAKER_SCRIPT; break;
-                  case 'judge': script = STORY_JUDGE_SPEAKER_SCRIPT; break;
-                  case 'vision': script = STORY_VISION_SPEAKER_SCRIPT; break;
-                  case 'reasoning': script = STORY_REASONING_SPEAKER_SCRIPT; break;
-                  case 'verification': script = STORY_VERIFICATION_SPEAKER_SCRIPT; break;
-              }
+              const script = currentTranscript;
               
               for (let i = 0; i < script.length; i++) {
                   if (localSession !== playbackSessionRef.current) break;
@@ -198,7 +204,7 @@ export const ProjectStory: React.FC<ProjectStoryProps> = ({ onBack }) => {
                         <h1 className="text-lg font-black tracking-widest uppercase text-white flex items-center gap-2 italic">
                             <Layout size={20} className="text-indigo-400"/> Refractive Deck
                         </h1>
-                        <p className="text-[9px] text-slate-500 font-black uppercase tracking-[0.3em]">Story Spectrums v10.8.0</p>
+                        <p className="text-[9px] text-slate-500 font-black uppercase tracking-[0.3em]">Story Spectrums v12.1.5</p>
                     </div>
                 </div>
 
@@ -233,6 +239,25 @@ export const ProjectStory: React.FC<ProjectStoryProps> = ({ onBack }) => {
                             className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeVersion === 'vision' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
                         >
                             <Rocket size={14}/> 2036
+                        </button>
+                    </div>
+
+                    <div className="h-8 w-px bg-slate-800 mx-2 hidden md:block"></div>
+
+                    <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner">
+                        <button 
+                            onClick={() => setDisplayMode('markdown')}
+                            className={`p-2 rounded-lg transition-all ${displayMode === 'markdown' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}
+                            title="Visual Markdown View"
+                        >
+                            <AlignLeft size={16}/>
+                        </button>
+                        <button 
+                            onClick={() => setDisplayMode('transcript')}
+                            className={`p-2 rounded-lg transition-all ${displayMode === 'transcript' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}
+                            title="Original Audio Transcript"
+                        >
+                            <Headphones size={16}/>
                         </button>
                     </div>
 
@@ -295,25 +320,56 @@ export const ProjectStory: React.FC<ProjectStoryProps> = ({ onBack }) => {
                         <div className="p-3 bg-slate-950 rounded-3xl shadow-2xl border border-white/5">
                             <BrandLogo size={64} className="transform hover:rotate-12 transition-transform duration-700" />
                         </div>
-                        <h2 className="text-5xl sm:text-7xl font-black italic tracking-tighter uppercase leading-none text-slate-950">
-                            {activeVersion === 'reasoning' ? 'Frontier Reasoning' : activeVersion === 'verification' ? 'Intelligence Verification' : activeVersion === 'hackathon' ? 'Judge' : activeVersion === 'judge' ? 'Startup' : activeVersion === 'vision' ? '2036 Vision' : 'Deep Dive'} <br/>
-                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600">
-                                Refraction
-                            </span>
-                        </h2>
+                        <div className="flex flex-col sm:flex-row sm:items-end justify-between w-full gap-4">
+                            <h2 className="text-5xl sm:text-7xl font-black italic tracking-tighter uppercase leading-none text-slate-950">
+                                {activeVersion === 'reasoning' ? 'Frontier Reasoning' : activeVersion === 'verification' ? 'Intelligence Verification' : activeVersion === 'hackathon' ? 'Judge' : activeVersion === 'judge' ? 'Startup' : activeVersion === 'vision' ? '2036 Vision' : 'Deep Dive'} <br/>
+                                <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600">
+                                    Refraction
+                                </span>
+                            </h2>
+                            <div className="bg-slate-900 text-white px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2 shrink-0">
+                                {displayMode === 'markdown' ? <AlignLeft size={16} className="text-indigo-400"/> : <Headphones size={16} className="text-emerald-400"/>}
+                                <span className="text-[10px] font-black uppercase tracking-widest">{displayMode === 'markdown' ? 'Visual Manifest' : 'Original Audio Script'}</span>
+                            </div>
+                        </div>
                         <div className="w-16 h-1.5 bg-indigo-600 rounded-full"></div>
                     </div>
 
-                    <div className="prose prose-slate prose-lg max-w-none antialiased shadow-2xl rounded-[2.5rem] overflow-hidden border border-slate-200">
-                        <MarkdownView content={currentContent} initialTheme="light" showThemeSwitcher={true} />
-                    </div>
+                    {displayMode === 'markdown' ? (
+                        <div className="prose prose-slate prose-lg max-w-none antialiased shadow-2xl rounded-[2.5rem] overflow-hidden border border-slate-200">
+                            <MarkdownView content={currentContent} initialTheme="light" showThemeSwitcher={true} />
+                        </div>
+                    ) : (
+                        <div className="space-y-6 animate-fade-in">
+                            <div className="bg-indigo-900/5 border border-indigo-500/10 p-8 rounded-[2.5rem] space-y-8">
+                                {currentTranscript.map((segment, idx) => (
+                                    <div key={idx} className="flex gap-8 group">
+                                        <div className="flex flex-col items-center pt-2">
+                                            <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[10px] font-black text-indigo-600 shadow-sm group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                                                {idx + 1}
+                                            </div>
+                                            <div className="w-px flex-1 bg-slate-200 mt-4 group-last:hidden"></div>
+                                        </div>
+                                        <div className="flex-1 pb-4">
+                                            <p className="text-xl text-slate-800 leading-relaxed font-serif italic selection:bg-indigo-100">
+                                                "{segment}"
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="p-6 bg-slate-900 rounded-[2rem] border border-slate-800 text-center shadow-xl">
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">End of Audio Script Shards</p>
+                            </div>
+                        </div>
+                    )}
 
                     <section className="text-center pt-24 border-t border-slate-200 mt-32 pb-32">
                         <div className="inline-flex items-center gap-3 px-6 py-2 bg-slate-950 rounded-full text-white text-[10px] font-black uppercase tracking-[0.4em] mb-10 shadow-xl">
                             <Globe size={14} className="text-indigo-400" /> Spectrum Propagation
                         </div>
                         <h3 className="text-4xl md:text-5xl font-black italic tracking-tighter uppercase mb-8 text-slate-950 leading-none">
-                            Ready to <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">Sync</span>?
+                            Ready to <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600">Sync</span>?
                         </h3>
                         <p className="text-slate-500 max-w-xl mx-auto mb-16 leading-relaxed text-lg font-medium">
                             Explore the 24-app spectrum of the Neural Prism Hub.
@@ -336,7 +392,7 @@ export const ProjectStory: React.FC<ProjectStoryProps> = ({ onBack }) => {
                             <Globe size={20} className="text-slate-900" />
                         </div>
                         <div className="text-center">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em]">Neural Lens v10.8.0-COMPLETE</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.5em]">Neural Lens v12.1.5-COMPLETE</p>
                             <p className="text-[9px] text-slate-400 font-bold italic mt-2 uppercase tracking-widest">Powered by Google Gemini // Refracted by Neural Lens.</p>
                         </div>
                     </footer>
