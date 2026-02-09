@@ -63,6 +63,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "How is the efficiency delta calculated?", answer: "Based on VRAM occupancy: 150GB for Flash vs 2.4TB for Pro clusters.", status: 'passed' }
           ],
           coherenceScore: 99,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 99,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'High',
           driftRisk: 'Low',
           robustness: 'High',
           timestamp: Date.now()
@@ -94,6 +98,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "Is re-hydration sequential or parallel?", answer: "The client-side engine uses parallel fetch promises to reconstruct the URI buffer.", status: 'passed' }
           ],
           coherenceScore: 97,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 97,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'Medium',
           driftRisk: 'Low',
           robustness: 'Medium',
           timestamp: Date.now()
@@ -124,6 +132,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "What is the cost of an idle account?", answer: "$0.00. No provisioned instances are required for the community ledger.", status: 'passed' }
           ],
           coherenceScore: 98,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 98,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'High',
           driftRisk: 'Low',
           robustness: 'High',
           timestamp: Date.now()
@@ -154,6 +166,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "What causes Agreeability Bias?", answer: "Model pressure to satisfy a user request even if it destroys existing logic invariants.", status: 'passed' }
           ],
           coherenceScore: 95,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 95,
+          LogicalDriftRisk: 'Medium',
+          AdversarialRobustness: 'High',
           driftRisk: 'Medium',
           robustness: 'High',
           timestamp: Date.now()
@@ -184,6 +200,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "Is memory safety simulated?", answer: "Yes, the model tracks stack and heap pointers conceptually to predict overflows or leaks.", status: 'passed' }
           ],
           coherenceScore: 99,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 99,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'Medium',
           driftRisk: 'Low',
           robustness: 'Medium',
           timestamp: Date.now()
@@ -214,6 +234,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "Where are videos stored?", answer: "Dispatched directly to the user's unlisted YouTube vault via OAuth.", status: 'passed' }
           ],
           coherenceScore: 98,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 98,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'High',
           driftRisk: 'Low',
           robustness: 'High',
           timestamp: Date.now()
@@ -245,6 +269,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "What prevents documentation-code lag?", answer: "Real-time search grounding against the live Git state.", status: 'passed' }
           ],
           coherenceScore: 98,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 98,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'High',
           driftRisk: 'Low',
           robustness: 'High',
           timestamp: Date.now()
@@ -278,6 +306,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "Does siloing slow down the N-Factor?", answer: "No, the BCP protocol re-hydrates shards in parallel from the common ledger regardless of personal vault choice.", status: 'passed' }
           ],
           coherenceScore: 99,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 99,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'High',
           driftRisk: 'Low',
           robustness: 'High',
           timestamp: Date.now()
@@ -308,6 +340,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "How does voting impact the score?", answer: "Member sentiment is weighted and blended into the Coherence score as a 20% correction factor.", status: 'passed' }
           ],
           coherenceScore: 96,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 96,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'High',
           driftRisk: 'Low',
           robustness: 'High',
           timestamp: Date.now()
@@ -338,6 +374,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "What is a Shadow Whisper?", answer: "A sub-100ms course correction instruction sent from the Shadow to the Lead during voice interaction.", status: 'passed' }
           ],
           coherenceScore: 99,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 99,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'High',
           driftRisk: 'Low',
           robustness: 'High',
           timestamp: Date.now()
@@ -368,6 +408,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "What is the cost floor?", answer: "Approximately $0.03 per logic shard when N > 1000.", status: 'passed' }
           ],
           coherenceScore: 95,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 95,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'Medium',
           driftRisk: 'Low',
           robustness: 'Medium',
           timestamp: Date.now()
@@ -398,6 +442,10 @@ export const JUDGE_DEEP_DIVE_CONTENT: Record<string, SpotlightChannelData> = {
             { question: "How is thermal waste measured?", answer: "TPU joules consumed per successful logic commit.", status: 'passed' }
           ],
           coherenceScore: 99,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 99,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'High',
           driftRisk: 'Low',
           robustness: 'High',
           timestamp: Date.now()

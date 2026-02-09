@@ -44,9 +44,13 @@ export interface NeuralLensAudit {
     links: DependencyLink[];
   };
   probes: AdversarialProbe[];
-  coherenceScore: number;
-  driftRisk: 'Low' | 'Medium' | 'High';
-  robustness: 'Low' | 'Medium' | 'High';
+  coherenceScore: number; // For backward compatibility with existing UI components
+  StructuralCoherenceScore: number;
+  LogicalDriftRisk: 'Low' | 'Medium' | 'High';
+  AdversarialRobustness: 'Low' | 'Medium' | 'High';
+  plantuml?: string;
+  driftRisk: 'Low' | 'Medium' | 'High'; // Legacy support
+  robustness: 'Low' | 'Medium' | 'High'; // Legacy support
   timestamp: number;
 }
 

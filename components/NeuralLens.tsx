@@ -181,6 +181,8 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
   };
 
   const activePlantUML = useMemo(() => {
+      // Favor AI-synthesized PUML string from the spec implementation
+      if (activeAudit?.audit?.plantuml) return activeAudit.audit.plantuml;
       if (!activeAudit?.audit?.graph) return '';
       return generatePlantUMLFromGraph(activeAudit.audit.graph.nodes, activeAudit.audit.graph.links);
   }, [activeAudit, graphTheme]);
@@ -278,15 +280,15 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
       const audited = selectedSector.shards.filter(s => !!s.audit);
       
       const score = audited.length === 0 ? 0 : Math.round(audited.reduce((acc, curr) => {
-          const s = curr.audit.coherenceScore || 0;
+          const s = curr.audit.coherenceScore || curr.audit.StructuralCoherenceScore || 0;
           const normalized = s <= 1 ? s * 100 : s;
           return acc + normalized;
       }, 0) / audited.length);
       
-      const risks = audited.map(s => s.audit.driftRisk);
+      const risks = audited.map(s => s.audit.driftRisk || s.audit.LogicalDriftRisk);
       const worstRisk = risks.includes('High') ? 'High' : risks.includes('Medium') ? 'Medium' : 'Low';
       
-      const robustness = audited.map(s => s.audit.robustness);
+      const robustness = audited.map(s => s.audit.robustness || s.audit.AdversarialRobustness);
       const avgRobustness = robustness.filter(r => r === 'High').length >= audited.length / 2 ? 'High' : 'Medium';
 
       // Aggregating unique nodes and links for the composite mesh
@@ -313,7 +315,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
               nodes: Array.from(allNodesMap.values()),
               links: Array.from(allLinksMap.values())
           },
-          history: audited.map(s => ({ topic: s.topic, score: s.audit.coherenceScore }))
+          history: audited.map(s => ({ topic: s.topic, score: s.audit.coherenceScore || s.audit.StructuralCoherenceScore }))
       };
   }, [selectedSector]);
 
@@ -438,7 +440,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
               <div className="p-4 border-b border-slate-800 space-y-4 bg-slate-950/40">
                   <div className="relative group">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-indigo-400" size={14}/>
-                      <input type="text" placeholder="Search sectors or shards..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-sm text-white outline-none focus:ring-1 focus:ring-indigo-500 shadow-inner"/>
+                      <input type="text" placeholder="Search sectors or shards..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-sm text-white focus:ring-1 focus:ring-indigo-500 shadow-inner"/>
                   </div>
               </div>
 
@@ -484,7 +486,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                                                           <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasAudit ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]' : shard.status === 'staged' ? 'bg-amber-500' : 'bg-slate-800'}`}></div>
                                                           <span className="text-[10px] font-bold uppercase truncate">{shard.topic}</span>
                                                       </div>
-                                                      {hasAudit && <span className="text-[8px] font-mono font-bold opacity-60 ml-2">{formatScore(shard.audit?.coherenceScore)}%</span>}
+                                                      {hasAudit && <span className="text-[8px] font-mono font-bold opacity-60 ml-2">{formatScore(shard.audit?.coherenceScore || shard.audit?.StructuralCoherenceScore)}%</span>}
                                                   </button>
                                               );
                                           })}
@@ -638,7 +640,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                           </div>
                           <div className="bg-slate-900 border border-slate-800 px-8 py-4 rounded-[2.5rem] shadow-inner text-center">
                               <p className="text-[8px] font-black text-slate-600 uppercase mb-1 tracking-widest">Node Integrity</p>
-                              <p className="text-4xl font-black text-emerald-400 italic tracking-tighter">{formatScore(activeAudit.audit.coherenceScore)}%</p>
+                              <p className="text-4xl font-black text-emerald-400 italic tracking-tighter">{formatScore(activeAudit.audit.StructuralCoherenceScore || activeAudit.audit.coherenceScore)}%</p>
                           </div>
                       </div>
 
@@ -646,14 +648,14 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
                         <div className="space-y-12 animate-fade-in text-left">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 shadow-xl flex flex-col items-center text-center gap-4">
-                                    <div className="p-3 bg-indigo-900/30 text-indigo-400 rounded-2xl"><Activity size={24}/></div>
+                                    <div className="p-3 bg-indigo-900/20 text-indigo-400 rounded-2xl"><Activity size={24}/></div>
                                     <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Logical Drift Risk</h4>
-                                    <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${activeAudit.audit.driftRisk === 'Low' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-950/20 text-amber-400'}`}>{activeAudit.audit.driftRisk} Risk</div>
+                                    <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${ (activeAudit.audit.LogicalDriftRisk || activeAudit.audit.driftRisk) === 'Low' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-950/20 text-amber-400'}`}>{activeAudit.audit.LogicalDriftRisk || activeAudit.audit.driftRisk} Risk</div>
                                 </div>
                                 <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 shadow-xl flex flex-col items-center text-center gap-4">
                                     <div className="p-3 bg-purple-900/20 text-purple-400 rounded-2xl"><ShieldCheck size={24}/></div>
                                     <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Model Robustness</h4>
-                                    <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${activeAudit.audit.robustness === 'High' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-950/20 text-amber-400'}`}>{activeAudit.audit.robustness} Rank</div>
+                                    <div className={`px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest border ${ (activeAudit.audit.AdversarialRobustness || activeAudit.audit.robustness) === 'High' ? 'bg-emerald-950/20 text-emerald-400 border-emerald-500/30' : 'bg-amber-950/20 text-amber-400'}`}>{activeAudit.audit.AdversarialRobustness || activeAudit.audit.robustness} Rank</div>
                                 </div>
                             </div>
 

@@ -1,4 +1,3 @@
-
 import { SpotlightChannelData } from '../spotlightContent';
 
 export const HACKATHON_PITCH_CONTENT: Record<string, SpotlightChannelData> = {
@@ -65,6 +64,10 @@ export const HACKATHON_PITCH_CONTENT: Record<string, SpotlightChannelData> = {
             }
           ],
           coherenceScore: 98,
+          // Added missing required properties for NeuralLensAudit
+          StructuralCoherenceScore: 98,
+          LogicalDriftRisk: 'Low',
+          AdversarialRobustness: 'High',
           driftRisk: 'Low',
           robustness: 'High',
           timestamp: Date.now()

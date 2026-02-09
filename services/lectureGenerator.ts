@@ -70,7 +70,17 @@ export async function performNeuralLensAudit(lecture: GeneratedLecture, language
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const content = lecture.sections.map(s => `${s.speaker}: ${s.text}`).join('\n');
-        const systemInstruction = `You are the Shadow Agent. Perform a formal audit of the provided reasoning chain. Return strictly valid JSON.`;
+
+        const systemInstruction = `You are implementing a structural reasoning instrumentation layer for the Neural Prism platform.
+Your task is to:
+1. Extract top 15–25 architectural concepts.
+2. Construct a directed dependency graph (GENERATES, REQUIRES, DEPENDS_ON, EXTRACTS, VALIDATES, STRESS_TESTS, COMPUTES, OPTIMIZES, ROUTES_TO).
+3. Generate strict PlantUML (Packages: Generation, Observability, Verification, Metrics).
+4. Compute metrics: 
+   Score = 100 - (5 * contradictions) - (3 * disconnected_nodes) - (2 * cycles).
+   Drift Risk: Disconnected nodes % (<15% Low, 15-30% Medium, >30% High).
+   Robustness: Simulating high-centrality node removal impact.
+Return strictly valid JSON.`;
 
         const { response, attempts, latency, inputSize } = await runWithDeepTelemetry(async () => {
             return await ai.models.generateContent({
@@ -82,9 +92,10 @@ export async function performNeuralLensAudit(lecture: GeneratedLecture, language
                     responseSchema: {
                         type: Type.OBJECT,
                         properties: {
-                            coherenceScore: { type: Type.NUMBER },
-                            driftRisk: { type: Type.STRING, enum: ['Low', 'Medium', 'High'] },
-                            robustness: { type: Type.STRING, enum: ['Low', 'Medium', 'High'] },
+                            StructuralCoherenceScore: { type: Type.NUMBER },
+                            LogicalDriftRisk: { type: Type.STRING, enum: ['Low', 'Medium', 'High'] },
+                            AdversarialRobustness: { type: Type.STRING, enum: ['Low', 'Medium', 'High'] },
+                            plantuml: { type: Type.STRING },
                             graph: {
                                 type: Type.OBJECT,
                                 properties: {
@@ -128,7 +139,7 @@ export async function performNeuralLensAudit(lecture: GeneratedLecture, language
                                 }
                             }
                         },
-                        required: ["coherenceScore", "driftRisk", "robustness", "graph", "probes"]
+                        required: ["StructuralCoherenceScore", "LogicalDriftRisk", "AdversarialRobustness", "plantuml", "graph", "probes"]
                     }
                 }
             });
@@ -146,7 +157,14 @@ export async function performNeuralLensAudit(lecture: GeneratedLecture, language
             outputSizeBytes: new TextEncoder().encode(response.text).length
         });
         
-        return { ...audit, timestamp: Date.now() };
+        // Map for backward compatibility
+        return { 
+            ...audit, 
+            coherenceScore: audit.StructuralCoherenceScore,
+            driftRisk: audit.LogicalDriftRisk,
+            robustness: audit.AdversarialRobustness,
+            timestamp: Date.now() 
+        };
     } catch (e: any) {
         console.error("[ShadowAudit] Fault:", e);
         return null;

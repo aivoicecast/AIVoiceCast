@@ -3,6 +3,67 @@ import { GeneratedLecture } from '../types';
 
 export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
   {
+    uid: 'audit-platform-000',
+    topic: '0. Executive Summary: The v12.0 Paradigm',
+    professorName: 'Lead Architect',
+    studentName: 'Resident',
+    sections: [],
+    audit: {
+      StructuralCoherenceScore: 98,
+      LogicalDriftRisk: 'Low',
+      AdversarialRobustness: 'High',
+      coherenceScore: 98,
+      driftRisk: 'Low',
+      robustness: 'High',
+      timestamp: Date.now(),
+      plantuml: "@startuml\npackage \"Generation\" {\n  [Gemini 3 Flash] as G3F\n  [Refraction Engine] as RE\n}\npackage \"Verification\" {\n  [Shadow Agent] as SA\n  [Neural Lens] as NL\n}\nG3F -> RE : Outputs Logic\nRE -> SA : Request Audit\nSA -> NL : Verifies Mesh\nNL -> [Structural Coherence] : Compute Score\n@enduml",
+      graph: {
+        nodes: [
+          { id: 'g3f', label: 'Gemini 3 Flash', type: 'component' },
+          { id: 'sa', label: 'Shadow Agent', type: 'component' },
+          { id: 'hr', label: 'Harmony Ratio', type: 'metric' }
+        ],
+        links: [
+          { source: 'g3f', target: 'sa', label: 'Audited By' }
+        ]
+      },
+      probes: [
+        { question: "Is the Harmony Ratio a fixed constant?", answer: "No, it is a dynamic thermodynamic measure of utility vs energy.", status: 'passed' }
+      ]
+    }
+  },
+  {
+    uid: 'audit-platform-006',
+    topic: '6. The Logic Mesh: PlantUML Instrumentation',
+    professorName: 'Instrumentation Lead',
+    studentName: 'Auditor',
+    sections: [],
+    audit: {
+      StructuralCoherenceScore: 99,
+      LogicalDriftRisk: 'Low',
+      AdversarialRobustness: 'High',
+      coherenceScore: 99,
+      driftRisk: 'Low',
+      robustness: 'High',
+      timestamp: Date.now(),
+      plantuml: "@startuml\npackage \"Observability\" {\n  component [PlantUML Encoder] as PE\n  component [Deflate Stream] as DS\n}\npackage \"Metrics\" {\n  queue [Coherence Score] as CS\n  queue [Drift Risk] as DR\n}\n[Gemini 3 Pro] -> PE : Logic Shards\nPE -> DS : Raw String\nDS -> [UI Renderer] : Encoded URI\n[Audit Logic] -> CS : Validates Cycles\n[Audit Logic] -> DR : Checks Orphans\n@enduml",
+      graph: {
+        nodes: [
+          { id: 'puml', label: 'PlantUML Encoder', type: 'component' },
+          { id: 'cs', label: 'Coherence Score', type: 'metric' },
+          { id: 'mesh', label: 'Logic Mesh', type: 'concept' }
+        ],
+        links: [
+          { source: 'puml', target: 'mesh', label: 'Visualizes' },
+          { source: 'mesh', target: 'cs', label: 'Inputs to' }
+        ]
+      },
+      probes: [
+        { question: "How are disconnected nodes penalized?", answer: "A 3-point penalty is applied per orphaned conceptual node.", status: 'passed' }
+      ]
+    }
+  },
+  {
     uid: 'system-judge-audit-001',
     topic: '🏆 JUDGE: Technical Audit',
     professorName: 'Lead Architect',
@@ -34,9 +95,13 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
         }
       ],
       coherenceScore: 99,
+      StructuralCoherenceScore: 99,
+      LogicalDriftRisk: 'Low',
+      AdversarialRobustness: 'High',
       driftRisk: 'Low',
       robustness: 'High',
-      timestamp: 1738252800000
+      timestamp: 1738252800000,
+      plantuml: "@startuml\nnode \"Registry (Firebase)\" as R\nnode \"Vault (Drive)\" as V\nnode \"Workflow (GitHub)\" as W\n[Sovereign Silos] ..> R\n[Sovereign Silos] ..> V\n[Sovereign Silos] ..> W\n@enduml"
     }
   },
   {
@@ -66,224 +131,12 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
         }
       ],
       coherenceScore: 97,
+      StructuralCoherenceScore: 97,
+      LogicalDriftRisk: 'Low',
+      AdversarialRobustness: 'High',
       driftRisk: 'Low',
       robustness: 'High',
       timestamp: 1738253200000
-    }
-  },
-  {
-    uid: 'system-db-audit-001',
-    topic: '🗄️ CHANNEL: Schema at Scale - The F1 Blueprint',
-    professorName: 'DB Internalist',
-    studentName: 'Architect',
-    sections: [],
-    audit: {
-      graph: {
-        nodes: [
-          { id: '1', label: 'Spanner/F1 Blueprint', type: 'concept' },
-          { id: '2', label: 'Distributed Transactions', type: 'concept' },
-          { id: '3', label: 'TrueTime Uncertainty', type: 'metric' }
-        ],
-        links: [
-          { source: '3', target: '1', label: 'Bounds' }
-        ]
-      },
-      probes: [
-        { 
-          question: "How does F1 handle schema changes?", 
-          answer: "It uses a multi-phase lease protocol to ensure no two nodes have conflicting views.",
-          status: 'passed'
-        }
-      ],
-      coherenceScore: 98,
-      driftRisk: 'Low',
-      robustness: 'Medium',
-      timestamp: 1738253300000
-    }
-  },
-  {
-    uid: 'system-linux-audit-001',
-    topic: '🐧 CHANNEL: Linux Kernel Architect',
-    professorName: 'Kernel Maintainer',
-    studentName: 'Systems Dev',
-    sections: [],
-    audit: {
-      graph: {
-        nodes: [
-          { id: '1', label: 'CFS Scheduler', type: 'component' },
-          { id: '2', label: 'vruntime', type: 'metric' },
-          { id: '3', label: 'Red-Black Tree', type: 'component' }
-        ],
-        links: [
-          { source: '3', target: '1', label: 'Underlies' }
-        ]
-      },
-      probes: [
-        { 
-          question: "Complexity of picking next task?", 
-          answer: "O(1) via the leftmost node of the Red-Black tree.",
-          status: 'passed'
-        }
-      ],
-      coherenceScore: 99,
-      driftRisk: 'Low',
-      robustness: 'High',
-      timestamp: 1738253400000
-    }
-  },
-  {
-    uid: 'system-interview-audit-001',
-    topic: '🛡️ AUDIT: DyadAI Studio (Software Interview)',
-    professorName: 'Interviewer Auditor',
-    studentName: 'Recruiter',
-    sections: [],
-    audit: {
-      graph: {
-        nodes: [
-          { id: '1', label: 'Socratic Friction', type: 'concept' },
-          { id: '2', label: 'Lead-Shadow Dyad', type: 'component' },
-          { id: '3', label: 'Evaluation Synthesis', type: 'metric' }
-        ],
-        links: [
-          { source: '2', target: '1', label: 'Implements' }
-        ]
-      },
-      probes: [
-        { 
-          question: "What is the Shadow Whisper?", 
-          answer: "A sub-100ms course correction instruction sent from the Auditor to the Interaction layer.",
-          status: 'passed'
-        }
-      ],
-      coherenceScore: 95,
-      driftRisk: 'Low',
-      robustness: 'High',
-      timestamp: 1738253500000
-    }
-  },
-  {
-    uid: 'system-guide-audit-001',
-    topic: '🌈 GUIDE: Neural Prism Platform',
-    professorName: 'System Architect',
-    studentName: 'Resident',
-    sections: [],
-    audit: {
-      graph: {
-        nodes: [
-          { id: '1', label: 'Infrastructure-Bypass', type: 'concept' },
-          { id: '2', label: 'VFS Layer', type: 'component' },
-          { id: '3', label: '10:1 Scaling Ratio', type: 'metric' }
-        ],
-        links: [
-          { source: '2', target: '1', label: 'Enables' }
-        ]
-      },
-      probes: [
-        { 
-          question: "How is code executed?", 
-          answer: "Through Heuristic Logic Tracing in Gemini 3 Flash, imagining the terminal output.",
-          status: 'passed'
-        }
-      ],
-      coherenceScore: 96,
-      driftRisk: 'Low',
-      robustness: 'Medium',
-      timestamp: 1738253600000
-    }
-  },
-  {
-    uid: 'system-bible-audit-001',
-    topic: '📖 SCRIPTURE: Neural Sanctuary',
-    professorName: 'Linguistic Auditor',
-    studentName: 'Researcher',
-    sections: [],
-    audit: {
-      graph: {
-        nodes: [
-          { id: '1', label: 'Bilingual Mapping', type: 'concept' },
-          { id: '2', label: 'Deep Hydration', type: 'component' },
-          { id: '3', label: 'Cinema Refraction', type: 'component' },
-          { id: '4', label: 'Verse-Sync Hash', type: 'metric' }
-        ],
-        links: [
-          { source: '2', target: '1', label: 'Populates' },
-          { source: '4', target: '2', label: 'Validates' },
-          { source: '3', target: '1', label: 'Visualizes' }
-        ]
-      },
-      probes: [
-        { 
-          question: "How is verse synchronization maintained?", 
-          answer: "We use a Global Audio Owner token and a Shared Cursor locking language shards to a timestamped event bus.",
-          status: 'passed'
-        }
-      ],
-      coherenceScore: 98,
-      driftRisk: 'Low',
-      robustness: 'High',
-      timestamp: 1738253100000
-    }
-  },
-  {
-    uid: 'system-book-audit-001',
-    topic: '📑 BOOK: Architectural Truth',
-    professorName: 'Neural Auditor',
-    studentName: 'Reader',
-    sections: [],
-    audit: {
-      graph: {
-        nodes: [
-          { id: '1', label: 'Instrumentation', type: 'component' },
-          { id: '2', label: 'Structural Consistency', type: 'concept' },
-          { id: '3', label: 'KV Cache Math', type: 'metric' }
-        ],
-        links: [
-          { source: '1', target: '2', label: 'Ensures' },
-          { source: '3', target: '1', label: 'Funds' }
-        ]
-      },
-      probes: [
-        { 
-          question: "Does the manifest address the 18x efficiency gap?", 
-          answer: "Yes, Chapter 1 details the RAM occupancy delta justifying the routing logic.",
-          status: 'passed'
-        }
-      ],
-      coherenceScore: 96,
-      driftRisk: 'Low',
-      robustness: 'Medium',
-      timestamp: 1738252900000
-    }
-  },
-  {
-    uid: 'system-podcast-audit-001',
-    topic: '🎙️ PODCAST: Judge Deep Dive',
-    professorName: 'Socratic Auditor',
-    studentName: 'Judge',
-    sections: [],
-    audit: {
-      graph: {
-        nodes: [
-          { id: '1', label: 'Reasoning Observability', type: 'concept' },
-          { id: '2', label: 'Shadow Agent', type: 'component' },
-          { id: '3', label: 'Deduplication', type: 'component' }
-        ],
-        links: [
-          { source: '2', target: '1', label: 'Monitors' },
-          { source: '3', target: '2', label: 'Scales' }
-        ]
-      },
-      probes: [
-        { 
-          question: "Is the Shadow Agent pattern real-time?", 
-          answer: "Yes, Sector 03 of the audio dialogue confirms it operates with a 2M token window.",
-          status: 'passed'
-        }
-      ],
-      coherenceScore: 97,
-      driftRisk: 'Low',
-      robustness: 'High',
-      timestamp: 1738253000000
     }
   }
 ];
