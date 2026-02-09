@@ -139,35 +139,45 @@ const UI_TEXT = {
     feedbackSuccess: "Feedback Refracted to AI Studio. Self-Enhancement in progress."
   },
   zh: {
-    greeting: "欢迎回来，",
-    status: "神经连接状态：活跃",
-    balance: "资产",
-    discoverySector: "发现与知识",
-    logicSector: "逻辑与开发",
-    financeSector: "财务与物流",
-    creativeSector: "创意工作室",
-    careerSector: "职业与成长",
-    archiveSector: "存档与社区",
-    proBadge: "精英权限",
-    freeBadge: "标准",
-    launch: "启动",
-    unlockCta: "解锁专业版",
-    pulseTitle: "网络传播",
-    metricsTotal: "全球折射总数",
-    metricsHumanoid: "Optimus 枢纽已部署",
-    metricsEfficiency: "分布式指数",
-    thermoFloor: "成本归零底线",
-    judgeHeroTitle: "🔭 神经透镜：验证节点",
-    judgeHeroDesc: "前沿推理与智能观测仪器。部署 1.0 和谐率。",
-    judgeAction: "运行审计",
-    pitchAction: "启动推介",
-    judgePitchAction: "宣言",
-    visionAction: "愿景",
-    techBookAction: "技术书籍",
-    featuredTitle: "精选实验室",
-    featuredDesc: "活跃扇区",
-    reasoningAction: "推理",
-    verificationAction: "验证"
+    appTitle: "神经棱镜",
+    directory: "发现", 
+    search: "搜索活动...",
+    magic: "智能语音",
+    podcasts: "活动中心",
+    mission: "愿景",
+    code: "构建者工作室",
+    whiteboard: "视觉画布",
+    chat: "团队空间",
+    careers: "人才中心",
+    notebooks: "研究实验室",
+    cards: "礼物工坊",
+    icons: "品牌实验室",
+    shipping: "物流实验室",
+    checks: "财务实验室",
+    wallet: "神经资产",
+    mockInterview: "模拟面试",
+    graph: "逻辑可视化",
+    story: "项目故事",
+    bible: "经文",
+    bibleIngest: "经文录入",
+    mentorship: "专家导师",
+    docs: "文档空间",
+    bookStudio: "作家工作室",
+    proRequired: "需要 Pro 权限",
+    upgradeNow: "解锁全光谱",
+    proDesc: "20+ 专业神经工具仅限 Pro 会员使用。",
+    standardHub: "标准中心",
+    lockedSpectrum: "已锁定的神经光谱",
+    fullSpectrum: "全神经光谱",
+    verifiedMember: "Pro 会员已验证",
+    upgradeBtn: "升级解锁 24 个应用",
+    dashboard: "棱镜主页",
+    systemLog: "系统日志追踪 (RAW)",
+    diagnosticConsole: "神经诊断控制台 (探测器活跃)",
+    awaitingActivity: "等待神经 activity...",
+    featureRequest: "请求重构",
+    submitFeedback: "派遣至 AI 工作室",
+    feedbackSuccess: "反馈已折射至 AI 工作室。自我提升进行中。"
   }
 };
 
@@ -225,11 +235,17 @@ const App: React.FC = () => {
   const [activeViewID, setActiveViewID] = useState<ViewID>(() => {
     const params = new URLSearchParams(window.location.search);
     const v = params.get('view') as ViewID;
-    return v || 'dashboard';
+    if (v) return v;
+    // Routing shorthand for shared code sessions
+    if (params.get('session')) return 'code_studio';
+    return 'dashboard';
   });
 
   const [activeChannelId, setActiveChannelId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('channelId'));
   const [activeItemId, setActiveItemId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('id'));
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('session'));
+  const [activeAccessKey, setActiveAccessKey] = useState<string | null>(() => new URLSearchParams(window.location.search).get('key'));
+
   const [isAppsMenuOpen, setIsAppsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
@@ -271,6 +287,7 @@ const App: React.FC = () => {
           } else if (text instanceof Error) {
               cleanText = `ERROR: ${text.message}\nSTACK: ${text.stack || 'No stack.'}`;
           } else if (text !== null && typeof text === 'object') {
+              // Enhanced safeJsonStringify with path tracking for better debugging
               cleanText = safeJsonStringify(text); 
           } else {
               cleanText = String(text);
@@ -280,7 +297,16 @@ const App: React.FC = () => {
       }
 
       // CRITICAL: Sanitize meta to prevent circular dependency crashes
-      const safeMeta = meta ? JSON.parse(safeJsonStringify(meta)) : null;
+      // Use JSON.parse(safeJsonStringify) to flatten any remaining circularity
+      let safeMeta = null;
+      if (meta) {
+          try {
+              // If meta looks like a User or other circular SDK object, safeJsonStringify handles it
+              safeMeta = JSON.parse(safeJsonStringify(meta));
+          } catch(e) {
+              safeMeta = { error: "Meta sanitization failure" };
+          }
+      }
 
       if (logBufferRef.current.length > 0 && logBufferRef.current[0].text === cleanText) return;
       logBufferRef.current.unshift({ id: Math.random().toString(), time: new Date().toLocaleTimeString(), text: cleanText, type, meta: safeMeta });
@@ -292,7 +318,19 @@ const App: React.FC = () => {
         if (text) addSystemLog(text, type || 'info', meta);
     };
     window.addEventListener('neural-log', handleGlobalLog);
-    return () => window.removeEventListener('neural-log', handleGlobalLog);
+
+    // Trap global unhandled errors for trace analysis
+    const handleGlobalError = (event: ErrorEvent) => {
+        if (event.message?.includes('Converting circular structure to JSON')) {
+            addSystemLog(`CRITICAL: Circular JSON fault trapped. Trace: ${event.message}`, 'error', { category: 'SYSTEM_FAULT' });
+        }
+    };
+    window.addEventListener('error', handleGlobalError);
+
+    return () => {
+        window.removeEventListener('neural-log', handleGlobalLog);
+        window.removeEventListener('error', handleGlobalError);
+    };
   }, [addSystemLog]);
 
   const [currentUser, setCurrentUser] = useState<any>(() => getSovereignSession().user);
@@ -351,6 +389,8 @@ const App: React.FC = () => {
     setActiveViewID(target);
     setActiveChannelId(params.channelId || null);
     setActiveItemId(params.id || null);
+    setActiveSessionId(params.session || null);
+    setActiveAccessKey(params.key || null);
     setIsAppsMenuOpen(false); 
     setIsUserMenuOpen(false);
     
@@ -370,7 +410,8 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleGlobalResize = () => {
         const isSmall = window.innerWidth < 768;
-        if (isSmall && activeViewID === 'dashboard') {
+        // Bypassing mobile force-redirect if a specific workspace is being targeted
+        if (isSmall && activeViewID === 'dashboard' && !activeSessionId) {
             handleSetViewState('directory');
             addSystemLog("Mobile Refraction Triggered: Switching to Podcast Feed Layout.", "info");
         }
@@ -378,7 +419,7 @@ const App: React.FC = () => {
     window.addEventListener('resize', handleGlobalResize);
     handleGlobalResize();
     return () => window.removeEventListener('resize', handleGlobalResize);
-  }, [activeViewID, handleSetViewState, addSystemLog]);
+  }, [activeViewID, activeSessionId, handleSetViewState, addSystemLog]);
 
   const handleVote = useCallback(async (id: string, type: 'like' | 'dislike', e: React.MouseEvent) => {
     e.stopPropagation();
@@ -505,7 +546,12 @@ const App: React.FC = () => {
     addSystemLog("Sovereignty Protocols Active (v12.2.0-N-FACTOR).", "info");
     if (!auth) { setAuthLoading(false); return; }
     const unsub = onAuthStateChanged(auth, async (u) => {
-        if (u) { setCurrentUser(u); syncUserProfile(u).catch(console.error); }
+        if (u) { 
+            // PREVENT CIRCULAR LEAK: Log only specific user properties
+            addSystemLog(`Identity Handshake: @${u.displayName || 'User'} verified.`, 'success');
+            setCurrentUser(u); 
+            syncUserProfile(u).catch(console.error); 
+        }
         else { setCurrentUser(null); setUserProfile(null); }
         setAuthLoading(false);
     });
@@ -519,16 +565,25 @@ const App: React.FC = () => {
           if(s.exists()) {
               const profile = s.data() as UserProfile;
               setUserProfile(prev => {
-                  if (!prev || 
+                  if (!prev) return profile;
+
+                  // SAFE ARRAY COMPARISON: 
+                  // Avoid JSON.stringify for background state sync to prevent uncaught circular errors.
+                  const arraysMatch = (a?: string[], b?: string[]) => {
+                      if (!a || !b) return a === b;
+                      if (a.length !== b.length) return false;
+                      return a.every((v, i) => v === b[i]);
+                  };
+
+                  const hasChanged = 
                       prev.coinBalance !== profile.coinBalance || 
                       prev.subscriptionTier !== profile.subscriptionTier ||
                       prev.publicKey !== profile.publicKey ||
                       prev.certificate !== profile.certificate ||
-                      JSON.stringify(prev.likedChannelIds) !== JSON.stringify(profile.likedChannelIds) ||
-                      JSON.stringify(prev.bookmarkedChannelIds) !== JSON.stringify(profile.bookmarkedChannelIds)) {
-                      return profile;
-                  }
-                  return prev;
+                      !arraysMatch(prev.likedChannelIds, profile.likedChannelIds) ||
+                      !arraysMatch(prev.bookmarkedChannelIds, profile.bookmarkedChannelIds);
+
+                  return hasChanged ? profile : prev;
               });
               if (profile.languagePreference && profile.languagePreference !== language) setLanguage(profile.languagePreference);
           }
@@ -625,7 +680,7 @@ const App: React.FC = () => {
     else setIsPricingModalOpen(true);
   }, [isProMember]);
 
-  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Abundance Spectrum (v12.2.0)...</span></div>;
+  if (authLoading) return <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4"><Loader2 className="animate-spin text-indigo-500" size={32} /><span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Spectrum (v9.0.0)...</span></div>;
   if (!currentUser && !PUBLIC_VIEWS.includes(activeViewID)) return <LoginPage onMissionClick={() => handleSetViewState('mission')} onStoryClick={() => handleSetViewState('story')} onPrivacyClick={() => handleSetViewState('privacy')} onResumeClick={() => handleSetViewState('resume')} />;
 
   const getLogColor = (type: SystemLogMsg['type']) => {
@@ -658,7 +713,7 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
-      <div className="h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans relative border-b border-white/5">
+      <div className="h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden relative border-b border-white/5">
         <header className="min-h-[4rem] pt-[env(safe-area-inset-top)] border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-4 shrink-0 z-50 backdrop-blur-xl">
            <div className="flex items-center gap-3">
               <div className="relative">
@@ -709,7 +764,21 @@ const App: React.FC = () => {
                 {activeViewID === 'podcast_detail' && activeChannel && ( <PodcastDetail channel={activeChannel} onBack={handleDetailBack} onStartLiveSession={handleStartLiveSession} language={language} currentUser={currentUser} userProfile={userProfile} onUpdateChannel={handleUpdateChannel} isProMember={isProMember} /> )}
                 {activeViewID === 'live_session' && liveSessionParams && ( <LiveSession channel={liveSessionParams.channel} onEndSession={() => handleSetViewState(liveSessionParams.returnTo || 'directory')} language={language} initialContext={liveSessionParams.context} recordingEnabled={liveSessionParams.recordingEnabled} lectureId={liveSessionParams.bookingId} recordScreen={liveSessionParams.recordScreen} recordCamera={liveSessionParams.recordCamera} activeSegment={liveSessionParams.activeSegment} recordingDuration={liveSessionParams.recordingDuration} interactionEnabled={liveSessionParams.interactionEnabled} recordingTarget={liveSessionParams.recordingTarget} sessionTitle={liveSessionParams.sessionTitle} /> )}
                 {activeViewID === 'docs' && ( <div className="p-8 max-w-5xl mx-auto h-full overflow-y-auto"><DocumentList onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('docs')} /></div> )}
-                {activeViewID === 'code_studio' && ( <CodeStudio onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} userProfile={userProfile} onSessionStart={()=>{}} onSessionStop={()=>{}} onStartLiveSession={(chan, ctx) => handleStartLiveSession(chan, ctx)} isProMember={isProMember} onOpenManual={() => setManualViewId('code_studio')} /> )}
+                {activeViewID === 'code_studio' && ( 
+                  <CodeStudio 
+                    key={activeSessionId || 'new'}
+                    onBack={() => handleSetViewState('dashboard')} 
+                    currentUser={currentUser} 
+                    userProfile={userProfile} 
+                    onSessionStart={(id) => setActiveSessionId(id)} 
+                    onSessionStop={() => setActiveSessionId(null)} 
+                    onStartLiveSession={(chan, ctx) => handleStartLiveSession(chan, ctx)} 
+                    isProMember={isProMember} 
+                    onOpenManual={() => setManualViewId('code_studio')}
+                    sessionId={activeSessionId || undefined}
+                    accessKey={activeAccessKey || undefined}
+                  /> 
+                )}
                 {activeViewID === 'whiteboard' && ( <div className="h-full overflow-hidden flex flex-col"><div className="flex-1"><Whiteboard onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('whiteboard')} /></div></div> )}
                 {activeViewID === 'blog' && ( <div className="h-full overflow-y-auto"><BlogView currentUser={currentUser} onBack={() => handleSetViewState('dashboard')} onOpenManual={() => setManualViewId('blog')} /></div> )}
                 {activeViewID === 'chat' && ( <WorkplaceChat onBack={() => handleSetViewState('dashboard')} currentUser={currentUser} onOpenManual={() => setManualViewId('chat')} /> )}

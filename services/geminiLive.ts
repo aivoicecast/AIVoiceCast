@@ -1,6 +1,9 @@
 
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
+// Fix: safeJsonStringify is not exported from audioUtils, it resides in idUtils
 import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
+// Fix: added correct import for safeJsonStringify
+import { safeJsonStringify } from '../utils/idUtils';
 
 export interface LiveConnectionCallbacks {
   onOpen: () => void;
@@ -40,10 +43,23 @@ export class GeminiLiveService {
   private isPlayingResponse: boolean = false;
   private speakingTimer: any = null;
   private isActive: boolean = false;
-  private heartbeatInterval: any = null;
 
-  private dispatchLog(text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') {
-      window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `[LiveAPI] ${text}`, type } }));
+  private dispatchLog(text: string, type: 'info' | 'success' | 'warn' | 'error' | 'trace' | 'input' | 'output' = 'info', meta?: any) {
+      // PRE-FLIGHT SANITIZATION:
+      // Ensure metadata dispatched to the global bus is never circular.
+      // This prevents environment-level JSON conversion errors in AI Studio.
+      let safeMeta = null;
+      if (meta) {
+          try {
+              safeMeta = JSON.parse(safeJsonStringify(meta));
+          } catch(e) {
+              safeMeta = { error: "Serialization Fault", category: meta?.category };
+          }
+      }
+
+      window.dispatchEvent(new CustomEvent('neural-log', { 
+          detail: { text: `[LiveAPI] ${text}`, type, meta: safeMeta } 
+      }));
   }
 
   public async initializeAudio() {
@@ -63,7 +79,7 @@ export class GeminiLiveService {
   async connect(voiceName: string, systemInstruction: string, callbacks: LiveConnectionCallbacks, tools?: any, externalStream?: MediaStream) {
     try {
       this.isActive = true;
-      this.dispatchLog(`Initiating Handshake for ID: ${this.id}`, 'info');
+      this.dispatchLog(`Initiating Handshake for Session ID: ${this.id}`, 'info');
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -95,7 +111,7 @@ export class GeminiLiveService {
       };
 
       if (tools) {
-          config.tools = Array.isArray(tools) ? Array.isArray(tools[0]) ? tools : [tools] : [tools];
+          config.tools = tools; 
       }
 
       this.sessionPromise = ai.live.connect({
@@ -104,16 +120,15 @@ export class GeminiLiveService {
         callbacks: {
           onopen: () => {
             if (!this.isActive) return;
-            this.dispatchLog(`WebSocket Tunnel Open: ${modelId}`, 'success');
+            this.dispatchLog(`WebSocket Tunnel Open: ${modelId}`, 'success', { category: 'LIVE_API' });
             this.startAudioInput(callbacks.onVolumeUpdate);
-            this.startHeartbeat();
             callbacks.onOpen();
           },
           onmessage: async (message: LiveServerMessage) => {
             if (!this.isActive) return;
             
             if (message.toolCall) {
-                this.dispatchLog(`Tool Call Received: ${message.toolCall.functionCalls.map(f => f.name).join(', ')}`, 'info');
+                this.dispatchLog(`Tool Call Inbound: ${message.toolCall.functionCalls.map(f => f.name).join(', ')}`, 'input', { category: 'LIVE_API', meta: message.toolCall });
                 callbacks.onToolCall?.(message.toolCall);
             }
             
@@ -155,8 +170,7 @@ export class GeminiLiveService {
                         this.sources.add(source);
                         this.nextStartTime += audioBuffer.duration;
                     } catch (e: any) {
-                        this.dispatchLog(`Audio Processing Fault: ${e.message}`, 'error');
-                        console.error("[LiveService] Audio processing error", e);
+                        this.dispatchLog(`Audio Stream Fault: ${e.message}`, 'error');
                     }
                 }
                 
@@ -166,7 +180,7 @@ export class GeminiLiveService {
             }
 
             if (message.serverContent?.interrupted) {
-                this.dispatchLog(`Signal Interruption Detected. Flushing buffer.`, 'warn');
+                this.dispatchLog(`Interruption Detected. Clearing Audio Pipeline.`, 'warn', { category: 'LIVE_API' });
                 this.stopAllSources();
                 this.nextStartTime = 0;
                 this.isPlayingResponse = false;
@@ -179,7 +193,7 @@ export class GeminiLiveService {
           onclose: (e: any) => {
             if (!this.isActive) return;
             const wasIntentional = !this.session;
-            this.dispatchLog(`WebSocket Tunnel Closed. Reason: ${e?.reason || 'Unknown'}`, wasIntentional ? 'info' : 'error');
+            this.dispatchLog(`WebSocket Tunnel Closed. Code: ${e?.code || '---'} Reason: ${e?.reason || 'Protocol Termination'}`, wasIntentional ? 'info' : 'error', { category: 'LIVE_API' });
             this.cleanup();
             if (!wasIntentional) {
                callbacks.onClose(e?.reason || "WebSocket closed unexpectedly", e?.code);
@@ -187,7 +201,7 @@ export class GeminiLiveService {
           },
           onerror: (e: any) => {
             if (!this.isActive) return;
-            this.dispatchLog(`Critical Transport Error: ${e?.message || String(e)}`, 'error');
+            this.dispatchLog(`Critical Transport Error: ${e?.message || String(e)}`, 'error', { category: 'LIVE_API' });
             this.cleanup();
             const errMsg = e?.message || String(e);
             callbacks.onError(errMsg);
@@ -198,30 +212,19 @@ export class GeminiLiveService {
       this.session = await this.sessionPromise;
     } catch (error: any) {
       this.isActive = false;
-      this.dispatchLog(`Handshake Terminal Fault: ${error?.message || String(error)}`, 'error');
+      this.dispatchLog(`Handshake Terminal Fault: ${error?.message || String(error)}`, 'error', { category: 'LIVE_API' });
       callbacks.onError(error?.message || String(error));
       this.cleanup();
       throw error;
     }
   }
 
-  private startHeartbeat() {
-    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
-    // Increased frequency for better session stability
-    this.heartbeatInterval = setInterval(() => {
-        if (this.session && this.isActive) {
-            this.sessionPromise?.then((session) => {
-                session.sendRealtimeInput({
-                    parts: [{ text: "[HEARTBEAT]" }]
-                });
-            });
-        }
-    }, 5000); 
-  }
-
   public sendToolResponse(functionResponses: any) {
+      // CRITICAL FIX: The Live API expects an ARRAY of responses in the functionResponses key.
+      const responsesArray = Array.isArray(functionResponses) ? functionResponses : [functionResponses];
+      this.dispatchLog(`Tool Response Dispatched: ${responsesArray.map(r => r.name).join(', ')}`, 'output', { category: 'LIVE_API', meta: responsesArray });
       this.sessionPromise?.then((session) => {
-          session.sendToolResponse({ functionResponses });
+          session.sendToolResponse({ functionResponses: responsesArray });
       });
   }
 
@@ -247,12 +250,13 @@ export class GeminiLiveService {
     this.processor = this.inputAudioContext.createScriptProcessor(4096, 1, 1);
     this.processor.onaudioprocess = (e) => {
       const inputData = e.inputBuffer.getChannelData(0);
-      if (this.isPlayingResponse) { onVolume(0); } else {
-          let sum = 0;
-          for(let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
-          onVolume(Math.sqrt(sum / inputData.length) * 5);
-      }
+      
+      let sum = 0;
+      for(let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
+      onVolume(Math.sqrt(sum / inputData.length) * 5);
+      
       const pcmBlob = createPcmBlob(inputData);
+      
       this.sessionPromise?.then((session) => { 
           session.sendRealtimeInput({ media: pcmBlob }); 
       });
@@ -278,7 +282,6 @@ export class GeminiLiveService {
   }
 
   private cleanup() {
-    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     this.stopAllSources();
     this.isPlayingResponse = false;
     if (this.speakingTimer) clearTimeout(this.speakingTimer);

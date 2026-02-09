@@ -36,100 +36,80 @@ export async function generateContentUid(topic: string, context: string, lang: s
 
 /**
  * Deep Atomic Cloner:
- * Manually clones objects to a maximum depth while stripping all non-serializable 
- * and circular references. Hardened for v12.2.1 with aggressive minified 
- * constructor scrubbing and WeakSet tracking to prevent circular JSON errors.
+ * Hardened to survive Google AI Studio background SDK heartbeats.
+ * Proactively strips minified constructors (Y, Ka) and circular properties (src, i).
  */
-function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = new WeakSet()): any {
+function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, path: string = 'root', seen = new WeakMap()): any {
     // 1. Primitives and Null
     if (val === null || typeof val !== 'object') {
         return val;
     }
 
-    // 2. Circular Reference Guard (WeakSet is the most reliable browser mechanism)
+    // 2. Circularity Detection via WeakMap
     if (seen.has(val)) {
-        return '[Circular_Ref]';
+        return `[Circular_Ref:${seen.get(val)}]`;
     }
     
-    // 3. Register as seen early
+    // 3. Early Constructor Check (The 'Y' and 'Ka' fix)
+    let constructorName = '';
     try {
-        seen.add(val);
+        constructorName = val.constructor?.name || '';
+        // Aggressively block minified internal Google/Firebase constructors
+        if (constructorName === 'Y' || constructorName === 'Ka' || constructorName.length <= 2) {
+            return `[Internal_SDK_Object:${constructorName}]`;
+        }
     } catch (e) {
-        return '[Ref_Locked]';
+        return '[Unreadable_Constructor]';
     }
 
-    // 4. DOM Node check (Always dangerous for JSON)
-    if (val instanceof Node || (typeof val === 'object' && 'nodeType' in val)) {
-        return `[DOM_NODE: ${val.nodeName || 'Unknown'}]`;
-    }
+    // 4. Record occurrence
+    seen.set(val, path);
 
-    // 5. Depth Guard
+    // 5. specialized built-ins
+    if (val instanceof Date) return val.toISOString();
+    if (val instanceof Error) return { name: val.name, message: val.message };
+    if (val instanceof Node) return `[DOM_Node:${val.nodeName}]`;
+    if (val instanceof Blob || val instanceof File) return `[Binary_Asset:${val.size}b]`;
+
+    // 6. Recursion limit
     if (depth >= maxDepth) {
         return '[Object_Depth_Limit]';
     }
 
-    // 6. Specialized Type Normalization
-    if (val instanceof Date) return val.toISOString();
-    if (val instanceof Error) return { message: val.message, name: val.name, stack: val.stack?.substring(0, 200) };
-    if (val instanceof Blob || val instanceof File) return `[Binary: ${val.constructor.name}(${(val as any).size} bytes)]`;
-    if (ArrayBuffer.isView(val)) return `[TypedArray]`;
-    if (val instanceof ArrayBuffer) return `[ArrayBuffer]`;
-
-    // 7. Prototype/Internal SDK Instance Guard
-    // Aggressively scrub minified constructors (1-2 chars) which are common in 
-    // Google/Firebase bundles and frequently form circular parent-child loops.
-    const constructorName = val.constructor?.name;
-    if (constructorName && (
-        constructorName.length <= 2 ||
-        constructorName.includes('Firebase') ||
-        constructorName.includes('Google') ||
-        constructorName.includes('Firestore')
-    )) {
-        // Return summary instead of full internal object
-        return `[Internal_Artifact: ${constructorName}]`;
-    }
-
-    // 8. Recursive Clone
+    // 7. Array processing
     if (Array.isArray(val)) {
-        return val.map(item => atomicClone(item, depth + 1, maxDepth, seen));
+        return val.map((v, i) => atomicClone(v, depth + 1, maxDepth, `${path}[${i}]`, seen));
     }
 
+    // 8. Object processing
     const result: any = {};
     try {
         const keys = Object.keys(val);
-        const propertyLimit = 50;
-        const keysToProcess = keys.slice(0, propertyLimit);
-
-        for (const key of keysToProcess) {
-            const lowerKey = key.toLowerCase();
-            // Expanded blacklist for common circular triggers in minified JS
-            const isCircularProp = [
-                'src', 'target', 'i', 'v', 'g', 'u', 'client', 'app', 'auth', 
-                'firestore', 'storage', 'parent', 'window', 'document', 'node',
-                'prev', 'next'
-            ].includes(lowerKey);
-            
-            const isInternalProp = key.startsWith('_');
-            
-            if (isCircularProp || isInternalProp) {
-                // Return key name but not the value
-                result[key] = `[Filtered_Prop]`;
+        // Process only first 30 keys for efficiency/safety
+        for (const key of keys.slice(0, 30)) {
+            // PROACTIVE PROPERTY BLACKLIST:
+            // 'i' and 'src' are the specific properties reported in the AI Studio circular error.
+            if (key === 'src' || key === 'i' || key === 'parent' || key === 'window' || key === 'context') {
+                result[key] = '[Filtered_Internal_Prop]';
                 continue;
             }
             
+            // Skip private/internal properties
+            if (key.startsWith('_') || key.startsWith('$')) {
+                continue;
+            }
+
             try {
-                const subVal = (val as any)[key];
-                result[key] = atomicClone(subVal, depth + 1, maxDepth, seen);
-            } catch (e) {
+                result[key] = atomicClone(val[key], depth + 1, maxDepth, `${path}.${key}`, seen);
+            } catch (err) {
                 result[key] = '[Access_Fault]';
             }
         }
-        
-        if (keys.length > propertyLimit) {
-            result['__truncated__'] = `[Truncated ${keys.length - propertyLimit} additional keys]`;
+        if (keys.length > 30) {
+            result['__trunc__'] = `${keys.length - 30} more keys`;
         }
     } catch (e) {
-        return '[Scrub_Failure]';
+        return '[Iteration_Fault]';
     }
     return result;
 }
@@ -140,13 +120,13 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, seen = n
  */
 export function safeJsonStringify(obj: any, indent: number = 2): string {
     try {
-        // We use a private WeakSet per stringification attempt to track circularity accurately
-        const safeObj = atomicClone(obj, 0, 4, new WeakSet());
+        const safeObj = atomicClone(obj, 0, 4, 'root', new WeakMap());
         return JSON.stringify(safeObj, null, indent);
     } catch (err) {
+        console.error("[Neural Core] Critical Serialization Error", err);
         return JSON.stringify({
             error: "Unserializable Artifact",
-            message: err instanceof Error ? err.message : "Internal Logic Fault"
+            details: "Check console for circularity trace."
         });
     }
 }

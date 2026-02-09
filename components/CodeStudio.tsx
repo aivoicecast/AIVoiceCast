@@ -5,7 +5,7 @@ import { ArrowLeft, Save, Plus, Github, Cloud, HardDrive, Code, X, ChevronRight,
 import { auth, db } from '../services/firebaseConfig';
 import { listCloudDirectory, saveProjectToCloud, deleteCloudItem, createCloudFolder, subscribeToCodeProject, saveCodeProject, updateCodeFile, updateCursor, claimCodeProjectLock, updateProjectActiveFile, deleteCodeFile, moveCloudFile, updateProjectAccess, sendShareNotification, deleteCloudFolderRecursive, getCloudFileContent } from '../services/firestoreService';
 import { ensureCodeStudioFolder, listDriveFiles, readDriveFile, saveToDrive, deleteDriveFile, createDriveFolder, DriveFile, moveDriveFile } from '../services/googleDriveService';
-import { connectGoogleDrive, signInWithGitHub } from '../services/authService';
+import { connectGoogleDrive, signInWithGoogle, connectGoogleDrive as connectDrive } from '../services/authService';
 import { fetchRepoInfo, fetchRepoContents, fetchFileContent, updateRepoFile, deleteRepoFile, renameRepoFile } from '../services/githubService';
 import { MarkdownView } from './MarkdownView';
 import { encodePlantUML } from '../utils/plantuml';
@@ -270,7 +270,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   // LIVE VOICE STATE
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [isAiConnected, setIsAiConnected] = useState(false);
-  const [liveVolume, setLiveVolume] = useState(0);
+  const [liveVolume, setVolume] = useState(0);
   const liveServiceRef = useRef<GeminiLiveService | null>(null);
 
   // TERMINAL STATE
@@ -308,6 +308,18 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const centerContainerRef = useRef<HTMLDivElement>(null);
   const activeFile = activeSlots[focusedSlot];
   const chatRef = useRef<Chat | null>(null);
+
+  /**
+   * Neural Linguistic Refiner:
+   * Aggressively collapses multiple spaces and ensures punctuation is properly aligned.
+   * Handles fragmented voice inputs like "He llo".
+   */
+  const refineTranscriptText = (text: string): string => {
+      return text
+          .replace(/\s+/g, ' ')               // Collapse whitespace
+          .replace(/\s+([,.!?;:])/g, '$1')    // Remove spaces before punctuation
+          .trim();
+  };
 
   // Tool Definitions
   const updateFileTool: FunctionDeclaration = {
@@ -348,18 +360,21 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     let targetPath = '';
     let content = '';
 
-    dispatchLog(`Processing VFS Tool Call: ${name}`, 'info', { category: 'VFS' });
+    dispatchLog(`VFS HANDSHAKE: Processing Tool Call [${name}]`, 'info', { category: 'VFS' });
 
     if (name === 'update_active_file') {
         const active = activeSlots[focusedSlot];
-        if (!active) return { result: "Error: No file currently focused." };
+        if (!active) {
+            dispatchLog(`VFS SYNC FAULT: No file currently focused for update.`, 'error', { category: 'VFS' });
+            return { result: "Error: No file currently focused in editor." };
+        }
         targetPath = active.path || active.name;
         content = args.new_content;
     } else if (name === 'write_file') {
         targetPath = args.path;
         content = args.content;
     } else {
-        dispatchLog(`Unknown tool requested: ${name}`, 'error', { category: 'NEURAL_CORE' });
+        dispatchLog(`VFS UNKNOWN TOOL: ${name}`, 'error', { category: 'VFS' });
         return { result: "Error: Unknown tool." };
     }
 
@@ -385,7 +400,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
         return s;
     }));
 
-    dispatchLog(`VFS Sector Resolved: ${targetPath} updated (${Math.round(content.length/1024)} KB)`, 'success', { category: 'VFS' });
+    dispatchLog(`VFS MANIFESTED: ${targetPath} updated (${Math.round(content.length/1024)} KB)`, 'success', { category: 'VFS', nodeId: targetPath });
 
     // VFS Persist
     if (activeTab === 'cloud' && currentUser) {
@@ -398,7 +413,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
         await updateCodeFile(sessionId || projectSessionId, newFile);
     }
 
-    return { result: `Success. ${targetPath} updated in workspace.` };
+    return { result: `Success. Logic node ${targetPath} manifested in user workspace.` };
   }, [activeSlots, focusedSlot, activeTab, currentUser, projectSessionId, isSharedSession, sessionId, dispatchLog]);
 
   // GitHub Repo Parsing from User Profile
@@ -407,7 +422,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       const url = userProfile.defaultRepoUrl;
       const parts = url.replace('https://github.com/', '').split('/');
       if (parts.length >= 2) {
-        dispatchLog(`Configuring GitHub Repo: ${parts[0]}/${parts[1]}`, 'info', { category: 'VFS' });
+        dispatchLog(`VFS SECTOR: Configuring GitHub Bridge [${parts[0]}/${parts[1]}]`, 'info', { category: 'VFS' });
         setProject(prev => ({
           ...prev,
           github: {
@@ -424,7 +439,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   // Sync with initial context
   useEffect(() => {
       if (initialFiles && initialFiles.length > 0) {
-          dispatchLog(`Hydrating Workspace with ${initialFiles.length} files.`, 'info', { category: 'VFS' });
+          dispatchLog(`VFS HYDRATION: Synchronizing Workspace with ${initialFiles.length} nodes.`, 'info', { category: 'VFS' });
           setProject(prev => ({ ...prev, files: initialFiles }));
           if (propActiveFilePath) {
               const file = initialFiles.find(f => f.path === propActiveFilePath);
@@ -444,7 +459,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const refreshCloudPath = useCallback(async (path: string) => { 
     if (!currentUser) return; 
     try { 
-        dispatchLog(`Refreshing Cloud Registry Path: ${path || 'root'}`, 'info', { category: 'VFS' });
+        dispatchLog(`VFS REFRESH: Polling Cloud Registry Path [${path || 'root'}]`, 'info', { category: 'VFS' });
         const items = await listCloudDirectory(path, projectSessionId); 
         setCloudItems(prev => { 
             const map = new Map(prev.map(i => [i.fullPath, i])); 
@@ -452,7 +467,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
             return Array.from(map.values()); 
         }); 
     } catch(e: any) { 
-        dispatchLog(`Cloud Refresh Failed: ${e.message}`, 'error', { category: 'VFS' });
+        dispatchLog(`VFS FAULT: Cloud Sync Failed: ${e.message}`, 'error', { category: 'VFS' });
     } 
   }, [currentUser, projectSessionId, dispatchLog]);
 
@@ -477,14 +492,14 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     if (!isExpanded && driveToken && (!node.children || node.children.length === 0)) { 
         setLoadingFolders(prev => ({ ...prev, [nodeId]: true })); 
         try { 
-            dispatchLog(`Polling Google Drive for Folder: ${node.name}`, 'info', { category: 'VAULT' });
+            dispatchLog(`VAULT HANDSHAKE: Polling Google Drive Folder [${node.name}]`, 'info', { category: 'VFS' });
             const files = await listDriveFiles(driveToken!, driveFile.id); 
             setDriveItems(prev => { 
                 const newItems = files.map(f => ({ ...f, parentId: nodeId, isLoaded: false })); 
                 return Array.from(new Map([...prev, ...newItems].map(item => [item.id, item])).values()); 
             }); 
         } catch(e: any) { 
-            dispatchLog(`Drive Poll Failed: ${e.message}`, 'error', { category: 'VAULT' });
+            dispatchLog(`VAULT FAULT: Drive Access Refused: ${e.message}`, 'error', { category: 'VFS' });
         } 
         finally { setLoadingFolders(prev => ({ ...prev, [nodeId]: false })); } 
     } 
@@ -551,13 +566,13 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     } else if (activeTab === 'github' && project.github) {
       setLoadingFolders(prev => ({ ...prev, github_root: true }));
       try {
-          dispatchLog(`Syncing GitHub manifest: ${project.github.owner}/${project.github.repo}`, 'info', { category: 'VFS' });
+          dispatchLog(`VFS SYNC: Requesting GitHub Tree [${project.github.owner}/${project.github.repo}]`, 'info', { category: 'VFS' });
           const { files, latestSha } = await fetchRepoContents(githubToken, project.github.owner, project.github.repo, project.github.branch);
           setGithubItems(files);
           setProject(prev => ({ ...prev, github: { ...prev.github!, sha: latestSha } }));
-          dispatchLog(`GitHub Sync Success. ${files.length} nodes hydrated.`, 'success', { category: 'VFS' });
+          dispatchLog(`VFS SYNC SUCCESS: ${files.length} nodes resolved.`, 'success', { category: 'VFS' });
       } catch (e: any) {
-          dispatchLog(`GitHub Sync Fault: ${e.message}`, 'error', { category: 'VFS' });
+          dispatchLog(`VFS SYNC FAULT: ${e.message}`, 'error', { category: 'VFS' });
       } finally {
           setLoadingFolders(prev => ({ ...prev, github_root: false }));
       }
@@ -573,7 +588,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     setIsTerminalOpen(true);
     setIsExecuting(true);
     setTerminalOutput(`[Neural Link] Initiating Heuristic Logic Trace for ${activeFile.name}...\n`);
-    dispatchLog(`Executing Heuristic Trace Simulation for ${activeFile.name}...`, 'info', { category: 'HEURISTIC_SIM' });
+    dispatchLog(`NEURAL CORE: Executing Trace Simulation [${activeFile.name}]`, 'info', { category: 'NEURAL_CORE' });
 
     try {
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -595,10 +610,16 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
 
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);
         setTerminalOutput(prev => prev + (response.text || 'Process exited with no output.') + `\n\n[Refraction Complete in ${duration}s]`);
-        dispatchLog(`Simulation Refracted successfully in ${duration}s.`, 'success', { category: 'HEURISTIC_SIM', latency: Number(duration) * 1000 });
+        
+        dispatchLog(`NEURAL CORE SUCCESS: Trace complete.`, 'success', { 
+            category: 'NEURAL_CORE', 
+            latency: Number(duration) * 1000,
+            inputTokens: response.usageMetadata?.promptTokenCount,
+            outputTokens: response.usageMetadata?.candidatesTokenCount
+        });
     } catch (e: any) {
         setTerminalOutput(prev => prev + `\n[CRITICAL FAULT] Simulation interrupted: ${e.message}`);
-        dispatchLog(`Simulation Logic Breach: ${e.message}`, 'error', { category: 'HEURISTIC_SIM' });
+        dispatchLog(`NEURAL CORE FAULT: ${e.message}`, 'error', { category: 'NEURAL_CORE' });
     } finally {
         setIsExecuting(false);
     }
@@ -609,7 +630,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     if (handshakeId) {
         setIsSharedSession(true);
         setActiveTab('session');
-        dispatchLog(`Establishing Persistent Session Handshake: ${handshakeId}`, 'info', { category: 'VFS' });
+        dispatchLog(`VFS HANDSHAKE: Establishing Persistent Session [${handshakeId}]`, 'info', { category: 'VFS' });
         const unsubscribe = subscribeToCodeProject(handshakeId, (remoteProject: any) => {
             setProject(prev => {
                 const mergedFiles = [...prev.files];
@@ -640,7 +661,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const handleShare = async (uids: string[], isPublic: boolean) => {
       let sid = sessionId || projectSessionId;
       let token = writeToken;
-      dispatchLog(`Updating Workspace Access Scope: ${isPublic ? 'PUBLIC' : 'RESTRICTED'}`, 'info', { category: 'VFS' });
+      dispatchLog(`VFS CONTROL: Updating Workspace Access [${isPublic ? 'PUBLIC' : 'RESTRICTED'}]`, 'info', { category: 'VFS' });
       if (!sid) {
           sid = projectSessionId;
           token = generateSecureId();
@@ -672,7 +693,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
     const fileToSave = targetFileOverride || activeFile;
     if (!fileToSave || (!fileToSave.isModified && saveStatus === 'saved')) return;
     setSaveStatus('saving');
-    dispatchLog(`Syncing ${fileToSave.name} to Sovereign Vault...`, 'info', { category: 'VAULT' });
+    dispatchLog(`VAULT SYNC: Committing [${fileToSave.name}] to Registry`, 'info', { category: 'VFS' });
     try {
         if (activeTab === 'cloud' && currentUser) {
              const lastSlash = (fileToSave.path || fileToSave.name).lastIndexOf('/');
@@ -685,10 +706,10 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
              await updateCodeFile(sessionId || projectSessionId, fileToSave);
         }
         setSaveStatus('saved');
-        dispatchLog(`Vault Sync Successful: ${fileToSave.name}`, 'success', { category: 'VAULT' });
+        dispatchLog(`VAULT SYNC SUCCESS: Node persistent.`, 'success', { category: 'VFS' });
     } catch(e: any) { 
         setSaveStatus('modified'); 
-        dispatchLog(`Vault Sync Failure: ${e.message}`, 'error', { category: 'VAULT' });
+        dispatchLog(`VAULT SYNC FAULT: ${e.message}`, 'error', { category: 'VFS' });
     }
   };
 
@@ -696,16 +717,20 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       const file = activeSlots[slotIdx];
       if (!file || isFormattingSlots[slotIdx]) return;
       setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: true }));
-      dispatchLog(`Triggering AI Code Refraction (Formatter) for ${file.name}...`, 'info', { category: 'NEURAL_CORE' });
+      dispatchLog(`NEURAL CORE: Refracting Source Layout [${file.name}]`, 'info', { category: 'NEURAL_CORE' });
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           const prompt = `expert code formatter. Reformat the following ${file.language} code. respond ONLY with code.`;
           const resp = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt + "\nCODE:\n" + file.content });
           const formatted = resp.text?.trim() || file.content;
           handleCodeChangeInSlot(formatted, slotIdx);
-          dispatchLog(`Formatting Complete for ${file.name}.`, 'success', { category: 'NEURAL_CORE' });
+          dispatchLog(`NEURAL CORE SUCCESS: Formatting finalized.`, 'success', { 
+              category: 'NEURAL_CORE',
+              inputTokens: resp.usageMetadata?.promptTokenCount,
+              outputTokens: resp.usageMetadata?.candidatesTokenCount
+          });
       } catch (e: any) { 
-          dispatchLog(`Formatting Refused: ${e.message}`, 'error', { category: 'NEURAL_CORE' });
+          dispatchLog(`NEURAL CORE REFUSED: ${e.message}`, 'error', { category: 'NEURAL_CORE' });
           console.error("Formatting failed", e); 
       } finally { setIsFormattingSlots(prev => ({ ...prev, [slotIdx]: false })); }
   };
@@ -734,7 +759,7 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
   const handleExplorerSelect = async (node: TreeNode) => {
       if (node.type === 'file') {
           let fileData: CodeFile | null = null;
-          dispatchLog(`Loading file: ${node.name} from ${activeTab} source.`, 'info', { category: 'VFS' });
+          dispatchLog(`VFS: Requesting logic node [${node.name}]`, 'info', { category: 'VFS' });
           if (activeTab === 'cloud') {
                 const item = node.data as CloudItem;
                 try {
@@ -817,12 +842,12 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
       if (!input.trim()) return;
       setChatMessages(prev => [...prev, { role: 'user', text: input }]);
       setIsChatThinking(true);
-      dispatchLog(`Neural Handshake: Dispatching user query to Gemini 3 Pro...`, 'info', { category: 'NEURAL_CORE', model: 'gemini-3-pro-preview' });
+      dispatchLog(`NEURAL CORE: Dispatching user handshake to Gemini 3 Pro`, 'info', { category: 'NEURAL_CORE', model: 'gemini-3-pro-preview' });
       
       try {
           const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
           if (!chatRef.current) {
-              const systemPrompt = `You are a Senior Code Partner. Use 'update_active_file' for modifications to focused slot or 'write_file' to manage workspace paths. PRIORITIZE tool usage over text descriptions.`;
+              const systemPrompt = `You are a Senior Code Partner. Use 'update_active_file' for modifications to focused slot or 'write_file' to manage workspace paths. PRIORITIZE tool usage over text descriptions. All code edits are manifested instantly.`;
               chatRef.current = ai.chats.create({
                 model: 'gemini-3-pro-preview',
                 config: { systemInstruction: systemPrompt, tools: codeTools }
@@ -830,7 +855,9 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           }
 
           const contextInjectedPrompt = `[FOCUSED_FILE]: ${activeFile?.name}\n[CONTENT]:\n${activeFile?.content || 'Empty'}\n\nUSER: ${input}`;
+          const startTime = Date.now();
           const resp = await chatRef.current.sendMessage({ message: contextInjectedPrompt });
+          const latency = Date.now() - startTime;
           
           if (resp.functionCalls) {
               for (const fc of resp.functionCalls) {
@@ -840,50 +867,61 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
           } else {
               setChatMessages(prev => [...prev, { role: 'ai', text: resp.text || "Handshake verified." }]);
           }
+
+          dispatchLog(`NEURAL CORE SUCCESS: Handshake finalized.`, 'success', { 
+              category: 'NEURAL_CORE',
+              latency,
+              inputTokens: resp.usageMetadata?.promptTokenCount,
+              outputTokens: resp.usageMetadata?.candidatesTokenCount
+          });
       } catch (e: any) { 
           setChatMessages(prev => [...prev, { role: 'ai', text: `Fault: ${e.message}` }]); 
-          dispatchLog(`Neural Handshake Refused: ${e.message}`, 'error', { category: 'NEURAL_CORE' });
+          dispatchLog(`NEURAL CORE REFUSED: ${e.message}`, 'error', { category: 'NEURAL_CORE' });
           chatRef.current = null; 
       } finally { setIsChatThinking(false); }
   };
 
   const handleToggleLivePartner = async () => {
     if (isLiveActive) { 
-        dispatchLog(`Disconnecting Voice Link.`, 'info', { category: 'LIVE_API' });
+        dispatchLog(`LIVE API: Disconnecting Voice Link.`, 'info', { category: 'LIVE_API' });
         liveServiceRef.current?.disconnect(); 
         setIsLiveActive(false); 
         setIsAiConnected(false); 
         return; 
     }
-    dispatchLog(`Initiating Neural Voice Link Handshake...`, 'info', { category: 'LIVE_API' });
+    dispatchLog(`LIVE API: Initiating Neural Voice Link Handshake...`, 'info', { category: 'LIVE_API' });
     const service = new GeminiLiveService();
     liveServiceRef.current = service;
-    const sysPrompt = `Senior Code Partner. Emotive interaction. use 'write_file' or 'update_active_file' for all code changes. FOCUSED: ${activeFile?.name}`;
+    const sysPrompt = `Senior Code Partner. Emotive interaction. use 'write_file' or 'update_active_file' for all code changes. FOCUSED: ${activeFile?.name}. All VFS tool results are synced to the user screen.`;
 
     try {
         await service.connect('Zephyr', sysPrompt, {
             onOpen: () => { 
                 setIsLiveActive(true); 
                 setIsAiConnected(true); 
-                dispatchLog(`Voice Link Established.`, 'success', { category: 'LIVE_API' });
+                dispatchLog(`LIVE API: Voice Link Established.`, 'success', { category: 'LIVE_API' });
             },
             onClose: () => { 
                 setIsLiveActive(false); 
                 setIsAiConnected(false); 
-                dispatchLog(`Voice Link Closed.`, 'warn', { category: 'LIVE_API' });
+                dispatchLog(`LIVE API: Voice Link Closed.`, 'warn', { category: 'LIVE_API' });
             },
             onError: (err) => { 
                 setIsLiveActive(false); 
                 setIsAiConnected(false); 
-                dispatchLog(`Voice Link Fault: ${err}`, 'error', { category: 'LIVE_API' });
+                dispatchLog(`LIVE API: Critical Fault: ${err}`, 'error', { category: 'LIVE_API' });
             },
-            onVolumeUpdate: (v) => setLiveVolume(v),
+            onVolumeUpdate: (v) => setVolume(v),
             onTranscript: (text, isUser) => {
                 const role = isUser ? 'user' : 'ai';
                 setChatMessages(prev => {
                     const lastMsg = prev[prev.length - 1];
-                    if (lastMsg && lastMsg.role === role) return [...prev.slice(0, -1), { role, text: lastMsg.text + ' ' + text }];
-                    return [...prev, { role, text }];
+                    if (lastMsg && lastMsg.role === role) {
+                        // Use refined transcript joiner to fix word fragments and extra spaces
+                        const newText = refineTranscriptText(lastMsg.text + ' ' + text);
+                        return [...prev.slice(0, -1), { role, text: newText }];
+                    }
+                    return [...prev, { role, text: refineTranscriptText(text) }];
                 });
             },
             onToolCall: async (toolCall) => {
@@ -896,23 +934,23 @@ export const CodeStudio: React.FC<CodeStudioProps> = ({ onBack, currentUser, use
         }, codeTools);
     } catch (e: any) { 
         setIsLiveActive(false); 
-        dispatchLog(`Voice Handshake Failed: ${e.message}`, 'error', { category: 'LIVE_API' });
+        dispatchLog(`LIVE API: Handshake Failed: ${e.message}`, 'error', { category: 'LIVE_API' });
     }
   };
 
   const handleConnectDrive = async () => { 
       try { 
-          dispatchLog(`Requesting Google Drive Access Scopes...`, 'info', { category: 'VAULT' });
-          const token = await connectGoogleDrive(); 
+          dispatchLog(`VAULT: Requesting Google Drive Access Scopes...`, 'info', { category: 'VFS' });
+          const token = await connectDrive(); 
           setDriveToken(token); 
           const rootId = await ensureCodeStudioFolder(token); 
           setDriveRootId(rootId); 
           const files = await listDriveFiles(token, rootId); 
           setDriveItems([{ id: driveRootId, name: 'CodeStudio', mimeType: 'application/vnd.google-apps.folder', isLoaded: true }, ...files.map(f => ({ ...f, parentId: driveRootId, isLoaded: false }))]); 
           setActiveTab('drive'); 
-          dispatchLog(`Drive Vault Connected. Root: ${rootId}`, 'success', { category: 'VAULT' });
+          dispatchLog(`VAULT SUCCESS: Drive Connected. Root [${rootId}]`, 'success', { category: 'VFS' });
       } catch(e: any) { 
-          dispatchLog(`Drive Handshake Refused: ${e.message}`, 'error', { category: 'VAULT' });
+          dispatchLog(`VAULT FAULT: Drive Handshake Refused: ${e.message}`, 'error', { category: 'VFS' });
           console.error(e); 
       } 
   };

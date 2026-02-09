@@ -148,7 +148,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual }) 
       nodes.forEach(node => {
           const cleanLabel = node.label.replace(/"/g, "'");
           const safeId = node.id.replace(/[^a-zA-Z0-9]/g, '_');
-          const color = nodeColors[node.type] || nodeColors.concept;
+          const color = nodeColors[node.type as keyof typeof nodeColors] || nodeColors.concept;
           
           if (node.type === 'component') {
               puml += `component "${cleanLabel}" as ${safeId} ${color}\n`;

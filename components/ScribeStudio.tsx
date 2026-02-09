@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ArrowLeft, Mic, Disc, Square, Info, FileText, 
@@ -67,6 +68,17 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
       window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `[Scribe] ${msg}`, type } }));
   };
 
+  /**
+   * Neural Linguistic Refiner:
+   * Collapses multiple spaces and ensures punctuation is properly aligned.
+   */
+  const refineTranscriptText = (text: string): string => {
+      return text
+          .replace(/\s+/g, ' ')               // Collapse whitespace
+          .replace(/\s+([,.!?;:])/g, '$1')    // Remove spaces before punctuation
+          .trim();
+  };
+
   const setupVisualizer = async (stream: MediaStream) => {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const source = audioContext.createMediaStreamSource(stream);
@@ -94,7 +106,7 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
   };
 
   const commitToHistory = (text: string) => {
-    const cleanText = text.trim();
+    const cleanText = refineTranscriptText(text);
     if (!cleanText) return;
 
     // DUPLICATE GUARD: Check if this exact text was just added
@@ -128,7 +140,6 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
     dispatchLog(`Initiating Sovereign Scribe...`, "info");
     
     try {
-        // Exclusively use microphone for security and privacy
         const captureStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         
         audioStreamRef.current = captureStream;
@@ -151,10 +162,10 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
             for (let i = event.resultIndex; i < event.results.length; ++i) {
                 const result = event.results[i];
                 if (result.isFinal) {
-                    const finalFragment = result[0].transcript.trim();
+                    const finalFragment = refineTranscriptText(result[0].transcript);
                     if (finalFragment) {
                         commitToHistory(finalFragment);
-                        setLiveText(''); // Clear interim as it's now finalized
+                        setLiveText(''); 
                     }
                 } else {
                     currentInterim += result[0].transcript;
@@ -162,19 +173,14 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
             }
             
             if (currentInterim) {
-                // SLIDING WINDOW COMMITMENT:
-                // Prevents state bloat during long continuous speech segments.
                 const words = currentInterim.trim().split(/\s+/);
                 if (words.length > 20) {
                     const toCommit = words.slice(0, 15).join(' ');
                     const remaining = words.slice(15).join(' ');
-                    
                     commitToHistory(toCommit);
-                    // Crucial: Set live text to ONLY the remaining portion
-                    setLiveText(remaining);
-                    dispatchLog("Buffer Pumping: Partial node secured.", "info");
+                    setLiveText(refineTranscriptText(remaining));
                 } else {
-                    setLiveText(currentInterim);
+                    setLiveText(refineTranscriptText(currentInterim));
                 }
             }
         };
@@ -185,7 +191,6 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
         };
 
         recognition.onend = () => {
-            // CRITICAL FLUSH: Salvage residual text before potential restart
             const residual = liveTextRef.current.trim();
             if (residual.length > 0 && isBatchRunningRef.current) {
                 commitToHistory(residual);
@@ -195,7 +200,6 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
             if (isBatchRunningRef.current) {
                 try { 
                     recognition.start(); 
-                    dispatchLog("Neural Link Refreshed.", "info");
                 } catch (e) {}
             }
         };
@@ -227,16 +231,13 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
         audioContextRef.current.close();
     }
 
-    // Final flush of remaining volatile buffer
     const currentLive = liveText.trim();
     if (currentLive) {
         commitToHistory(currentLive);
         setLiveText('');
     }
 
-    // Capture the state at the moment of completion
     setTimeout(async () => {
-        // Use a functional update or direct state access to get final history
         setHistory(finalHistory => {
             if (finalHistory.length > 0) {
                 generateSummary(finalHistory);
@@ -310,7 +311,6 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
       </header>
 
       <div className="flex-1 flex overflow-hidden flex-col lg:flex-row">
-          {/* Sidebar Controls */}
           <div className="w-full lg:w-[350px] border-r border-slate-800 bg-slate-900/30 flex flex-col shrink-0 overflow-y-auto p-6 space-y-8 scrollbar-hide">
               <div className="space-y-4">
                   <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Session Identity</label>
@@ -333,7 +333,6 @@ export const ScribeStudio: React.FC<ScribeStudioProps> = ({ onBack, currentUser,
               )}
           </div>
 
-          {/* Transcript Area */}
           <main className="flex-1 bg-slate-950 flex flex-col p-8 overflow-hidden relative">
               <div className="absolute top-8 right-8 text-slate-800 select-none pointer-events-none"><Activity size={120} strokeWidth={0.5} /></div>
 

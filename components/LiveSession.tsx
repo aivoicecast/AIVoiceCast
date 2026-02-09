@@ -8,9 +8,7 @@ import { getDriveToken, signInWithGoogle, isJudgeSession } from '../services/aut
 import { uploadToYouTube, getYouTubeVideoUrl } from '../services/youtubeService';
 import { ensureCodeStudioFolder, uploadToDrive, uploadToDriveWithProgress } from '../services/googleDriveService';
 import { saveUserChannel, cacheLectureScript, getCachedLectureScript, saveLocalRecording } from '../utils/db';
-// Fix: removed non-existent updateDiscussion from imports
 import { publishChannelToFirestore, saveDiscussion, saveRecordingReference, updateBookingRecording, addChannelAttachment, syncUserProfile, getUserProfile, uploadFileToStorage } from '../services/firestoreService';
-// Fix: removed unused imports summarizeDiscussionAsSection and generateDesignDocFromTranscript
 import { FunctionDeclaration, Type } from '@google/genai';
 import { getGlobalAudioContext, getGlobalMediaStreamDest, warmUpAudioContext, stopAllPlatformAudio } from '../utils/audioUtils';
 import { Visualizer } from './Visualizer';
@@ -154,6 +152,16 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       console.log(`[Neural Log] ${msg}`);
       window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: msg, type } }));
   }, []);
+
+  /**
+   * Refines transcription text by collapsing multiple spaces and repairing word fragments.
+   */
+  const refineTranscription = (existing: string, incoming: string): string => {
+      const combined = existing + incoming;
+      return combined
+          .replace(/\s+/g, ' ')               // Collapse whitespace
+          .replace(/\s+([,.!?;:])/g, '$1');   // Repair punctuation spacing
+  };
 
   useEffect(() => { 
       transcriptRef.current = transcript; 
@@ -528,7 +536,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                       setTranscript(history => [...history, prev]);
                       return { role, text, timestamp };
                   }
-                  return { role, text: (prev ? prev.text : '') + text, timestamp: prev ? prev.timestamp : timestamp };
+                  // REFINEMENT: Ensure no double spaces or split words
+                  const newText = refineTranscription(prev ? prev.text : '', text);
+                  return { role, text: newText, timestamp: prev ? prev.timestamp : timestamp };
               });
           }
       });
