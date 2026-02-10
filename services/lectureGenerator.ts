@@ -9,9 +9,15 @@ import { logger } from './logger';
 const MAX_RETRIES = 3;
 
 /**
- * ARCHITECTURAL BREADCRUMB: NEURAL_PRISM_CORE_PROTOCOL
- * Implements the Stateful Refraction Loop with high-fidelity telemetry and accounting.
+ * Sanitizes the API key to ensure it is trimmed and not a placeholder.
  */
+function getSanitizedKey(): string {
+    const raw = (process.env.API_KEY || '').trim();
+    if (!raw || raw === 'YOUR_GEMINI_API_KEY_HERE') {
+        return '';
+    }
+    return raw;
+}
 
 async function computeContentHash(lecture: GeneratedLecture): Promise<string> {
     const raw = lecture.sections.map(s => `${s.speaker}:${s.text}`).join('|');
@@ -52,7 +58,10 @@ async function runWithDeepTelemetry(
 }
 
 export async function summarizeLectureForContext(lecture: GeneratedLecture): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getSanitizedKey();
+    if (!key) return "API Key Missing.";
+    
+    const ai = new GoogleGenAI({ apiKey: key });
     const text = lecture.sections.map(s => s.text).join('\n').substring(0, 5000);
     
     try {
@@ -68,7 +77,10 @@ export async function summarizeLectureForContext(lecture: GeneratedLecture): Pro
 }
 
 export async function repairPlantUML(brokenSource: string, format: 'puml' | 'mermaid' = 'mermaid'): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getSanitizedKey();
+    if (!key) return brokenSource;
+
+    const ai = new GoogleGenAI({ apiKey: key });
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
@@ -130,7 +142,10 @@ export async function performNeuralLensAudit(
             if (!hasKey) await (window as any).aistudio.openSelectKey();
         }
 
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const key = getSanitizedKey();
+        if (!key) throw new Error("API Key Missing.");
+
+        const ai = new GoogleGenAI({ apiKey: key });
         const content = lecture.sections.map(s => `${s.speaker}: ${s.text}`).join('\n');
 
         const isOfficialPlatform = channelId === 'platform-core' || 
@@ -313,7 +328,10 @@ export async function generateLectureScript(
     const preProfile = auth.currentUser ? await getUserProfile(auth.currentUser.uid) : null;
     const preBalance = preProfile?.coinBalance || 0;
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getSanitizedKey();
+    if (!key) throw new Error("API Key Missing.");
+
+    const ai = new GoogleGenAI({ apiKey: key });
     const prompt = `Topic: "${topic}"\nKnowledge Base Context: "${channelContext}"\n${cumulativeContext ? `KNOWLEDGE ALREADY COVERED: "${cumulativeContext}"` : ''}`;
 
     logger.info(`Initiating Logic Synthesis for: ${topic} [CACHE_MISS]`, { category, model });
@@ -402,7 +420,10 @@ export async function generateDesignDocFromTranscript(
     meta: { date: string, topic: string, segmentIndex?: number },
     language: 'en' | 'zh' = 'en'
 ): Promise<string | null> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getSanitizedKey();
+    if (!key) return null;
+
+    const ai = new GoogleGenAI({ apiKey: key });
     const prompt = `Synthesize a comprehensive Technical Specification based on this transcript.\n\nMETADATA:\n- Date: ${meta.date}\n- Topic: ${meta.topic}\n\nTRANSCRIPT:\n${transcript.map(t => `${t.role.toUpperCase()}: ${t.text}`).join('\n')}`;
 
     try {
@@ -417,7 +438,10 @@ export async function generateDesignDocFromTranscript(
 }
 
 export async function summarizeDiscussionAsSection(transcript: TranscriptItem[]): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getSanitizedKey();
+    if (!key) return "API Key Missing.";
+
+    const ai = new GoogleGenAI({ apiKey: key });
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',

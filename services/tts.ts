@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality } from '@google/genai';
 import { base64ToBytes, decodeRawPcm, getGlobalAudioContext, hashString, syncPrimeSpeech, connectOutput, SPEECH_REGISTRY, getSystemVoicesAsync } from '../utils/audioUtils';
 import { getCachedAudioBuffer, cacheAudioBuffer } from '../utils/db';
@@ -25,6 +26,17 @@ function dispatchLog(text: string, type: 'info' | 'success' | 'warn' | 'error' =
     window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: text, type } }));
 }
 
+/**
+ * Sanitizes the API key to ensure it is trimmed and not a placeholder.
+ */
+function getSanitizedKey(key?: string): string {
+    const raw = (key || '').trim();
+    if (!raw || raw === 'YOUR_GEMINI_API_KEY_HERE' || raw === 'YOUR_BASE_API_KEY') {
+        return '';
+    }
+    return raw;
+}
+
 function getValidVoiceName(voiceName: string, provider: TtsProvider, lang: 'en' | 'zh' = 'en'): string {
     const name = (voiceName || '').toLowerCase();
     const isInterview = name.includes('0648937375') || name.includes('software interview');
@@ -47,7 +59,20 @@ function getValidVoiceName(voiceName: string, provider: TtsProvider, lang: 'en' 
 
 async function synthesizeGemini(text: string, voice: string, lang: 'en' | 'zh' = 'en', apiKey?: string): Promise<{buffer: ArrayBuffer, mime: string}> {
     const targetVoice = getValidVoiceName(voice, 'gemini', lang);
-    const key = apiKey || GEMINI_API_KEY || process.env.API_KEY;
+    
+    // Check multiple potential sources for the key
+    const sources = [
+        getSanitizedKey(apiKey),
+        getSanitizedKey(GEMINI_API_KEY),
+        getSanitizedKey(process.env.API_KEY)
+    ];
+    
+    const key = sources.find(k => k.length > 0);
+    
+    if (!key) {
+        throw new Error("API_KEY_INVALID: Gemini API Key missing or set to placeholder.");
+    }
+
     const ai = new GoogleGenAI({ apiKey: key });
     
     let cleanText = text.replace(/[*_#`\[\]()<>|]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -89,8 +114,14 @@ async function synthesizeGemini(text: string, voice: string, lang: 'en' | 'zh' =
 }
 
 async function synthesizeGoogle(text: string, voice: string, lang: 'en' | 'zh' = 'en', apiKey?: string): Promise<{buffer: ArrayBuffer, mime: string}> {
-    const key = apiKey || GCP_API_KEY || process.env.API_KEY;
-    if (!key) throw new Error("Google Cloud API Key missing.");
+    const sources = [
+        getSanitizedKey(apiKey),
+        getSanitizedKey(GCP_API_KEY),
+        getSanitizedKey(process.env.API_KEY)
+    ];
+    const key = sources.find(k => k.length > 0);
+    
+    if (!key) throw new Error("API_KEY_INVALID: Google Cloud API Key missing.");
 
     const targetVoice = getValidVoiceName(voice, 'google', lang);
     dispatchLog(`Dispatching to Google Cloud TTS (${targetVoice})...`, 'info');
@@ -109,6 +140,7 @@ async function synthesizeGoogle(text: string, voice: string, lang: 'en' | 'zh' =
 
     if (!res.ok) {
         const err = await res.json().catch(() => ({ error: { message: `HTTP ${res.status} ${res.statusText}` } }));
+        if (res.status === 400 || res.status === 403) throw new Error("API_KEY_INVALID: " + (err.error?.message || "Auth error"));
         throw new Error(err.error?.message || "Cloud TTS Handshake Failed");
     }
 
@@ -118,8 +150,13 @@ async function synthesizeGoogle(text: string, voice: string, lang: 'en' | 'zh' =
 }
 
 async function synthesizeOpenAI(text: string, voice: string, lang: 'en' | 'zh' = 'en', apiKey?: string): Promise<{buffer: ArrayBuffer, mime: string}> {
-    const key = apiKey || OPENAI_API_KEY;
-    if (!key) throw new Error("OpenAI API Key missing in settings.");
+    const sources = [
+        getSanitizedKey(apiKey),
+        getSanitizedKey(OPENAI_API_KEY)
+    ];
+    const key = sources.find(k => k.length > 0);
+    
+    if (!key) throw new Error("API_KEY_INVALID: OpenAI API Key missing.");
     
     dispatchLog(`Dispatching to OpenAI Whisper-TTS (nova)...`, 'info');
     
@@ -138,6 +175,7 @@ async function synthesizeOpenAI(text: string, voice: string, lang: 'en' | 'zh' =
 
     if (!res.ok) {
         const err = await res.json().catch(() => ({ error: { message: `HTTP ${res.status} ${res.statusText}` } }));
+        if (res.status === 401 || res.status === 403) throw new Error("API_KEY_INVALID: OpenAI Auth failed.");
         throw new Error(err.error?.message || "OpenAI Handshake Failed");
     }
 
@@ -218,7 +256,6 @@ export async function synthesizeSpeech(
         return { buffer: audioBuffer, rawBuffer: localCached, errorType: 'none', provider: preferredProvider };
       }
 
-      // Fetch user profile for key overrides if not provided in the call
       let finalOpenAIKey = apiKeyOverride;
       let finalGCPKey = apiKeyOverride;
       let finalGeminiKey = apiKeyOverride;
@@ -244,6 +281,11 @@ export async function synthesizeSpeech(
               throw new Error("UNSUPPORTED_PROVIDER");
           }
       } catch (innerError: any) {
+          const isAuthError = innerError.message.includes('400') || innerError.message.includes('403') || innerError.message.includes('API_KEY_INVALID');
+          if (isAuthError) {
+              return { buffer: null, errorType: 'auth', errorMessage: innerError.message };
+          }
+          
           const isRateLimit = innerError.message.includes('429') || innerError.message.includes('quota');
           if (preferredProvider === 'gemini' && isRateLimit) {
               dispatchLog(`Gemini TTS Rate Limit (429) hit. Initiating Auto-Failover to Google Cloud Spectrum...`, 'warn');
@@ -282,6 +324,10 @@ export async function runNeuralAudit(
 ): Promise<void> {
   if (provider === 'system') return await speakSystem(text, lang);
   const result = await synthesizeSpeech(text, 'Zephyr', ctx, provider, lang, undefined, apiKeyOverride);
+  if (result.errorType === 'auth') {
+      dispatchLog(`Audit Warning: Neural Key Handshake failed. Falling back to local spectrum.`, 'warn');
+      return await speakSystem(text, lang);
+  }
   if (result.buffer) {
     await new Promise<void>((resolve) => {
       const source = ctx.createBufferSource();

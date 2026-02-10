@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 // Fix: safeJsonStringify is not exported from audioUtils, it resides in idUtils
 import { base64ToBytes, decodeRawPcm, createPcmBlob, warmUpAudioContext, registerAudioOwner, getGlobalAudioContext, connectOutput } from '../utils/audioUtils';
@@ -61,6 +62,14 @@ export class GeminiLiveService {
       }));
   }
 
+  private getSanitizedKey(key?: string): string {
+      const raw = (key || '').trim();
+      if (!raw || raw === 'YOUR_GEMINI_API_KEY_HERE' || raw === 'YOUR_BASE_API_KEY') {
+          return '';
+      }
+      return raw;
+  }
+
   public async initializeAudio() {
     if (!this.inputAudioContext) {
       this.inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -81,7 +90,12 @@ export class GeminiLiveService {
       this.dispatchLog(`Initiating Handshake for Session ID: ${this.id}`, 'info');
       registerAudioOwner(`Live_${this.id}`, () => this.disconnect());
       
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const key = this.getSanitizedKey(process.env.API_KEY);
+      if (!key) {
+          throw new Error("Gemini API Key missing or invalid in .env file.");
+      }
+
+      const ai = new GoogleGenAI({ apiKey: key });
       
       if (!this.inputAudioContext || this.inputAudioContext.state !== 'running') {
         await this.initializeAudio();

@@ -15,7 +15,8 @@ import { ref, listAll, getDownloadURL } from '@firebase/storage';
 import { saveScriptureToLedger, getScriptureFromLedger, getScriptureAudioUrl } from '../services/firestoreService';
 import { DualVerse } from '../types';
 import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput, syncPrimeSpeech } from '../utils/audioUtils';
-import { synthesizeSpeech, TtsProvider } from '../services/tts';
+// Added speakSystem to imports
+import { synthesizeSpeech, TtsProvider, speakSystem } from '../services/tts';
 import { Visualizer } from './Visualizer';
 
 // --- SESSION CACHE LAYER ---
@@ -116,6 +117,8 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
   const [systemVoices, setSystemVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedSystemVoiceURI, setSelectedSystemVoiceURI] = useState(() => localStorage.getItem('bible_system_voice_uri') || '');
   const [vaultStatus, setVaultStatus] = useState<Record<string, { text: boolean, audio: boolean, checking: boolean }>>({});
+  // Added missing isRegistryRefreshing state
+  const [isRegistryRefreshing, setIsRegistryRefreshing] = useState(false);
 
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const playbackSessionRef = useRef(0);
@@ -133,6 +136,7 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
 
   const scanBookVault = useCallback(async (book: string) => {
     if (!db) return;
+    setIsRegistryRefreshing(true);
     const bookStatus: Record<string, { text: boolean, audio: boolean, checking: boolean }> = {};
     const count = BIBLE_CHAPTER_COUNTS[book] || 0;
     for (let i = 1; i <= count; i++) bookStatus[i] = { text: false, audio: false, checking: true };
@@ -146,17 +150,18 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
         const finalStatus: Record<string, { text: boolean, audio: boolean, checking: boolean }> = {};
         for (let i = 1; i <= count; i++) {
             const docData = snap.docs.find((d: any) => (d.data() as any).chapter === i.toString())?.data() as any;
+            const hasVerses = !!docData && Array.isArray(docData.verses) && docData.verses.length > 0;
             finalStatus[i] = {
-                text: !!docData && Array.isArray(docData.verses) && docData.verses.length > 0,
+                text: hasVerses,
                 audio: !!docData?.hasAudio,
                 checking: false
             };
         }
         setVaultStatus(finalStatus);
-    } catch (e: any) {
-        const failStatus: Record<string, { text: boolean, audio: boolean, checking: boolean }> = {};
-        for (let i = 1; i <= count; i++) failStatus[i] = { text: false, audio: false, checking: false };
-        setVaultStatus(failStatus);
+    } catch (e) {
+        console.error("Ledger scan failed", e);
+    } finally {
+        setIsRegistryRefreshing(false);
     }
   }, []);
 
@@ -343,7 +348,13 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                       channelId: selectedBook, topicId: selectedChapter, nodeId: `node_${selectedBook}_${selectedChapter}_${verse.number}_en`
                   });
                   setAudioBuffering(false);
-                  if (resultEn.buffer && localSession === playbackSessionRef.current) {
+
+                  if (resultEn.errorType === 'auth') {
+                      dispatchLog(`[Engine Alert] Invalid API Key detected. Falling back to local spectrum.`, 'warn');
+                      setLiveVolume(0.8);
+                      await speakSystem(verse.en, 'en');
+                      setLiveVolume(0);
+                  } else if (resultEn.buffer && localSession === playbackSessionRef.current) {
                       setLiveVolume(0.8);
                       await new Promise<void>((resolve) => {
                           const source = ctx.createBufferSource();
@@ -384,7 +395,12 @@ export const ScriptureSanctuary: React.FC<ScriptureSanctuaryProps> = ({ onBack, 
                       channelId: selectedBook, topicId: selectedChapter, nodeId: `node_${selectedBook}_${selectedChapter}_${verse.number}_zh`
                   });
                   setAudioBuffering(false);
-                  if (resultZh.buffer && localSession === playbackSessionRef.current) {
+
+                  if (resultZh.errorType === 'auth') {
+                      setLiveVolume(0.8);
+                      await speakSystem(verse.zh, 'zh');
+                      setLiveVolume(0);
+                  } else if (resultZh.buffer && localSession === playbackSessionRef.current) {
                       setLiveVolume(0.8);
                       await new Promise<void>((resolve) => {
                           const source = ctx.createBufferSource();

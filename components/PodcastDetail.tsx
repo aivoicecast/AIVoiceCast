@@ -211,7 +211,12 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                     const res = await synthesizeSpeech(section.text, voice, ctx, currentProvider, language);
                     setIsBuffering(false);
 
-                    if (res.buffer && localSession === playbackSessionRef.current) {
+                    if (res.errorType === 'auth') {
+                        dispatchLog(`[Engine Alert] Invalid API Key detected. Falling back to local system voice for continuity.`, 'warn');
+                        setLiveVolume(0.8);
+                        await speakSystem(section.text, language);
+                        setLiveVolume(0);
+                    } else if (res.buffer && localSession === playbackSessionRef.current) {
                         setLiveVolume(0.8);
                         await new Promise<void>((resolve) => {
                             const source = ctx.createBufferSource();
@@ -531,7 +536,6 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-indigo-600/10 rounded-lg"><BrainCircuit size={20} className="text-indigo-400" /></div>
                             <div>
-                                {/* Fix: used activeLecture.topic instead of undefined activeAudit */}
                                 <h2 className="text-sm font-black text-white uppercase tracking-widest">{activeLecture.topic}</h2>
                                 <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-[0.2em]">Node 0${currentSubTopicIndex + 1} • Handshake Active</p>
                             </div>
