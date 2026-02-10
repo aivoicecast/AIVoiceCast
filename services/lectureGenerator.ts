@@ -5,6 +5,7 @@ import { getCloudCachedLecture, saveCloudCachedLecture, deductCoins, AI_COSTS, i
 import { auth } from './firebaseConfig';
 import { generateContentUid, generateSecureId } from '../utils/idUtils';
 import { logger } from './logger';
+import { checkOpenClawAvailability, requestRetinaAudit } from './openClawService';
 
 const MAX_RETRIES = 3;
 
@@ -114,6 +115,25 @@ export async function performNeuralLensAudit(
     const model = 'gemini-3-pro-image-preview';
     const reportUuid = generateSecureId();
     
+    // Check for OpenClaw (Neural Retina) override
+    try {
+        const isOpenClawReady = await checkOpenClawAvailability();
+        if (isOpenClawReady) {
+            logger.info("Routing Audit to Neural Retina (OpenClaw)...", { category, topic: lecture.topic });
+            const retinaAudit = await requestRetinaAudit(lecture, force);
+            if (retinaAudit) {
+                logger.audit(`Neural Retina Verified [Score: ${retinaAudit.StructuralCoherenceScore}%]`, { 
+                    category: 'NEURAL_RETINA', 
+                    topic: lecture.topic,
+                    model: 'openclaw-v1'
+                });
+                return retinaAudit;
+            }
+        }
+    } catch (err) {
+        logger.warn("OpenClaw Retina unavailable, falling back to Gemini.", { category, error: err });
+    }
+
     if (!lecture.sections || lecture.sections.length === 0) {
         logger.error("Shadow Audit Refused: Empty logic node.", null, { category });
         return null;
