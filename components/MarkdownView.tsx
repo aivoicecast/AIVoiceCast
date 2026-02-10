@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 // Added AlertCircle to imports
 import { Copy, Check, Image as ImageIcon, Loader2, Code as CodeIcon, ExternalLink, Sigma, Palette, Sun, Moon, Coffee, Maximize2, AlertCircle } from 'lucide-react';
@@ -9,6 +10,7 @@ interface MarkdownViewProps {
   initialTheme?: ReaderTheme;
   showThemeSwitcher?: boolean;
   compact?: boolean;
+  fontSize?: number;
 }
 
 const THEME_CONFIG: Record<ReaderTheme, { container: string, prose: string, icon: any, label: string, textColor: string }> = {
@@ -300,7 +302,7 @@ const PlantUMLRenderer: React.FC<{ code: string, theme: ReaderTheme }> = ({ code
     );
 };
 
-export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, initialTheme = 'slate', showThemeSwitcher = true, compact = false }) => {
+export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, initialTheme = 'slate', showThemeSwitcher = true, compact = false, fontSize }) => {
   const [theme, setTheme] = useState<ReaderTheme>(initialTheme);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
@@ -436,7 +438,9 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, initialThem
                 } else if (trimmed.startsWith('- ')) {
                     renderedElements.push(<li key={`${index}-${lineIdx}`} className="ml-4 list-disc my-1 pl-1 text-sm leading-relaxed">{formatInline(trimmed.substring(2))}</li>);
                 } else {
-                    renderedElements.push(<p key={`${index}-${lineIdx}`} className={`leading-relaxed antialiased font-medium ${compact ? 'mb-2 text-sm' : 'mb-4 text-base'} ${THEME_CONFIG[theme].textColor}`}>{formatInline(line)}</p>);
+                    // Fix: Suppress Tailwind's fixed font size classes if a custom fontSize prop is provided
+                    const textSizeClass = fontSize ? '' : (compact ? 'text-sm' : 'text-base');
+                    renderedElements.push(<p key={`${index}-${lineIdx}`} className={`leading-relaxed antialiased font-medium ${compact ? 'mb-2' : 'mb-4'} ${textSizeClass} ${THEME_CONFIG[theme].textColor}`}>{formatInline(line)}</p>);
                 }
             }
         });
@@ -449,7 +453,7 @@ export const MarkdownView: React.FC<MarkdownViewProps> = ({ content, initialThem
   const config = THEME_CONFIG[theme];
 
   return (
-    <div className={`relative rounded-xl transition-all duration-300 ${compact ? 'bg-transparent' : config.container}`}>
+    <div className={`relative rounded-xl transition-all duration-300 ${compact ? 'bg-transparent' : config.container}`} style={fontSize ? { fontSize: `${fontSize}px` } : undefined}>
         {showThemeSwitcher && !compact && (
             <div className="absolute top-3 right-3 z-20 flex gap-1 p-1 bg-black/10 backdrop-blur-md rounded-full border border-white/10 group-hover:opacity-100 transition-opacity">
                 {(Object.keys(THEME_CONFIG) as ReaderTheme[]).map(t => {

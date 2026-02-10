@@ -3,6 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { Channel, Chapter } from '../types';
 import { incrementApiUsage, getUserProfile, deductCoins, AI_COSTS } from './firestoreService';
 import { auth } from './firebaseConfig';
+import { logger } from './logger';
 
 const VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'];
 
@@ -11,6 +12,8 @@ export async function generateChannelFromPrompt(
   currentUser: any,
   language: 'en' | 'zh' = 'en'
 ): Promise<Channel | null> {
+  const category = 'CURRICULUM_PHASE';
+  const model = 'gemini-3-pro-preview';
   try {
     const langInstruction = language === 'zh' 
       ? 'Output Language: Chinese.' 
@@ -45,8 +48,9 @@ export async function generateChannelFromPrompt(
 
     // Create fresh instance right before call as per guidelines for dynamic key support
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const startTime = performance.now();
     const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model,
         contents: `${systemPrompt}\n\n${userRequest}`,
         config: { 
             responseMimeType: 'application/json'
@@ -56,6 +60,17 @@ export async function generateChannelFromPrompt(
     const text = response.text || null;
     if (!text) return null;
     
+    const usage = response.usageMetadata;
+    const latency = performance.now() - startTime;
+    
+    logger.success(`Phase A: Curriculum Refracted. [CACHE_MISS]`, {
+        category,
+        model,
+        latency,
+        inputTokens: usage?.promptTokenCount,
+        outputTokens: usage?.candidatesTokenCount
+    });
+
     const parsed = JSON.parse(text);
     const channelId = crypto.randomUUID();
     if (auth.currentUser) incrementApiUsage(auth.currentUser.uid);
@@ -86,7 +101,10 @@ export async function generateChannelFromPrompt(
         })) || []
       })) || []
     };
-  } catch (error) { return null; }
+  } catch (error: any) { 
+      logger.error(`Curriculum Phase Fault: ${error.message}`, error, { category });
+      return null; 
+  }
 }
 
 export async function generateChannelCoverArt(title: string, description: string): Promise<string | null> {
@@ -153,6 +171,8 @@ export async function generateChannelFromDocument(
   currentUser: any,
   language: 'en' | 'zh' = 'en'
 ): Promise<Channel | null> {
+  const category = 'DOCUMENT_INGEST';
+  const modelId = source.url ? 'gemini-3-pro-image-preview' : 'gemini-3-pro-preview';
   try {
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
     
@@ -165,9 +185,6 @@ export async function generateChannelFromDocument(
 
     const config: any = { responseMimeType: "application/json" };
     
-    // MANDATORY: Use gemini-3-pro-image-preview for googleSearch tool tasks
-    const modelId = source.url ? 'gemini-3-pro-image-preview' : 'gemini-3-pro-preview';
-
     // Enable Google Search grounding if a URL (like a GitHub link) is provided
     if (source.url) {
         // MANDATORY API KEY SELECTION CHECK
@@ -187,6 +204,7 @@ export async function generateChannelFromDocument(
 
     // Create fresh instance right before call to ensure latest API key is used
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const startTime = performance.now();
     const response = await ai.models.generateContent({
         model: modelId,
         contents: promptText,
@@ -195,6 +213,16 @@ export async function generateChannelFromDocument(
 
     const text = response.text;
     if (!text) return null;
+
+    const usage = response.usageMetadata;
+    const latency = performance.now() - startTime;
+    logger.success(`Document Ingest Handshake complete.`, {
+        category,
+        model: modelId,
+        latency,
+        inputTokens: usage?.promptTokenCount,
+        outputTokens: usage?.candidatesTokenCount
+    });
 
     // Log grounding sources if they exist (MANDATORY per guidelines)
     if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
@@ -229,8 +257,8 @@ export async function generateChannelFromDocument(
           subTopics: ch.subTopics.map((s: any, j: number) => ({ id: `s-${i}-${j}`, title: s.title || s })) 
       })) || []
     };
-  } catch (error) { 
-      console.error("Refraction Error:", error);
+  } catch (error: any) { 
+      logger.error(`Document Ingest Fault: ${error.message}`, error, { category });
       return null; 
   }
 }

@@ -4,6 +4,8 @@ export type ReaderTheme = 'slate' | 'light' | 'dark' | 'sepia';
 export type BookStyle = 'brutalist' | 'academic' | 'minimal';
 export type TtsProvider = 'gemini' | 'google' | 'system' | 'openai';
 
+export type RefractionSector = 'hackathon' | 'agent_demo' | 'code_studio' | 'mock_interview' | 'book_gen' | 'scripture' | 'general';
+
 export interface PlatformMetrics {
     globalRefractions: number;
     voiceCoinVelocity: number;
@@ -264,6 +266,10 @@ export interface RecordingSession {
   transcriptUrl: string;
   size?: number;
   blob?: Blob;
+  sector?: RefractionSector;
+  audit?: NeuralLensAudit;
+  signedBy?: string; 
+  nFactor?: number; 
 }
 
 export type AttachmentType = 'image' | 'video' | 'audio' | 'file';

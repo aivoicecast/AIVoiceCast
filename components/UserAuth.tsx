@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 /* Fix: Standardized Firebase modular imports */
 import { onAuthStateChanged } from '@firebase/auth';
 import { signInWithGoogle, signOut } from '../services/authService';
-import { getAuthInstance } from '../services/firebaseConfig';
+// Fix: Correct import for auth from firebaseConfig
+import { auth } from '../services/firebaseConfig';
 import { LogOut, User as UserIcon, Loader2 } from 'lucide-react';
 import { syncUserProfile, logUserActivity } from '../services/firestoreService';
 
@@ -11,13 +12,13 @@ export const UserAuth: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const authInstance = getAuthInstance();
-    if (!authInstance) {
+    // Fix: Use the exported auth instance directly instead of getAuthInstance()
+    if (!auth) {
         setLoading(false);
         return;
     }
 
-    const unsubscribe = onAuthStateChanged(authInstance, (u: any) => {
+    const unsubscribe = onAuthStateChanged(auth, (u: any) => {
       setUser(u);
       setLoading(false);
       if (u) {

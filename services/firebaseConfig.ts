@@ -1,5 +1,5 @@
 
-import { initializeApp, getApps, getApp } from "@firebase/app";
+import { initializeApp, getApps } from "@firebase/app";
 import type { FirebaseApp } from "@firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "@firebase/auth";
 import type { Auth } from "@firebase/auth";
@@ -14,7 +14,6 @@ import { firebaseKeys } from './private_keys';
  */
 const initializeFirebase = (): FirebaseApp | null => {
     try {
-        // Prevent re-initialization if already active
         const existingApps = getApps();
         if (existingApps.length > 0) {
             return existingApps[0];
@@ -26,8 +25,6 @@ const initializeFirebase = (): FirebaseApp | null => {
                 authDomain: `${firebaseKeys.projectId}.firebaseapp.com`
             };
             return initializeApp(config);
-        } else {
-            console.warn("[Firebase] Configuration missing or using placeholder key.");
         }
     } catch (err) {
         console.error("[Firebase] Initialization failed:", err);
@@ -38,64 +35,44 @@ const initializeFirebase = (): FirebaseApp | null => {
 const appInstance = initializeFirebase();
 
 /**
- * Robust Firestore Initialization
- * Uses experimentalForceLongPolling to bypass environment restrictions on WebSockets 
- * which frequently causes the "Could not reach Cloud Firestore backend" timeout.
+ * CRITICAL CONNECTIVITY FIX:
+ * Forces long-polling and disables fetch streams to bypass environment-level WebSocket blocking.
  */
 const initDb = (): Firestore | null => {
     if (!appInstance) return null;
     
     let firestore: Firestore;
     try {
-        console.log("[Firestore] Initializing refractive data plane with Forced Long-Polling...");
-        
-        // Use initializeFirestore to set experimental settings before any other DB call
+        // initializeFirestore MUST be called before any other getFirestore call
         firestore = initializeFirestore(appInstance, {
             experimentalForceLongPolling: true,
-            // Automatically switch to long-polling if WebSockets are blocked
-            experimentalAutoDetectLongPolling: true,
-            // Explicitly set the host to ensure direct connectivity
-            host: "firestore.googleapis.com",
-            ssl: true,
+            useFetchStreams: false, // Disables fetch-based streams which can hang in some proxies
             cacheSizeBytes: CACHE_SIZE_UNLIMITED
         });
+        console.log("[Firestore] Relational Plane: Long-Polling Force Engaged.");
     } catch (e) {
-        console.warn("[Firestore] initializeFirestore failed (likely already initialized), falling back to getFirestore:", e);
+        console.warn("[Firestore] Re-initialization skipped, falling back to existing instance.");
         firestore = getFirestore(appInstance);
     }
 
-    // Persistence initialization should be robust against multi-tab issues.
     enableIndexedDbPersistence(firestore).catch((err) => {
-        if (err.code === 'failed-precondition') {
-            console.debug("[Firestore] Persistence: Multiple tabs open. Local cache remains active.");
-        } else if (err.code === 'unimplemented') {
-            console.debug("[Firestore] Persistence: Browser environment lacks IndexedDB support.");
-        } else {
-            console.warn("[Firestore] Persistence failed to initialize:", err.message);
+        if (err.code !== 'failed-precondition') {
+            console.warn("[Firestore] Persistence fault:", err.message);
         }
     });
 
     return firestore;
 };
 
-// CRITICAL: Ensure Auth is initialized with the explicit app instance
 const authInstance: Auth | null = appInstance ? getAuth(appInstance) : null;
 
 if (authInstance) {
-    setPersistence(authInstance, browserLocalPersistence).catch((err) => {
-        console.error("[Auth] Persistence setup failed:", err);
-    });
+    setPersistence(authInstance, browserLocalPersistence).catch(console.error);
 }
 
 export const auth = authInstance;
 export const db: Firestore | null = initDb();
 export const storage: FirebaseStorage | null = appInstance ? getStorage(appInstance, firebaseKeys.storageBucket) : null;
-
-export const getAuthInstance = (): Auth | null => auth;
-export const getDb = (): Firestore | null => db;
-export const getStorageInstance = (): FirebaseStorage | null => storage;
-
-export const isFirebaseConfigured = !!(firebaseKeys && firebaseKeys.apiKey && firebaseKeys.apiKey !== "YOUR_BASE_API_KEY");
 
 export const getFirebaseDiagnostics = () => {
     return {
@@ -103,7 +80,6 @@ export const getFirebaseDiagnostics = () => {
         hasAuth: !!auth,
         hasFirestore: !!db,
         projectId: firebaseKeys?.projectId || "Missing",
-        apiKeyPresent: !!firebaseKeys?.apiKey && firebaseKeys.apiKey !== "YOUR_BASE_API_KEY",
         configSource: localStorage.getItem('firebase_config') ? 'LocalStorage' : 'Static Keys'
     };
 };

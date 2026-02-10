@@ -4,7 +4,7 @@ import {
   Briefcase, Truck, AppWindow, Book, PenTool, Rss, Gift, Rocket, BookOpen, 
   Activity, Scroll, GraduationCap, Cpu, Star, Coins, Zap, ShieldCheck,
   Globe, Users, Clock, Sparkles, ChevronRight, Crown, Lock, Radio,
-  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard, Info, TrendingUp, BarChart3, Binary, Github, Scale, Thermometer, Shield, Play, Layout, UserCircle, Target, Beaker, Database
+  Disc, Calendar, History, FolderOpen, BookText, FileUp, FileSignature, IdCard, Info, TrendingUp, BarChart3, Binary, Github, Scale, Thermometer, Shield, Play, Layout, UserCircle, Target, Beaker, Database, Repeat, Ghost
 } from 'lucide-react';
 import { ViewID, UserProfile, PlatformMetrics } from '../types';
 import { Visualizer } from './Visualizer';
@@ -48,7 +48,8 @@ const UI_TEXT = {
     featuredTitle: "Featured Lab",
     featuredDesc: "Active Sector",
     reasoningAction: "Reasoning",
-    verificationAction: "Verify"
+    verificationAction: "Verify",
+    watchAction: "Watch Archive"
   },
   zh: {
     greeting: "欢迎回来，",
@@ -79,7 +80,8 @@ const UI_TEXT = {
     featuredTitle: "精选实验室",
     featuredDesc: "活跃扇区",
     reasoningAction: "推理",
-    verificationAction: "验证"
+    verificationAction: "验证",
+    watchAction: "查看存档"
   }
 };
 
@@ -127,7 +129,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
         { id: 'code_studio', label: 'Builder Studio', sub: 'Neural IDE', description: 'Advanced IDE with heuristic code simulation. Execute C++, Python.', icon: Terminal, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: true },
         { id: 'neural_lens', label: 'Neural Lens', sub: 'Observability', description: 'Dedicated instrumentation for AI reasoning and logic drift audit.', icon: ShieldCheck, color: 'text-indigo-400', bg: 'bg-indigo-900/30', restricted: false },
         { id: 'notebook_viewer', label: 'Research Lab', sub: 'Interactive Docs', description: 'Experiment with complex prompts in a specialized AI scratchpad.', icon: Book, color: 'text-orange-400', bg: 'bg-orange-900/30', restricted: true },
-        { id: 'graph_studio', label: 'Logic Visualizer', sub: 'Math Rendering', description: 'Convert complex math into hardware-accelerated 3D visualizations.', icon: Activity, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true }
+        { id: 'target_studio', label: 'Logic Visualizer', sub: 'Math Rendering', description: 'Convert complex math into hardware-accelerated 3D visualizations.', icon: Activity, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true }
       ]
     },
     {
@@ -159,10 +161,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
     {
       title: t.archiveSector,
       apps: [
+        { id: 'recordings', label: 'Refraction Archive', sub: 'Verified Video', description: 'Sovereign vault for verifiable video logs and neural artifacts.', icon: Video, color: 'text-red-400', bg: 'bg-red-900/30', restricted: false },
         { id: 'scribe_studio', label: 'Neural Scribe', sub: 'Audio to MD', description: 'Minimalist real-time audio-to-markdown transcription.', icon: Disc, color: 'text-red-500', bg: 'bg-red-900/30', restricted: true },
         { id: 'chat', label: 'Team Space', sub: 'Neural Messaging', description: 'Secure real-time workspace messaging and code sharing.', icon: MessageSquare, color: 'text-blue-400', bg: 'bg-blue-900/30', restricted: true },
         { id: 'blog', label: 'Voice Feed', sub: 'Community Blog', description: 'Publish technical insights to the community stream.', icon: Rss, color: 'text-orange-400', bg: 'bg-blue-900/30', restricted: true },
-        { id: 'recordings', label: 'Recordings', sub: 'Archive', description: 'Sovereign vault for video logs and neural artifacts.', icon: Video, color: 'text-red-400', bg: 'bg-red-900/30', restricted: true },
         { id: 'docs', label: 'Paperwork', sub: 'Docs', description: 'Professional specification registry for managing design docs.', icon: FileText, color: 'text-emerald-400', bg: 'bg-emerald-900/30', restricted: true },
         { id: 'calendar', label: 'Schedule', sub: 'Activity', description: 'Scheduler for bookings and platform activities.', icon: Calendar, color: 'text-cyan-400', bg: 'bg-cyan-900/30', restricted: true },
         { id: 'groups', label: 'Communities', sub: 'Member Hub', description: 'Collaborative groups for focused research.', icon: Users, color: 'text-purple-400', bg: 'bg-purple-900/30', restricted: true }
@@ -257,14 +259,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                 <button onClick={() => onNavigate('neural_lens')} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95">
                     <ShieldCheck size={14}/> Neural Lens
                 </button>
+                <button onClick={() => onNavigate('recordings')} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95">
+                    <Video size={14}/> Watch Archive
+                </button>
                 <button onClick={() => onNavigate('code_studio')} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95">
                     <Terminal size={14}/> Builder Studio
                 </button>
                 <button onClick={() => onNavigate('book_studio')} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95">
                     <BookText size={14}/> Author Studio
-                </button>
-                <button onClick={() => onNavigate('scripture_ingest')} className="flex items-center gap-2 px-4 py-1.5 bg-indigo-900/30 border border-indigo-500/20 text-indigo-400 hover:text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all hover:bg-indigo-600 shadow-lg active:scale-95">
-                    <Database size={14}/> Scripture Ingest
                 </button>
             </div>
         </div>
@@ -280,11 +282,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ userProfile, isProMember, 
                     <p className="text-slate-400 text-lg leading-relaxed font-medium">{t.judgeHeroDesc}</p>
                 </div>
                 <div className="flex flex-wrap gap-4 shrink-0 justify-center">
+                    <button onClick={() => onNavigate('recordings')} className="px-8 py-5 bg-red-600 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl transition-all hover:bg-red-500 active:scale-95 flex items-center justify-center gap-3">
+                        <Video size={20} fill="currentColor"/> {t.watchAction}
+                    </button>
                     <button onClick={() => onNavigate('story', { section: 'reasoning' })} className="px-8 py-5 bg-cyan-600 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl transition-all hover:bg-cyan-500 active:scale-95 flex items-center justify-center gap-3">
                         <Beaker size={20} fill="currentColor"/> {t.reasoningAction}
-                    </button>
-                    <button onClick={() => onNavigate('story', { section: 'verification' })} className="px-8 py-5 bg-emerald-600 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl transition-all hover:bg-emerald-500 active:scale-95 flex items-center justify-center gap-3">
-                        <BarChart3 size={20}/> {t.verificationAction}
                     </button>
                     <button onClick={() => onNavigate('neural_lens')} className="px-8 py-5 bg-indigo-600 text-white font-black uppercase tracking-[0.2em] rounded-2xl border border-white/10 shadow-xl transition-all hover:bg-indigo-50 active:scale-95 flex items-center justify-center gap-3">
                         <Activity size={20} /> {t.judgeAction}

@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from '@google/genai';
 import { GeneratedLecture, TranscriptItem, NeuralLensAudit, DependencyNode, DependencyLink } from '../types';
 import { getCloudCachedLecture, saveCloudCachedLecture, deductCoins, AI_COSTS, incrementApiUsage, getUserProfile } from './firestoreService';
@@ -110,7 +111,7 @@ export async function performNeuralLensAudit(
         const currentHash = await computeContentHash(lecture);
 
         if (!force && lecture.audit && lecture.audit.contentHash === currentHash) {
-            logger.audit(`BYPASS [Node: ${lecture.topic}]: Fingerprint Match. Refraction Bypassed.`, { 
+            logger.audit(`BYPASS [Node: ${lecture.topic}]: Fingerprint Match. [CACHE_HIT]`, { 
                 category: 'BYPASS_LEDGER', 
                 topic: lecture.topic,
                 hash: currentHash.substring(0, 8),
@@ -119,11 +120,10 @@ export async function performNeuralLensAudit(
             return { ...lecture.audit, timestamp: Date.now() };
         }
 
-        // ACCOUNTING HANDSHAKE: PRE-FLIGHT
         const preProfile = auth.currentUser ? await getUserProfile(auth.currentUser.uid) : null;
         const preBalance = preProfile?.coinBalance || 0;
 
-        logger.info(`Starting Shadow Audit for node: ${lecture.topic}`, { category, hash: currentHash.substring(0, 8) });
+        logger.info(`Starting Shadow Audit for node: ${lecture.topic} [CACHE_MISS]`, { category, hash: currentHash.substring(0, 8) });
 
         if (typeof window !== 'undefined' && (window as any).aistudio) {
             const hasKey = await (window as any).aistudio.hasSelectedApiKey();
@@ -133,7 +133,6 @@ export async function performNeuralLensAudit(
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const content = lecture.sections.map(s => `${s.speaker}: ${s.text}`).join('\n');
 
-        // REFINED GROUNDING LOGIC: Only check GitHub for platform-specific topics
         const isOfficialPlatform = channelId === 'platform-core' || 
                                    channelId === 'neural-prism-platform-official' || 
                                    channelId === 'judge-deep-dive' ||
@@ -236,7 +235,6 @@ OUTPUT REQUIREMENTS:
         const usage = response.usageMetadata;
         const outputSize = new TextEncoder().encode(response.text).length;
         
-        // ACCOUNTING HANDSHAKE: COMMIT
         let postBalance = preBalance;
         if (auth.currentUser) {
             await deductCoins(auth.currentUser.uid, AI_COSTS.TECHNICAL_EVALUATION);
@@ -259,7 +257,6 @@ OUTPUT REQUIREMENTS:
             cost: AI_COSTS.TECHNICAL_EVALUATION
         });
 
-        // DISPATCH MACHINE INTERFACE HANDSHAKE
         logger.loop(`Tool B (Lens) feedback dispatched to Tool A (Studio).`, {
             category: 'SELF_FEEDBACK_LOOP',
             senderTool: 'NeuralLens_Verifier',
@@ -304,19 +301,22 @@ export async function generateLectureScript(
     if (!force) {
       const cached = await getCloudCachedLecture(channelId || 'global', contentUid, language);
       if (cached) {
-          logger.info(`VFS: Hydrated ${topic} from Cloud Registry.`, { category, model: 'CACHED' });
+          logger.success(`VFS: Hydrated ${topic} from Cloud Registry. [CACHE_HIT]`, { 
+              category, 
+              model: 'CACHED',
+              topic: topic
+          });
           return cached;
       }
     }
 
-    // ACCOUNTING HANDSHAKE: PRE-FLIGHT
     const preProfile = auth.currentUser ? await getUserProfile(auth.currentUser.uid) : null;
     const preBalance = preProfile?.coinBalance || 0;
 
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `Topic: "${topic}"\nKnowledge Base Context: "${channelContext}"\n${cumulativeContext ? `KNOWLEDGE ALREADY COVERED: "${cumulativeContext}"` : ''}`;
 
-    logger.info(`Initiating Logic Synthesis for: ${topic}`, { category, model });
+    logger.info(`Initiating Logic Synthesis for: ${topic} [CACHE_MISS]`, { category, model });
 
     const { response, latency, inputSize } = await runWithDeepTelemetry(async () => {
         return await ai.models.generateContent({
@@ -352,7 +352,6 @@ export async function generateLectureScript(
     const usage = response.usageMetadata;
     const outputSize = new TextEncoder().encode(response.text).length;
 
-    // ACCOUNTING HANDSHAKE: COMMIT
     let postBalance = preBalance;
     if (auth.currentUser) {
         await deductCoins(auth.currentUser.uid, AI_COSTS.TEXT_REFRACTION);
@@ -371,7 +370,8 @@ export async function generateLectureScript(
         outputSizeBytes: outputSize,
         preBalance,
         postBalance,
-        cost: AI_COSTS.TEXT_REFRACTION
+        cost: AI_COSTS.TEXT_REFRACTION,
+        topic: topic
     });
 
     const parsed = JSON.parse(response.text.trim());

@@ -1,17 +1,20 @@
+
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Channel, UserProfile, GeneratedLecture, TtsProvider } from '../types';
-// Added BookText to lucide-react imports
-import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCw, Scroll, Lock, Crown, Settings2, Globe, Cpu, Speaker, Search, X, ArrowLeft, Smartphone, Wand2, ShieldCheck, BookText } from 'lucide-react';
+// Added MarkdownView import
+import { Play, MessageSquare, Heart, Share2, Bookmark, Music, Plus, Pause, Loader2, Volume2, VolumeX, GraduationCap, ChevronRight, Mic, AlignLeft, BarChart3, User, AlertCircle, Zap, Radio, Square, Sparkles, LayoutGrid, List, SearchX, Activity, Video, Terminal, RefreshCw, Scroll, Lock, Crown, Settings2, Globe, Cpu, Speaker, Search, X, ArrowLeft, Smartphone, Wand2, ShieldCheck, BookText, Type, Check, RotateCcw, Sliders, Palette } from 'lucide-react';
 import { ChannelCard } from './ChannelCard';
 import { CreatorProfileModal } from './CreatorProfileModal';
 import { PodcastListTable, SortKey } from './PodcastListTable';
 import { followUser, unfollowUser, isUserAdmin, voteChannel } from '../services/firestoreService';
 import { generateLectureScript } from '../services/lectureGenerator';
+import { generateChannelFromPrompt } from '../services/channelGenerator';
 import { synthesizeSpeech, speakSystem } from '../services/tts';
 import { getCachedLectureScript, cacheLectureScript } from '../utils/db';
 import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
 import { warmUpAudioContext, getGlobalAudioContext, stopAllPlatformAudio, registerAudioOwner, getGlobalAudioGeneration, primeNeuralAudio, getSystemVoicesAsync, syncPrimeSpeech, SPEECH_REGISTRY } from '../utils/audioUtils';
 import { Visualizer } from './Visualizer';
+import { MarkdownView } from './MarkdownView';
 
 interface PodcastFeedProps {
   channels: Channel[];
@@ -30,19 +33,82 @@ interface PodcastFeedProps {
   setSearchQuery?: (q: string) => void;
   onNavigate?: (view: string) => void;
   onOpenPricing?: () => void;
+  onOpenManual?: () => void;
   onUpdateChannel?: (channel: Channel) => Promise<void>;
   language?: 'en' | 'zh';
   onMagicCreate?: () => void;
-  onOpenManual?: () => void;
   t: any;
 }
 
-const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferredProvider, onFinish, handleVote, handleBookmarkToggle, onCommentClick, currentUser, userProfile }: any) => {
+type FeedTheme = 'obsidian' | 'parchment' | 'matrix';
+type FontChoice = 'sans' | 'serif' | 'mono' | 'futurist' | 'readable';
+
+interface ThemeConfig {
+    bg: string;
+    text: string;
+    secondaryText: string;
+    accent: string;
+    cardBg: string;
+    border: string;
+}
+
+const FEED_THEMES: Record<FeedTheme, ThemeConfig> = {
+    obsidian: {
+        bg: 'bg-slate-950',
+        text: 'text-white',
+        secondaryText: 'text-slate-500',
+        accent: 'text-indigo-400',
+        cardBg: 'bg-indigo-900/10',
+        border: 'border-indigo-500/30'
+    },
+    parchment: {
+        bg: 'bg-[#fdfbf7]',
+        text: 'text-slate-900',
+        secondaryText: 'text-slate-600',
+        accent: 'text-indigo-600',
+        cardBg: 'bg-white/40',
+        border: 'border-slate-200'
+    },
+    matrix: {
+        bg: 'bg-black',
+        text: 'text-emerald-400',
+        secondaryText: 'text-emerald-900',
+        accent: 'text-emerald-500',
+        cardBg: 'bg-emerald-900/5',
+        border: 'border-emerald-500/20'
+    }
+};
+
+const FONT_CLASSES: Record<FontChoice, string> = {
+    sans: 'font-sans',
+    serif: 'font-serif',
+    mono: 'font-mono',
+    futurist: 'tracking-tight font-sans', 
+    readable: 'font-sans' 
+};
+
+const FONT_LABELS: Record<FontChoice, string> = {
+    sans: 'Inter UI',
+    serif: 'Georgia',
+    mono: 'JetBrains',
+    futurist: 'Space G',
+    readable: 'Lexend UI'
+};
+
+const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferredProvider, onFinish, handleVote, handleBookmarkToggle, onCommentClick, currentUser, userProfile, onUpdateChannel }: any) => {
     const MY_TOKEN = useMemo(() => `MobileFeed:${channel.id}`, [channel.id]);
     const [playbackState, setPlaybackState] = useState<'idle' | 'buffering' | 'playing' | 'error'>('idle');
+    const [isPaused, setIsPaused] = useState(false);
+    const isPausedRef = useRef(false);
     const [statusMessage, setStatusMessage] = useState('');
     const [ttsProvider, setTtsProvider] = useState<TtsProvider>(preferredProvider || 'gemini');
-    const [showTtsMenu, setshowTtsMenu] = useState(false);
+    const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+    const [theme, setTheme] = useState<FeedTheme>(() => (localStorage.getItem('mobile_feed_theme') as FeedTheme) || 'obsidian');
+    const [fontChoice, setFontChoice] = useState<FontChoice>(() => (localStorage.getItem('mobile_feed_font') as FontChoice) || 'sans');
+    const [fontSize, setFontSize] = useState<number>(() => parseInt(localStorage.getItem('mobile_feed_size') || '30'));
+    
+    const themeConfig = FEED_THEMES[theme];
+    const fontClass = FONT_CLASSES[fontChoice];
     
     const [transcriptHistory, setTranscriptHistory] = useState<{speaker: string, text: string, id: string}[]>([]);
     const [activeTranscriptId, setActiveTranscriptId] = useState<string | null>(null);
@@ -53,17 +119,39 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
     const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
     const transcriptRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-    const isLiked = useMemo(() => {
-        return userProfile?.likedChannelIds?.includes(channel.id) || false;
-    }, [userProfile, channel.id]);
+    const isLiked = useMemo(() => userProfile?.likedChannelIds?.includes(channel.id) || false, [userProfile, channel.id]);
+    const isBookmarked = useMemo(() => userProfile?.bookmarkedChannelIds?.includes(channel.id) || false, [userProfile, channel.id]);
 
-    const isBookmarked = useMemo(() => {
-        return userProfile?.bookmarkedChannelIds?.includes(channel.id) || false;
-    }, [userProfile, channel.id]);
+    const handleLike = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (handleVote) handleVote(channel.id, isLiked ? 'dislike' : 'like', e);
+    };
 
-    const dispatchLog = useCallback((text: string, type: 'info' | 'success' | 'warn' | 'error' = 'info') => {
-        window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `[Feed:${channel.id.substring(0,6)}] ${text}`, type } }));
-    }, [channel.id]);
+    const handleBookmark = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (handleBookmarkToggle) handleBookmarkToggle(channel.id, e);
+    };
+
+    const handleTogglePause = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const next = !isPaused;
+        setIsPaused(next);
+        isPausedRef.current = next;
+        if (next) {
+            activeSourcesRef.current.forEach(s => { try { s.stop(); } catch(err){} });
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+        }
+    };
+
+    const handleReplay = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        stopAudioInternal();
+        setIsPaused(false);
+        isPausedRef.current = false;
+        setTranscriptHistory([]);
+        setActiveTranscriptId(null);
+        runPlaybackSequence(++localSessionIdRef.current);
+    };
 
     const stopAudioInternal = useCallback(() => { 
         localSessionIdRef.current++; 
@@ -84,9 +172,7 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
         const ctx = getGlobalAudioContext();
         
         if (ttsProvider === 'system') {
-            setLiveVolume(0.8);
             await speakSystem(text, language);
-            setLiveVolume(0);
         } else {
             const res = await synthesizeSpeech(text, voice, ctx, ttsProvider, language);
             if (res.buffer && mountedRef.current && localSession === localSessionIdRef.current) {
@@ -98,7 +184,7 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
                     activeSourcesRef.current.add(source);
                     source.onended = () => { 
                         activeSourcesRef.current.delete(source); 
-                        setLiveVolume(0);
+                        setLiveVolume(0); 
                         resolve(); 
                     };
                     source.start(0);
@@ -109,43 +195,41 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
 
     const runPlaybackSequence = async (localSession: number) => {
         if (!mountedRef.current || localSession !== localSessionIdRef.current) return;
-        
-        const ctx = getGlobalAudioContext();
         setPlaybackState('playing');
-        
         try {
-            // 1. Initial Welcome
             const welcomeText = channel.welcomeMessage || channel.description || "Welcome to this neural channel.";
             setTranscriptHistory([{ speaker: 'Host', text: welcomeText, id: 'intro' }]);
             setActiveTranscriptId('intro');
             await playSingleAudioSegment(welcomeText, channel.voiceName, localSession);
 
-            // 2. Resolve Curriculum
-            const chaptersToPlay = (SPOTLIGHT_DATA[channel.id]?.curriculum || channel.chapters || []);
-            
-            // 3. Iterate Chapters -> SubTopics
+            let chaptersToPlay = (SPOTLIGHT_DATA[channel.id]?.curriculum || channel.chapters || []);
+            if (chaptersToPlay.length === 0) {
+                setPlaybackState('buffering');
+                setStatusMessage("Synthesis Phase...");
+                const generated = await generateChannelFromPrompt(channel.description, currentUser, language || 'en');
+                if (generated && generated.chapters) {
+                    chaptersToPlay = generated.chapters;
+                    if (onUpdateChannel) onUpdateChannel({ ...channel, chapters: generated.chapters });
+                } else {
+                    onFinish?.();
+                    return;
+                }
+            }
+
             for (const chapter of chaptersToPlay) {
-                // Fix: Replace non-existent playbackSessionRef with localSessionIdRef
                 if (localSession !== localSessionIdRef.current) break;
-
                 for (const sub of chapter.subTopics) {
-                    // Fix: Replace non-existent playbackSessionRef with localSessionIdRef
                     if (localSession !== localSessionIdRef.current) break;
-
                     setPlaybackState('buffering');
-                    setStatusMessage(`Syncing: ${sub.title}`);
-
+                    setStatusMessage(`Sector: ${sub.title}`);
                     const cacheKey = `lecture_${channel.id}_${sub.id}_${language || 'en'}`;
                     let lecture = await getCachedLectureScript(cacheKey) || SPOTLIGHT_DATA[channel.id]?.lectures[sub.title];
-                    
-                    if (!lecture) {
-                        lecture = await generateLectureScript(sub.title, channel.description, language || 'en', channel.id, channel.voiceName);
-                    }
+                    if (!lecture) lecture = await generateLectureScript(sub.title, channel.description, language || 'en', channel.id, channel.voiceName);
 
                     if (lecture && mountedRef.current && localSession === localSessionIdRef.current) {
                         setTranscriptHistory(prev => [
                             ...prev,
-                            { speaker: 'System', text: `Entering: ${chapter.title} - ${sub.title}`, id: `head-${sub.id}` },
+                            { speaker: 'System', text: `### Sector 0${chapter.id}: ${sub.title}`, id: `head-${sub.id}` },
                             ...lecture!.sections.map((s, i) => ({ 
                                 speaker: s.speaker === 'Teacher' ? 'Host' : 'Guest', 
                                 text: s.text, 
@@ -155,33 +239,30 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
 
                         setPlaybackState('playing');
                         for (let i = 0; i < lecture.sections.length; i++) {
-                            // Fix: Replace non-existent playbackSessionRef with localSessionIdRef
                             if (localSession !== localSessionIdRef.current) break;
-                            
+                            while (isPausedRef.current) {
+                                if (localSession !== localSessionIdRef.current) return;
+                                await new Promise(r => setTimeout(r, 250));
+                            }
                             const section = lecture.sections[i];
                             setActiveTranscriptId(`s-${sub.id}-${i}`);
-                            
                             const voice = section.speaker === 'Teacher' ? channel.voiceName : 'Zephyr';
                             await playSingleAudioSegment(section.text, voice, localSession);
-                            
                             if (localSession === localSessionIdRef.current) {
+                                while (isPausedRef.current) {
+                                    if (localSession !== localSessionIdRef.current) return;
+                                    await new Promise(r => setTimeout(r, 250));
+                                }
                                 await new Promise(r => setTimeout(r, 600));
                             }
                         }
                     }
                 }
-                // Fix: Replace non-existent playbackSessionRef with localSessionIdRef
-                if (localSession !== localSessionIdRef.current) break;
             }
-
-            // Fix: Replace non-existent playbackSessionRef with localSessionIdRef
-            if (localSession === localSessionIdRef.current && mountedRef.current) {
-                dispatchLog(`Channel sequence finalized. Transitioning to next node.`, 'success');
-                onFinish?.();
-            }
+            if (localSession === localSessionIdRef.current && mountedRef.current) onFinish?.();
         } catch (e: any) {
             setPlaybackState('error');
-            dispatchLog(`Sequence fault: ${e.message}`, 'error');
+            onFinish?.(); 
         }
     };
 
@@ -192,7 +273,6 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
             const ctx = getGlobalAudioContext();
             if (ctx.state === 'suspended') {
                 setIsAutoplayBlocked(true);
-                dispatchLog(`Browser Handshake required for audio engine.`, 'warn');
             } else {
                 setIsAutoplayBlocked(false);
                 registerAudioOwner(MY_TOKEN, stopAudioInternal);
@@ -210,72 +290,128 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
         runPlaybackSequence(++localSessionIdRef.current);
     };
 
-    // --- SCRIPT AUTO FOCUS LOGIC (REFINED) ---
     useEffect(() => {
         if (activeTranscriptId && transcriptRefs.current[activeTranscriptId]) {
-            const target = transcriptRefs.current[activeTranscriptId];
-            if (target) {
-                target.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'center'
-                });
-            }
+            transcriptRefs.current[activeTranscriptId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }, [activeTranscriptId]);
 
-    const handleLike = (e: React.MouseEvent) => {
-        if (handleVote) handleVote(channel.id, isLiked ? 'dislike' : 'like', e);
+    const handleFontSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = parseInt(e.target.value);
+        setFontSize(val);
+        localStorage.setItem('mobile_feed_size', val.toString());
     };
 
-    const handleBookmark = (e: React.MouseEvent) => {
-        if (handleBookmarkToggle) handleBookmarkToggle(channel.id, e);
+    const handleFontChoice = (f: FontChoice) => {
+        setFontChoice(f);
+        localStorage.setItem('mobile_feed_font', f);
     };
 
     return (
-        <div className="h-full w-full snap-start relative flex flex-col bg-slate-950 overflow-hidden">
+        <div className={`h-full w-full snap-start relative flex flex-col ${themeConfig.bg} overflow-hidden transition-colors duration-700`}>
             <div className="absolute inset-0 z-0">
-                {channel.imageUrl ? (
-                    <img src={channel.imageUrl} className="w-full h-full object-cover opacity-20 blur-md" alt="" />
+                {channel.imageUrl && theme !== 'matrix' ? (
+                    <img src={channel.imageUrl} className="w-full h-full object-cover opacity-20 blur-xl" alt="" />
                 ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-slate-900 to-indigo-950"></div>
+                    <div className={`w-full h-full ${theme === 'matrix' ? 'bg-black' : 'bg-gradient-to-br from-slate-900 to-indigo-950 opacity-20'}`}></div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-slate-950/40 to-slate-950"></div>
+                <div className={`absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/20`}></div>
             </div>
 
-            <div className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 z-50 flex flex-col items-end gap-2">
-                <button onClick={() => setshowTtsMenu(!showTtsMenu)} className="p-3 bg-slate-900/60 backdrop-blur-md rounded-full border border-white/10 text-white hover:bg-indigo-600 transition-all shadow-xl active:scale-95">
-                    <Speaker size={20} className={ttsProvider === 'system' ? 'text-slate-400' : 'text-indigo-400'} />
+            <div className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 z-[100] flex flex-col items-end gap-3">
+                <button onClick={() => setShowSettingsMenu(!showSettingsMenu)} className="p-3 bg-slate-900/60 backdrop-blur-md rounded-full border border-white/10 text-white shadow-2xl active:scale-95">
+                    <Type size={20} className={themeConfig.accent} />
                 </button>
-                {showTtsMenu && (
-                    <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 animate-fade-in-up flex flex-col min-w-[140px] gap-1">
-                        {(['gemini', 'google', 'openai', 'system'] as const).map(p => (
-                            <button key={p} onClick={() => { setTtsProvider(p); setshowTtsMenu(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-bold uppercase transition-all ${ttsProvider === p ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
-                                <Zap size={14}/> {p}
-                            </button>
-                        ))}
+                {showSettingsMenu && (
+                    <div className="bg-slate-900 border border-slate-700 rounded-[2rem] shadow-2xl p-5 animate-fade-in-up flex flex-col w-[260px] gap-6 max-h-[80vh] overflow-y-auto scrollbar-hide">
+                        <div className="space-y-3">
+                            <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] px-1 flex items-center gap-2"><Palette size={12}/> Color Schema</p>
+                            <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-950 rounded-xl border border-white/5">
+                                {(['obsidian', 'parchment', 'matrix'] as FeedTheme[]).map(t => (
+                                    <button key={t} onClick={() => { setTheme(t); localStorage.setItem('mobile_feed_theme', t); }} className={`flex-1 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${theme === t ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>
+                                        {t.substring(0, 3)}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center px-1">
+                                <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] flex items-center gap-2"><Type size={12}/> Typeface</p>
+                                <span className="text-[9px] font-mono text-indigo-400 uppercase">{fontChoice}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['sans', 'serif', 'mono', 'futurist', 'readable'] as FontChoice[]).map(f => (
+                                    <button 
+                                        key={f} 
+                                        onClick={() => handleFontChoice(f)} 
+                                        className={`px-3 py-2.5 rounded-xl border text-[10px] font-bold transition-all relative overflow-hidden ${fontChoice === f ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-600'}`}
+                                    >
+                                        <span className={FONT_CLASSES[f]}>{FONT_LABELS[f]}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-center px-1">
+                                <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] flex items-center gap-2"><Sliders size={12}/> Scale</p>
+                                <span className="text-[10px] font-mono font-black text-white">{fontSize}px</span>
+                            </div>
+                            <input 
+                                type="range" min="18" max="48" step="1" 
+                                value={fontSize} 
+                                onChange={handleFontSizeChange}
+                                className="w-full h-1 bg-slate-800 rounded-full appearance-none cursor-pointer accent-indigo-500"
+                            />
+                            <div className="flex justify-between text-[8px] font-black text-slate-600 uppercase tracking-widest px-1"><span>Compact</span><span>Ultra</span></div>
+                        </div>
+
+                        <div className="space-y-3 border-t border-white/5 pt-5">
+                            <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em] px-1 flex items-center gap-2"><Speaker size={12}/> Voice Core</p>
+                            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950 rounded-xl border border-white/5">
+                                {(['gemini', 'google', 'openai', 'system'] as const).map(p => (
+                                    <button key={p} onClick={() => { setTtsProvider(p); }} className={`py-2 rounded-lg text-[9px] font-black uppercase transition-all ${ttsProvider === p ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}>
+                                        {p}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <button onClick={() => setShowSettingsMenu(false)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors mt-2">Close Matrix</button>
                     </div>
                 )}
             </div>
 
-            <div className="relative z-10 flex-1 flex flex-col h-full pt-[calc(3rem+env(safe-area-inset-top))] pb-[calc(2rem+env(safe-area-inset-bottom))]">
-                <div className="px-8 text-center shrink-0">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-600/20 border border-indigo-500/30 rounded-full text-indigo-400 text-[10px] font-black uppercase tracking-[0.3em] mb-4"><Radio size={12} /> Broadcast Active</div>
-                    <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-tight line-clamp-2">{channel.title}</h2>
-                    <p className="text-slate-500 text-xs mt-2 font-black uppercase tracking-widest opacity-60">@{channel.author}</p>
+            <div className="relative z-10 flex-1 flex flex-col h-full pt-[calc(2.5rem+env(safe-area-inset-top))] pb-[calc(2rem+env(safe-area-inset-bottom))]">
+                <div className="px-10 text-center shrink-0">
+                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 ${themeConfig.cardBg} border ${themeConfig.border} rounded-full ${themeConfig.accent} text-[8px] font-black uppercase tracking-[0.3em] mb-4`}><Radio size={10} className="animate-pulse" /> Neural Ingest</div>
+                    <h2 className={`text-2xl font-black italic tracking-tighter uppercase leading-tight line-clamp-2 ${themeConfig.text} ${fontClass}`}>{channel.title}</h2>
+                    <p className={`${themeConfig.secondaryText} text-[10px] mt-2 font-black uppercase tracking-widest`}>@{channel.author}</p>
                 </div>
 
-                <div className="flex-1 flex flex-col justify-end px-8 overflow-hidden relative">
-                    <div className="max-h-[75%] overflow-y-auto space-y-12 py-32 scrollbar-hide mask-fade-edges">
+                <div className="flex-1 flex flex-col justify-end px-10 overflow-hidden relative">
+                    <div className="max-h-[80%] overflow-y-auto space-y-12 py-20 scrollbar-hide mask-fade-edges">
                         {transcriptHistory.map((item) => {
                             const isCurrent = item.id === activeTranscriptId;
+                            const isSystem = item.speaker === 'System';
                             return (
                                 <div 
                                     key={item.id} 
                                     ref={el => { transcriptRefs.current[item.id] = el; }}
-                                    className={`flex flex-col transition-all duration-1000 ease-out ${isCurrent ? 'opacity-100 scale-100' : 'opacity-10 scale-95 blur-[1px]'}`}
+                                    className={`flex flex-col transition-all duration-1000 ease-out ${isCurrent ? 'opacity-100 scale-100' : 'opacity-40 scale-95'}`}
                                 >
-                                    <span className={`text-[10px] font-black uppercase tracking-[0.4em] mb-4 ${isCurrent ? 'text-indigo-400' : 'text-slate-700'}`}>{item.speaker}</span>
-                                    <p className={`text-4xl leading-[1.1] font-black tracking-tighter ${isCurrent ? 'text-white' : 'text-slate-600'}`}>{item.text}</p>
+                                    <span className={`text-[9px] font-black uppercase tracking-[0.3em] mb-4 ${isCurrent ? themeConfig.accent : themeConfig.secondaryText}`}>{item.speaker}</span>
+                                    <div 
+                                        className={`leading-[1.15] transition-all duration-500 ${fontClass}`}
+                                    >
+                                        <MarkdownView 
+                                            content={item.text} 
+                                            compact={true} 
+                                            fontSize={fontSize}
+                                            initialTheme={theme === 'parchment' ? 'light' : theme === 'matrix' ? 'dark' : 'slate'} 
+                                            showThemeSwitcher={false}
+                                        />
+                                    </div>
                                 </div>
                             );
                         })}
@@ -283,40 +419,51 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
 
                     <div className="h-16 w-full flex items-center justify-center py-4 shrink-0">
                         {playbackState === 'buffering' ? (
-                            <div className="flex flex-col items-center gap-1"><Loader2 className="animate-spin text-indigo-500" size={16}/><span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{statusMessage}</span></div>
+                            <div className="flex flex-col items-center gap-2"><Loader2 className={`animate-spin ${themeConfig.accent}`} size={16}/><span className={`text-[8px] font-black uppercase tracking-widest ${themeConfig.secondaryText}`}>{statusMessage}</span></div>
                         ) : (
-                            <Visualizer volume={isActive ? liveVolume : 0} isActive={playbackState === 'playing'} color="#6366f1" />
+                            <div className="w-1/2 h-full"><Visualizer volume={isActive && !isPaused ? liveVolume : 0} isActive={playbackState === 'playing' && !isPaused} color={theme === 'matrix' ? '#10b981' : theme === 'parchment' ? '#6366f1' : '#818cf8'} /></div>
                         )}
                     </div>
                 </div>
 
                 {isAutoplayBlocked && (
-                    <div className="px-8 py-6 flex flex-col gap-4 shrink-0">
-                        {/* Fixed typo in handleRetryUnmute call */}
-                        <button onClick={handleRetryUnmute} className="w-full py-6 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-3xl shadow-[0_20px_50px_rgba(255,255,255,0.2)] animate-pulse flex items-center justify-center gap-3">
-                            <Volume2 size={24}/> Initialize Neural Fabric
+                    <div className="px-10 py-2 flex flex-col gap-3 shrink-0">
+                        <button onClick={handleRetryUnmute} className="w-full py-5 bg-white text-slate-950 font-black uppercase tracking-[0.2em] rounded-3xl shadow-[0_20px_50px_rgba(255,255,255,0.2)] animate-pulse flex items-center justify-center gap-3 text-sm">
+                            <Volume2 size={20}/> Initialize Neural Link
                         </button>
                     </div>
                 )}
             </div>
 
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-10 items-center">
-                <button onClick={handleLike} className="flex flex-col items-center gap-2 group">
-                    <div className={`p-4 bg-slate-900/60 backdrop-blur-md rounded-full border border-white/10 transition-all shadow-2xl ${isLiked ? 'bg-red-600 border-red-500 scale-110' : 'hover:bg-red-600'}`}>
-                        <Heart size={28} className="text-white" fill={isLiked ? 'currentColor' : 'none'} />
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-8 items-center">
+                <div className="flex flex-col gap-3 items-center mb-4">
+                    <button onClick={handleTogglePause} className={`p-3 bg-slate-900/60 backdrop-blur-xl rounded-full border border-white/10 transition-all shadow-2xl ${isPaused ? 'bg-indigo-600 border-indigo-400 animate-pulse' : 'hover:bg-indigo-600'}`}>
+                        {isPaused ? <Play size={20} fill="currentColor"/> : <Pause size={20} fill="currentColor"/>}
+                    </button>
+                    <button onClick={handleReplay} className="p-3 bg-slate-900/60 backdrop-blur-xl rounded-full border border-white/10 hover:bg-amber-600 transition-all shadow-2xl">
+                        <RotateCcw size={20} />
+                    </button>
+                </div>
+                
+                <button onClick={handleLike} className="flex flex-col items-center gap-1.5 group">
+                    <div className={`p-3 bg-slate-900/60 backdrop-blur-xl rounded-full border border-white/10 transition-all shadow-2xl ${isLiked ? 'bg-red-600 border-red-500 scale-110' : 'hover:bg-red-600'}`}>
+                        <Heart size={24} className="text-white" fill={isLiked ? 'currentColor' : 'none'} />
                     </div>
-                    <span className="text-xs font-black text-white drop-shadow-lg">{channel.likes}</span>
+                    <span className="text-[10px] font-black text-white drop-shadow-2xl">{channel.likes}</span>
                 </button>
-                <button onClick={handleBookmark} className="flex flex-col items-center gap-2 group">
-                    <div className={`p-4 bg-slate-900/60 backdrop-blur-md rounded-full border border-white/10 transition-all shadow-2xl ${isBookmarked ? 'bg-amber-500 border-amber-400 scale-110' : 'hover:bg-amber-500'}`}>
-                        <Bookmark size={28} className="text-white" fill={isBookmarked ? "currentColor" : "none"} />
+                <button onClick={handleBookmark} className="flex flex-col items-center gap-1.5 group">
+                    <div className={`p-3 bg-slate-900/60 backdrop-blur-xl rounded-full border border-white/10 transition-all shadow-2xl ${isBookmarked ? 'bg-amber-500 border-amber-400 scale-110' : 'hover:bg-amber-500'}`}>
+                        <Bookmark size={24} className="text-white" fill={isBookmarked ? "currentColor" : "none"} />
                     </div>
                 </button>
-                <button onClick={(e) => { e.stopPropagation(); onCommentClick?.(channel); }} className="flex flex-col items-center gap-2 group">
-                    <div className="p-4 bg-slate-900/60 backdrop-blur-md rounded-full border border-white/10 hover:bg-indigo-600 transition-all shadow-2xl">
-                        <MessageSquare size={28} className="text-white" />
+                <button onClick={(e) => { e.stopPropagation(); onCommentClick?.(channel); }} className="flex flex-col items-center gap-1.5 group">
+                    <div className="p-3 bg-slate-900/60 backdrop-blur-xl rounded-full border border-white/10 hover:bg-indigo-600 transition-all shadow-2xl">
+                        <MessageSquare size={24} className="text-white" />
                     </div>
-                    <span className="text-xs font-black text-white drop-shadow-lg">{channel.comments.length}</span>
+                    <span className="text-[10px] font-black text-white drop-shadow-2xl">{channel.comments.length}</span>
+                </button>
+                <button onClick={() => onChannelClick(channel.id)} className="p-3 bg-slate-900/60 backdrop-blur-xl rounded-full border border-white/10 hover:bg-emerald-600 transition-all shadow-2xl">
+                    <AlignLeft size={24} className="text-white" />
                 </button>
             </div>
         </div>
@@ -326,9 +473,7 @@ const MobileFeedCard = ({ channel, isActive, onChannelClick, language, preferred
 export const PodcastFeed: React.FC<PodcastFeedProps> = ({ 
   channels, onChannelClick, onStartLiveSession, userProfile, globalVoice, onRefresh, currentUser, setChannelToEdit, setIsSettingsModalOpen, onCommentClick, handleVote, handleBookmarkToggle, searchQuery, setSearchQuery, onNavigate, onUpdateChannel, onOpenPricing, language, t, onMagicCreate, onOpenManual
 }) => {
-  const [viewMode, setViewMode] = useState<'grid' | 'table' | 'mobile'>(() => 
-      window.innerWidth < 768 ? 'mobile' : 'grid'
-  );
+  const [viewMode, setViewMode] = useState<'grid' | 'table' | 'mobile'>(() => window.innerWidth < 768 ? 'mobile' : 'grid');
   const lastNonMobileMode = useRef<'grid' | 'table'>('grid');
   const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
   const [activeCategory, setActiveCategory] = useState('All');
@@ -345,7 +490,6 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
             setViewMode(lastNonMobileMode.current);
         }
     };
-
     window.addEventListener('resize', handleResize);
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
@@ -362,19 +506,14 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
     if (searchQuery) {
         const q = searchQuery.toLowerCase();
         filtered = filtered.filter(c => 
-            c.title.toLowerCase().includes(q) || 
-            c.description.toLowerCase().includes(q) || 
-            c.author.toLowerCase().includes(q)
+            c.title.toLowerCase().includes(q) || c.description.toLowerCase().includes(q) || c.author.toLowerCase().includes(q)
         );
     }
-    if (activeCategory !== 'All') {
-        filtered = filtered.filter(c => c.tags.includes(activeCategory));
-    }
+    if (activeCategory !== 'All') filtered = filtered.filter(c => c.tags.includes(activeCategory));
 
     return [...filtered].sort((a, b) => {
         const aVal = a[sortConfig.key] ?? 0;
         const bVal = b[sortConfig.key] ?? 0;
-        
         if (aVal === bVal) return 0;
         const multiplier = sortConfig.direction === 'asc' ? 1 : -1;
         return aVal < bVal ? -1 * multiplier : 1 * multiplier;
@@ -382,10 +521,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
   }, [channels, sortConfig, searchQuery, activeCategory]);
 
   const handleSort = (key: SortKey) => {
-      setSortConfig(prev => ({
-          key,
-          direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
-      }));
+      setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
   };
 
   const [activeMobileIndex, setActiveMobileIndex] = useState(0);
@@ -394,10 +530,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
     if (viewMode !== 'mobile' || !mobileContainerRef.current) return;
     const nextIndex = activeMobileIndex + 1;
     if (nextIndex < sortedChannels.length) {
-        mobileContainerRef.current.scrollTo({
-            top: nextIndex * mobileContainerRef.current.clientHeight,
-            behavior: 'smooth'
-        });
+        mobileContainerRef.current.scrollTo({ top: nextIndex * mobileContainerRef.current.clientHeight, behavior: 'smooth' });
         setActiveMobileIndex(nextIndex);
     }
   }, [viewMode, activeMobileIndex, sortedChannels.length]);
@@ -442,7 +575,6 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                   </div>
               </div>
 
-              {/* QUICK SHORTCUT ROW */}
               <div className="flex items-center gap-4 py-2 border-y border-slate-800/50 bg-slate-950/30 -mx-8 px-8">
                   <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 shrink-0">
                     <Zap size={10} className="text-amber-500" /> Specialized Nodes:
@@ -526,7 +658,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
         </>
       ) : (
         <div className="h-full w-full relative">
-            <div className="absolute top-4 left-4 z-50">
+            <div className="absolute top-4 left-4 z-[110]">
                 <button onClick={() => setViewMode(lastNonMobileMode.current)} className="p-3 bg-slate-900/60 backdrop-blur-md rounded-full border border-white/10 text-white shadow-xl"><ArrowLeft size={20}/></button>
             </div>
             <div 
@@ -552,6 +684,7 @@ export const PodcastFeed: React.FC<PodcastFeedProps> = ({
                         onCommentClick={onCommentClick}
                         currentUser={currentUser}
                         userProfile={userProfile}
+                        onUpdateChannel={onUpdateChannel}
                     />
                 ))}
             </div>

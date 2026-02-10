@@ -1,5 +1,4 @@
-
-import { Channel, ChannelVisibility } from '../types';
+import { Channel, ChannelVisibility, RecordingSession } from '../types';
 import { OFFLINE_CHANNEL_ID } from './offlineContent';
 
 export const VOICES = [
@@ -103,4 +102,43 @@ export const HANDCRAFTED_CHANNELS: Channel[] = [
     welcomeMessage: "Welcome to the Neural Prism v12.0.0-ABUNDANCE. We have achieved 100% stateful consistency. Ready to audit the spectrum?",
     createdAt: INITIAL_DATE
   }
+];
+
+export const SEED_RECORDINGS: RecordingSession[] = [
+    {
+        id: 'rec-hackathon-final',
+        userId: 'system',
+        channelId: 'hackathon-pitch',
+        channelTitle: 'Final Pitch: Neural Lens Observability',
+        timestamp: Date.now() - 86400000 * 2,
+        mediaUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 
+        mediaType: 'youtube',
+        transcriptUrl: '',
+        sector: 'hackathon',
+        nFactor: 1250,
+        signedBy: 'Chief Architect',
+        audit: {
+            coherenceScore: 100,
+            StructuralCoherenceScore: 100,
+            LogicalDriftRisk: 'Low',
+            AdversarialRobustness: 'High',
+            driftRisk: 'Low',
+            robustness: 'High',
+            timestamp: Date.now(),
+            graph: {
+                nodes: [
+                    { id: '1', label: 'Reasoning Instrumentation', type: 'component' },
+                    { id: '2', label: 'Technical Truth', type: 'metric' },
+                    { id: '3', label: 'Gemini 3 Pro', type: 'component' }
+                ],
+                links: [
+                    { source: '3', target: '1', label: 'Powers' },
+                    { source: '1', target: '2', label: 'ENSURES' }
+                ]
+            },
+            probes: [
+                { question: "How is technical truth verified?", answer: "Via recursive URI verification against the GitHub source truth.", status: 'passed' }
+            ]
+        }
+    }
 ];

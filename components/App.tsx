@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, ErrorInfo, ReactNode, Component, useRef } from 'react';
 import { 
   Podcast, Search, LayoutGrid, RefreshCw, 
@@ -501,13 +502,14 @@ const App: React.FC = () => {
     handleSetViewState('directory');
   }, [handleSetViewState]);
 
+  // Fix: Renamed parameters recordScreen/recordCamera to videoEnabled/cameraEnabled to satisfy signature checks and fixed shorthand scope issue
   const handleStartLiveSession = useCallback((
     channel: Channel, 
     context?: string, 
     recordingEnabled?: boolean, 
     bookingId?: string, 
-    recordScreen?: boolean, 
-    recordCamera?: boolean, 
+    videoEnabled?: boolean, 
+    cameraEnabled?: boolean, 
     activeSegment?: any, 
     recordingDuration?: number, 
     interactionEnabled?: boolean,
@@ -519,7 +521,7 @@ const App: React.FC = () => {
         setIsPricingModalOpen(true);
         return;
     }
-    setLiveSessionParams({ channel, context, recordingEnabled, bookingId, recordScreen, recordCamera, activeSegment, recordingDuration, interactionEnabled, recordingTarget, sessionTitle, returnTo: activeViewID });
+    setLiveSessionParams({ channel, context, recordingEnabled, bookingId, recordScreen: videoEnabled, recordCamera: cameraEnabled, activeSegment, recordingDuration, interactionEnabled, recordingTarget, sessionTitle, returnTo: activeViewID });
     handleSetViewState('live_session');
   }, [activeViewID, handleSetViewState, isProMember]);
 
@@ -778,18 +780,18 @@ const App: React.FC = () => {
         </main>
 
         <div className={`fixed bottom-0 left-0 right-0 z-[1000] transition-all duration-500 transform ${showConsole ? 'translate-y-0' : 'translate-y-[calc(100%-40px)]'}`}>
-            <div className="bg-slate-950 border-t-2 border-red-500 shadow-[0_-20px_100px_-10px_rgba(239,68,68,0.4)] backdrop-blur-3xl">
+            <div className={`bg-slate-950 border-t-2 border-red-500 shadow-[0_-20px_100px_-10px_rgba(239,68,68,0.4)] backdrop-blur-3xl ${showConsole ? 'h-screen md:h-96' : 'h-[400px]'}`}>
                 <button onClick={() => setShowConsole(!showConsole)} className="w-full h-10 flex items-center justify-center gap-3 bg-slate-900 border-b border-slate-800 hover:bg-slate-800 transition-colors group">
                     <Bug size={14} className={showConsole ? 'text-red-400' : 'text-slate-50'} />
-                    <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 group-hover:text-white transition-colors">Neural Diagnostics Console</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 group-hover:text-white transition-colors">{t.diagnosticConsole}</span>
                     {showConsole ? <ChevronDown size={14} className="text-slate-500"/> : <ChevronUp size={14} className="text-slate-500"/>}
                 </button>
-                <div className="h-96 overflow-hidden flex flex-col md:flex-row">
+                <div className={`overflow-hidden flex flex-col md:flex-row ${showConsole ? 'h-[calc(100vh-40px)] md:h-[calc(384px-40px)]' : 'h-0'}`}>
                     <div className="w-full md:w-80 border-r border-white/5 p-6 space-y-6 overflow-y-auto shrink-0 bg-black/60 scrollbar-hide">
                         <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
-                            <button onClick={() => setConsoleTab('trace')} className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${consoleTab === 'trace' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Trace</button>
-                            <button onClick={() => setConsoleTab('loop')} className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${consoleTab === 'loop' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Loop</button>
-                            <button onClick={() => setConsoleTab('feedback')} className={`flex-1 py-1.5 rounded-md text-[9px] font-black uppercase rounded-lg transition-all ${consoleTab === 'feedback' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Feedback</button>
+                            <button onClick={() => setConsoleTab('trace')} className={`flex-1 py-2 rounded-md text-[10px] font-black uppercase transition-all ${consoleTab === 'trace' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Trace</button>
+                            <button onClick={() => setConsoleTab('loop')} className={`flex-1 py-2 rounded-md text-[10px] font-black uppercase transition-all ${consoleTab === 'loop' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Loop</button>
+                            <button onClick={() => setConsoleTab('feedback')} className={`flex-1 py-2 rounded-md text-[10px] font-black uppercase rounded-lg transition-all ${consoleTab === 'feedback' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>Feedback</button>
                         </div>
                         <div className="space-y-4">
                             <h4 className="text-[10px] font-black text-red-500 uppercase tracking-widest flex items-center gap-2"><Fingerprint size={12}/> Neural Fingerprint</h4>
@@ -800,40 +802,39 @@ const App: React.FC = () => {
                             </div>
                         </div>
                         <div className="pt-4 flex flex-col gap-2">
-                            <button onClick={handleExportLogs} className="w-full py-2 bg-indigo-900/40 text-indigo-300 text-[9px] font-black uppercase rounded-lg border border-indigo-500/30 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                            <button onClick={handleExportLogs} className="w-full py-3 bg-indigo-900/40 text-indigo-300 text-[10px] font-black uppercase rounded-lg border border-indigo-500/30 hover:bg-indigo-600 hover:text-white transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
                                 <FileDown size={14}/> Dump Logs
                             </button>
-                            <button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-2 bg-slate-800 text-slate-400 text-[9px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all shadow-lg active:scale-95">Clear Buffer</button>
+                            <button onClick={() => { logBufferRef.current = []; setVisibleLogs([]); }} className="w-full py-3 bg-slate-800 text-slate-400 text-[10px] font-black uppercase rounded-lg border border-slate-700 hover:text-white transition-all shadow-lg active:scale-95">Clear Buffer</button>
                         </div>
                     </div>
                     <div className="flex-1 flex flex-col min-w-0 bg-black/80">
                         {consoleTab === 'trace' ? (
                             <>
                                 <div className="px-6 py-3 border-b border-white/5 flex items-center justify-between bg-slate-900/40">
-                                    <div className="flex items-center gap-2"><Terminal size={14} className="text-red-400"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">System Log Trace (RAW)</span></div>
+                                    <div className="flex items-center gap-2"><Terminal size={14} className="text-red-400"/><span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t.systemLog}</span></div>
                                     <button onClick={() => setIsLogPaused(!isLogPaused)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[9px] font-black uppercase tracking-widest transition-all ${isLogPaused ? 'bg-emerald-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700'}`}>{isLogPaused ? <PlayIcon size={12}/> : <Pause size={12}/>}{isLogPaused ? 'Resume' : 'Pause'}</button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-6 space-y-3 scrollbar-thin scrollbar-thumb-white/10 text-left">
-                                    {visibleLogs.filter(l => l.type !== 'loop').length === 0 && (<p className="text-slate-700 italic text-xs">Awaiting neural activity...</p>)}
+                                <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3 scrollbar-thin scrollbar-thumb-white/10 text-left">
+                                    {visibleLogs.filter(l => l.type !== 'loop').length === 0 && (<p className="text-slate-700 italic text-xs">{t.awaitingActivity}</p>)}
                                     {visibleLogs.filter(l => l.type !== 'loop').map(log => (
-                                        <div key={log.id} className={`flex flex-col gap-2 p-4 rounded-2xl border transition-all hover:border-white/20 ${getLogColor(log.type)}`}>
-                                            <div className="flex items-start justify-between gap-4">
+                                        <div key={log.id} className={`flex flex-col gap-2 p-3 md:p-4 rounded-2xl border transition-all hover:border-white/20 ${getLogColor(log.type)}`}>
+                                            <div className="flex flex-col md:flex-row md:items-start justify-between gap-2 md:gap-4">
                                                 <div className="flex items-start gap-3">
                                                     <div className="mt-1 shrink-0">{getLogIcon(log.type)}</div>
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2 mb-1">
-                                                            <span className="text-[8px] font-black uppercase tracking-widest opacity-40">[{log.time}]</span>
-                                                            <span className="text-[9px] font-black uppercase tracking-widest">{log.type}</span>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                                                            <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest opacity-40">[{log.time}]</span>
+                                                            <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest">{log.type}</span>
                                                             {log.meta?.category && <span className="px-1.5 py-0.5 bg-black/20 rounded text-[7px] font-black uppercase tracking-tighter">{log.meta.category}</span>}
                                                             {log.meta?.model && <span className="px-1.5 py-0.5 bg-indigo-500/20 text-indigo-300 rounded text-[7px] font-mono">{log.meta.model}</span>}
-                                                            {log.meta?.hash && <span className="text-[7px] font-mono text-slate-500">#${log.meta.hash}</span>}
                                                         </div>
-                                                        <p className="text-[11px] font-mono whitespace-pre-wrap leading-relaxed selection:bg-indigo-500/30">{log.text}</p>
+                                                        <p className="text-[10px] md:text-[11px] font-mono whitespace-pre-wrap leading-relaxed selection:bg-indigo-500/30 break-words">{log.text}</p>
                                                     </div>
                                                 </div>
                                                 {log.meta?.latency !== undefined && (
-                                                    <div className="text-right shrink-0">
-                                                        <div className="flex items-center gap-1 text-[8px] font-black text-slate-500 uppercase bg-black/20 px-2 py-0.5 rounded-full border border-white/5">
+                                                    <div className="text-left md:text-right shrink-0">
+                                                        <div className="inline-flex items-center gap-1 text-[8px] font-black text-slate-500 uppercase bg-black/20 px-2 py-0.5 rounded-full border border-white/5">
                                                             <Clock size={8}/> {Math.round(log.meta.latency)}ms
                                                         </div>
                                                     </div>
@@ -841,7 +842,7 @@ const App: React.FC = () => {
                                             </div>
                                             
                                             {log.meta && (log.meta.inputTokens || log.meta.outputTokens || log.meta.postBalance !== undefined) && (
-                                                <div className="mt-3 pt-3 border-t border-current/10 grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                                <div className="mt-2 pt-2 md:mt-3 md:pt-3 border-t border-current/10 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                                                     {(log.meta.inputTokens || log.meta.outputTokens) && (
                                                         <div className="space-y-1">
                                                             <p className="text-[7px] font-black uppercase opacity-40 tracking-wider">Token Density</p>
@@ -870,14 +871,6 @@ const App: React.FC = () => {
                                                             </div>
                                                         </div>
                                                     )}
-                                                    {log.meta.retryCount > 1 && (
-                                                        <div className="space-y-1">
-                                                            <p className="text-[7px] font-black uppercase opacity-40 tracking-wider">Retry Cycle</p>
-                                                            <div className="flex items-center gap-1.5 font-mono text-[9px] font-black text-amber-400">
-                                                                <RefreshCw size={8}/> <span>Attempt {log.meta.retryCount}</span>
-                                                            </div>
-                                                        </div>
-                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -890,7 +883,7 @@ const App: React.FC = () => {
                                     <div className="flex items-center gap-2"><Repeat size={14} className="text-indigo-400 animate-spin-slow"/><span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">Dyad Self-Feedback Loop</span></div>
                                     <button onClick={handleExportLogs} className="p-1.5 text-indigo-300 hover:text-white" title="Export Loop Logs"><FileDown size={14}/></button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide">
+                                <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 scrollbar-hide">
                                     {visibleLogs.filter(l => l.type === 'loop').length === 0 && (
                                         <div className="h-full flex flex-col items-center justify-center opacity-20 gap-4">
                                             <Repeat size={48}/>
@@ -898,19 +891,19 @@ const App: React.FC = () => {
                                         </div>
                                     )}
                                     {visibleLogs.filter(l => l.type === 'loop').map(log => (
-                                        <div key={log.id} className="bg-slate-900 border border-indigo-500/20 rounded-3xl p-6 space-y-4 shadow-xl">
-                                            <div className="flex justify-between items-center border-b border-white/5 pb-3">
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-[8px] font-black text-indigo-400 uppercase bg-indigo-500/10 px-2 py-0.5 rounded">FROM: {log.meta?.senderTool}</span>
+                                        <div key={log.id} className="bg-slate-900 border border-indigo-500/20 rounded-3xl p-4 md:p-6 space-y-4 shadow-xl">
+                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-white/5 pb-3">
+                                                <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+                                                    <span className="text-[7px] md:text-[8px] font-black text-indigo-400 uppercase bg-indigo-500/10 px-2 py-0.5 rounded">FROM: {log.meta?.senderTool}</span>
                                                     <ArrowRight size={10} className="text-slate-600"/>
-                                                    <span className="text-[8px] font-black text-emerald-400 uppercase bg-emerald-500/10 px-2 py-0.5 rounded">TO: {log.meta?.receiverTool}</span>
+                                                    <span className="text-[7px] md:text-[8px] font-black text-emerald-400 uppercase bg-emerald-500/10 px-2 py-0.5 rounded">TO: {log.meta?.receiverTool}</span>
                                                 </div>
-                                                <span className="text-[9px] font-mono text-slate-500">{log.time}</span>
+                                                <span className="text-[8px] md:text-[9px] font-mono text-slate-500">[{log.time}]</span>
                                             </div>
                                             <div className="space-y-2">
                                                 <p className="text-xs text-white font-bold">{log.text}</p>
                                                 <div className="bg-black rounded-2xl p-4 border border-white/5 font-mono text-[10px] text-indigo-300 overflow-x-auto">
-                                                    <pre>{safeJsonStringify(log.meta?.machineContent)}</pre>
+                                                    <pre className="break-words whitespace-pre-wrap">{safeJsonStringify(log.meta?.machineContent)}</pre>
                                                 </div>
                                             </div>
                                         </div>
@@ -918,7 +911,7 @@ const App: React.FC = () => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex-1 flex flex-col p-8 space-y-6 animate-fade-in">
+                            <div className="flex-1 flex flex-col p-6 md:p-8 space-y-6 animate-fade-in">
                                 <div className="flex justify-between items-center"><h3 className="text-lg font-black text-white italic uppercase tracking-widest flex items-center gap-3"><MessageCircle className="text-indigo-400"/> Human Feedback</h3>{feedbackSuccess && (<div className="flex items-center gap-2 text-emerald-400 text-[10px] font-black uppercase bg-emerald-950/30 px-3 py-1.5 rounded-lg border border-emerald-500/30 animate-fade-in"><CheckCircle size={14}/> {t.feedbackSuccess}</div>)}</div>
                                 <div className="grid grid-cols-3 gap-2">
                                     {(['general', 'bug', 'feature'] as const).map(type => (
@@ -926,7 +919,7 @@ const App: React.FC = () => {
                                     ))}
                                 </div>
                                 <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} className="flex-1 bg-slate-950 border border-slate-800 rounded-[2rem] p-6 text-sm text-slate-300 outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none shadow-inner leading-relaxed" placeholder="Report a bug, suggest a feature, or request a new Neural Lab..."/>
-                                <div className="flex justify-between items-center gap-4"><div className="flex items-center gap-2 px-4 py-2 bg-slate-950 border border-slate-800 rounded-full text-[9px] font-black text-slate-500 uppercase"><Activity size={12} className="text-indigo-400"/> Trace Bundling Enabled</div><button onClick={handleSendFeedback} disabled={!feedbackText.trim() || isSubmittingFeedback} className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3">{isSubmittingFeedback ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}<span>{t.submitFeedback}</span></button></div>
+                                <div className="flex flex-col sm:flex-row justify-between items-center gap-4"><div className="flex items-center gap-2 px-4 py-2 bg-slate-950 border border-slate-800 rounded-full text-[9px] font-black text-slate-500 uppercase"><Activity size={12} className="text-indigo-400"/> Trace Bundling Enabled</div><button onClick={handleSendFeedback} disabled={!feedbackText.trim() || isSubmittingFeedback} className="w-full sm:w-auto px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3">{isSubmittingFeedback ? <Loader2 size={18} className="animate-spin"/> : <Send size={18}/>}<span>{t.submitFeedback}</span></button></div>
                             </div>
                         )}
                     </div>
