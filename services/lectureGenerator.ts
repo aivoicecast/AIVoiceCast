@@ -94,7 +94,8 @@ export async function repairPlantUML(brokenSource: string, format: 'puml' | 'mer
 export async function performNeuralLensAudit(
     lecture: GeneratedLecture, 
     language: 'en' | 'zh' = 'en',
-    force: boolean = false
+    force: boolean = false,
+    channelId?: string
 ): Promise<NeuralLensAudit | null> {
     const category = 'SHADOW_AUDIT';
     const model = 'gemini-3-pro-image-preview';
@@ -132,18 +133,35 @@ export async function performNeuralLensAudit(
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const content = lecture.sections.map(s => `${s.speaker}: ${s.text}`).join('\n');
 
+        // REFINED GROUNDING LOGIC: Only check GitHub for platform-specific topics
+        const isOfficialPlatform = channelId === 'platform-core' || 
+                                   channelId === 'neural-prism-platform-official' || 
+                                   channelId === 'judge-deep-dive' ||
+                                   channelId === 'hackathon-pitch' ||
+                                   channelId?.startsWith('system-');
+
+        const substrateMapping = isOfficialPlatform
+            ? `2. SUBSTRATE MAPPING: Use 'googleSearch' to locate specific implementation files in https://github.com/aivoicecast/AIVoiceCast that correspond to these invariants.
+3. RECURSIVE URI VERIFICATION (RUV): Verify architectural claims against code symbols discovered.`
+            : `2. SUBSTRATE MAPPING: Use 'googleSearch' to verify architectural claims against established technical standards and public documentation.
+3. RECURSIVE VERIFICATION: Do NOT assume any link to the AIVoiceCast GitHub repository unless the topic is explicitly about the Neural Prism platform architecture.`;
+
         const systemInstruction = `You are the Shadow Agent verifier (Tool B) for Neural Prism.
 Your task is to perform an ADVERSARIAL AUDIT on input from Tool A (Studio Generator).
 
 SYMBOLIC PARITY HANDSHAKE (SPH) PROTOCOL:
-1. INTENT EXTRACTION: Decompose unstructured audit content into a set of "Logical Invariants" (e.g. sharding constants, sync protocols).
-2. SUBSTRATE MAPPING: Use 'googleSearch' to locate specific implementation files in https://github.com/aivoicecast/AIVoiceCast that correspond to these invariants.
-3. RECURSIVE URI VERIFICATION (RUV): Verify architectural claims against code symbols discovered. Move beyond keyword matching; infer the structural manifest from discovered URIs.
-4. RESOLUTION: Identify semantic discrepancies between "Intended Logic" (Docs) and "Actual Logic" (Code).
+1. INTENT EXTRACTION: Decompose unstructured audit content into a set of "Logical Invariants".
+${substrateMapping}
+4. RESOLUTION: Identify semantic discrepancies between "Intended Logic" and "Actual Logic".
+
+MERMAID SYNTAX RULES (STRICT ENFORCEMENT):
+- EVERY NODE label MUST be enclosed in double quotes inside brackets: ID["Label Text (With Spaces or Parens)"].
+- Example: Lec12["Lecture 12: Advanced Topics"]
+- NEVER use raw text or parentheses inside brackets without double quotes.
 
 OUTPUT REQUIREMENTS:
 1. Extract architectural concepts and represent them as a DAG logic mesh (Mermaid graph TD).
-2. BIAS CHECK: Flag "Agreeability Bias" if Tool A skips technical friction or contradicts the RHP protocol.
+2. BIAS CHECK: Flag "Agreeability Bias" if Tool A skips technical friction.
 3. MACHINE INTERFACE: Provide strictly formatted JSON for the self-feedback loop.`;
 
         const { response, latency, inputSize } = await runWithDeepTelemetry(async () => {
@@ -365,7 +383,7 @@ export async function generateLectureScript(
       sections: parsed.sections || []
     };
 
-    const audit = await performNeuralLensAudit(result, language);
+    const audit = await performNeuralLensAudit(result, language, false, channelId);
     if (audit) result.audit = audit;
 
     if (auth.currentUser) {

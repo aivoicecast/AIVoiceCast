@@ -122,16 +122,18 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
       
       nodes.forEach(node => {
           if (!node || !node.id) return;
-          const safeId = String(node.id).replace(/[^a-zA-Z0-9]/g, '_');
+          // Robust ID Cleaning: Remove spaces and special chars, leave only alphanumeric/underscores
+          const safeId = String(node.id).replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
+          // Quoted Label: Essential for characters like &, |, [, ] in Mermaid
           const safeLabel = String(node.label || "Node").replace(/"/g, "'");
           mermaid += `  ${safeId}["${safeLabel}"]\n`;
       });
 
       links.forEach(link => {
           if (!link || !link.source || !link.target) return;
-          const src = String(link.source).replace(/[^a-zA-Z0-9]/g, '_');
-          const tgt = String(link.target).replace(/[^a-zA-Z0-9]/g, '_');
-          const label = link.label ? `|${String(link.label)}|` : '';
+          const src = String(link.source).replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
+          const tgt = String(link.target).replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
+          const label = link.label ? `|"${String(link.label).replace(/"/g, "'")}"|` : '';
           mermaid += `  ${src} -->${label} ${tgt}\n`;
       });
 
@@ -410,7 +412,8 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                     if (chan) lecture = await generateLectureScript(node.topic, chan.description, 'en', chan.id, chan.voiceName);
                 }
                 if (lecture) {
-                    const audit = await performNeuralLensAudit(lecture, 'en', force);
+                    // CONTEXT FIX: Pass selectedSector.id to allow the auditor to know if this is a platform-core topic
+                    const audit = await performNeuralLensAudit(lecture, 'en', force, selectedSector.id);
                     if (audit) {
                         const finalized: GeneratedLecture = { ...lecture, audit };
                         shards[globalIdx] = { ...node, audit, status: 'audited' };
@@ -714,7 +717,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                               <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">{selectedSector.title}</h2>
                               <p className="text-slate-400 text-lg max-w-xl">{selectedSector.description}</p>
                               <div className="pt-2 flex flex-wrap gap-4">
-                                  <button onClick={() => handleRegenerateOrVerifySector(false)} disabled={isBatchAuditing} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50">
+                                  <button onClick={() => handleRegenerateOrVerifySector(false)} disabled={isBatchAuditing} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50">
                                       <Zap size={14} fill="currentColor"/> Verify Sector
                                   </button>
                                   <button onClick={() => handleRegenerateOrVerifySector(true)} disabled={isBatchAuditing} className="flex items-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-amber-600 text-amber-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-700 transition-all active:scale-95 disabled:opacity-50">

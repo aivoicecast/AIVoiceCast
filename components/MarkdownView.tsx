@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Copy, Check, Image as ImageIcon, Loader2, Code as CodeIcon, ExternalLink, Sigma, Palette, Sun, Moon, Coffee, Maximize2 } from 'lucide-react';
+// Added AlertCircle to imports
+import { Copy, Check, Image as ImageIcon, Loader2, Code as CodeIcon, ExternalLink, Sigma, Palette, Sun, Moon, Coffee, Maximize2, AlertCircle } from 'lucide-react';
 import { encodePlantUML } from '../utils/plantuml';
 import { ReaderTheme } from '../types';
 
@@ -88,14 +89,51 @@ const MermaidRenderer: React.FC<{ code: string, theme: ReaderTheme }> = ({ code,
                     theme: theme === 'light' || theme === 'sepia' ? 'default' : 'dark',
                     securityLevel: 'loose',
                 });
+
+                // SELF-HEALING REPAIR LOGIC
+                // Attempt 1: Standard Render
                 try {
                     const id = `mermaid-${Math.random().toString(36).substring(7)}`;
                     const { svg } = await mermaid.render(id, code);
                     setSvg(svg);
                     setError(null);
+                    return;
                 } catch (e: any) {
-                    console.error("Mermaid error", e);
-                    setError(e.message || "Syntax error");
+                    console.warn("[Mermaid] Initial render failed. Attempting heuristic repair...", e.message);
+                }
+
+                // Attempt 2: Heuristic Repair
+                try {
+                    // Repair Strategy A: Wrap unquoted labels in brackets with double quotes
+                    // Identifies NodeID[Label with spaces or (brackets)] and changes to NodeID["Label..."]
+                    let repaired = code.replace(/(\w+)\s*\[([^"\]]+)\]/g, (match, id, label) => {
+                        const trimmed = label.trim();
+                        if (trimmed.length > 0) {
+                            return `${id}["${trimmed}"]`;
+                        }
+                        return match;
+                    });
+
+                    // Repair Strategy B: Fix naked multi-word targets in connections
+                    repaired = repaired.replace(/([\w_]+)\s*-->\s*([^|\[\(\s\n]+[^|\[\(\n]*)/g, (match, id1, label2) => {
+                        const trimmedLabel = label2.trim();
+                        if (trimmedLabel.includes(' ') && !trimmedLabel.startsWith('[') && !trimmedLabel.startsWith('(')) {
+                            const safeId = trimmedLabel.replace(/[^a-zA-Z0-9_]/g, '_');
+                            return `${id1} --> ${safeId}["${trimmedLabel}"]`;
+                        }
+                        return match;
+                    });
+
+                    if (repaired !== code) {
+                        const id2 = `mermaid-fix-${Math.random().toString(36).substring(7)}`;
+                        const { svg: fixedSvg } = await mermaid.render(id2, repaired);
+                        setSvg(fixedSvg);
+                        setError(null);
+                        return;
+                    }
+                } catch (e2: any) {
+                    console.error("[Mermaid] Repair attempt failed:", e2.message);
+                    setError(e2.message || "Final syntax check refused.");
                 }
             }
         };
@@ -164,7 +202,17 @@ const MermaidRenderer: React.FC<{ code: string, theme: ReaderTheme }> = ({ code,
         win.document.close();
     };
 
-    if (error) return <div className="p-4 bg-red-900/20 text-red-400 text-[10px] rounded-lg border border-red-500/30 font-mono">Mermaid Syntax Error: {error}</div>;
+    if (error) return (
+        <div className="p-4 bg-red-950/20 border border-red-500/30 rounded-xl space-y-2">
+            <p className="text-red-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                <AlertCircle size={12}/> Mermaid Logic Breach
+            </p>
+            <p className="text-[9px] text-slate-500 font-mono italic">{error}</p>
+            <div className="mt-4 p-4 bg-black/40 rounded-lg overflow-x-auto">
+                <pre className="text-[9px] text-indigo-300 font-mono leading-relaxed">{code}</pre>
+            </div>
+        </div>
+    );
 
     return (
         <div className="my-4 relative group/mermaid">
