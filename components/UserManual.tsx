@@ -57,7 +57,7 @@ export const UserManual: React.FC<UserManualProps> = ({ onBack }) => {
                 <div className="bg-white border border-slate-200 p-8 rounded-3xl shadow-lg space-y-6">
                     <h3 className="text-2xl font-bold text-slate-900 uppercase italic tracking-tighter">Heuristic Simulation Engine</h3>
                     <p className="text-slate-600 text-lg leading-relaxed">
-                        In the <strong>Builder Studio</strong>, code execution is infrastructure-less. When you click "Run", Gemini 3 Flash traces your logic heuristically, "imagining" the output with >98% parity to native GCC or Python.
+                        In the <strong>Builder Studio</strong>, code execution is infrastructure-less. When you click "Run", Gemini 3 Flash traces your logic heuristically, "imagining" the output with {'>'}98% parity to native GCC or Python.
                     </p>
                     <ul className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <li className="flex items-start gap-2 text-sm text-slate-700 font-bold">

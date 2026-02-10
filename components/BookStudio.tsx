@@ -506,7 +506,7 @@ export const BookStudio: React.FC<BookStudioProps> = ({ onBack, onOpenManual }) 
                           <div className="fixed top-20 right-10 w-64 bg-slate-950 border border-indigo-500/30 rounded-2xl p-4 shadow-2xl animate-fade-in-right z-[100] space-y-4">
                               <div className="flex items-center gap-3"><Activity size={16} className="text-indigo-400 animate-pulse"/><span className="text-[10px] font-black text-white uppercase tracking-widest">Exporting...</span></div>
                               <div className="bg-black/60 rounded-xl p-3 font-mono text-[8px] space-y-1 h-32 overflow-hidden">
-                                  {synthesisSteps.map((step, i) => <div key={i} className="text-indigo-300/80">> {step}</div>)}
+                                  {synthesisSteps.map((step, i) => <div key={i} className="text-indigo-300/80">{' > '} {step}</div>)}
                                   <div className="text-indigo-500 animate-pulse">_</div>
                               </div>
                           </div>
