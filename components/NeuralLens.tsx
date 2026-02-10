@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   ShieldCheck, Activity, BrainCircuit, Globe, 
@@ -24,7 +25,7 @@ import { SYSTEM_BOOKS } from '../utils/bookContent';
 import { saveCloudCachedLecture } from '../services/firestoreService';
 import { generateContentUid, safeJsonStringify, generateSecureId } from '../utils/idUtils';
 import { MarkdownView } from './MarkdownView';
-import { encodePlantUML } from '../utils/plantuml';
+import { NeuralRetinaGraph, AuditData } from './NeuralRetinaGraph';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -116,94 +117,28 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
       return val.toString();
   };
 
-  const generateMermaidFromGraph = (nodes: DependencyNode[], links: DependencyLink[]): string => {
-      if (!nodes || nodes.length === 0) return '';
-      let mermaid = 'graph TD\n';
+  // Convert internal graph schema to NeuralRetinaGraph compatible schema
+  const auditData: AuditData | null = useMemo(() => {
+      if (!selectedNode?.audit) return null;
+      const audit = selectedNode.audit;
       
-      nodes.forEach(node => {
-          if (!node || !node.id) return;
-          // Robust ID Cleaning: Remove spaces and special chars, leave only alphanumeric/underscores
-          const safeId = String(node.id).replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
-          // Quoted Label: Essential for characters like &, |, [, ] in Mermaid
-          const safeLabel = String(node.label || "Node").replace(/"/g, "'");
-          mermaid += `  ${safeId}["${safeLabel}"]\n`;
-      });
-
-      links.forEach(link => {
-          if (!link || !link.source || !link.target) return;
-          const src = String(link.source).replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
-          const tgt = String(link.target).replace(/[^a-zA-Z0-9_]/g, '_').replace(/^_+|_+$/g, '');
-          const label = link.label ? `|"${String(link.label).replace(/"/g, "'")}"|` : '';
-          mermaid += `  ${src} -->${label} ${tgt}\n`;
-      });
-
-      return mermaid;
-  };
-
-  const activeDiagramSource = useMemo(() => {
-      const audit = selectedNode?.audit;
-      if (!audit) return '';
-
-      if (isEditingSource) return `\`\`\`${diagramFormat}\n${editedSource}\n\`\`\``;
-
-      if (diagramFormat === 'mermaid') {
-          if (typeof audit.mermaid === 'string' && audit.mermaid) {
-              return `\`\`\`mermaid\n${audit.mermaid.replace(/```mermaid\n|```/g, '')}\n\`\`\``;
-          }
-          if (audit.graph) {
-              return `\`\`\`mermaid\n${generateMermaidFromGraph(audit.graph.nodes, audit.graph.links)}\n\`\`\``;
-          }
-      } else {
-          if (typeof audit.plantuml === 'string' && audit.plantuml) {
-              return `\`\`\`plantuml\n${audit.plantuml.replace(/```plantuml\n|```/g, '')}\n\`\`\``;
-          }
-      }
-      return '';
-  }, [selectedNode, diagramFormat, isEditingSource, editedSource]);
-
-  const handleOpenInNewWindow = () => {
-    const rawCode = activeDiagramSource.replace(/```(mermaid|plantuml)\n|```/g, '').trim();
-    if (!rawCode) return;
-
-    const win = window.open('', '_blank');
-    if (!win) return;
-
-    const title = `Neural Lens: ${selectedNode?.topic || 'Logic Mesh'}`;
-    
-    let content = '';
-    if (diagramFormat === 'mermaid') {
-        content = `
-            <div class="mermaid">
-                ${rawCode}
-            </div>
-            <script type="module">
-                import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-                mermaid.initialize({ startOnLoad: true, theme: 'dark' });
-            </script>
-        `;
-    } else {
-        // Simple SVG image viewer for PlantUML
-        const encoded = btoa(rawCode); // Not exact for PlantUML but placeholder for now
-        content = `<img src="https://www.plantuml.com/plantuml/svg/${encoded}" style="max-width: 100%;" />`;
-    }
-
-    win.document.write(`
-        <!DOCTYPE html>
-        <html>
-            <head>
-                <title>${title}</title>
-                <style>
-                    body { background: #020617; color: white; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: auto; font-family: sans-serif; }
-                    .mermaid { background: rgba(255,255,255,0.02); padding: 40px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); }
-                </style>
-            </head>
-            <body>
-                ${content}
-            </body>
-        </html>
-    `);
-    win.document.close();
-  };
+      // Transform our graph data to the retina graph schema
+      return {
+          audit_id: audit.reportUuid || generateSecureId().substring(0, 16),
+          timestamp: new Date(audit.timestamp).toISOString(),
+          nodes: audit.graph.nodes.map((n: any) => ({
+              id: n.id,
+              label: n.label,
+              type: (n.type === 'concept' ? 'claim' : n.type === 'component' ? 'document' : 'verification') as any,
+              status: (audit.StructuralCoherenceScore > 80 ? 'PASS' : audit.StructuralCoherenceScore > 50 ? 'WARN' : 'FAIL') as any
+          })),
+          edges: audit.graph.links.map((l: any) => ({
+              source: l.source,
+              target: l.target,
+              label: l.label
+          }))
+      };
+  }, [selectedNode]);
 
   const hierarchy = useMemo(() => {
     const sectors: Record<string, HierarchyNode> = {};
@@ -229,21 +164,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
             }
         }
     });
-
-    const findParentIdByTopic = (topic: string): string => {
-        if (!topic) return 'system-artifacts';
-        for (const [id, data] of Object.entries(SPOTLIGHT_DATA)) {
-            if (data.lectures[topic]) return id;
-            if (data.curriculum.some(ch => ch.subTopics.some(st => st.title === topic))) return id;
-        }
-        for (const book of SYSTEM_BOOKS) {
-            if (book.pages.some(p => p.title === topic)) return book.id;
-        }
-        for (const chan of allAvailableChannels) {
-            if (chan.chapters?.some(ch => ch.subTopics.some(st => st.title === topic))) return chan.id;
-        }
-        return 'system-artifacts';
-    };
 
     Object.entries(SPOTLIGHT_DATA).forEach(([chanId, data]) => {
         if (!sectors[chanId]) sectors[chanId] = { id: chanId, title: chanId, description: '', shards: [], type: 'podcast', priority: 0 };
@@ -326,13 +246,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                   }
               });
           }
-          if (typeof shard.audit?.runtime_trace_mermaid === 'string' && shard.audit.runtime_trace_mermaid) {
-              runtimeMermaidSegments.push(shard.audit.runtime_trace_mermaid.replace(/sequenceDiagram\n/g, ''));
-          }
       });
-
-      let runtimeMermaid = "sequenceDiagram\n";
-      runtimeMermaid += runtimeMermaidSegments.join('\n');
 
       return {
           score,
@@ -342,18 +256,9 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
           mesh: { 
               nodes: Array.from(allNodesMap.values()),
               links: Array.from(allLinksMap.values())
-          },
-          runtimeMermaid
+          }
       };
   }, [selectedSector]);
-
-  const holisticDiagram = useMemo(() => {
-      if (!sectorIntegrity?.mesh || sectorIntegrity.mesh.nodes.length === 0) return '';
-      if (diagramFormat === 'mermaid') {
-          return `\`\`\`mermaid\n${generateMermaidFromGraph(sectorIntegrity.mesh.nodes, sectorIntegrity.mesh.links)}\n\`\`\``;
-      }
-      return '';
-  }, [sectorIntegrity, diagramFormat]);
 
   const handleSelectSector = (sector: HierarchyNode) => {
       setSelectedSector(sector);
@@ -368,15 +273,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
     setSelectedNode(node);
     setIsEditingSource(false);
     setActiveTab(node.audit ? 'audit' : 'script');
-    
-    if (node.audit) {
-        const sourceToEdit = diagramFormat === 'mermaid' 
-            ? (node.audit.mermaid ? String(node.audit.mermaid).replace(/```mermaid\n|```/g, '') : '')
-            : (node.audit.plantuml ? String(node.audit.plantuml).replace(/```plantuml\n|```/g, '') : '');
-        setEditedSource(sourceToEdit);
-    } else {
-        setEditedSource('');
-    }
     dispatchLog(`Observing Logic Node: ${node.topic}`, 'info', { category: 'LENS_UI', topic: node.topic });
   };
 
@@ -412,7 +308,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                     if (chan) lecture = await generateLectureScript(node.topic, chan.description, 'en', chan.id, chan.voiceName);
                 }
                 if (lecture) {
-                    // CONTEXT FIX: Pass selectedSector.id to allow the auditor to know if this is a platform-core topic
                     const audit = await performNeuralLensAudit(lecture, 'en', force, selectedSector.id);
                     if (audit) {
                         const finalized: GeneratedLecture = { ...lecture, audit };
@@ -443,40 +338,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
     }
   };
 
-  const handleExportAuditProbes = () => {
-    if (!selectedSector) return;
-    let md = `# Adversarial Audit Report: ${selectedSector.title}\n\n`;
-    md += `**Description:** ${selectedSector.description}\n`;
-    md += `**Aggregated Integrity:** ${sectorIntegrity?.score}%\n`;
-    md += `**Date:** ${new Date().toLocaleString()}\n\n`;
-    md += `---\n\n`;
-
-    selectedSector.shards.forEach(shard => {
-        if (shard.audit && shard.audit.probes) {
-            md += `## Node: ${shard.topic}\n`;
-            md += `**Individual Coherence:** ${formatScore(shard.audit.coherenceScore || shard.audit.StructuralCoherenceScore)}%\n\n`;
-            shard.audit.probes.forEach((probe: any) => {
-                const statusEmoji = probe.status === 'passed' ? '✅' : probe.status === 'warning' ? '⚠️' : '❌';
-                md += `### ${statusEmoji} Probe: ${probe.question}\n`;
-                md += `> **Response:** ${probe.answer}\n\n`;
-                md += `**Status:** ${probe.status.toUpperCase()}\n\n`;
-            });
-            md += `---\n\n`;
-        }
-    });
-
-    const blob = new Blob([md], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${selectedSector.title.replace(/\s+/g, '_')}_Audit_Probes.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    dispatchLog(`Audit probes exported for ${selectedSector.title}`, 'success', { category: 'REGISTRY' });
-  };
-
   const containerBg = useMemo(() => {
     if (graphTheme === 'solarized') return 'bg-[#fdf6e3]';
     if (graphTheme === 'monokai-plus') return 'bg-[#272822]';
@@ -496,10 +357,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
               </div>
           </div>
           <div className="flex items-center gap-3">
-              <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 mr-2 shadow-inner">
-                  <button onClick={() => setDiagramFormat('mermaid')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${diagramFormat === 'mermaid' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Mermaid</button>
-                  <button onClick={() => setDiagramFormat('plantuml')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${diagramFormat === 'plantuml' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>PlantUML</button>
-              </div>
               <button onClick={cycleTheme} className="flex items-center gap-2 px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase transition-all shadow-lg border border-slate-700">
                   <Palette size={14} className="text-indigo-400"/>
                   <span className="hidden sm:inline">Theme: {graphTheme.replace('-', ' ')}</span>
@@ -575,34 +432,8 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
           </aside>
 
           <main className="flex-1 bg-black/20 overflow-y-auto scrollbar-hide p-8 lg:p-12 relative flex flex-col items-center">
-              {isBatchAuditing && (
-                  <div className="fixed top-20 right-10 z-[100] w-72 bg-slate-900 border border-indigo-500/30 rounded-[2rem] p-6 shadow-2xl animate-fade-in-up space-y-4">
-                      <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                              <Loader2 className="animate-spin text-indigo-400" size={16}/>
-                              <span className="text-[10px] font-black text-white uppercase tracking-widest">Shadow Pass</span>
-                          </div>
-                          <span className="text-xs font-mono font-black text-indigo-300">{Math.round((batchProgress.current / batchProgress.total) * 100)}%</span>
-                      </div>
-                      <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden shadow-inner">
-                          <div className="h-full bg-indigo-500 transition-all duration-500" style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}></div>
-                      </div>
-                  </div>
-              )}
-
               {selectedNode ? (
-                  <div id="pdf-export-content" className="max-w-4xl w-full mx-auto space-y-12 animate-fade-in-up">
-                      {/* NEW: Indexing Lag Warning */}
-                      <div className="bg-amber-900/10 border border-amber-500/30 p-4 rounded-2xl flex items-start gap-4 animate-fade-in">
-                          <InfoIcon size={20} className="text-amber-500 shrink-0 mt-0.5" />
-                          <div className="space-y-1">
-                              <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest">Indexing Lag Detected</p>
-                              <p className="text-[10px] text-slate-400 leading-relaxed font-medium">
-                                  Neural Grounding utilizes the Google Search index. External repository updates (GitHub) may take minutes to reflect in the reasoning mesh.
-                              </p>
-                          </div>
-                      </div>
-
+                  <div className="max-w-4xl w-full mx-auto space-y-12 animate-fade-in-up">
                       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-800 pb-8">
                           <div className="space-y-3 text-left">
                               <h2 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-none">{selectedNode.topic}</h2>
@@ -610,7 +441,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                                   <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 shadow-inner">
                                       <button onClick={() => setActiveTab('audit')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${activeTab === 'audit' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Reasoning Mesh</button>
                                       <button onClick={() => setActiveTab('script')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${activeTab === 'script' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Source Script</button>
-                                      <button onClick={() => { setSelectedNode(null); setActiveTab('holistic'); }} className="px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all text-slate-500 hover:text-slate-300">Sector Home</button>
                                   </div>
                               </div>
                           </div>
@@ -637,31 +467,18 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                                 </div>
                             ) : (
                                 <>
-                                    {activeDiagramSource && (
+                                    {auditData && (
                                         <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden group">
                                             <div className="flex justify-between items-center mb-10 relative z-10">
                                                 <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] flex items-center gap-3">
-                                                    <Layers size={18} className="text-indigo-400"/> Logic Topology ({diagramFormat.toUpperCase()})
+                                                    <Layers size={18} className="text-indigo-400"/> Refined Retina Mesh
                                                 </h4>
                                                 <div className="flex items-center gap-2">
-                                                    <button onClick={handleOpenInNewWindow} className="p-2 bg-slate-950 border border-slate-800 text-slate-500 hover:text-white rounded-lg transition-all" title="Open in New Window (Zoom Mode)"><Maximize size={16}/></button>
                                                     <button onClick={() => handleRegenerateOrVerifySector(true)} className="p-2 bg-slate-950 border border-slate-800 text-amber-500 hover:text-white hover:bg-amber-600 rounded-lg transition-all" title="Force Re-verify (Bypass Cache)"><RefreshCw size={16}/></button>
-                                                    <button onClick={() => setIsEditingSource(!isEditingSource)} className={`p-2 rounded-lg transition-all ${isEditingSource ? 'bg-indigo-600 text-white' : 'bg-slate-950 border border-slate-800 text-slate-50'}`} title="Edit Source"><Edit size={16}/></button>
                                                 </div>
                                             </div>
-                                            <div className={`relative z-10 ${containerBg} rounded-3xl p-8 shadow-inner overflow-hidden border border-white/5 transition-colors duration-500`}>
-                                                {isEditingSource ? (
-                                                    <textarea 
-                                                        value={editedSource} 
-                                                        onChange={e => setEditedSource(e.target.value)}
-                                                        className="w-full h-[400px] bg-black/60 text-indigo-300 font-mono text-xs p-6 rounded-2xl border border-indigo-500/30 outline-none focus:ring-1 focus:ring-indigo-500"
-                                                        spellCheck={false}
-                                                    />
-                                                ) : (
-                                                    <div className="flex justify-center animate-fade-in">
-                                                        <MarkdownView content={activeDiagramSource} initialTheme="dark" showThemeSwitcher={false} compact={true} />
-                                                    </div>
-                                                )}
+                                            <div className="relative z-10 w-full min-h-[500px]">
+                                                <NeuralRetinaGraph data={auditData} className="h-[600px]" />
                                             </div>
                                         </div>
                                     )}
@@ -712,65 +529,27 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-800 pb-10">
                           <div className="space-y-4 text-left">
                               <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-900/30 border border-indigo-500/30 rounded-full text-indigo-400 text-[9px] font-black uppercase tracking-widest">
-                                  <Signal size={12} className="animate-pulse"/> Holistic Spectrum Audit
+                                  <Signal size={12} className="animate-pulse"/> Holistic Sector Evaluation
                               </div>
                               <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">{selectedSector.title}</h2>
                               <p className="text-slate-400 text-lg max-w-xl">{selectedSector.description}</p>
                               <div className="pt-2 flex flex-wrap gap-4">
                                   <button onClick={() => handleRegenerateOrVerifySector(false)} disabled={isBatchAuditing} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50">
-                                      <Zap size={14} fill="currentColor"/> Verify Sector
-                                  </button>
-                                  <button onClick={() => handleRegenerateOrVerifySector(true)} disabled={isBatchAuditing} className="flex items-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-amber-600 text-amber-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-700 transition-all active:scale-95 disabled:opacity-50">
-                                      <RefreshCw size={14}/> Force Re-verify All
-                                  </button>
-                                  <button onClick={handleExportAuditProbes} disabled={isBatchAuditing} className="flex items-center gap-2 px-6 py-2.5 bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest border border-slate-700 transition-all active:scale-95 disabled:opacity-50">
-                                      <FileDown size={14}/> Export Probes
+                                      <Zap size={14} fill="currentColor"/> Run Logic Audit
                                   </button>
                               </div>
                           </div>
                           <div className="bg-slate-900 border border-slate-800 p-8 rounded-[3.5rem] shadow-2xl text-center relative overflow-hidden group">
                               <div className="absolute top-0 right-0 p-12 bg-emerald-500/5 blur-3xl rounded-full"></div>
-                              <p className="text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest relative z-10">Aggregate Integrity</p>
+                              <p className="text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest relative z-10">Aggregate Sector Score</p>
                               <p className="text-7xl font-black text-emerald-400 italic tracking-tighter relative z-10">{sectorIntegrity.score}%</p>
                           </div>
                       </div>
 
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden group text-left">
-                            <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] mb-12 flex items-center gap-3">
-                                <Network size={18} className="text-indigo-400"/> Logical Concept Mesh
-                            </h4>
-                            <div className={`relative z-10 ${containerBg} rounded-[2.5rem] p-8 border border-white/5 shadow-inner transition-colors duration-500 min-h-[300px]`}>
-                                {holisticDiagram ? (
-                                    <div className="animate-fade-in">
-                                        <MarkdownView content={holisticDiagram} initialTheme="dark" showThemeSwitcher={false} compact={true} />
-                                    </div>
-                                ) : (
-                                    <div className="py-12 flex flex-col items-center gap-4 opacity-30">
-                                        <Fingerprint size={64}/>
-                                        <p className="text-[10px] font-black uppercase tracking-widest">Mesh pending refraction</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden group text-left">
-                            <h4 className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.4em] mb-12 flex items-center gap-3">
-                                <Activity size={18} className="text-emerald-400"/> Runtime Trace
-                            </h4>
-                            <div className={`relative z-10 ${containerBg} rounded-[2.5rem] p-8 border border-white/5 shadow-inner transition-colors duration-500 min-h-[300px]`}>
-                                {sectorIntegrity.runtimeMermaid && sectorIntegrity.runtimeMermaid.length > 20 ? (
-                                    <div className="animate-fade-in">
-                                        <MarkdownView content={`\`\`\`mermaid\n${sectorIntegrity.runtimeMermaid}\n\`\`\``} initialTheme="dark" showThemeSwitcher={false} compact={true} />
-                                    </div>
-                                ) : (
-                                    <div className="py-12 flex flex-col items-center gap-4 opacity-30">
-                                        <Terminal size={64}/>
-                                        <p className="text-[10px] font-black uppercase tracking-widest">Trace pending handshake</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                      <div className="p-8 border-2 border-dashed border-slate-800 rounded-[3rem] text-center space-y-4 text-slate-500">
+                          <Target size={48} className="mx-auto opacity-20"/>
+                          <p className="text-xs font-black uppercase tracking-[0.2em]">Aggregate Holistic Mesh View Pending Refinement</p>
+                          <p className="text-[10px] max-w-sm mx-auto leading-relaxed">Select individual shards from the sidebar to inspect high-fidelity Retina Graphs for each logic node.</p>
                       </div>
                   </div>
               ) : (
