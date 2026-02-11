@@ -1,94 +1,116 @@
-# 🌈 Neural Prism Platform (v12.0.0-ABUNDANCE)
+# 🌈 Neural Prism Platform (v12.9.5-TELEMETRY)
 
 **The Sovereign Intelligence Hub: Refracting Super-Intelligence into Human Utility.**
 
-Neural Prism is a high-fidelity, multi-model orchestration platform built on 100% Google Gemini infrastructure. It collapses fragmented application verticals into a single refractive substrate, ensuring data sovereignty through personal cloud integration and a zero-idle-tax serverless architecture.
-
----
-
-## 🏆 HACKATHON JUDGE: VERIFICATION MANIFEST
-
-This repository is optimized for **Intelligence Observability**. Use the **Neural Lens** within the platform to verify these architectural claims against live API telemetry.
-
-### 🔍 Core Innovation: Gemini Reasoning Instrumentation
-The platform implements a **Grounding Bridge** via the Gemini 3 Pro `googleSearch` tool. 
-- **Implementation**: Located in `services/lectureGenerator.ts` (`performNeuralLensAudit`).
-- **Mechanism**: When an audit is triggered, the model enables its search tool to browse the live source, read this `README.md`, and inspect the implementation of the **Binary Chunking Protocol (BCP)**.
-- **Protocol**: Implements **Recursive URI Verification (RUV)**.
-- **Goal**: Eliminates documentation-code lag and provides 100% architectural parity.
+Neural Prism is a high-fidelity, multi-model orchestration platform built on 100% Google Gemini infrastructure. It collapses fragmented application verticals into a single refractive substrate, ensuring data sovereignty through personal cloud integration.
 
 ---
 
 ## 🚀 Developer & Deployment Guide
 
-Welcome to the Neural Prism community. As an open-source project, we encourage you to clone this repository, explore the logic, and deploy your own sovereign instance.
+This guide provides a zero-to-live workflow for deploying your own sovereign instance.
 
-### 1. Prerequisites
-- **Node.js**: v18 or higher.
-- **Google Gemini API Key**: Obtain one from [Google AI Studio](https://aistudio.google.com/app/apikey).
-- **Google Cloud SDK**: Required if you wish to deploy to Cloud Run.
+### 1. Prerequisites (Installation)
 
-### 2. Local Setup & Compilation
-1.  **Clone the Repo**: `git clone https://github.com/aivoicecast/AIVoiceCast.git`
-2.  **Install Dependencies**: `npm install`
-3.  **Environment Configuration**: Create a `.env` file in the root:
+Before running the platform, install these core components:
+
+#### A. Node.js & npm
+- **Install**: [nodejs.org](https://nodejs.org/) (v20+ recommended).
+- **Verify**: `node -v` and `npm -v`.
+
+#### B. Google Cloud SDK (gcloud CLI)
+- **Install**: [Cloud SDK Installation Guide](https://cloud.google.com/sdk/docs/install).
+- **Initialize**: `gcloud init` to log in and select your project.
+
+#### C. Firebase CLI (Optional but Recommended)
+- **Install**: `npm install -g firebase-tools`.
+
+---
+
+### 2. Infrastructure Setup (Mandatory)
+
+The platform requires a **Google Firebase** project for Authentication, NoSQL storage, and Binary Vaulting.
+
+1.  **Create Project**: Go to [Firebase Console](https://console.firebase.google.com/).
+2.  **Enable Auth**: Turn on **Google Sign-In** in the Authentication section.
+3.  **Enable Firestore**: Create a database in **Native Mode**.
+4.  **Enable Storage**: Initialize a storage bucket.
+5.  **Configure App**: 
+    - Copy your `firebaseConfig` object from Project Settings.
+    - Paste it into `services/private_keys.ts` OR use the **Firebase Setup** modal within the app (Flame icon in header).
+
+---
+
+### 3. Local Development
+
+1.  **Clone & Install**:
     ```bash
-    VITE_GEMINI_API_KEY=your_gemini_api_key_here
+    git clone https://github.com/aivoicecast/AIVoiceCast.git
+    cd AIVoiceCast
+    npm install
     ```
-4.  **Launch Dev Server**: `npm run dev`
-5.  **Compile for Production**: `npm run build`
-    *   This generates a `dist/` folder containing your minified production assets.
 
-### 3. Sovereign Deployment (Cloud Run)
-To deploy this app to your own Google Cloud project and region:
-
-1.  **Modify the Service Name**: 
-    Open `cloudbuild.yaml` and `cloudbuild-dev.yaml`. Change the service name from `neural-prism-platform` to something unique to your project (e.g., `my-prism-hub`). 
-    **CRITICAL**: Do not deploy directly to the original service name to avoid permission errors and configuration collisions.
-
-2.  **Set Your Region**: 
-    The default is `us-west1`. If you prefer another region (e.g., `europe-west1`), update the `--region` flag in the `.yaml` files.
-
-3.  **Deploy Command**:
-    Ensure you are authenticated with `gcloud` and have set your project ID, then run:
+2.  **Environment Variables**:
+    Create a `.env` file in the root:
     ```bash
-    # Ensure your API Key is in your terminal environment
-    export VITE_GEMINI_API_KEY=your_key_here
-    
-    # Run the deployment script
-    npm run deploy
+    VITE_GEMINI_API_KEY=your_gemini_key_here
     ```
 
-### 4. Technical Note: The `!` Negation Pattern
-You may notice the `!` symbol in our `.dockerignore` file. This is a **negation operator** used to create an "Allow List." 
-*   `*` ignores everything.
-*   `!dist/` explicitly allows the build output.
-This ensures our Docker builds are extremely fast and secure, as only the necessary production artifacts are sent to the cloud builder.
+3.  **Launch**:
+    ```bash
+    npm run dev
+    ```
+    Access at `http://localhost:5173`.
+
+---
+
+### 4. Sovereign Deployment (Google Cloud)
+
+Deploying to your own cloud prevents `PERMISSION_DENIED` errors and ensures 100% privacy.
+
+#### Step A: Configure Project
+```bash
+# Login to your Google account
+gcloud auth login
+
+# Create your project (Replace 'my-unique-prism' with your name)
+gcloud projects create my-unique-prism
+gcloud config set project my-unique-prism
+
+# Enable necessary APIs
+gcloud services enable cloudbuild.googleapis.com run.googleapis.com artifactregistry.googleapis.com
+```
+
+#### Step B: Execute the Refraction
+Ensure your `VITE_GEMINI_API_KEY` is exported in your terminal, then:
+```bash
+# 1. Compile locally to catch errors
+npm run build
+
+# 2. Deploy to Cloud Run (Production)
+npm run deploy
+
+# 3. Deploy with a custom name/suffix (Dev)
+npm run deploy:dev
+```
+
+---
+
+## 🛠️ Common Pitfalls (Troubleshooting)
+
+- **`PERMISSION_DENIED`**: Ensure you have linked a **Billing Account** to your Google Cloud project. Cloud Build and Cloud Run require a valid billing method (even if you stay within the free tier).
+- **`Firebase Auth: Domain Not Authorized`**: You must add your Cloud Run URL (e.g., `https://...run.app`) to the "Authorized Domains" list in the **Firebase Console > Authentication > Settings**.
+- **`Gemini API 403`**: Ensure your API key has the "Generative Language API" enabled in the [Google AI Studio Settings](https://aistudio.google.com/app/apikey).
 
 ---
 
 ## 🏗️ Architectural Deep Dive
 
-### 1. The Binary Chunking Protocol (BCP v2)
-To bypass the **1MB document wall** of Cloud Firestore while staying serverless, we implemented BCP.
-- **Protocol**: `services/firestoreService.ts` (`saveAudioToLedger`).
-- **Sharding Logic**: Raw binary data is sharded into deterministic **750,000-byte segments**.
+### The Binary Chunking Protocol (BCP v2)
+To bypass the **1MB document wall** of Cloud Firestore while staying serverless, we implemented BCP. Shards are stored as deterministic **750,000-byte segments**.
 
-### 2. Heuristic Logic Tracing (Builder Studio)
-The **Builder Studio** IDE bypasses physical compilers.
-- **Engine**: Gemini 3 Flash acts as a **Digital Twin** of a POSIX terminal.
-- **Simulation Parity**: Predicts STDOUT/STDERR with >98.4% accuracy for algorithmic logic.
-
-### 3. Shadow-Critic Dyad (Neural Lens)
-Reasoning is verified through a dual-agent handshake (`services/lectureGenerator.ts`).
-- **Agent A (The Lead)**: Generates interaction via Gemini 3 Flash.
-- **Agent B (The Shadow)**: Audits Agent A using a **Thinking-Enabled Gemini 3 Pro** instance.
-
----
-
-## 🔐 Security & Identity
-- **Sovereign Signature**: On-device **ECDSA P-256** keys sign all financial assets. Private keys never leave the hardware cell.
-- **Identity Shard**: Users possess a cryptographically signed certificate that enables offline trust verification via QR handshakes.
+### Heuristic Logic Tracing (Builder Studio)
+The IDE bypasses physical compilers by using Gemini 3 Flash as a **Digital Twin** of a POSIX terminal, predicting STDOUT/STDERR with >98% accuracy.
 
 **Built for Humanity. Refracted by Neural Prism.**
 *Thanks to Google Gemini for the light.*

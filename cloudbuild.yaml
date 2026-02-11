@@ -1,5 +1,5 @@
 steps:
-  # 1. Build the container image with the API Key build argument
+  # 1. Build the container image using Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args: 
       - 'build'
@@ -9,11 +9,11 @@ steps:
       - 'gcr.io/$PROJECT_ID/neural-prism-platform'
       - '.'
 
-  # 2. Push the container image to Google Container Registry
+  # 2. Push the container image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/neural-prism-platform']
 
-  # 3. Deploy the container to Cloud Run in us-west1
+  # 3. Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
