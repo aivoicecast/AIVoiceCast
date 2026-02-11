@@ -15,7 +15,14 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5173,
-      host: true
+      host: true,
+      proxy: {
+        '/openclaw-api': {
+          target: 'http://localhost:18792',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/openclaw-api/, '')
+        }
+      }
     }
   };
 });

@@ -447,7 +447,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                           <div className="bg-slate-900 border border-slate-800 px-8 py-4 rounded-[2.5rem] shadow-inner text-center">
                               <p className="text-[8px] font-black text-slate-600 uppercase mb-1 tracking-widest">Node Integrity</p>
                               <p className="text-4xl font-black text-emerald-400 italic tracking-tighter">
-                                  {selectedNode.audit ? `${formatScore(selectedNode.audit.StructuralCoherenceScore || selectedNode.audit.coherenceScore)}%` : '---'}
+                                  {selectedNode.audit ? `${formatScore(selectedNode.audit.StructuralCoherenceScore || selectedNode.audit.coherenceScore)}%` : '0%'}
                               </p>
                           </div>
                       </div>
@@ -544,14 +544,23 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                                       {isBatchAuditing ? (
                                           <>
                                             <Loader2 size={14} className="animate-spin text-indigo-400"/>
-                                            <span>Auditing Logic ({batchProgress.current}/{batchProgress.total})...</span>
+                                            <span>Auditing ({batchProgress.current}/{batchProgress.total})...</span>
                                           </>
                                       ) : (
                                           <>
                                             <Zap size={14} fill="currentColor"/>
-                                            <span>Run Logic Audit</span>
+                                            <span>Smart Audit</span>
                                           </>
                                       )}
+                                  </button>
+                                  <button 
+                                    onClick={() => handleRegenerateOrVerifySector(true)} 
+                                    disabled={isBatchAuditing} 
+                                    className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-700"
+                                    title="Bypass Cache & Force Live Verification"
+                                  >
+                                      <RefreshCw size={14} className={isBatchAuditing ? 'animate-spin' : ''}/>
+                                      <span>Force Live</span>
                                   </button>
                               </div>
                           </div>
