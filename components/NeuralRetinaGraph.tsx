@@ -1,6 +1,5 @@
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-// Added Activity to imports to fix compilation error on line 152
 import { Loader2, AlertCircle, Maximize2, RefreshCw, ZoomIn, ZoomOut, Download, Activity } from 'lucide-react';
 
 export interface AuditNode {
@@ -42,11 +41,9 @@ export const NeuralRetinaGraph: React.FC<NeuralRetinaGraphProps> = ({ data, clas
 
   // --- Programmatic Logic Refraction ---
   const jsonToMermaid = (audit: AuditData): string => {
-    const sanitizeId = (id: string) => id.replace(/[^a-zA-Z0-9]/g, '_');
-    const escapeLabel = (label: string) => {
-      if (!label) return '';
-      return label.replace(/"/g, "'").replace(/[\n\r]/g, ' ').trim();
-    };
+    // CRITICAL FIX: Ensure ID and Label are strings before calling .replace
+    const sanitizeId = (id: string) => `n_${(id || 'unknown').replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const escapeLabel = (label: string) => (label || 'Unlabeled').replace(/"/g, "'").trim();
 
     let lines = ['graph TD'];
 
@@ -57,15 +54,15 @@ export const NeuralRetinaGraph: React.FC<NeuralRetinaGraphProps> = ({ data, clas
       
       let open = '[', close = ']';
       if (node.type === 'claim') { open = '{{'; close = '}}'; }
-      else if (node.type === 'verification') { open = '{'; close = '}'; }
-      else if (node.type === 'evidence') { open = '[('; close = ')]'; }
+      if (node.type === 'verification') { open = '{'; close = '}'; }
+      if (node.type === 'evidence') { open = '[('; close = ')]'; }
 
-      lines.push(`${id}${open}"${label}"${close}`);
+      lines.push(`  ${id}${open}"${label}"${close}`);
       
       // Class assignment for styling
-      lines.push(`class ${id} ${node.type}`);
+      lines.push(`  class ${id} ${node.type}`);
       if (node.status) {
-        lines.push(`class ${id} status_${node.status.toLowerCase()}`);
+        lines.push(`  class ${id} status_${node.status.toLowerCase()}`);
       }
     });
 
@@ -74,18 +71,18 @@ export const NeuralRetinaGraph: React.FC<NeuralRetinaGraphProps> = ({ data, clas
       const src = sanitizeId(edge.source);
       const tgt = sanitizeId(edge.target);
       const label = edge.label ? `|"${escapeLabel(edge.label)}"` : '';
-      lines.push(`${src} -->${label} ${tgt}`);
+      lines.push(`  ${src} -->${label} ${tgt}`);
     });
 
     // Style Matrix (Refractive Specification)
-    lines.push('  classDef document fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#01579b');
-    lines.push('  classDef claim fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#9a7b0d');
-    lines.push('  classDef evidence fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#7b1fa2');
+    lines.push('  classDef document fill:#e1f5fe,stroke:#01579b,stroke-width:2px');
+    lines.push('  classDef claim fill:#fff9c4,stroke:#fbc02d,stroke-width:2px');
+    lines.push('  classDef evidence fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px');
     
     // Status Overrides
-    lines.push('  classDef status_pass fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px,color:#1b5e20');
-    lines.push('  classDef status_fail fill:#ffebee,stroke:#c62828,stroke-width:3px,color:#b71c1c');
-    lines.push('  classDef status_warn fill:#fff3e0,stroke:#ef6c00,stroke-width:3px,color:#e65100');
+    lines.push('  classDef status_pass fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px');
+    lines.push('  classDef status_fail fill:#ffebee,stroke:#c62828,stroke-width:3px');
+    lines.push('  classDef status_warn fill:#fff3e0,stroke:#ef6c00,stroke-width:3px');
 
     return lines.join('\n');
   };

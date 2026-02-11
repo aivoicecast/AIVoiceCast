@@ -6,18 +6,20 @@ import {
   Maximize2, PenTool, Type as TypeIcon, RefreshCw, ChevronRight, FileText, Info, Search,
   AlertCircle, SearchCode, ChevronLeft, FileCheck, FileCode, Droplet,
   Fingerprint, Stamp, Move, CheckCircle2, Minus, ShieldAlert, Shield, ShieldQuestion, HelpCircle, Lock, Zap,
-  User, Database, ArrowRight, QrCode, Scan, Smartphone, Activity, Send, Link, MessageSquare, Heart
+  User, Database, ArrowRight, QrCode, Scan, Smartphone, Activity, Send, Link, MessageSquare, Heart, GraduationCap, BarChart3, UserPlus
 } from 'lucide-react';
 import { PDFDocument, rgb, StandardFonts, PDFRawStream, PDFArray } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import { auth } from '../services/firebaseConfig';
-import { getDriveToken, signInWithGoogle, connectGoogleDrive } from '../services/authService';
+import { getDriveToken, signInWithGoogle, connectGoogleDrive, isJudgeSession } from '../services/authService';
 import { ensureCodeStudioFolder, ensureFolder, uploadToDrive } from '../services/googleDriveService';
 import { UserProfile, SignedDocument, ChannelVisibility } from '../types';
 import { generateSecureId } from '../utils/idUtils';
 import { getLocalPrivateKey, saveTrustedIdentity, getAllTrustedIdentities } from '../utils/db';
 import { signPayment, verifySignature, verifyCertificateOffline } from '../utils/cryptoUtils';
-import { getUserProfile, uploadFileToStorage, saveSignedDoc, getSignedDoc, getAllUsers, sendMessage, isUserAdmin } from '../services/firestoreService';
+import { getUserProfile, uploadFileToStorage, saveSignedDoc, getSignedDoc, getAllUsers, sendMessage, isUserAdmin, deductCoins, AI_COSTS } from '../services/firestoreService';
+import { GoogleGenAI } from "@google/genai";
+import { MarkdownView } from './MarkdownView';
 
 // Initialize PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
@@ -53,18 +55,20 @@ interface VerificationResult {
     error?: string;
     isOfflineTrusted?: boolean;
     trustSource?: 'registry' | 'ledger' | 'embedded';
+    // Neural Content Audit Fields
+    qualityScore?: number;
+    qualityAssessment?: string;
+    academicGrade?: string;
 }
 
 interface PdfSignerProps {
   onBack: () => void;
   currentUser: any;
   userProfile: UserProfile | null;
-  // Added onOpenManual prop to fix type error in App.tsx
   onOpenManual?: () => void;
 }
 
 export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userProfile, onOpenManual }) => {
-  // Fix: Added useMemo import and corrected usage for URLSearchParams
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const docIdFromUrl = params.get('id');
   
@@ -98,25 +102,22 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
   const [verifyResult, setVerifyResult] = useState<VerificationResult | null>(null);
   const [auditTargetDoc, setAuditTargetDoc] = useState<{ blob: Blob, name: string } | null>(null);
   const [auditCertificate, setAuditCertificate] = useState<{ blob: Blob, name: string } | null>(null);
+  const [enableContentAudit, setEnableContentAudit] = useState(true);
 
   // Sovereign Signing States
   const [privateKey, setPrivateKey] = useState<CryptoKey | null>(null);
   const [keyLookupStatus, setKeyLookupStatus] = useState<'idle' | 'checking' | 'found' | 'missing'>('idle');
   const [trustedIdentities, setTrustedIdentities] = useState<Record<string, string>>({});
   
+  const [pastedCert, setPastedCert] = useState('');
+  const [showIdentityImport, setShowIdentityImport] = useState(false);
+
   // Request Workflow States
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [selectedRecipient, setSelectedRecipient] = useState<UserProfile | null>(null);
   const [userSearch, setUserSearch] = useState('');
   const [requestMemo, setRequestMemo] = useState('');
   const [stagedDocId, setStagedDocId] = useState<string | null>(null);
-
-  // UI for Identity Sharing
-  const [showIdentityExport, setShowIdentityExport] = useState(false);
-  const [showIdentityImport, setShowIdentityImport] = useState(false);
-  const [pastedCert, setPastedCert] = useState('');
-
-  const [profile] = useState<UserProfile | null>(userProfile);
 
   const dispatchLog = useCallback((text: string, type: 'info' | 'error' | 'success' | 'warn' = 'info') => {
       window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `[PDF Audit] ${text}`, type } }));
@@ -204,7 +205,7 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
             setIsLoading(false);
         });
     }
-    getAllUsers().then(users => setAllUsers(users.filter(u => u.uid !== currentUser?.uid)));
+    getAllUsers().then(users => setAllUsers(users.filter(u => u && u.uid !== currentUser?.uid)));
   }, [docIdFromUrl, currentUser?.uid, dispatchLog]);
 
   useEffect(() => {
@@ -288,11 +289,9 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
           
           if (selectedRecipient) {
               const channelId = [currentUser.uid, selectedRecipient.uid].sort().join('_');
-              // Fix: Added sendMessage call to notify recipient via DM
               await sendMessage(channelId, message, `chat_channels/${channelId}/messages`);
               alert("Signature request dispatched to recipient via DM.");
           } else {
-              // Fix: Added sendMessage call to share request to public chat
               await sendMessage('general', message, `chat_channels/general/messages`);
               alert("Signature request shared to General chat.");
           }
@@ -351,7 +350,6 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
         const signedBlob = new Blob([signedBytes], { type: 'application/pdf' });
         const signedName = activePdf.name.replace('.pdf', '_Signed.pdf');
         
-        // Hashes
         const finalizedDocForHash = await PDFDocument.load(signedBytes);
         const hashesList: string[] = [];
         for (let i = 0; i < finalizedDocForHash.getPageCount(); i++) {
@@ -361,7 +359,6 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
         const canonicalPayload = `${hashesManifest.replace(/\s+/g, '')}|${timestampValue}|${currentUser.uid}`;
         const sovereignSignature = await signPayment(privateKey, canonicalPayload);
         
-        // Cert Generation
         const certDoc = await PDFDocument.create();
         const auditPage = certDoc.addPage([600, 800]);
         auditPage.drawText("NEURAL AUDIT CERTIFICATE", { x: 50, y: 710, size: 28, font: boldFont });
@@ -379,7 +376,6 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
         const certName = activePdf.name.replace('.pdf', '_AuditCert.pdf');
         
         if (activePdf.remoteId) {
-            // REMOTE WORKFLOW COMPLETION
             const signedUrl = await uploadFileToStorage(`signed/${currentUser.uid}/${activePdf.remoteId}_signed.pdf`, signedBlob);
             const certUrl = await uploadFileToStorage(`signed/${currentUser.uid}/${activePdf.remoteId}_cert.pdf`, certBlob);
             await saveSignedDoc({ 
@@ -391,18 +387,15 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
                 hashes: hashesManifest
             });
             
-            // SEND COMPLETION MESSAGE
             const docData = await getSignedDoc(activePdf.remoteId);
             if (docData) {
                 const link = `${window.location.origin}${window.location.pathname}?view=pdf_signer&id=${activePdf.remoteId}`;
                 const channelId = [currentUser.uid, docData.ownerId].sort().join('_');
                 const message = `[NEURAL SIGNER COMPLETE] I've signed "${docData.name}". Verification here: ${link}`;
-                // Fix: Corrected sendMessage usage
                 await sendMessage(channelId, message, `chat_channels/${channelId}/messages`);
                 alert("Signature complete. Link sent back to requester.");
             }
         } else {
-            // LOCAL DOWNLOAD WORKFLOW
             const a = document.createElement('a'); a.href = URL.createObjectURL(signedBlob); a.download = signedName; a.click();
             const b = document.createElement('a'); b.href = URL.createObjectURL(certBlob); b.download = certName; b.click();
         }
@@ -419,7 +412,7 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
       if (activeMode === 'move') {
           const hitSig = signaturePlacements.find(sp => sp.page === pageIdx && x >= sp.x && x <= sp.x + 120 && y >= sp.y - 40 && y <= sp.y);
           if (hitSig) { setSelectedElementId(hitSig.id); setIsDrawing(true); setDragStart({ x, y }); return; }
-          const hitText = textPlacements.find(tp => tp.page === pageIdx && x >= tp.x && x <= tp.x + tp.text.length * 7 && y >= tp.y - 15 && y <= tp.y);
+          const hitText = textPlacements.find(tp => tp.page === pageIdx && x >= tp.x && x <= tp.x + (tp.text?.length || 0) * 7 && y >= tp.y - 15 && y <= tp.y);
           if (hitText) { setSelectedElementId(hitText.id); setIsDrawing(true); setDragStart({ x, y }); return; }
           setSelectedElementId(null); return;
       }
@@ -453,7 +446,6 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
       setIsDrawing(false); setDragStart(null);
   };
 
-  // Fix: Implemented handleVerifyDualFile to perform document audit
   const handleVerifyDualFile = async () => {
     if (!auditTargetDoc || !auditCertificate) return;
     setIsVerifying(true);
@@ -464,8 +456,7 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
         const certPdf = await pdfjsLib.getDocument({ data: certArrayBuffer }).promise;
         const certPage = await certPdf.getPage(1);
         const textContent = await certPage.getTextContent();
-        // @ts-ignore
-        const rawText = textContent.items.map(item => item.str).join(' ');
+        const rawText = textContent.items.map((item: any) => item.str).join(' ');
 
         const authIdMatch = rawText.match(/AUTH ID: ([a-zA-Z0-9-]+)/);
         const hashesMatch = rawText.match(/PAGE HASHES: ([^S]+)/);
@@ -486,6 +477,7 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
         const expectedHashes = hashesManifest.split(',');
         const pageMatches: boolean[] = [];
 
+        // 1. CONTENT INTEGRITY CHECK
         for (let i = 0; i < targetPdfDoc.getPageCount(); i++) {
             const actualHash = await computeDeterministicPageHash(targetPdfDoc, i);
             const expectedEntry = expectedHashes.find(h => h.startsWith(`P${i + 1}:`));
@@ -497,6 +489,7 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
             throw new Error("Sector Parity Check Failed: Content has been modified.");
         }
 
+        // 2. CRYPTOGRAPHIC SIGNATURE CHECK
         let publicKey = '';
         const localTrustedCert = trustedIdentities[signerId];
         if (localTrustedCert) {
@@ -513,6 +506,53 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
 
         if (!isValid) throw new Error("Signature failed cryptographic handshake.");
 
+        // 3. OPTIONAL NEURAL CONTENT QUALITY AUDIT
+        let qualityScore = undefined;
+        let qualityAssessment = undefined;
+        let academicGrade = undefined;
+
+        if (enableContentAudit) {
+            dispatchLog("Neural Engine analyzing professional/academic quality...", "info");
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            
+            // Extract text for analysis
+            const targetPdf = await pdfjsLib.getDocument({ data: targetArrayBuffer }).promise;
+            let combinedText = "";
+            const pagesToScan = Math.min(targetPdf.numPages, 3);
+            for (let p = 1; p <= pagesToScan; p++) {
+                const page = await targetPdf.getPage(p);
+                const text = await page.getTextContent();
+                combinedText += text.items.map((i: any) => i.str).join(' ') + "\n";
+            }
+
+            const prompt = `Analyze the following document content for technical/academic/professional quality. 
+            Assign a Quality Score (0-100) where 100 is Staff-level technical excellence.
+            Also provide a traditional academic grade (A-F).
+            
+            CONTENT SNIPPET:
+            ${combinedText.substring(0, 15000)}
+            
+            Return ONLY a JSON object:
+            {
+              "score": number,
+              "grade": "string (A, B+, etc)",
+              "assessment": "string (brief summary of tone, clarity, and depth)"
+            }`;
+
+            const res = await ai.models.generateContent({
+                model: 'gemini-3-flash-preview',
+                contents: prompt,
+                config: { responseMimeType: 'application/json' }
+            });
+            
+            const parsed = JSON.parse(res.text || '{}');
+            qualityScore = parsed.score;
+            qualityAssessment = parsed.assessment;
+            academicGrade = parsed.grade;
+            
+            if (currentUser) deductCoins(currentUser.uid, AI_COSTS.TECHNICAL_EVALUATION);
+        }
+
         const signerProfile = await getUserProfile(signerId);
 
         setVerifyResult({
@@ -521,7 +561,10 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
             signerId,
             timestamp,
             pageMatches,
-            trustSource: localTrustedCert ? 'registry' : 'embedded'
+            trustSource: localTrustedCert ? 'registry' : 'embedded',
+            qualityScore,
+            qualityAssessment,
+            academicGrade
         });
         
         dispatchLog("Neural Audit Complete: Authenticity Verified.", "success");
@@ -538,7 +581,6 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
     }
   };
 
-  // Fix: Implemented handleImportIdentity to ingest peer certificates
   const handleImportIdentity = async () => {
     if (!pastedCert.trim()) return;
     try {
@@ -557,17 +599,11 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
     }
   };
 
-  const handleImportIdentityFromShard = () => {
-    setShowIdentityImport(true);
-  };
-
-  const isSuperAdminUser = isUserAdmin(userProfile);
-
   return (
     <div className="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans">
       <header className="h-16 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between px-6 backdrop-blur-md shrink-0 z-20">
           <div className="flex items-center gap-4">
-              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors"><ArrowLeft size={20} /></button>
+              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
               <h1 className="text-lg font-bold text-white flex items-center gap-2 uppercase tracking-tighter italic"><FileSignature className="text-indigo-400" /> Neural Signer</h1>
           </div>
           <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
@@ -608,12 +644,11 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
                       ) : (
                           <div className="space-y-6 animate-fade-in">
                               <div className="grid grid-cols-4 gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800">
-                                  <button onClick={() => setActiveMode('sign')} className={`py-2 rounded-lg transition-all ${activeMode === 'sign' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}><PenTool size={16}/></button>
-                                  <button onClick={() => setActiveMode('text')} className={`py-2 rounded-lg transition-all ${activeMode === 'text' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}><TypeIcon size={16}/></button>
-                                  <button onClick={() => setActiveMode('watermark')} className={`py-2 rounded-lg transition-all ${activeMode === 'watermark' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}><Droplet size={16}/></button>
-                                  <button onClick={() => setActiveMode('move')} className={`py-2 rounded-lg transition-all ${activeMode === 'move' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}><Move size={16}/></button>
+                                  <button onClick={() => setActiveMode('sign')} title="Sign Mode" className={`py-2 rounded-lg transition-all ${activeMode === 'sign' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500'}`}><PenTool size={16}/></button>
+                                  <button onClick={() => setActiveMode('text')} title="Text Mode" className={`py-2 rounded-lg transition-all ${activeMode === 'text' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}><TypeIcon size={16}/></button>
+                                  <button onClick={() => setActiveMode('watermark')} title="Watermark Mode" className={`py-2 rounded-lg transition-all ${activeMode === 'watermark' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-50'}`}><Droplet size={16}/></button>
+                                  <button onClick={() => setActiveMode('move')} title="Move Mode" className={`py-2 rounded-lg transition-all ${activeMode === 'move' ? 'bg-indigo-600 text-white shadow-lg' : 'text-indigo-50'}`}><Move size={16}/></button>
                               </div>
-                              
                               <button onClick={handleStageForSignature} disabled={isStaging} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold uppercase border border-slate-700 transition-all flex items-center justify-center gap-2">
                                   {isStaging ? <Loader2 size={16} className="animate-spin"/> : <MessageSquare size={16}/>} Request Signature
                               </button>
@@ -631,7 +666,7 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
                               <input type="text" placeholder="Search members..." value={userSearch} onChange={e => setUserSearch(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-sm text-white focus:ring-1 focus:ring-indigo-500 outline-none"/>
                               {userSearch && (
                                   <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-700 rounded-xl mt-1 shadow-2xl z-20 overflow-hidden divide-y divide-slate-700">
-                                      {allUsers.filter(u => u.displayName.toLowerCase().includes(userSearch.toLowerCase())).slice(0, 5).map(u => (
+                                      {allUsers.filter(u => u && (u.displayName || '').toLowerCase().includes(userSearch.toLowerCase())).slice(0, 5).map(u => (
                                           <button key={u.uid} onClick={() => { setSelectedRecipient(u); setUserSearch(''); }} className="w-full text-left px-4 py-3 hover:bg-slate-700 flex items-center gap-3 transition-colors">
                                               <div className="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold">{(u.displayName || 'U')[0]}</div>
                                               <span className="text-xs text-white">@{u.displayName}</span>
@@ -640,19 +675,11 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
                                   </div>
                               )}
                           </div>
-                          {selectedRecipient && (
-                              <div className="flex items-center justify-between bg-indigo-900/20 border border-indigo-500/30 p-3 rounded-xl">
-                                  <div className="flex items-center gap-2 text-xs font-bold text-indigo-300"><User size={14}/> @{selectedRecipient.displayName}</div>
-                                  <button onClick={() => setSelectedRecipient(null)} className="text-slate-500 hover:text-white"><X size={14}/></button>
-                              </div>
-                          )}
                       </div>
-
                       <div className="space-y-4">
                           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block px-1">2. Memo</label>
                           <textarea value={requestMemo} onChange={e => setRequestMemo(e.target.value)} placeholder="Why do you need this signature?" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-300 h-24 resize-none outline-none focus:ring-1 focus:ring-indigo-500 shadow-inner"/>
                       </div>
-
                       {!stagedDocId ? (
                         <button onClick={handleStageForSignature} disabled={isStaging || !activePdf} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 active:scale-95 disabled:opacity-30">
                             {isStaging ? <Loader2 size={18} className="animate-spin"/> : <Cloud size={18}/>} Stage for Signature
@@ -684,7 +711,20 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
                               <p className="text-[10px] font-black uppercase text-white truncate max-w-[200px]">{auditCertificate ? auditCertificate.name : 'Certificate PDF'}</p>
                           </label>
                       </div>
-                      {/* Fix: Added handleVerifyDualFile call to execute audit */}
+
+                      <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4">
+                          <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                  <GraduationCap size={16} className="text-amber-400"/>
+                                  <span className="text-[10px] font-black text-slate-500 uppercase">Neural Content Audit</span>
+                              </div>
+                              <button onClick={() => setEnableContentAudit(!enableContentAudit)} className={`w-10 h-5 rounded-full relative transition-all ${enableContentAudit ? 'bg-amber-600' : 'bg-slate-700'}`}>
+                                  <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${enableContentAudit ? 'right-1' : 'left-1'}`}></div>
+                              </button>
+                          </div>
+                          <p className="text-[8px] text-slate-600 leading-relaxed uppercase font-bold">Gemini 3 Pro will evaluate technical depth and academic quality.</p>
+                      </div>
+
                       <button onClick={handleVerifyDualFile} disabled={isVerifying || !auditTargetDoc || !auditCertificate} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl flex items-center justify-center gap-3 disabled:opacity-30 transition-all">
                           {isVerifying ? <Loader2 size={18} className="animate-spin"/> : <SearchCode size={18}/>} Execute Full Audit
                       </button>
@@ -712,22 +752,6 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
                                    {verifyResult.isValid ? 'IDENTITY & CONTENT INTEGRITY CONFIRMED' : 'SECURITY HANDSHAKE INTERRUPTED'}
                                </p>
                            </div>
-                           
-                           {verifyResult.isValid && (
-                               <button 
-                                  onClick={async () => {
-                                      const channelId = [currentUser.uid, verifyResult.signerId].sort().join('_');
-                                      const message = `[NEURAL ACK] Thank you for signing the document. Signature verified and archived.`;
-                                      // Fix: use correctly imported sendMessage to acknowledge signer
-                                      await sendMessage(channelId, message, `chat_channels/${channelId}/messages`);
-                                      alert("Thank you message sent to signatory.");
-                                  }}
-                                  className="px-8 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 flex items-center gap-2"
-                               >
-                                   {/* Fix: Added Heart icon import */}
-                                   <Heart size={16}/> Send Thanks
-                               </button>
-                           )}
 
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full mt-4">
                                 <div className="bg-slate-900/60 border border-slate-800 rounded-[2rem] p-6 text-left space-y-4">
@@ -745,12 +769,30 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
                                     <div className="flex flex-wrap gap-2">
                                         {verifyResult.pageMatches.map((m, i) => (
                                             <div key={i} className={`px-2 py-1 rounded text-[9px] font-black border transition-all ${m ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' : 'bg-red-950/20 border-red-500/30 text-red-400'}`}>
-                                                P${i+1}
+                                                P{i+1}
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                            </div>
+
+                           {verifyResult.qualityScore !== undefined && (
+                               <div className="w-full bg-slate-900/60 border border-amber-500/20 rounded-[2rem] p-8 text-left space-y-6 animate-fade-in">
+                                   <div className="flex justify-between items-center">
+                                       <div className="flex items-center gap-3">
+                                            <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-2"><BarChart3 size={16}/> Neural Quality Audit</h4>
+                                            {verifyResult.academicGrade && <span className="bg-amber-500 text-black px-3 py-0.5 rounded-lg font-black text-sm shadow-lg">GRADE: {verifyResult.academicGrade}</span>}
+                                       </div>
+                                       <div className="text-4xl font-black text-white italic tracking-tighter">{verifyResult.qualityScore}<span className="text-xs text-slate-600">/100</span></div>
+                                   </div>
+                                   <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden shadow-inner">
+                                       <div className="h-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)]" style={{ width: `${verifyResult.qualityScore}%` }}></div>
+                                   </div>
+                                   <div className="bg-black/40 rounded-2xl p-6 border border-white/5">
+                                       <p className="text-xs text-slate-300 leading-relaxed font-medium italic">"{verifyResult.qualityAssessment}"</p>
+                                   </div>
+                               </div>
+                           )}
                        </div>
                   </div>
               ) : activePdf ? (
@@ -792,37 +834,23 @@ export const PdfSigner: React.FC<PdfSignerProps> = ({ onBack, currentUser, userP
               ) : null}
           </main>
       </div>
-      
-      {/* Identity Share Modal */}
-      {showIdentityExport && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/95 backdrop-blur-xl animate-fade-in">
-              <div className="bg-slate-900 border border-slate-700 rounded-[3.5rem] w-full max-w-md p-10 shadow-2xl space-y-8 text-center relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-32 bg-indigo-600/10 blur-[100px] rounded-full"></div>
-                  <div className="space-y-2 relative z-10">
-                      <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Identity Shard</h2>
-                      <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.3em]">Neural Authority Certificate</p>
-                  </div>
-                  <div className="bg-white p-6 rounded-[2.5rem] shadow-2xl relative z-10">
-                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(userProfile?.certificate || '')}`} alt="Identity QR" className="w-full aspect-square" />
-                  </div>
-                  <div className="flex flex-col gap-3 relative z-10">
-                      <button onClick={() => { navigator.clipboard.writeText(userProfile?.certificate || ''); alert("Copied!"); }} className="w-full py-4 bg-slate-800 text-white rounded-2xl text-xs font-bold uppercase">Copy Base64 Shard</button>
-                      <button onClick={() => setShowIdentityExport(false)} className="w-full py-2 text-slate-500 hover:text-white uppercase text-[10px] font-black tracking-widest">Close</button>
-                  </div>
-              </div>
-          </div>
-      )}
 
-      {/* Identity Import Modal */}
       {showIdentityImport && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/95 backdrop-blur-xl animate-fade-in">
-              <div className="bg-slate-900 border border-slate-700 rounded-[3.5rem] w-full max-w-md p-10 shadow-2xl space-y-8 text-center relative">
-                  <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Ingest Peer</h2>
-                  <textarea value={pastedCert} onChange={e => setPastedCert(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-[9px] font-mono text-indigo-300 h-32 focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner" placeholder="Paste certificate string..."/>
-                  <div className="flex flex-col gap-3">
-                      {/* Fix: Added handleImportIdentity implementation for peer certificate ingestion */}
-                      <button onClick={handleImportIdentity} disabled={!pastedCert.trim()} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl">Verify & Register</button>
-                      <button onClick={() => setShowIdentityImport(false)} className="w-full py-2 text-slate-500 hover:text-white uppercase text-[10px] font-black tracking-widest">Cancel</button>
+          <div className="fixed inset-0 z-[100] bg-slate-950/95 flex items-center justify-center p-6 animate-fade-in">
+              <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+                  <div className="p-6 bg-indigo-600 flex justify-between items-center text-white">
+                      <h3 className="font-black uppercase tracking-widest flex items-center gap-2"><UserPlus size={20}/> Import Peer Identity</h3>
+                      <button onClick={() => setShowIdentityImport(false)}><X/></button>
+                  </div>
+                  <div className="p-6 space-y-4">
+                      <p className="text-xs text-slate-400 leading-relaxed">Paste the public certificate string provided by the peer to verify their signatures on this device.</p>
+                      <textarea 
+                        value={pastedCert}
+                        onChange={e => setPastedCert(e.target.value)}
+                        placeholder="Paste certificate here..."
+                        className="w-full h-32 bg-slate-950 border border-slate-800 rounded-xl p-4 text-[10px] font-mono text-indigo-300 outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <button onClick={handleImportIdentity} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-sm shadow-lg">Verify & Register</button>
                   </div>
               </div>
           </div>

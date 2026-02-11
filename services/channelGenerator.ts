@@ -1,6 +1,6 @@
 
-import { GoogleGenAI } from '@google/genai';
-import { Channel, Chapter } from '../types';
+import { GoogleGenAI, Type } from '@google/genai';
+import { Channel, Chapter, NeuralLensAudit } from '../types';
 import { incrementApiUsage, getUserProfile, deductCoins, AI_COSTS } from './firestoreService';
 import { auth } from './firebaseConfig';
 import { logger } from './logger';
@@ -169,40 +169,53 @@ export async function modifyCurriculumWithAI(
 export async function generateChannelFromDocument(
   source: { text?: string, url?: string },
   currentUser: any,
-  language: 'en' | 'zh' = 'en'
+  language: 'en' | 'zh' = 'en',
+  enableAudit: boolean = false
 ): Promise<Channel | null> {
   const category = 'DOCUMENT_INGEST';
-  const modelId = source.url ? 'gemini-3-pro-image-preview' : 'gemini-3-pro-preview';
+  const modelId = 'gemini-3-pro-image-preview'; // Required for high-fidelity audit and search
   try {
     const langInstruction = language === 'zh' ? 'Output Language: Chinese.' : 'Output Language: English.';
     
-    const systemPrompt = `You are an expert Podcast Producer powered by Gemini 3 Pro. 
+    const auditRequirement = enableAudit ? `
+    CRITICAL: PERFORM CONTENT VALIDATION AUDIT.
+    1. Evaluate professional quality and technical accuracy.
+    2. Extract a Logic Mesh (nodes and links) of core architectural concepts.
+    3. Generate 3 adversarial probes (hard questions) to test the stability of this content.
+    4. Compute a Structural Coherence Score (0-100).
+    ` : '';
+
+    const systemPrompt = `You are a "Senior Technical Auditor and Content Synthesizer" powered by Gemini 3 Pro. 
     Your task is to analyze the provided source and transform it into a structured, high-fidelity podcast channel.
-    If a URL is provided, browse the content to ensure 100% technical accuracy.`;
+    If a URL is provided, browse the content using the search tool to ensure 100% technical accuracy.
+    ${auditRequirement}`;
 
     const userRequest = `Create a complete Podcast Channel (JSON) based on this source. 
-    Return ONLY a JSON object with: title, description, voiceName, systemInstruction, tags, and chapters (with subTopics).`;
+    Return ONLY a JSON object with: 
+    - title
+    - description
+    - voiceName
+    - systemInstruction
+    - tags
+    - chapters (with subTopics)
+    ${enableAudit ? '- sourceAudit: { StructuralCoherenceScore: number, LogicalDriftRisk: "Low"|"Medium"|"High", AdversarialRobustness: "Low"|"Medium"|"High", graph: { nodes: Array<{id, label, type}>, links: Array<{source, target, label}> }, probes: Array<{question, answer, status: "passed"|"failed"|"warning"}> }' : ''}`;
 
-    const config: any = { responseMimeType: "application/json" };
+    const config: any = { 
+        responseMimeType: "application/json",
+        tools: [{ googleSearch: {} }],
+        thinkingConfig: { thinkingBudget: enableAudit ? 12000 : 4000 }
+    };
     
-    // Enable Google Search grounding if a URL (like a GitHub link) is provided
-    if (source.url) {
-        // MANDATORY API KEY SELECTION CHECK
+    if (source.url || enableAudit) {
         if (!(await (window as any).aistudio.hasSelectedApiKey())) {
             await (window as any).aistudio.openSelectKey();
         }
-
-        config.tools = [{ googleSearch: {} }];
-        window.dispatchEvent(new CustomEvent('neural-log', { 
-            detail: { text: `Enabling Google Search grounding for source: ${source.url}`, type: 'audit' } 
-        }));
     }
 
     const promptText = source.url 
         ? `${systemPrompt}\n${langInstruction}\n\nURL TO ANALYZE: ${source.url}\n\n${userRequest}`
         : `${systemPrompt}\n${langInstruction}\n\nSOURCE TEXT:\n${source.text?.substring(0, 100000)}\n\n${userRequest}`;
 
-    // Create fresh instance right before call to ensure latest API key is used
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const startTime = performance.now();
     const response = await ai.models.generateContent({
@@ -224,22 +237,10 @@ export async function generateChannelFromDocument(
         outputTokens: usage?.candidatesTokenCount
     });
 
-    // Log grounding sources if they exist (MANDATORY per guidelines)
-    if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
-        const chunks = response.candidates[0].groundingMetadata.groundingChunks;
-        const sourceUrls = chunks.map((c: any) => c.web?.uri).filter(Boolean);
-        window.dispatchEvent(new CustomEvent('neural-log', { 
-            detail: { 
-                text: `Neural Grounding Verified. Analyzed ${chunks.length} segments from: ${sourceUrls.join(', ')}`, 
-                type: 'success' 
-            } 
-        }));
-    }
-
     const parsed = JSON.parse(text.replace(/^```json\s*|```\s*$/g, '').trim());
     const channelId = crypto.randomUUID();
     
-    return {
+    const result: Channel = {
       id: channelId,
       title: parsed.title,
       description: parsed.description,
@@ -257,6 +258,18 @@ export async function generateChannelFromDocument(
           subTopics: ch.subTopics.map((s: any, j: number) => ({ id: `s-${i}-${j}`, title: s.title || s })) 
       })) || []
     };
+
+    if (enableAudit && parsed.sourceAudit) {
+        result.sourceAudit = {
+            ...parsed.sourceAudit,
+            coherenceScore: parsed.sourceAudit.StructuralCoherenceScore,
+            driftRisk: parsed.sourceAudit.LogicalDriftRisk,
+            robustness: parsed.sourceAudit.AdversarialRobustness,
+            timestamp: Date.now()
+        };
+    }
+
+    return result;
   } catch (error: any) { 
       logger.error(`Document Ingest Fault: ${error.message}`, error, { category });
       return null; 

@@ -1,3 +1,4 @@
+
 export type SubscriptionTier = 'free' | 'pro';
 export type ChannelVisibility = 'public' | 'private' | 'group';
 export type ReaderTheme = 'slate' | 'light' | 'dark' | 'sepia';
@@ -181,6 +182,7 @@ export interface Channel {
   fullBookUrl?: string;
   appendix?: Attachment[];
   shares?: number;
+  sourceAudit?: NeuralLensAudit; // Added for content validation
 }
 
 export interface ChannelStats {
