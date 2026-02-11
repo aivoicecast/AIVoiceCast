@@ -46,7 +46,6 @@ const initDb = (): Firestore | null => {
         // initializeFirestore MUST be called before any other getFirestore call
         firestore = initializeFirestore(appInstance, {
             experimentalForceLongPolling: true,
-            useFetchStreams: false, // Disables fetch-based streams which can hang in some proxies
             cacheSizeBytes: CACHE_SIZE_UNLIMITED
         });
         console.log("[Firestore] Relational Plane: Long-Polling Force Engaged.");

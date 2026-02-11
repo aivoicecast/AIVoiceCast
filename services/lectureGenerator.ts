@@ -1,11 +1,12 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import { GeneratedLecture, TranscriptItem, NeuralLensAudit, DependencyNode, DependencyLink } from '../types';
-import { getCloudCachedLecture, saveCloudCachedLecture, deductCoins, AI_COSTS, incrementApiUsage, getUserProfile } from './firestoreService';
+import { getCloudCachedLecture, saveCloudCachedLecture, deductCoins, AI_COSTS, incrementApiUsage, getUserProfile, updateUserProfile } from './firestoreService';
 import { auth } from './firebaseConfig';
 import { generateContentUid, generateSecureId } from '../utils/idUtils';
 import { logger } from './logger';
 import { checkOpenClawAvailability, requestRetinaAudit } from './openClawService';
+import { generateMemberIdentity, signPayment } from '../utils/cryptoUtils';
+import { getLocalPrivateKey, saveLocalPrivateKey } from '../utils/db';
 
 const MAX_RETRIES = 3;
 
@@ -104,6 +105,7 @@ export async function repairPlantUML(brokenSource: string, format: 'puml' | 'mer
 /**
  * NEURAL SELF-FEEDBACK LOOP
  * Ingests Tool A (Studio) output into Tool B (Lens) and provides Machine Interface feedback.
+ * NOW INCLUDES: Sovereign VPR signing logic.
  */
 export async function performNeuralLensAudit(
     lecture: GeneratedLecture, 
@@ -142,7 +144,7 @@ export async function performNeuralLensAudit(
     try {
         const currentHash = await computeContentHash(lecture);
 
-        if (!force && lecture.audit && lecture.audit.contentHash === currentHash) {
+        if (!force && lecture.audit && lecture.audit.contentHash === currentHash && lecture.audit.signature) {
             logger.audit(`BYPASS [Node: ${lecture.topic}]: Fingerprint Match. [CACHE_HIT]`, { 
                 category: 'BYPASS_LEDGER', 
                 topic: lecture.topic,
@@ -271,11 +273,39 @@ OUTPUT REQUIREMENTS:
         const outputSize = new TextEncoder().encode(response.text).length;
         
         let postBalance = preBalance;
+        let signature = undefined;
+        let signerPublicKey = undefined;
+
         if (auth.currentUser) {
-            await deductCoins(auth.currentUser.uid, AI_COSTS.TECHNICAL_EVALUATION);
-            await incrementApiUsage(auth.currentUser.uid);
-            const postProfile = await getUserProfile(auth.currentUser.uid);
+            const uid = auth.currentUser.uid;
+            await deductCoins(uid, AI_COSTS.TECHNICAL_EVALUATION);
+            await incrementApiUsage(uid);
+            const postProfile = await getUserProfile(uid);
             postBalance = postProfile?.coinBalance || 0;
+
+            // --- SOVEREIGN VPR SIGNING IMPLEMENTATION ---
+            // This satisfies Node 4 of the Technical Audit
+            let pKey = await getLocalPrivateKey(uid);
+            if (!pKey) {
+                // Provision new identity if missing
+                const identity = await generateMemberIdentity();
+                await saveLocalPrivateKey(uid, identity.privateKey);
+                await updateUserProfile(uid, { publicKey: identity.publicKey });
+                pKey = identity.privateKey;
+                signerPublicKey = identity.publicKey;
+            } else {
+                signerPublicKey = postProfile?.publicKey;
+            }
+
+            const signPayload = {
+                v: '12.9.5',
+                score: audit.StructuralCoherenceScore,
+                drift: audit.LogicalDriftRisk,
+                hash: currentHash,
+                ts: Date.now()
+            };
+            // Perform ECDSA P-256 signature on the reasoning artifact
+            signature = await signPayment(pKey, signPayload);
         }
 
         logger.audit(`Audit Refraction Verified [Score: ${audit.StructuralCoherenceScore}%]`, {
@@ -299,7 +329,8 @@ OUTPUT REQUIREMENTS:
             machineContent: {
                 coherence: audit.StructuralCoherenceScore,
                 drift: audit.LogicalDriftRisk,
-                feedback: audit.machineFeedback
+                feedback: audit.machineFeedback,
+                vpr_signature: signature
             }
         });
 
@@ -310,7 +341,10 @@ OUTPUT REQUIREMENTS:
             robustness: audit.AdversarialRobustness,
             timestamp: Date.now(),
             reportUuid,
-            contentHash: currentHash
+            contentHash: currentHash,
+            signature,
+            signerId: auth.currentUser?.uid,
+            signerPublicKey
         };
     } catch (e: any) {
         logger.error(`Audit Fault [Node: ${lecture.topic}]`, e, { category });

@@ -60,6 +60,9 @@ export interface NeuralLensAudit {
   reportUuid?: string;
   contentHash?: string;
   machineFeedback?: string; // Strictly for Tool-to-Tool handshake
+  signature?: string; // Cryptographic VPR signature
+  signerId?: string;
+  signerPublicKey?: string;
 }
 
 export interface GeneratedLecture {

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MockInterviewRecording, TranscriptItem, CodeFile, UserProfile, Channel, RecordingSession } from '../types';
 import { auth, db } from '../services/firebaseConfig';
@@ -29,12 +30,13 @@ import {
   Lock, Activity, Layers, RefreshCw, Monitor, Camera, Youtube, HardDrive,
   UserCheck, Shield, GraduationCap, PlayCircle, ExternalLink, Copy, Share2, SearchX,
   Play, Link, CloudUpload, HardDriveDownload, List, Table as TableIcon, FileVideo, Calendar, Download, Maximize2, Maximize, Info, Minimize2,
-  FileText, Ghost, Eye, Database, TerminalSquare, FlaskConical, Beaker
+  FileText, FileText as FileTextIcon, Image as ImageIcon, Ghost, Eye, Database, TerminalSquare, FlaskConical, Beaker, Upload, Droplets, Signal
 } from 'lucide-react';
 import { getGlobalAudioContext, warmUpAudioContext, registerAudioOwner, connectOutput, getGlobalMediaStreamDest } from '../utils/audioUtils';
 import { getDriveToken, signInWithGoogle, connectGoogleDrive, isJudgeSession } from '../services/authService';
 import { ensureCodeStudioFolder, ensureFolder, uploadToDrive, getDriveFileSharingLink, getDriveFileStreamUrl } from '../services/googleDriveService';
 import { uploadToYouTube, getYouTubeVideoUrl, getYouTubeEmbedUrl, deleteYouTubeVideo } from '../services/youtubeService';
+import { resizeImage } from '../utils/imageUtils';
 
 // --- Global Context Helpers ---
 const isYouTubeUrl = (url?: string) => !!url && (url.includes('youtube.com') || url.includes('youtu.be'));
@@ -399,6 +401,10 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const [archiveSearch, setArchiveSearch] = useState('');
   const [pipSize, setPipSize] = useState<'normal' | 'compact'>('normal');
   const [isMirrorMinimized, setIsMirrorMinimized] = useState(false);
+  const [isCamBlurred, setIsCamBlurred] = useState(false);
+  const [customPipBgBase64, setCustomPipBgBase64] = useState<string | null>(null);
+  const pipBgImageRef = useRef<HTMLImageElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isAiConnected, setIsAiConnected] = useState(false);
   const [showDebugPanel, setShowDebugPanel] = useState(true);
@@ -423,7 +429,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       { id: 'dyad', label: 'Verifying Dyad Lead', status: 'pending' }
   ]);
 
-  // VFS AUDIT STATES
   const [vfsAuditActive, setVfsAuditActive] = useState(false);
   const [auditResults, setAuditResults] = useState<AuditStep[]>([
       { id: 'code-create', label: 'Editor: Create/Read Handshake', status: 'pending' },
@@ -466,6 +471,16 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
   const serviceRef = useRef<GeminiLiveService | null>(null);
   const currentUser = auth?.currentUser;
 
+  const handlePipBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const b64 = await resizeImage(e.target.files[0], 1024, 0.7);
+      setCustomPipBgBase64(b64);
+      const img = new Image();
+      img.src = b64;
+      img.onload = () => { pipBgImageRef.current = img; addApiLog("Privacy Shield background verified."); };
+    }
+  };
+
   const updateSetupStep = useCallback((id: string, status: 'pending' | 'active' | 'done' | 'error') => {
       setSetupSteps(prev => prev.map(s => s.id === id ? { ...s, status } : s));
   }, []);
@@ -480,14 +495,17 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
       window.dispatchEvent(new CustomEvent('neural-log', { detail: { text: `[DyadAI] ${msg}`, type } }));
   }, []);
 
+  // REFRATION FIX: Explicitly re-bind the camera stream to the mirror element when acquired or view shifts
   useEffect(() => {
     if (view === 'active' && mirrorVideoRef.current && cameraStreamRef.current) {
-        mirrorVideoRef.current.srcObject = cameraStreamRef.current;
-        mirrorVideoRef.current.play().catch(err => {
-            addApiLog("Mirror buffer delayed. Attempting recovery...", "warn");
-        });
+        if (mirrorVideoRef.current.srcObject !== cameraStreamRef.current) {
+            mirrorVideoRef.current.srcObject = cameraStreamRef.current;
+            mirrorVideoRef.current.play().catch(err => {
+                addApiLog("Mirror buffer delayed. Attempting recovery...", "warn");
+            });
+        }
     }
-  }, [view, addApiLog]);
+  }, [view, cameraStreamRef.current, addApiLog]);
 
   useEffect(() => {
     filesRef.current = files;
@@ -816,6 +834,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             drawCtx.fillStyle = '#020617';
             drawCtx.fillRect(0, 0, canvas.width, canvas.height);
             
+            // 1. Layer: Blurred Background
             if (screenStreamRef.current && screenVideo.readyState >= 2) {
                 drawCtx.save();
                 drawCtx.filter = 'blur(60px) brightness(0.4)';
@@ -823,6 +842,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 drawCtx.restore();
             }
 
+            // 2. Layer: Main Screen Content
             if (screenStreamRef.current && screenVideo.readyState >= 2) {
                 const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
                 const w = screenVideo.videoWidth * scale;
@@ -835,6 +855,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 drawCtx.restore();
             }
 
+            // 3. Layer: PIP
             if (cameraStreamRef.current && cameraVideo.readyState >= 2) {
                 const size = pipSize === 'compact' ? 220 : 440; 
                 const px = canvas.width - size - 40;
@@ -851,16 +872,29 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                 drawCtx.closePath();
                 drawCtx.clip();
 
+                // Sub-layer: PIP Background Image (Privacy Shield)
+                if (pipBgImageRef.current) {
+                    const img = pipBgImageRef.current;
+                    const imgScale = Math.max(size / img.width, size / img.height);
+                    drawCtx.drawImage(img, centerX - (img.width*imgScale)/2, centerY - (img.height*imgScale)/2, img.width*imgScale, img.height*imgScale);
+                } else {
+                    drawCtx.fillStyle = '#0f172a';
+                    drawCtx.fill();
+                }
+
+                // Sub-layer: Camera Face
+                if (isCamBlurred) drawCtx.filter = 'blur(25px)';
                 const camScale = Math.max(size / cameraVideo.videoWidth, size / cameraVideo.videoHeight);
                 const cw = cameraVideo.videoWidth * camScale;
                 const ch = cameraVideo.videoHeight * camScale;
                 drawCtx.drawImage(cameraVideo, centerX - cw / 2, centerY - ch / 2, cw, ch);
                 drawCtx.restore();
 
+                // Sub-layer: PIP Decoration Ring
                 drawCtx.save();
                 drawCtx.beginPath();
                 drawCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-                drawCtx.strokeStyle = '#red-500';
+                drawCtx.strokeStyle = '#ef4444';
                 drawCtx.lineWidth = pipSize === 'compact' ? 6 : 10;
                 drawCtx.stroke();
                 drawCtx.restore();
@@ -897,7 +931,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
         addApiLog("Scribe Init failed: " + e.message, "error"); 
         updateSetupStep('scribe', 'error');
     }
-  }, [pipSize, addApiLog, view, updateSetupStep]);
+  }, [pipSize, addApiLog, view, updateSetupStep, isCamBlurred]);
 
   const connect = useCallback(async (reconnect = false) => {
     if (isEndingRef.current) return;
@@ -905,7 +939,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     const service = new GeminiLiveService();
     serviceRef.current = service;
 
-    // VFS AUDIT HANDSHAKE LOGIC
     let auditInstruction = "";
     if (vfsAuditActive) {
         auditInstruction = `
@@ -941,7 +974,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
               updateSetupStep('neural', 'done');
               updateSetupStep('dyad', 'active');
               
-              // Completion Handshake: Mark Dyad Lead as verified once socket is healthy
               setTimeout(() => {
                   updateSetupStep('dyad', 'done');
               }, 800);
@@ -976,7 +1008,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                   if (prev.length > 0 && prev[prev.length - 1].role === role) return [...prev.slice(0, -1), { ...prev[prev.length - 1], text: prev[prev.length - 1].text + text }];
                   return [...prev, { role, text, timestamp: Date.now() }];
               });
-              // Track focus handshake if user says "yes" or "i see it"
               if (vfsAuditActive && isUser && (text.toLowerCase().includes('yes') || text.toLowerCase().includes('i see'))) {
                   const activeFiles = filesRef.current;
                   if (activeFiles.some(f => f.name === 'audit_code.cpp')) updateAuditStep('code-focus', 'success');
@@ -997,7 +1028,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                       setActiveFilePath(args.path); 
                       service.sendToolResponse({ id: fc.id, name: fc.name, response: { result: `Success. ${args.path} Manifested.` } });
                       
-                      // VFS Persist: Tag the generated file with the current sessionUuid for grouping
                       if (currentUser) {
                           saveProjectToCloud('', args.path, args.content, sessionUuidRef.current);
                       }
@@ -1059,7 +1089,6 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     setSetupSteps(prev => prev.map(s => ({ ...s, status: 'pending' })));
     if (vfsAuditActive) setAuditResults(prev => prev.map(s => ({ ...s, status: 'pending' })));
     
-    // 1. IDENTITY
     updateSetupStep('uuid', 'active');
     const uuid = generateSecureId();
     sessionUuidRef.current = uuid; 
@@ -1074,22 +1103,18 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
     updateSetupStep('uuid', 'done');
 
     try {
-        // 2. PERMISSIONS
         updateSetupStep('scopes', 'active');
         screenStreamRef.current = await navigator.mediaDevices.getDisplayMedia({ video: { width: 1920, height: 1080 }, audio: true } as any);
         cameraStreamRef.current = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: false });
         updateSetupStep('scopes', 'done');
         
-        // 3. SCRIBE
         initializePersistentRecorder();
         
-        // 4. NEURAL
         await connect();
         
         setTimeLeft(interviewDuration * 60);
         timerRef.current = setInterval(() => { setTimeLeft(prev => { if (prev <= 1) { handleEndInterview(); return 0; } return prev - 1; }); }, 1000);
         
-        // Final transition wait
         setTimeout(() => {
             setView('active');
             setIsLoading(false);
@@ -1221,7 +1246,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             </div>
         </header>
 
-        <main className="flex-1 overflow-hidden relative flex flex-col items-center w-full">
+        <main className={`flex-1 ${view === 'active' ? 'overflow-hidden' : 'overflow-y-auto'} relative flex flex-col items-center w-full scrollbar-hide`}>
             {isLoading && (
                 <div className="absolute inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center gap-12 animate-fade-in p-8">
                     <div className="relative">
@@ -1261,7 +1286,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             )}
 
             {view === 'selection' && (
-                <div className="max-w-4xl w-full p-8 md:p-16 h-full flex flex-col justify-center gap-12 animate-fade-in-up">
+                <div className="max-w-4xl w-full p-8 md:p-16 min-h-full flex flex-col justify-start md:justify-center gap-12 animate-fade-in-up pb-32">
                     <div className="text-center space-y-4">
                         <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">DyadAI</h2>
                         <p className="text-lg text-slate-400 font-medium max-w-xl mx-auto leading-relaxed">High-fidelity talent filtering using the Shadow-Critic multi-agent architecture.</p>
@@ -1276,9 +1301,9 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         ))}
                     </div>
                     <div className="flex flex-col items-center gap-6">
-                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
+                        <div className="flex bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-xl overflow-x-auto max-w-full no-scrollbar">
                             {(['coding', 'system_design', 'behavioral', 'quick_screen'] as const).map(m => (
-                                <button key={m} onClick={() => setInterviewMode(m)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${interviewMode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>{m.replace('_', ' ')}</button>
+                                <button key={m} onClick={() => setInterviewMode(m)} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${interviewMode === m ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-200'}`}>{m.replace('_', ' ')}</button>
                             ))}
                         </div>
                         <button onClick={() => setView('setup')} className="px-12 py-5 bg-white text-slate-950 font-black uppercase tracking-[0.3em] rounded-2xl shadow-2xl shadow-indigo-900/40 transition-transform hover:scale-105 active:scale-95 flex items-center gap-3"><span>Configure Dyad</span><ChevronRight size={20}/></button>
@@ -1287,24 +1312,56 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
             )}
 
             {view === 'setup' && (
-                <div className="max-w-2xl w-full p-8 md:p-12 h-full flex flex-col justify-center gap-10 animate-fade-in-up">
+                <div className="max-w-2xl w-full p-8 md:p-12 min-h-full flex flex-col justify-start gap-10 animate-fade-in-up pb-40">
                     <div className="space-y-2 text-left">
                         <button onClick={() => setView('selection')} className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest hover:text-white transition-colors mb-4"><ArrowLeft size={14}/> Back to Selection</button>
                         <h2 className="text-3xl font-black text-white italic tracking-tighter uppercase leading-none">Interrogation Config</h2>
                         <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Refining Evaluation Metadata</p>
                     </div>
                     <div className="space-y-8 bg-slate-900 border border-slate-800 rounded-[3rem] p-10 shadow-2xl relative overflow-hidden text-left">
-                        <div className="space-y-3"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Target Language</label><div className="grid grid-cols-2 gap-2">{(['cpp', 'python', 'javascript', 'java'] as const).map(l => (<button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l === 'cpp' ? 'C++' : l}</button>))}</div></div>
-                        <div className="space-y-3"><label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context</label><textarea value={jobDescription} onChange={e => setJobDescription(e.target.value)} rows={4} placeholder="Paste JD or Seniority Level..." className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"/></div>
-                        
-                        <div className="p-6 bg-slate-950 border border-slate-800 rounded-3xl space-y-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-xl ${vfsAuditActive ? 'bg-indigo-600' : 'bg-slate-800'} text-white shadow-lg`}><FlaskConical size={18}/></div>
-                                    <div><p className="text-xs font-bold text-white uppercase tracking-tight">VFS Audit Mode</p><p className="text-[9px] text-slate-500 uppercase font-black">Pre-flight Hardware Check</p></div>
-                                </div>
-                                <button onClick={() => setVfsAuditActive(!vfsAuditActive)} className={`w-12 h-6 rounded-full relative transition-all ${vfsAuditActive ? 'bg-indigo-600' : 'bg-slate-700'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${vfsAuditActive ? 'right-1' : 'left-1'}`}></div></button>
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Target Language</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {(['cpp', 'python', 'javascript', 'java'] as const).map(l => (
+                                    <button key={l} onClick={() => setInterviewLanguage(l)} className={`py-3 rounded-xl border text-xs font-black uppercase transition-all ${interviewLanguage === l ? 'bg-red-600 border-red-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>{l === 'cpp' ? 'C++' : l}</button>
+                                ))}
                             </div>
+                        </div>
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">Job Context</label>
+                            <textarea value={jobDescription} onChange={e => setJobDescription(e.target.value)} rows={4} placeholder="Paste JD or Seniority Level..." className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-500 shadow-inner resize-none leading-relaxed"/>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <FlaskConical size={14} className="text-indigo-400"/>
+                                        <span className="text-[9px] font-black text-slate-400 uppercase">VFS Audit</span>
+                                    </div>
+                                    <button onClick={() => setVfsAuditActive(!vfsAuditActive)} className={`w-10 h-5 rounded-full relative transition-all ${vfsAuditActive ? 'bg-indigo-600' : 'bg-slate-700'}`}><div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${vfsAuditActive ? 'right-1' : 'left-1'}`}></div></button>
+                                </div>
+                                <p className="text-[8px] text-slate-600 uppercase font-black">Pre-flight hardware check.</p>
+                            </div>
+                            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-slate-300">
+                                        <Droplets size={14} className="text-emerald-400"/> 
+                                        <span className="text-[9px] font-black uppercase">Cam Blur</span>
+                                    </div>
+                                    <button onClick={() => setIsCamBlurred(!isCamBlurred)} className={`w-10 h-5 rounded-full relative transition-all ${isCamBlurred ? 'bg-indigo-600' : 'bg-slate-700'}`}><div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${isCamBlurred ? 'right-1' : 'left-1'}`}></div></button>
+                                </div>
+                                <p className="text-[8px] text-slate-600 uppercase font-black">Apply Privacy Filter.</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2"><ImageIcon size={14} className="text-indigo-400"/><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Privacy Shield</span></div>
+                                <button onClick={() => fileInputRef.current?.click()} className="text-[9px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-1 hover:text-white transition-all"><Upload size={12}/> Select Image</button>
+                                <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handlePipBgUpload}/>
+                            </div>
+                            {customPipBgBase64 && (<div className="flex items-center gap-3 p-2 bg-slate-950 rounded-xl border border-indigo-500/30"><img src={customPipBgBase64} className="w-10 h-10 rounded-lg object-cover" /><span className="text-[9px] text-slate-500 uppercase font-black truncate max-w-[120px]">Active Shield</span><button onClick={() => {setCustomPipBgBase64(null); pipBgImageRef.current = null;}} className="ml-auto p-1.5 text-slate-600 hover:text-red-400"><X size={14}/></button></div>)}
                         </div>
 
                         <button onClick={handleStartInterview} className="w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black uppercase tracking-[0.2em] rounded-2xl shadow-xl shadow-red-900/40 transition-all active:scale-95 flex items-center justify-center gap-3"><Play size={20} fill="currentColor"/> Begin Interrogation</button>
@@ -1318,18 +1375,19 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                         <div className={`relative group ${pipSize === 'compact' ? 'w-32 h-32' : 'w-56 h-56'}`}>
                             <div className="absolute -inset-1 bg-gradient-to-r from-red-500 to-indigo-600 rounded-full blur opacity-40 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
                             <div className="relative w-full h-full bg-slate-900 rounded-full border-4 border-red-500/50 overflow-hidden shadow-2xl">
-                                <video ref={mirrorVideoRef} autoPlay playsInline muted className="w-full h-full object-cover transform scale-110"/>
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent"></div>
-                                <div className="absolute top-2 left-1/2 -translate-x-1/2">
+                                {customPipBgBase64 && <img src={customPipBgBase64} className="absolute inset-0 w-full h-full object-cover" alt="" />}
+                                <video ref={mirrorVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover transform scale-110 relative z-10 ${isCamBlurred ? 'blur-md' : ''}`}/>
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent z-20"></div>
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30">
                                     <div className="bg-red-600 text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg border border-red-400/50 whitespace-nowrap">Neural Mirror</div>
                                 </div>
                                 <button 
                                   onClick={() => setIsMirrorMinimized(!isMirrorMinimized)}
-                                  className="absolute top-8 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                                  className="absolute bottom-2 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg z-30"
                                 >
                                     {isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}
                                 </button>
-                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 h-1 overflow-hidden rounded-full">
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-1/2 h-1 overflow-hidden rounded-full z-30 bg-black/20">
                                     <Visualizer volume={volume} isActive={isLive} color="#ffffff" />
                                 </div>
                             </div>
@@ -1338,7 +1396,7 @@ export const MockInterview: React.FC<MockInterviewProps> = ({ onBack, userProfil
                     <div className="flex-1 min-w-0">
                         <CodeStudio 
                             onBack={() => {}} currentUser={currentUser} userProfile={userProfile} isProMember={true} isInterviewerMode={true} 
-                            sessionId={sessionUuidRef.current} // Bind studio to the interview session
+                            sessionId={sessionUuidRef.current} 
                             initialFiles={files} onFileChange={(f) => {
                                 setFiles(prev => prev.map(p => p.path === f.path ? f : p));
                             }} 
