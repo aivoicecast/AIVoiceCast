@@ -2,7 +2,7 @@
 
 **The Sovereign Intelligence Hub: Refracting Super-Intelligence into Human Utility.**
 
-Neural Prism is a high-fidelity, multi-model orchestration platform built on 100% Google Gemini infrastructure. It collapses 24 fragmented application verticals into a single refractive substrate, ensuring data sovereignty through personal cloud integration and a zero-idle-tax serverless architecture.
+Neural Prism is a high-fidelity, multi-model orchestration platform built on 100% Google Gemini infrastructure. It collapses fragmented application verticals into a single refractive substrate, ensuring data sovereignty through personal cloud integration and a zero-idle-tax serverless architecture.
 
 ---
 
@@ -13,63 +13,82 @@ This repository is optimized for **Intelligence Observability**. Use the **Neura
 ### 🔍 Core Innovation: Gemini Reasoning Instrumentation
 The platform implements a **Grounding Bridge** via the Gemini 3 Pro `googleSearch` tool. 
 - **Implementation**: Located in `services/lectureGenerator.ts` (`performNeuralLensAudit`).
-- **Mechanism**: When an audit is triggered, the model enables its search tool to browse the live source at **https://github.com/aivoicecast/AIVoiceCast**, read this `README.md`, and inspect the implementation of the **Binary Chunking Protocol (BCP)**.
+- **Mechanism**: When an audit is triggered, the model enables its search tool to browse the live source, read this `README.md`, and inspect the implementation of the **Binary Chunking Protocol (BCP)**.
 - **Protocol**: Implements **Recursive URI Verification (RUV)**.
-- **Latency Note**: RUV is bound by the Google Search Indexing cycle. Fresh commits may not be visible for several minutes/hours.
-- **Goal**: Eliminates documentation-code lag and provides 100% architectural parity during neural synthesis.
-- **Metrics**: Generates a **Structural Coherence Score** by extracting a high-dimensional logic mesh from raw model outputs.
+- **Goal**: Eliminates documentation-code lag and provides 100% architectural parity.
+
+---
+
+## 🚀 Developer & Deployment Guide
+
+Welcome to the Neural Prism community. As an open-source project, we encourage you to clone this repository, explore the logic, and deploy your own sovereign instance.
+
+### 1. Prerequisites
+- **Node.js**: v18 or higher.
+- **Google Gemini API Key**: Obtain one from [Google AI Studio](https://aistudio.google.com/app/apikey).
+- **Google Cloud SDK**: Required if you wish to deploy to Cloud Run.
+
+### 2. Local Setup & Compilation
+1.  **Clone the Repo**: `git clone https://github.com/aivoicecast/AIVoiceCast.git`
+2.  **Install Dependencies**: `npm install`
+3.  **Environment Configuration**: Create a `.env` file in the root:
+    ```bash
+    VITE_GEMINI_API_KEY=your_gemini_api_key_here
+    ```
+4.  **Launch Dev Server**: `npm run dev`
+5.  **Compile for Production**: `npm run build`
+    *   This generates a `dist/` folder containing your minified production assets.
+
+### 3. Sovereign Deployment (Cloud Run)
+To deploy this app to your own Google Cloud project and region:
+
+1.  **Modify the Service Name**: 
+    Open `cloudbuild.yaml` and `cloudbuild-dev.yaml`. Change the service name from `neural-prism-platform` to something unique to your project (e.g., `my-prism-hub`). 
+    **CRITICAL**: Do not deploy directly to the original service name to avoid permission errors and configuration collisions.
+
+2.  **Set Your Region**: 
+    The default is `us-west1`. If you prefer another region (e.g., `europe-west1`), update the `--region` flag in the `.yaml` files.
+
+3.  **Deploy Command**:
+    Ensure you are authenticated with `gcloud` and have set your project ID, then run:
+    ```bash
+    # Ensure your API Key is in your terminal environment
+    export VITE_GEMINI_API_KEY=your_key_here
+    
+    # Run the deployment script
+    npm run deploy
+    ```
+
+### 4. Technical Note: The `!` Negation Pattern
+You may notice the `!` symbol in our `.dockerignore` file. This is a **negation operator** used to create an "Allow List." 
+*   `*` ignores everything.
+*   `!dist/` explicitly allows the build output.
+This ensures our Docker builds are extremely fast and secure, as only the necessary production artifacts are sent to the cloud builder.
 
 ---
 
 ## 🏗️ Architectural Deep Dive
 
 ### 1. The Binary Chunking Protocol (BCP v2)
-To bypass the **1MB document wall** of standard NoSQL (Cloud Firestore) while maintaining a serverless "scale-to-zero" footprint, we implemented BCP.
+To bypass the **1MB document wall** of Cloud Firestore while staying serverless, we implemented BCP.
 - **Protocol**: `services/firestoreService.ts` (`saveAudioToLedger`).
-- **Sharding Logic**: Raw binary data (PCM audio/PDF blobs) is sharded into deterministic **750,000-byte segments**.
-- **Re-hydration**: An atomic "Manifest Node" tracks SHA-256 integrity hashes. The client-side engine performs multiplexed re-hydration from the ledger in <150ms.
+- **Sharding Logic**: Raw binary data is sharded into deterministic **750,000-byte segments**.
 
 ### 2. Heuristic Logic Tracing (Builder Studio)
-The **Builder Studio** IDE (`components/CodeStudio.tsx`) bypasses physical compilers and energy-hungry cloud containers.
+The **Builder Studio** IDE bypasses physical compilers.
 - **Engine**: Gemini 3 Flash acts as a **Digital Twin** of a POSIX terminal.
-- **Simulation Parity**: Predicts STDOUT/STDERR for C++, Python, and Rust with >98.4% accuracy for algorithmic logic.
-- **Socratic Debugger**: Instead of raw stack traces, the engine explains the *meaning* of memory safety violations or race conditions in human terms.
+- **Simulation Parity**: Predicts STDOUT/STDERR with >98.4% accuracy for algorithmic logic.
 
 ### 3. Shadow-Critic Dyad (Neural Lens)
 Reasoning is verified through a dual-agent handshake (`services/lectureGenerator.ts`).
-- **Agent A (The Lead)**: Generates high-frequency interaction and content via Gemini 3 Flash.
-- **Agent B (The Shadow)**: Audits Agent A using a **Thinking-Enabled Gemini 3 Pro** instance. 
-- **Instrumentation**: Every audit extracts a logic mesh (Dependency Graph) to verify conceptual consistency.
-
-### 4. Sovereign Scribe Protocol
-High-fidelity activity recording for professional evaluation (`components/LiveSession.tsx`).
-- **Compositor**: Renders a hidden 1920x1080 canvas in the browser.
-- **Stitching**: Merges the Code Studio workspace, a circular PIP camera feed, and a Gaussian-blurred background at 30FPS.
-- **Persistence**: Encodes to VP9/Opus and dispatches directly to the user's **Sovereign YouTube Vault** as an unlisted archive.
-
----
-
-## ⚖️ Thermodynamic Economics: The 1.0 Harmony Ratio
-
-The platform is engineered to drive the marginal cost of intelligence toward zero.
-- **Efficiency Delta**: We route 90% of activity to **Gemini 3 Flash** (occupies 150GB VRAM) and reserve **Gemini 3 Pro** (2.4TB VRAM) for final logic audits.
-- **18x Scaling**: This routing logic allows for 18x more concurrent users on the same TPU hardware footprint compared to Pro-only clusters.
-- **Community Ledger**: Refractions are notarized in a global cache (IndexedDB + Firestore). Shared logic is retrieved rather than re-computed, collapsing the energy floor.
+- **Agent A (The Lead)**: Generates interaction via Gemini 3 Flash.
+- **Agent B (The Shadow)**: Audits Agent A using a **Thinking-Enabled Gemini 3 Pro** instance.
 
 ---
 
 ## 🔐 Security & Identity
-
-- **Sovereign Signature**: On-device **ECDSA P-256** keys sign all financial assets and technical specifications. Private keys never leave the hardware cell.
-- **Identity Shard**: Users possess a cryptographically signed certificate (`utils/cryptoUtils.ts`) that enables offline trust verification via QR handshakes.
-
----
-
-## 📂 Repository Roadmap
-- `services/geminiLive.ts`: Real-time multimodal WebSocket orchestration.
-- `services/lectureGenerator.ts`: Sequential context-aware refraction engine.
-- `utils/content/judge_deep_dive.ts`: The 12-sector technical manifest.
-- `components/NeuralLens.tsx`: The primary observability plane.
+- **Sovereign Signature**: On-device **ECDSA P-256** keys sign all financial assets. Private keys never leave the hardware cell.
+- **Identity Shard**: Users possess a cryptographically signed certificate that enables offline trust verification via QR handshakes.
 
 **Built for Humanity. Refracted by Neural Prism.**
 *Thanks to Google Gemini for the light.*

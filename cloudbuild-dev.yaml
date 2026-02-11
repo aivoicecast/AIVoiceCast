@@ -1,0 +1,37 @@
+steps:
+  # 1. Build the container image with the dev tag
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '--build-arg'
+      - 'VITE_GEMINI_API_KEY=$_GEMINI_API_KEY'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/neural-prism-platform:dev'
+      - '.'
+
+  # 2. Push the dev image to Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/neural-prism-platform:dev']
+
+  # 3. Deploy to the specific DEV service name
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'neural-prism-platform-dev'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/neural-prism-platform:dev'
+      - '--region'
+      - 'us-west1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '8080'
+
+images:
+  - 'gcr.io/$PROJECT_ID/neural-prism-platform:dev'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

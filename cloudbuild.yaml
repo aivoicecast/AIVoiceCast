@@ -1,0 +1,37 @@
+steps:
+  # 1. Build the container image with the API Key build argument
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '--build-arg'
+      - 'VITE_GEMINI_API_KEY=$_GEMINI_API_KEY'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/neural-prism-platform'
+      - '.'
+
+  # 2. Push the container image to Google Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/neural-prism-platform']
+
+  # 3. Deploy the container to Cloud Run in us-west1
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'neural-prism-platform'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/neural-prism-platform'
+      - '--region'
+      - 'us-west1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '8080'
+
+images:
+  - 'gcr.io/$PROJECT_ID/neural-prism-platform'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
