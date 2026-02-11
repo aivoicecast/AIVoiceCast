@@ -1,11 +1,12 @@
 
+import { safeJsonStringify } from './idUtils';
+
 /**
  * VoiceCoin Cryptographic Identity and Payment Verification Utilities
  * Uses standard Web Crypto API for secure signing and verification.
  */
 
 // AIVoiceCast Root Public Key (Mocked for decentralized trust base)
-// In production, this would be a hardcoded base64 SPKI or JWK from a known source.
 export const AIVOICECAST_TRUST_PUBLIC_KEY = `MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEP8qS1rJ7G6Yq5F9V0H2m4J8vO9P6R5z3S4Z7k8n9P1L0K2J3I4H5G6F7E8D9C0B1A2A3B4C5D6E7F8G9H0I1J2==`;
 
 /**
@@ -31,11 +32,11 @@ export async function generateMemberIdentity(): Promise<{ publicKey: string; pri
 }
 
 /**
- * Signs an offline payment token.
+ * Signs an offline payment token using safe serialization.
  */
 export async function signPayment(privateKey: CryptoKey, paymentData: any): Promise<string> {
     const encoder = new TextEncoder();
-    const data = encoder.encode(JSON.stringify(paymentData));
+    const data = encoder.encode(safeJsonStringify(paymentData));
     const signature = await window.crypto.subtle.sign(
         {
             name: "ECDSA",
@@ -48,7 +49,7 @@ export async function signPayment(privateKey: CryptoKey, paymentData: any): Prom
 }
 
 /**
- * Verifies if a signature is valid for a given public key.
+ * Verifies if a signature is valid for a given public key using safe serialization.
  */
 export async function verifySignature(publicKeyBase64: string, signatureBase64: string, dataObj: any): Promise<boolean> {
     try {
@@ -63,7 +64,7 @@ export async function verifySignature(publicKeyBase64: string, signatureBase64: 
 
         const binarySignature = Uint8Array.from(atob(signatureBase64), c => c.charCodeAt(0));
         const encoder = new TextEncoder();
-        const data = encoder.encode(JSON.stringify(dataObj));
+        const data = encoder.encode(safeJsonStringify(dataObj));
 
         return await window.crypto.subtle.verify(
             { name: "ECDSA", hash: { name: "SHA-256" } },
@@ -79,14 +80,11 @@ export async function verifySignature(publicKeyBase64: string, signatureBase64: 
 
 /**
  * Simulates AIVoiceCast signing a member's public key (The Certificate).
- * In a real environment, this would call a backend protected by admin keys.
  */
 export async function requestIdentityCertificate(memberPublicKey: string): Promise<string> {
     const timestamp = Date.now();
     const certPayload = { publicKey: memberPublicKey, issuer: "AIVoiceCast", issuedAt: timestamp };
-    // This signature would be generated using AIVoiceCast's Root Private Key.
-    // For local logic, we'll store a mock signed string.
-    return btoa(JSON.stringify({ ...certPayload, sig: "ROOT_SIGNED_HASH_MOCK" }));
+    return btoa(safeJsonStringify({ ...certPayload, sig: "ROOT_SIGNED_HASH_MOCK" }));
 }
 
 /**
@@ -95,7 +93,6 @@ export async function requestIdentityCertificate(memberPublicKey: string): Promi
 export function verifyCertificateOffline(certificateBase64: string): boolean {
     try {
         const cert = JSON.parse(atob(certificateBase64));
-        // In a real impl, we would use verifySignature with AIVOICECAST_TRUST_PUBLIC_KEY
         return cert.issuer === "AIVoiceCast" && cert.sig === "ROOT_SIGNED_HASH_MOCK";
     } catch (e) {
         return false;
