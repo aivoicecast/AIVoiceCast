@@ -36,16 +36,16 @@ export async function generateContentUid(topic: string, context: string, lang: s
 
 /**
  * Deep Atomic Cloner:
- * Hardened to survive Google AI Studio background SDK heartbeats.
+ * Hardened to survive Google AI Studio and Firestore SDK internal heartbeats.
  * Proactively strips minified constructors (Y, Ka) and circular properties (src, i).
  */
 function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, path: string = 'root', seen = new WeakMap()): any {
     // 1. Primitives and Null
     if (val === null || typeof val !== 'object') {
-        return val;
+        return typeof val === 'function' ? '[Function_Ref]' : val;
     }
 
-    // 2. Circularity Detection via WeakMap
+    // 2. Circularity Detection via WeakMap (Applied early to references)
     if (seen.has(val)) {
         return `[Circular_Ref:${seen.get(val)}]`;
     }
@@ -54,7 +54,7 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, path: st
     let constructorName = '';
     try {
         constructorName = val.constructor?.name || '';
-        // Aggressively block minified internal Google/Firebase constructors
+        // Aggressively block minified internal Google/Firebase constructors (standard 1-2 char names)
         if (constructorName === 'Y' || constructorName === 'Ka' || constructorName.length <= 2) {
             return `[Internal_SDK_Object:${constructorName}]`;
         }
@@ -67,7 +67,7 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, path: st
 
     // 5. specialized built-ins
     if (val instanceof Date) return val.toISOString();
-    if (val instanceof Error) return { name: val.name, message: val.message };
+    if (val instanceof Error) return { name: val.name, message: val.message, stack: '[Redacted_Stack]' };
     if (val instanceof Node) return `[DOM_Node:${val.nodeName}]`;
     if (val instanceof Blob || val instanceof File) return `[Binary_Asset:${val.size}b]`;
 
@@ -85,11 +85,11 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, path: st
     const result: any = {};
     try {
         const keys = Object.keys(val);
-        // Process only first 30 keys for efficiency/safety
-        for (const key of keys.slice(0, 30)) {
+        // Process only first 40 keys for efficiency/safety
+        for (const key of keys.slice(0, 40)) {
             // PROACTIVE PROPERTY BLACKLIST:
-            // 'i' and 'src' are the specific properties reported in the AI Studio circular error.
-            if (key === 'src' || key === 'i' || key === 'parent' || key === 'window' || key === 'context') {
+            // 'i' and 'src' are the specific properties reported in the circular structure error.
+            if (key === 'src' || key === 'i' || key === 'parent' || key === 'window' || key === 'context' || key === 'target') {
                 result[key] = '[Filtered_Internal_Prop]';
                 continue;
             }
@@ -105,8 +105,8 @@ function atomicClone(val: any, depth: number = 0, maxDepth: number = 4, path: st
                 result[key] = '[Access_Fault]';
             }
         }
-        if (keys.length > 30) {
-            result['__trunc__'] = `${keys.length - 30} more keys`;
+        if (keys.length > 40) {
+            result['__trunc__'] = `${keys.length - 40} more keys`;
         }
     } catch (e) {
         return '[Iteration_Fault]';
@@ -126,7 +126,8 @@ export function safeJsonStringify(obj: any, indent: number = 2): string {
         console.error("[Neural Core] Critical Serialization Error", err);
         return JSON.stringify({
             error: "Unserializable Artifact",
-            details: "Check console for circularity trace."
+            details: "Check console for circularity trace.",
+            timestamp: Date.now()
         });
     }
 }
