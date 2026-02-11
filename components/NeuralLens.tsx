@@ -15,7 +15,7 @@ import {
 import { collection, query, getDocs, limit, orderBy, where } from '@firebase/firestore';
 import { db, auth } from '../services/firebaseConfig';
 import { GeneratedLecture, Channel, SubTopic, NeuralLensAudit, DependencyNode, DependencyLink, UserProfile } from '../types';
-import { SYSTEM_AUDIT_NODES } from '../utils/auditContent';
+// Removed SYSTEM_AUDIT_NODES import to enforce dynamic verification
 import { generateLectureScript, performNeuralLensAudit, summarizeLectureForContext, repairPlantUML } from '../services/lectureGenerator';
 import { generateCurriculum } from '../services/curriculumGenerator';
 import { SPOTLIGHT_DATA } from '../utils/spotlightContent';
@@ -156,7 +156,7 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
     });
 
     const neuralRegistryMap = new Map<string, GeneratedLecture>();
-    [...SYSTEM_AUDIT_NODES, ...cloudAudits].forEach(item => {
+    [...cloudAudits].forEach(item => {
         if (item?.topic) {
             const existing = neuralRegistryMap.get(item.topic);
             if (!existing || (item.audit?.timestamp || 0) > (existing.audit?.timestamp || 0)) {
