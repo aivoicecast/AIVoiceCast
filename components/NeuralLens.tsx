@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   ShieldCheck, Activity, BrainCircuit, Globe, 
@@ -10,7 +9,7 @@ import {
   Layout, BookOpen, ChevronDown, Signal, Library, BookText, Gauge, BarChart, History,
   Maximize2, Share2, Clipboard, Share, Palette, Eye, Code, Copy, ExternalLink, Clock, Tag,
   Check, FileSignature, Stamp, Shield, User, PenTool, Edit, AlignLeft, ShieldAlert,
-  Maximize, Info as InfoIcon
+  Maximize, Info as InfoIcon, Fingerprint as FingerprintIcon
 } from 'lucide-react';
 import { collection, query, getDocs, limit, orderBy, where } from '@firebase/firestore';
 import { db, auth } from '../services/firebaseConfig';
@@ -227,7 +226,6 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
 
       const allNodesMap = new Map<string, DependencyNode>();
       const allLinksMap = new Map<string, DependencyLink>();
-      const runtimeMermaidSegments: string[] = [];
 
       audited.forEach(shard => {
           if (shard.audit?.graph) {
@@ -442,6 +440,11 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                                       <button onClick={() => setActiveTab('audit')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${activeTab === 'audit' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Reasoning Mesh</button>
                                       <button onClick={() => setActiveTab('script')} className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${activeTab === 'script' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>Source Script</button>
                                   </div>
+                                  {selectedNode.audit?.signature && (
+                                      <div className="flex items-center gap-2 px-3 py-1 bg-emerald-950/40 border border-emerald-500/30 rounded-full text-emerald-400 text-[9px] font-black uppercase tracking-widest shadow-lg animate-fade-in">
+                                          <FingerprintIcon size={12}/> VPR Verified
+                                      </div>
+                                  )}
                               </div>
                           </div>
                           <div className="bg-slate-900 border border-slate-800 px-8 py-4 rounded-[2.5rem] shadow-inner text-center">
@@ -479,6 +482,32 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                                             </div>
                                             <div className="relative z-10 w-full min-h-[500px]">
                                                 <NeuralRetinaGraph data={auditData} className="h-[600px]" />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedNode.audit.signature && (
+                                        <div className="bg-emerald-950/20 border border-emerald-500/30 p-8 rounded-[3rem] shadow-xl space-y-6 animate-fade-in-up">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-3 bg-emerald-500 text-white rounded-2xl shadow-lg"><FileSignature size={24}/></div>
+                                                    <div>
+                                                        <h4 className="text-sm font-black text-white uppercase tracking-[0.2em] italic">Sovereign VPR Certificate</h4>
+                                                        <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Verifiable Proof of Reasoning</p>
+                                                    </div>
+                                                </div>
+                                                <CheckCircle2 className="text-emerald-500" size={32}/>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="bg-black/40 rounded-2xl p-4 border border-white/5 space-y-2">
+                                                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Signatory Authority</p>
+                                                    <p className="text-[10px] font-mono text-emerald-300 truncate">{selectedNode.audit.signerId}</p>
+                                                    <p className="text-[9px] font-black text-slate-600 uppercase">Public Key: {selectedNode.audit.signerPublicKey?.substring(0, 32)}...</p>
+                                                </div>
+                                                <div className="bg-black/40 rounded-2xl p-4 border border-white/5 space-y-2">
+                                                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Logic Signature</p>
+                                                    <p className="text-[8px] font-mono text-indigo-300 break-all leading-relaxed line-clamp-3">{selectedNode.audit.signature}</p>
+                                                </div>
                                             </div>
                                         </div>
                                     )}

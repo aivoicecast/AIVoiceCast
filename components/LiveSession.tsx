@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Channel, TranscriptItem, UserProfile } from '../types';
 import { GeminiLiveService } from '../services/geminiLive';
@@ -27,7 +28,6 @@ interface LiveSessionProps {
   recordCamera?: boolean;
   recordingTarget?: 'drive' | 'youtube';
   sessionTitle?: string;
-  // Fix: Added missing properties passed from parent components to resolve type errors in App.tsx
   initialContext?: string;
   lectureId?: string;
   activeSegment?: any;
@@ -83,7 +83,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   channel, onEndSession, language, recordingEnabled, recordingDuration: propDuration,
   recordScreen: propRecordScreen, recordCamera: propRecordCamera,
   recordingTarget = 'drive', sessionTitle: propSessionTitle,
-  // Fix: Destructured missing props passed from App.tsx
   initialContext, lectureId, activeSegment, interactionEnabled
 }) => {
   const t = UI_TEXT[language];
@@ -95,10 +94,8 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
   const [volume, setVolume] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // --- CONFIG STATES ---
   const [localSessionTitle, setLocalSessionTitle] = useState(propSessionTitle || '');
   const [sessionDuration, setSessionDuration] = useState(propDuration || 15);
-  // Fix: Added missing state isMirrorMinimized for mirror UI controls
   const [isMirrorMinimized, setIsMirrorMinimized] = useState(false);
   const [scribeTimeLeft, setScribeTimeLeft] = useState(sessionDuration * 60);
   const [screenPreset, setScreenPreset] = useState<ScreenPreset>('desktop');
@@ -131,18 +128,24 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       return combined.replace(/\s+/g, ' ').replace(/\s+([,.!?;:])/g, '$1');   
   };
 
+  // REFRATION FIX: Explicitly re-bind the camera stream to the mirror element when acquired
+  useEffect(() => {
+      if (hasStarted && mirrorVideoRef.current && cameraStreamRef.current) {
+          if (mirrorVideoRef.current.srcObject !== cameraStreamRef.current) {
+              mirrorVideoRef.current.srcObject = cameraStreamRef.current;
+              mirrorVideoRef.current.play().catch(() => {});
+          }
+      }
+  }, [hasStarted, useCamera, cameraStreamRef.current]);
+
   useEffect(() => { 
       mountedRef.current = true;
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      // Fix: Ensure mirror video is populated with stream on component update when active
-      if (hasStarted && mirrorVideoRef.current && cameraStreamRef.current) {
-          mirrorVideoRef.current.srcObject = cameraStreamRef.current;
-      }
       return () => { 
           mountedRef.current = false; 
           if (renderIntervalRef.current) clearInterval(renderIntervalRef.current);
       };
-  }, [transcript, currentLine, hasStarted]);
+  }, [transcript, currentLine]);
 
   useEffect(() => {
     if (hasStarted && recordingEnabled && isRecordingActive && scribeTimeLeft > 0) {
@@ -206,7 +209,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             const screenOk = !screenStreamRef.current || (screenVideo.readyState >= 2);
             const cameraOk = !cameraStreamRef.current || (cameraVideo.readyState >= 2);
             if (screenOk && cameraOk) { ready = true; setIsWaitingForFrames(false); } 
-            else { setTimeout(checkFlow, 500); }
+            else { 
+                if (cameraVideo.paused) cameraVideo.play().catch(() => {});
+                if (screenVideo.paused) screenVideo.play().catch(() => {});
+                setTimeout(checkFlow, 500); 
+            }
         };
         checkFlow();
 
@@ -215,15 +222,28 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
             drawCtx.fillStyle = '#020617';
             drawCtx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Draw Background (Screen)
+            // 1. Layer: Blurred Background (The requested "Blur" bedrock)
+            if (screenStreamRef.current && screenVideo.readyState >= 2) {
+                drawCtx.save();
+                drawCtx.filter = 'blur(60px) brightness(0.4)';
+                drawCtx.drawImage(screenVideo, -100, -100, canvas.width + 200, canvas.height + 200);
+                drawCtx.restore();
+            }
+
+            // 2. Layer: Main Content (The "Background Image" context for the video)
             if (screenStreamRef.current && screenVideo.readyState >= 2) {
                 const scale = Math.min(canvas.width / screenVideo.videoWidth, canvas.height / screenVideo.videoHeight);
                 const w = screenVideo.videoWidth * scale;
                 const h = screenVideo.videoHeight * scale;
+                
+                drawCtx.save();
+                drawCtx.shadowColor = 'rgba(0,0,0,0.8)';
+                drawCtx.shadowBlur = 40;
                 drawCtx.drawImage(screenVideo, (canvas.width - w)/2, (canvas.height - h)/2, w, h);
+                drawCtx.restore();
             }
 
-            // Draw PIP Circle
+            // 3. Layer: PIP (The "Camera Face" assembly)
             if (cameraStreamRef.current && cameraVideo.readyState >= 2 && cameraVideo.videoWidth > 0) {
                 const size = screenPreset === 'mobile-v' ? 320 : 440; 
                 const px = canvas.width - size - 40;
@@ -233,11 +253,13 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                 const radius = size / 2;
                 
                 drawCtx.save();
+                drawCtx.shadowColor = 'rgba(0,0,0,0.9)';
+                drawCtx.shadowBlur = 50;
                 drawCtx.beginPath();
                 drawCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
                 drawCtx.clip();
 
-                // 1. Draw Privacy Shield Background first
+                // 3a. PIP Base: Privacy Shield (Background image inside the circle)
                 if (pipBgImageRef.current) {
                     const img = pipBgImageRef.current;
                     const imgScale = Math.max(size / img.width, size / img.height);
@@ -247,18 +269,20 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     drawCtx.fill();
                 }
 
-                // 2. Draw Camera with optional Privacy Blur
+                // 3b. PIP Content: Camera Face
                 if (isCamBlurred) drawCtx.filter = 'blur(25px)';
                 const camScale = Math.max(size / cameraVideo.videoWidth, size / cameraVideo.videoHeight);
-                drawCtx.drawImage(cameraVideo, centerX - (cameraVideo.videoWidth*camScale)/2, centerY - (cameraVideo.videoHeight*camScale)/2, cameraVideo.videoWidth*camScale, cameraVideo.videoHeight*camScale);
+                const cw = cameraVideo.videoWidth * camScale;
+                const ch = cameraVideo.videoHeight * camScale;
+                drawCtx.drawImage(cameraVideo, centerX - cw / 2, centerY - ch / 2, cw, ch);
                 
                 drawCtx.restore();
 
-                // 3. Draw Ring
+                // 3c. PIP Decoration: Ring
                 drawCtx.beginPath();
                 drawCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
                 drawCtx.strokeStyle = '#6366f1';
-                drawCtx.lineWidth = 10;
+                drawCtx.lineWidth = screenPreset === 'mobile-v' ? 6 : 10;
                 drawCtx.stroke();
             }
         };
@@ -320,11 +344,9 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
     serviceRef.current = service;
     try {
       await service.initializeAudio();
-      // Fix: Passed initialContext into system instruction for context-aware reasoning
       await service.connect(channel.voiceName, `${channel.systemInstruction}\n[MODE]: INTERACTIVE STUDIO${initialContext ? `\n[CONTEXT]: ${initialContext}` : ''}`, {
           onOpen: () => setIsConnected(true),
           onClose: () => setIsConnected(false),
-          // Fix: Added missing required onError callback for LiveConnectionCallbacks
           onError: (error) => {
               addLog(`Link error: ${error}`, 'error');
               setIsConnected(false);
@@ -365,7 +387,6 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                     <video ref={mirrorVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover transform scale-110 relative z-10 ${isCamBlurred ? 'blur-md' : ''}`}/>
                     <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent z-20"></div>
                     <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30"><div className="bg-indigo-600 text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg border border-indigo-400/50">{t.mirrorLabel}</div></div>
-                    {/* Fix: implemented isMirrorMinimized and setIsMirrorMinimized logic */}
                     <button onClick={() => setIsMirrorMinimized(!isMirrorMinimized)} className="absolute bottom-2 left-1/2 -translate-x-1/2 p-1.5 bg-black/40 hover:bg-indigo-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg z-30">{isMirrorMinimized ? <Maximize2 size={12}/> : <Minimize2 size={12}/>}</button>
                 </div>
             </div>
@@ -389,9 +410,11 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
       </div>
 
       {!hasStarted ? (
-         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-6 overflow-y-auto scrollbar-hide">
-             <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center shadow-2xl shadow-indigo-500/10"><Mic size={40} className="text-indigo-500" /></div>
-             <div><h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">{t.tapToStart}</h3><p className="text-slate-400 text-sm mt-2 max-w-xs leading-relaxed">{t.tapDesc}</p></div>
+         <div className="flex-1 flex flex-col items-center justify-start pt-12 pb-32 px-6 text-center space-y-8 overflow-y-auto scrollbar-hide">
+             <div className="flex flex-col items-center space-y-4">
+                <div className="w-20 h-20 bg-indigo-600/10 rounded-full flex items-center justify-center shadow-2xl shadow-indigo-500/10"><Mic size={40} className="text-indigo-500" /></div>
+                <div><h3 className="text-xl font-bold text-white uppercase tracking-tighter italic">{t.tapToStart}</h3><p className="text-slate-400 text-sm mt-2 max-w-xs leading-relaxed">{t.tapDesc}</p></div>
+             </div>
              
              {recordingEnabled && (
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl w-full text-left">
@@ -408,16 +431,16 @@ export const LiveSession: React.FC<LiveSessionProps> = ({
                             <div className="space-y-4">
                                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">{t.length}</label>
                                 <div className="grid grid-cols-4 gap-2">
-                                    {[3, 10, 30, 60].map(min => (<button key={min} onClick={() => { setSessionDuration(min); setScribeTimeLeft(min * 60); }} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all border ${sessionDuration === min ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>{min}m</button>))}
+                                    {[3, 10, 30, 60].map(min => (<button key={min} onClick={() => { setSessionDuration(min); setScribeTimeLeft(min * 60); }} className={`py-3 rounded-xl text-[10px] font-black uppercase transition-all border ${sessionDuration === min ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border border-slate-800 text-slate-500'}`}>{min}m</button>))}
                                 </div>
                             </div>
 
                             <div className="space-y-4">
                                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">{t.screenType}</label>
                                 <div className="grid grid-cols-3 gap-2">
-                                    <button onClick={() => setScreenPreset('desktop')} className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${screenPreset === 'desktop' ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-500'}`}><Monitor size={18}/> <span className="text-[8px] font-bold">16:9</span></button>
-                                    <button onClick={() => setScreenPreset('mobile-v')} className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${screenPreset === 'mobile-v' ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-500'}`}><Smartphone size={18}/> <span className="text-[8px] font-bold">9:16</span></button>
-                                    <button onClick={() => setScreenPreset('mobile-h')} className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${screenPreset === 'mobile-h' ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border-slate-800 text-slate-500'}`}><SmartphoneNfc size={18}/> <span className="text-[8px] font-bold">HORIZ</span></button>
+                                    <button onClick={() => setScreenPreset('desktop')} className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${screenPreset === 'desktop' ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border border-slate-800 text-slate-500'}`}><Monitor size={18}/> <span className="text-[8px] font-bold">16:9</span></button>
+                                    <button onClick={() => setScreenPreset('mobile-v')} className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${screenPreset === 'mobile-v' ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border border-slate-800 text-slate-500'}`}><Smartphone size={18}/> <span className="text-[8px] font-bold">9:16</span></button>
+                                    <button onClick={() => setScreenPreset('mobile-h')} className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${screenPreset === 'mobile-h' ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-950 border border-slate-800 text-slate-500'}`}><SmartphoneNfc size={18}/> <span className="text-[8px] font-bold">HORIZ</span></button>
                                 </div>
                             </div>
                         </div>
