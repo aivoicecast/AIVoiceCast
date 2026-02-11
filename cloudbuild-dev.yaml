@@ -1,27 +1,27 @@
 steps:
-  # 1. Build the container image with the dev tag
+  # 1. Build the container image with a custom tag
   - name: 'gcr.io/cloud-builders/docker'
     args: 
       - 'build'
       - '--build-arg'
       - 'VITE_GEMINI_API_KEY=$_GEMINI_API_KEY'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/neural-prism-platform:dev'
+      - 'gcr.io/$PROJECT_ID/neural-prism-platform:$_TAG'
       - '.'
 
-  # 2. Push the dev image to Registry
+  # 2. Push the custom image to Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/neural-prism-platform:dev']
+    args: ['push', 'gcr.io/$PROJECT_ID/neural-prism-platform:$_TAG']
 
-  # 3. Deploy to the specific DEV service name
+  # 3. Deploy to the dynamically named service
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - 'neural-prism-platform-dev'
+      - '$_SERVICE_NAME'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/neural-prism-platform:dev'
+      - 'gcr.io/$PROJECT_ID/neural-prism-platform:$_TAG'
       - '--region'
       - 'us-west1'
       - '--platform'
@@ -30,8 +30,12 @@ steps:
       - '--port'
       - '8080'
 
+substitutions:
+  _SERVICE_NAME: 'neural-prism-platform-dev'
+  _TAG: 'dev'
+
 images:
-  - 'gcr.io/$PROJECT_ID/neural-prism-platform:dev'
+  - 'gcr.io/$PROJECT_ID/neural-prism-platform:$_TAG'
 
 options:
   logging: CLOUD_LOGGING_ONLY
