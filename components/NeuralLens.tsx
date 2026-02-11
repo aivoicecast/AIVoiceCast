@@ -534,8 +534,24 @@ export const NeuralLens: React.FC<NeuralLensProps> = ({ onBack, onOpenManual, us
                               <h2 className="text-5xl font-black text-white italic tracking-tighter uppercase leading-none">{selectedSector.title}</h2>
                               <p className="text-slate-400 text-lg max-w-xl">{selectedSector.description}</p>
                               <div className="pt-2 flex flex-wrap gap-4">
-                                  <button onClick={() => handleRegenerateOrVerifySector(false)} disabled={isBatchAuditing} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-50 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50">
-                                      <Zap size={14} fill="currentColor"/> Run Logic Audit
+                                  <button 
+                                    onClick={() => handleRegenerateOrVerifySector(false)} 
+                                    disabled={isBatchAuditing} 
+                                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                        isBatchAuditing ? 'bg-slate-800 text-slate-400' : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                                    }`}
+                                  >
+                                      {isBatchAuditing ? (
+                                          <>
+                                            <Loader2 size={14} className="animate-spin text-indigo-400"/>
+                                            <span>Auditing Logic ({batchProgress.current}/{batchProgress.total})...</span>
+                                          </>
+                                      ) : (
+                                          <>
+                                            <Zap size={14} fill="currentColor"/>
+                                            <span>Run Logic Audit</span>
+                                          </>
+                                      )}
                                   </button>
                               </div>
                           </div>

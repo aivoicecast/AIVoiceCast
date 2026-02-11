@@ -384,6 +384,39 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
     }
   },
   {
+    uid: 'audit-ch-12',
+    topic: '12. Sustainable AI Workflow & Shared Intelligence',
+    professorName: 'Lead Architect',
+    studentName: 'Resident',
+    sections: [],
+    audit: {
+      StructuralCoherenceScore: 100,
+      LogicalDriftRisk: 'Low',
+      AdversarialRobustness: 'High',
+      coherenceScore: 100,
+      driftRisk: 'Low',
+      robustness: 'High',
+      timestamp: Date.now(),
+      mermaid: "graph TD\n  USR[User Intent] -->|Prompt| SHA[Shared Cache]\n  SHA -->|Hit?| HIT{In Ledger?}\n  HIT -->|Yes| RTV[Retrieve Zero-Energy]\n  HIT -->|No| EXE[Execute Compute]\n  EXE -->|Commit| SHA",
+      graph: {
+        nodes: [
+          { id: 'USR', label: 'User Intent', type: 'concept' },
+          { id: 'SHA', label: 'Shared Intelligence', type: 'component' },
+          { id: 'ZERO', label: 'Zero-Energy Retrieval', type: 'metric' },
+          { id: 'EXE', label: 'Compute Execution', type: 'component' }
+        ],
+        links: [
+          { source: 'USR', target: 'SHA', label: 'QUERIES' },
+          { source: 'SHA', target: 'ZERO', label: 'OPTIMIZES' },
+          { source: 'ZERO', target: 'EXE', label: 'PREVENTS' }
+        ]
+      },
+      probes: [
+        { question: "How does Shared Intelligence reduce global energy?", answer: "By committing every unique logic shard to a global ledger, subsequent users retrieve the answer for near-zero energy cost instead of re-computing it.", status: 'passed' }
+      ]
+    }
+  },
+  {
     uid: 'system-judge-audit-001',
     topic: '🏆 JUDGE: Technical Audit',
     professorName: 'Lead Architect',
