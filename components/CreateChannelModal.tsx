@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { Channel, Group, Chapter } from '../types';
-// Fixed: Added missing CheckCircle import and removed unused Clipboard
-import { X, Podcast, Sparkles, Lock, Globe, Users, FileText, Loader2, Crown, Calendar, Star, Zap, Cpu, Link as LinkIcon, Globe2, AlertCircle, CheckCircle } from 'lucide-react';
+// Fixed: ShieldSearch does not exist in lucide-react, replaced with SearchCheck
+import { X, Podcast, Sparkles, Lock, Globe, Users, FileText, Loader2, Crown, Calendar, Star, Zap, Cpu, Link as LinkIcon, Globe2, AlertCircle, CheckCircle, SearchCheck, BarChart3, SearchCode } from 'lucide-react';
 import { getUserGroups, getUserProfile } from '../services/firestoreService';
 import { generateChannelFromDocument } from '../services/channelGenerator';
 import { auth } from '../services/firebaseConfig';
@@ -24,13 +25,14 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
   const [description, setDescription] = useState('');
   const [instruction, setInstruction] = useState('');
   const [voice, setVoice] = useState('Default Gem');
-  const [releaseDate, setReleaseDate] = useState<string>(''); // YYYY-MM-DD
+  const [releaseDate, setReleaseDate] = useState<string>(''); 
   
   // Import State
   const [scriptText, setScriptText] = useState('');
   const [importUrl, setImportUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [importedChapters, setImportedChapters] = useState<Chapter[]>([]);
+  const [enableAudit, setEnableAudit] = useState(false);
   
   // Visibility State
   const [visibility, setVisibility] = useState<'private' | 'public' | 'group'>('private');
@@ -53,6 +55,7 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
       setImportedChapters([]);
       setActiveTab('manual');
       setVisibility('public'); 
+      setEnableAudit(false);
       
       const dateToUse = initialDate || new Date();
       const localIso = dateToUse.toLocaleDateString('en-CA');
@@ -119,7 +122,8 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
       const generated = await generateChannelFromDocument(
           useUrl ? { url: importUrl } : { text: scriptText }, 
           effectiveUser, 
-          'en'
+          'en',
+          enableAudit
       );
       if (generated) {
         setTitle(generated.title);
@@ -127,8 +131,15 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
         setInstruction(generated.systemInstruction);
         setVoice(generated.voiceName);
         setImportedChapters(generated.chapters || []);
+        
+        if (enableAudit && generated.sourceAudit) {
+            // Pre-fill generated audit if it came back
+            alert(`Neural Audit Complete! Source quality score: ${generated.sourceAudit.StructuralCoherenceScore}%. Review your new channel details.`);
+        } else {
+            alert("Source refracted successfully! Review your new channel details.");
+        }
+        
         setActiveTab('manual');
-        alert("Source refracted successfully! Review your new channel details.");
       } else {
         alert("Neural refraction failed. Ensure the source is accessible.");
       }
@@ -198,7 +209,7 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
                     {!isPro && <span className="text-[9px] text-amber-400 font-bold flex items-center gap-1 uppercase tracking-tighter"><Crown size={10}/> Pro Only</span>}
                 </div>
                 <div className="flex gap-2">
-                    <button type="button" disabled={!isPro} onClick={() => setVisibility('private')} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase flex items-center justify-center space-x-2 border transition-all ${visibility === 'private' ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' : !isPro ? 'bg-slate-900 border-slate-800 text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}><Lock size={12} /><span>Private</span></button>
+                    <button type="button" disabled={!isPro} onClick={() => setVisibility('private')} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase flex items-center justify-center space-x-2 border transition-all ${visibility === 'private' ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : !isPro ? 'bg-slate-900 border-slate-800 text-slate-700 cursor-not-allowed opacity-40' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}><Lock size={12} /><span>Private</span></button>
                     <button type="button" onClick={() => setVisibility('public')} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase flex items-center justify-center space-x-2 border transition-all ${visibility === 'public' ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}><Globe size={12} /><span>Public</span></button>
                 </div>
               </div>
@@ -219,7 +230,7 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
                         onClick={() => setVoice(v)}
                         className={`relative px-4 py-3 rounded-2xl text-left transition-all border flex items-center justify-between group ${
                           voice === v 
-                            ? 'bg-indigo-600 border-indigo-500 text-white shadow-xl ring-4 ring-indigo-500/10 scale-[1.02]' 
+                            ? 'bg-indigo-600 border-indigo-400 text-white shadow-xl ring-4 ring-indigo-500/10 scale-[1.02]' 
                             : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-indigo-500/30'
                         }`}
                       >
@@ -239,40 +250,69 @@ export const CreateChannelModal: React.FC<CreateChannelModalProps> = ({ isOpen, 
                 </div>
               </div>
             </form>
-          ) : activeTab === 'url' ? (
-            <div className="space-y-6 h-full flex flex-col justify-center py-10 animate-fade-in text-center">
-                <div className="w-20 h-20 bg-indigo-600/10 rounded-3xl flex items-center justify-center mx-auto mb-2 border border-indigo-500/20">
-                    <Globe2 size={40} className="text-indigo-400" />
-                </div>
-                <div className="space-y-2">
-                    <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">Direct URI Ingestion</h3>
-                    <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">Paste a publicly accessible PDF, image, or documentation URL. We will refract the content directly into your channel shell.</p>
-                </div>
-                <div className="relative group">
-                    <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400" size={18}/>
-                    <input 
-                        type="url" 
-                        value={importUrl}
-                        onChange={e => setImportUrl(e.target.value)}
-                        placeholder="https://example.com/whitepaper.pdf"
-                        className="w-full bg-slate-950 border border-slate-700 rounded-2xl pl-12 pr-6 py-4 text-sm text-indigo-300 outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
-                    />
-                </div>
-                <div className="p-4 bg-indigo-900/10 rounded-2xl border border-indigo-500/10 text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-start gap-3">
-                    <AlertCircle size={14} className="text-indigo-400 shrink-0"/>
-                    <p className="text-left">Supports Direct PDF, Web Articles, and Images. Data is ingested at 100% fidelity using Gemini 3's high-intensity URI context window.</p>
-                </div>
-                <button onClick={() => handleImport(true)} disabled={isProcessing || !importUrl.trim()} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-indigo-900/40">
-                    {isProcessing ? <Loader2 size={18} className="animate-spin"/> : <Sparkles size={18}/>}
-                    <span>Ingest & Refract URI</span>
-                </button>
-            </div>
           ) : (
-            <div className="space-y-4 h-full flex flex-col animate-fade-in">
-                <textarea className="flex-1 w-full bg-slate-800 border border-slate-700 rounded-2xl p-5 text-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner leading-relaxed" placeholder="Chapter 1: The Beginning..." value={scriptText} onChange={(e) => setScriptText(e.target.value)} />
-                <button onClick={() => handleImport(false)} disabled={isProcessing || !scriptText.trim()} className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-black uppercase tracking-widest rounded-2xl shadow-xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-indigo-900/20">
+            <div className="space-y-6 h-full flex flex-col justify-start animate-fade-in">
+                {activeTab === 'url' ? (
+                   <div className="space-y-6 text-center py-4">
+                        <div className="w-20 h-20 bg-indigo-600/10 rounded-3xl flex items-center justify-center mx-auto border border-indigo-500/20">
+                            <Globe2 size={40} className="text-indigo-400" />
+                        </div>
+                        <div className="space-y-2">
+                            <h3 className="text-xl font-black text-white italic uppercase tracking-tighter">Direct URI Ingestion</h3>
+                            <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">Paste a publicly accessible PDF or documentation URL.</p>
+                        </div>
+                        <div className="relative group">
+                            <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400" size={18}/>
+                            <input 
+                                type="url" 
+                                value={importUrl}
+                                onChange={e => setImportUrl(e.target.value)}
+                                placeholder="https://example.com/whitepaper.pdf"
+                                className="w-full bg-slate-950 border border-slate-700 rounded-2xl pl-12 pr-6 py-4 text-sm text-indigo-300 outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                            />
+                        </div>
+                   </div>
+                ) : (
+                   <div className="flex-1 flex flex-col gap-4">
+                       <textarea className="flex-1 w-full bg-slate-800 border border-slate-700 rounded-2xl p-5 text-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none shadow-inner leading-relaxed min-h-[200px]" placeholder="Chapter 1: The Beginning..." value={scriptText} onChange={(e) => setScriptText(e.target.value)} />
+                   </div>
+                )}
+
+                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-xl ${enableAudit ? 'bg-indigo-600 shadow-lg' : 'bg-slate-800'} text-white transition-all`}>
+                                <SearchCode size={20} />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black text-white uppercase tracking-widest">Neural Quality Audit</p>
+                                <p className="text-[8px] text-slate-500 uppercase font-black">Score technical rigor & structural coherence</p>
+                            </div>
+                        </div>
+                        <button 
+                            type="button"
+                            onClick={() => setEnableAudit(!enableAudit)}
+                            className={`w-12 h-6 rounded-full relative transition-all ${enableAudit ? 'bg-indigo-600' : 'bg-slate-700'}`}
+                        >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${enableAudit ? 'right-1' : 'left-1'}`}></div>
+                        </button>
+                    </div>
+                    {enableAudit && (
+                        <div className="p-3 bg-indigo-900/10 border border-indigo-500/10 rounded-xl text-[9px] text-indigo-400 font-bold uppercase tracking-widest flex items-start gap-2 animate-fade-in">
+                            {/* Fixed: Replaced non-existent ShieldSearch with SearchCheck */}
+                            <SearchCheck size={14} className="shrink-0"/>
+                            <p>High-Intensity Scan: Gemini 3 Pro will evaluate technical parity and generate an adversarial logic mesh for this source.</p>
+                        </div>
+                    )}
+                </div>
+
+                <button 
+                    onClick={() => handleImport(activeTab === 'url')} 
+                    disabled={isProcessing || (activeTab === 'url' ? !importUrl.trim() : !scriptText.trim())} 
+                    className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-black uppercase tracking-widest rounded-2xl shadow-2xl flex items-center justify-center gap-2 transition-all active:scale-95 shadow-indigo-900/40"
+                >
                     {isProcessing ? <Loader2 size={18} className="animate-spin"/> : <Sparkles size={18}/>}
-                    <span>Analyze & Synthesize Text</span>
+                    <span>{enableAudit ? 'Ingest & Audit Source' : 'Ingest & Refract URI'}</span>
                 </button>
             </div>
           )}

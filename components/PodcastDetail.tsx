@@ -6,7 +6,8 @@ import {
   Sparkles, Play, Pause, Volume2, 
   RefreshCw, X, AlertTriangle, PlayCircle, 
   CheckCircle, Gauge, Speaker, Zap, BrainCircuit, SkipBack, SkipForward,
-  Database, Languages, FileDown, ShieldCheck, Printer, Bookmark, CloudDownload, CloudCheck, HardDrive, BookText, CloudUpload, Archive, FileText, FileOutput, QrCode, Activity, Terminal, Check, Trash2, Network, Target, Shield, Ghost, BarChart3, Download
+  // Fixed: ShieldSearch does not exist in lucide-react, replaced with SearchCheck
+  Database, Languages, FileDown, ShieldCheck, Printer, Bookmark, CloudDownload, CloudCheck, HardDrive, BookText, CloudUpload, Archive, FileText, FileOutput, QrCode, Activity, Terminal, Check, Trash2, Network, Target, Shield, Ghost, BarChart3, Download, SearchCheck
 } from 'lucide-react';
 import { generateLectureScript } from '../services/lectureGenerator';
 import { synthesizeSpeech, speakSystem } from '../services/tts';
@@ -97,11 +98,10 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   };
 
   const updateRegistryStatus = useCallback(async () => {
-    const statuses: Record<string, NodeStatus> = {};
     for (const sub of flatCurriculum) {
-        statuses[sub.id] = await checkRegistryNode(sub);
+        const status = await checkRegistryNode(sub);
+        setNodeStatuses(prev => ({ ...prev, [sub.id]: status }));
     }
-    setNodeStatuses(statuses);
   }, [channel.id, flatCurriculum, language]);
 
   useEffect(() => {
@@ -237,7 +237,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                 await new Promise(r => setTimeout(r, 800));
             }
 
-            if (localSession === playbackSessionRef.current && mountedRef.current) {
+            if (localSession === playbackSessionRef.current) {
                 currentIndex++; 
                 startIndex = 0;
                 await new Promise(r => setTimeout(r, 1200));
@@ -319,18 +319,32 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
   };
 
   const renderAuditPanel = () => {
-    if (!activeLecture?.audit) return (
+    const auditToDisplay = activeLecture?.audit || channel.sourceAudit;
+
+    if (!auditToDisplay) return (
         <div className="flex flex-col items-center justify-center p-20 text-slate-500 opacity-40">
             <ShieldCheck size={48} className="mb-4" />
             <p className="text-sm font-black uppercase tracking-widest">Awaiting Verification Shards</p>
         </div>
     );
 
-    const audit = activeLecture.audit;
+    const audit = auditToDisplay;
+    const isSourceAudit = audit === channel.sourceAudit;
     const formatScore = (s: number) => (s < 1 ? Math.round(s * 100) : Math.round(s)).toString();
     
     return (
         <div className="space-y-10 animate-fade-in pb-20">
+            {isSourceAudit && (
+                <div className="bg-indigo-600/20 border border-indigo-500/30 p-4 rounded-2xl flex items-center gap-4 shadow-lg animate-fade-in">
+                    {/* Fixed: Replaced non-existent ShieldSearch with SearchCheck */}
+                    <SearchCheck className="text-indigo-400" size={24}/>
+                    <div>
+                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Source Document Verified</p>
+                        <p className="text-xs text-slate-300 font-medium">This audit shard represents the original PDF/URL quality verification during ingestion.</p>
+                    </div>
+                </div>
+            )}
+            
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2.5rem] flex flex-col items-center text-center shadow-xl relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-12 bg-indigo-500/5 blur-3xl rounded-full"></div>
@@ -364,7 +378,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                     <Network size={16} className="text-indigo-400"/> Refractive Logic Mesh
                 </h4>
                 <div className="flex flex-wrap gap-8 justify-center items-center py-10">
-                    {audit.graph.nodes.map(node => (
+                    {audit.graph?.nodes?.map(node => (
                         <div key={node.id} className="relative group/node">
                             <div className="absolute -inset-2 bg-indigo-500 opacity-0 group-hover/node:opacity-10 blur-xl rounded-full transition-opacity"></div>
                             <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-[1.5rem] shadow-xl flex flex-col items-center relative z-10 hover:border-indigo-500/50 transition-all">
@@ -376,7 +390,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                 </div>
                 <div className="border-t border-slate-800 pt-8 mt-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {audit.graph.links.map((link, i) => (
+                        {audit.graph?.links?.map((link, i) => (
                             <div key={i} className="flex items-center gap-3 text-[10px] font-bold text-slate-500 bg-black/20 p-3 rounded-xl border border-white/5">
                                 <span className="text-indigo-400 uppercase">{link.source}</span>
                                 <ChevronRight size={10}/>
@@ -394,7 +408,7 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                     <Ghost size={16} className="text-purple-500"/> Adversarial Boundary Audit
                 </h4>
                 <div className="grid grid-cols-1 gap-4">
-                    {audit.probes.map((probe, i) => (
+                    {audit.probes?.map((probe, i) => (
                         <div key={i} className="bg-slate-900 border border-slate-800 rounded-[2rem] p-8 flex flex-col gap-4 shadow-xl group">
                             <div className="flex justify-between items-start">
                                 <div className="flex items-center gap-3">
@@ -529,15 +543,17 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
               </div>
           )}
 
-          {activeLecture ? (
+          {activeLecture || channel.sourceAudit ? (
               <div className="h-full flex flex-col animate-fade-in pb-32">
                   <header className="h-16 border-b border-white/5 bg-slate-900/50 flex items-center justify-between px-8 backdrop-blur-xl shrink-0 z-20">
                     <div className="flex items-center gap-8">
                         <div className="flex items-center gap-3">
                             <div className="p-2 bg-indigo-600/10 rounded-lg"><BrainCircuit size={20} className="text-indigo-400" /></div>
                             <div>
-                                <h2 className="text-sm font-black text-white uppercase tracking-widest">{activeLecture.topic}</h2>
-                                <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-[0.2em]">Node 0${currentSubTopicIndex + 1} • Handshake Active</p>
+                                <h2 className="text-sm font-black text-white uppercase tracking-widest">{activeLecture?.topic || 'Source Document Audit'}</h2>
+                                <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-[0.2em]">
+                                    {activeLecture ? `Node 0${currentSubTopicIndex + 1} • Handshake Active` : 'Registry Manifest Verification'}
+                                </p>
                             </div>
                         </div>
                         <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 shadow-inner">
@@ -546,19 +562,21 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button onClick={() => handleSelectSubTopic(flatCurriculum[currentSubTopicIndex], true, true)} className="p-2 hover:bg-indigo-600/20 text-slate-500 hover:text-indigo-400 rounded-xl transition-all" title="Force Node Refresh"><RefreshCw size={18}/></button>
+                        {activeSubTopicId && (
+                            <button onClick={() => handleSelectSubTopic(flatCurriculum[currentSubTopicIndex], true, true)} className="p-2 hover:bg-indigo-600/20 text-slate-500 hover:text-indigo-400 rounded-xl transition-all" title="Force Node Refresh"><RefreshCw size={18}/></button>
+                        )}
                         <button onClick={() => stopAllAudio('Close View')} className="p-2 hover:bg-red-600/20 text-slate-500 hover:text-red-400 rounded-xl transition-all"><X size={20}/></button>
                     </div>
                   </header>
                   
                   <div className="flex-1 overflow-y-auto p-10 scrollbar-hide">
-                      {activeTab === 'transcript' ? (
+                      {activeTab === 'transcript' && activeLecture ? (
                         <div className="max-w-3xl mx-auto space-y-8 pb-[30vh]">
                             {activeLecture.sections.map((section, idx) => {
                                 const isCurrent = idx === currentSectionIndex;
                                 const isTeacher = section.speaker === 'Teacher';
                                 return (
-                                    <div key={idx} ref={el => { sectionRefs.current[idx] = el; }} className={`flex flex-col ${isTeacher ? 'items-start' : 'items-end'} transition-all duration-1000 ${currentSectionIndex === -1 || isCurrent ? 'opacity-100 scale-100' : 'opacity-40 scale-95'}`}>
+                                    <div key={idx} className={`flex flex-col ${isTeacher ? 'items-start' : 'items-end'} transition-all duration-1000 ${currentSectionIndex === -1 || isCurrent ? 'opacity-100 scale-100' : 'opacity-40 scale-95'}`}>
                                         <div className="flex items-center gap-2 mb-2 px-4"><span className={`text-[10px] font-black uppercase tracking-widest ${isTeacher ? 'text-indigo-400' : 'text-slate-400'}`}>{isTeacher ? activeLecture.professorName : activeLecture.studentName}</span>{isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping"></div>}</div>
                                         <div className={`max-w-[90%] px-8 py-6 rounded-3xl shadow-xl relative transition-all duration-700 ${isCurrent ? 'ring-1 ring-indigo-500/50 bg-slate-900 border border-indigo-500/20' : 'bg-slate-900/40'} ${isTeacher ? 'text-white rounded-tl-sm' : 'text-indigo-100 rounded-tr-sm bg-slate-800/20'}`}>
                                             <MarkdownView content={section.text} compact={true} initialTheme={isTeacher ? 'slate' : 'dark'} />
@@ -567,23 +585,30 @@ export const PodcastDetail: React.FC<PodcastDetailProps> = ({
                                 );
                             })}
                         </div>
+                      ) : activeTab === 'transcript' ? (
+                          <div className="h-full flex flex-col items-center justify-center p-20 text-slate-500 opacity-40">
+                              <AlertTriangle size={48} className="mb-4" />
+                              <p className="text-sm font-black uppercase tracking-widest">No active dialogue node selected</p>
+                          </div>
                       ) : renderAuditPanel()}
                   </div>
 
-                  <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xl px-4 z-50">
-                      <div className="bg-slate-900/80 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-4 flex items-center justify-between shadow-2xl">
-                          <div className="flex items-center gap-4">
-                              <button onClick={() => currentSubTopicIndex > 0 && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex - 1])} disabled={currentSubTopicIndex <= 0} className="p-3 hover:bg-white/10 rounded-full text-slate-400 disabled:opacity-20 transition-all"><SkipBack size={20}/></button>
-                              <button onClick={() => handlePlayActiveLecture(currentSectionIndex === -1 ? 0 : currentSectionIndex)} className="w-14 h-14 bg-white text-slate-950 rounded-full flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all">{isBuffering ? <Loader2 size={24} className="animate-spin" /> : isPlaying ? <Pause size={24} fill="currentColor"/> : <Play size={24} fill="currentColor" className="ml-1"/>}</button>
-                              <button onClick={() => currentSubTopicIndex < flatCurriculum.length - 1 && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex + 1])} disabled={currentSubTopicIndex >= flatCurriculum.length - 1} className="p-3 hover:bg-white/10 rounded-full text-slate-400 disabled:opacity-20 transition-all"><SkipForward size={20}/></button>
-                          </div>
-                          <div className="flex-1 px-6 min-w-0 text-center">
-                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest truncate">{flatCurriculum[currentSubTopicIndex]?.title}</p>
-                                <div className="flex items-center gap-2 mt-1.5"><div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-700" style={{ width: `${((currentSectionIndex + 1) / (activeLecture?.sections.length || 1)) * 100}%` }}/></div><span className="text-[9px] font-mono text-slate-500">{currentSectionIndex + 1}/{activeLecture?.sections.length || 0}</span></div>
-                          </div>
-                          <div className="w-20 h-10 overflow-hidden rounded-full bg-slate-950/60 flex items-center justify-center shrink-0 ml-2"><Visualizer volume={isPlaying ? 0.6 : 0} isActive={isPlaying} color="#818cf8"/></div>
-                      </div>
-                  </div>
+                  {activeLecture && (
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-xl px-4 z-50">
+                        <div className="bg-slate-900/80 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-4 flex items-center justify-between shadow-2xl">
+                            <div className="flex items-center gap-4">
+                                <button onClick={() => currentSubTopicIndex > 0 && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex - 1])} disabled={currentSubTopicIndex <= 0} className="p-3 hover:bg-white/10 rounded-full text-slate-400 disabled:opacity-20 transition-all"><SkipBack size={20}/></button>
+                                <button onClick={() => handlePlayActiveLecture(currentSectionIndex === -1 ? 0 : currentSectionIndex)} className="w-14 h-14 bg-white text-slate-950 rounded-full flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all">{isBuffering ? <Loader2 size={24} className="animate-spin" /> : isPlaying ? <Pause size={24} fill="currentColor"/> : <Play size={24} fill="currentColor" className="ml-1"/>}</button>
+                                <button onClick={() => currentSubTopicIndex < flatCurriculum.length - 1 && handleSelectSubTopic(flatCurriculum[currentSubTopicIndex + 1])} disabled={currentSubTopicIndex >= flatCurriculum.length - 1} className="p-3 hover:bg-white/10 rounded-full text-slate-400 disabled:opacity-20 transition-all"><SkipForward size={20}/></button>
+                            </div>
+                            <div className="flex-1 px-6 min-w-0 text-center">
+                                  <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest truncate">{flatCurriculum[currentSubTopicIndex]?.title}</p>
+                                  <div className="flex items-center gap-2 mt-1.5"><div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden"><div className="h-full bg-indigo-500 transition-all duration-700" style={{ width: `${((currentSectionIndex + 1) / (activeLecture?.sections.length || 1)) * 100}%` }}/></div><span className="text-[9px] font-mono text-slate-500">{currentSectionIndex + 1}/{activeLecture?.sections.length || 0}</span></div>
+                            </div>
+                            <div className="w-20 h-10 overflow-hidden rounded-full bg-slate-950/60 flex items-center justify-center shrink-0 ml-2"><Visualizer volume={isPlaying ? 0.6 : 0} isActive={isPlaying} color="#818cf8"/></div>
+                        </div>
+                    </div>
+                  )}
               </div>
           ) : (
               <div className="h-full flex flex-col items-center justify-center text-center p-10 space-y-8 bg-slate-950">

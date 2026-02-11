@@ -3,13 +3,24 @@ import { ViewID } from '../types';
 
 export const MANUAL_CONTENT: Partial<Record<ViewID, string>> = {
   dashboard: `
-# 🌈 The Neural Nexus: Hub Navigation
+# 🌈 The Neural Nexus: Hub Navigation (v12.9.5)
 
-**Refracting the Neural Prism Experience.**
+**Refracting the Neural Prism Experience into Professional Utility.**
 
 The Dashboard is your control center for the 24-app spectrum. It organizes super-intelligence into logical "Sectors" based on human activity.
 
-### Core Sectors
+### I. Specialized Neural Personas
+As of v12.9.5, the platform utilizes "Hard-Tuned" personas for professional refractions:
+- **Software Interviewer (\`0648937375\`)**: Optimized for Socratic friction and Big-O complexity auditing.
+- **Linux Kernel Architect (\`0375218270\`)**: Prioritizes memory safety and race condition detection over user comfort.
+
+### II. High-Fidelity Observability (New)
+The red bug button in the header opens the **Neural Diagnostics Console**.
+- **Trace Tab**: Watch real-time API telemetry, including token density, latency, and VoiceCoin costs.
+- **Loop Tab**: Inspect the machine-to-machine handshakes between the Lead and Shadow agents during complex audits.
+- **Dump Logs**: Click this to export your current session's reasoning history as a formatted Markdown document.
+
+### III. Core Sectors
 - **Discovery**: Real-time learning and scripture study.
 - **Logic**: Technical development and 3D visualization.
 - **Finance**: Asset issuance and logistics management.
@@ -112,7 +123,7 @@ The Finance Lab transforms transaction metadata into high-fidelity, printable PD
 ### Features
 - **Magic Words**: Gemini 3 Flash translates numbers into legal word strings with 100% precision.
 - **Sovereign Signature**: Links your physical stroke to your digital identity.
-- **Neural Insurance**: Locks assets to specific time-windows and recipient IDs.
+- **Neural Insurance**: Locks assets to the specific time-windows and recipient IDs.
   `,
   shipping_labels: `
 # 🚚 Logistics Lab: Postal Refraction
@@ -145,10 +156,10 @@ Transform concepts into professional app icons using the Gemini 3 Pro Image Spec
 
 Practice with rigorous AI interviewer personas that demand Big-O analysis and architectural defense.
 
-### The Loop
-1. **The Circuit**: A low-latency audio link for the interrogation.
-2. **The Scribe**: 1080p recording of your screen and camera.
-3. **The Report**: A 10-week Refraction Plan synthesized by Gemini 3 Pro.
+### The Dyad Cycle
+1. **The Lead**: Uses the **Software Interview Voice (0648937375)** for a high-friction, emotive dialogue.
+2. **The Shadow**: Audits the reasoning in real-time, sending "Shadow Whispers" to the Lead to ensure technical accuracy.
+3. **The Report**: A 10-week Refraction Plan synthesized by Gemini 3 Pro based on your **Structural Coherence** and **Cognitive Drift** metrics.
   `,
   badge_studio: `
 # 🆔 Badge Studio: Sovereign Identity
@@ -207,59 +218,50 @@ The Scribe Studio is a high-fidelity audio-to-markdown transcription engine engi
 
 ## 🛠️ The Integrity Manifesto (v9.9.2)
 
-During the development of the Scribe Protocol, we encountered several "Neural Drift" challenges. Here are the architectural decisions we made to ensure 100% data integrity.
-
-### 1. The Formatting Paradox (The "Hang" Issue)
-**Problem**: In early versions, we asked the AI model to handle paragraph breaks and newlines in real-time. This caused the model to frequently "freeze" or stop outputting text entirely while it "thought" about where to place a break.
-**Final Decision**: We have stripped all formatting logic from the AI's system prompt. The model now acts as a **Zero-Format Verbatim Mirror**. It focuses purely on mirroring your speech at maximum speed, preventing stream halts.
-
-### 2. Temporal Gap Paragraphing
-**Problem**: Without breaks, the resulting transcript was a "Wall of Text," impossible to read or synthesize professionally.
-**Final Decision**: We offloaded formatting to the **Client-Side Refraction Engine**. The Studio monitors the timing of your speech. If it detects a gap greater than 2.5 seconds, it automatically injects a double newline (\`\\n\\n\`). This provides structural clarity without confusing the AI model.
-
-### 3. The 503 Congestion Protocol (Vault-First)
-**Problem**: Heavy AI models occasionally return a "503: Service Overloaded" error during the intensive summary generation phase. In standard apps, this results in the total loss of the transcript.
-**Final Decision**: We implement **Pre-emptive Vault Commitment**. The moment you click "Terminate," the raw transcript is notarized and saved to your **Sovereign Vault** (Documents) with a unique UUID. 
-- Even if the synthesis engine is overloaded, your data is already safe.
-- You can trigger "Retry Synthesis" manually at any time once the model congestion clears.
-
-### 4. Heuristic Recovery (Interim Audit)
-**Problem**: Network jitter can sometimes cause a delta between the raw Stt (Speech-to-Text) fragments and the AI's mirrored stream.
-**Final Decision**: At the end of every session, the Studio performs a **Parity Audit**. It compares the length of the AI stream against the raw interim text buffer. If the AI stream lagged behind, the system uses the raw buffer as the source of truth to ensure not a single word of your session is lost.
-
-## 🚀 Key Features
-- **Sovereign VFS**: Direct dispatch to your Google Drive or technicalspec.md.
-- **Low-Mass Mode**: Minimalist interface for maximum cognitive focus.
-- **One-Click Synthesis**: Refract hours of dialogue into a 3-paragraph executive brief.
-
-*Refracted by Neural Prism v9.9.2 // Stable Architecture Confirmed.*
+### 1. Zero-Format Mirror
+The AI acts as a **Zero-Format Verbatim Mirror** to prevent "Formatting Paradox" hangs.
+### 2. Temporal Paragraphing
+formatting is handled by the client-side engine based on 2.5s speech gaps.
+### 3. Pre-emptive Vaulting
+Transcripts are notarized immediately upon termination to prevent 503 errors from losing data.
   `,
   neural_lens: `
-# 🔭 Neural Lens: Intelligence Observability
+#  Telescope Neural Lens: Intelligence Observability
 
 **Mission Control for Automated Reasoning Verification.**
 
-The Neural Lens is the primary instrumentation tool for ensuring technical truth. It turns the "Liar's Computer" into a verifiable system of record.
+The Neural Lens turns the "Liar's Computer" into a verifiable system of record by measuring **Technical Truth** rather than just fluency.
 
-### 🛠️ How to use the Lens:
+### 🧪 Understanding the Coherence Score
+The **Structural Coherence Score (%)** is the result of an adversarial audit:
+- **High Integrity (90-100%)**: The reasoning follows a verifiable technical path (e.g. GitHub source truth) with zero contradictions.
+- **Neural Drift (Below 70%)**: Flagged when the AI's internal logic begins to diverge from invariants or repeats circular arguments.
 
-#### 1. Ingest/Generate Content
-The Lens operates on "Nodes" (Lectures, Documents, Specifications). To trigger an audit, go to the **Hub (Discovery)** or **Author Studio** and generate a new technical dialogue. 
-
-#### 2. The Shadow Audit (Automatic)
-Upon generation, the **Shadow Agent** (Gemini 3 Pro) recursively analyzes the content to extract logic gates and dependency concepts.
-
-#### 3. Inspect the Logic Mesh
-Open the **Neural Lens** app from the launcher. Use the sidebar to select your generated node. 
-- **The Graph**: View how the AI has linked technical concepts (e.g., how "Buddy Allocator" links to "Memory Fragmentation").
-- **Structural Coherence**: Check the score (0-100). Scores below 80 indicate potential "Neural Drift" where the logic may be shallow.
-
-#### 4. Review Adversarial Probes
-The most critical part of the audit is the **Adversarial Trace**. Here, you see the questions the Shadow Agent used to challenge the Lead Agent's reasoning.
-- **Passed**: The logic held up under scrutiny.
-- **Warning**: A logical contradiction was detected. You should trigger a "Neural Refraction" (Refresh button) to repair the node.
+### 🛠️ Verification Protocols
+- **SPH (Symbolic Parity Handshake)**: Resolves semantic discrepancies between documentation and implementation.
+- **Adversarial Probes**: Real-time challenges from the Shadow Agent to test the stability of logic nodes.
+- **Retina Mesh**: Visualizes the high-dimensional dependency graph of technical concepts.
 
 ### 💎 Pro-Tip for Judges:
-Select the **🏆 JUDGE: Technical Audit** node in the Lens sidebar to see how the platform evaluates its own architecture against the hackathon criteria.
+Select the **🏆 JUDGE: Technical Audit** node to see the platform's self-verification against its architectural manifest.
+  `,
+  pdf_signer: `
+# ✍️ Sovereign Signer: Logic Handshakes (v12.9.5)
+
+**Synthesizing Verifiable PDF Signatures and Neural Audits.**
+
+The PDF Signer is a dual-mode instrument for establishing technical and legal authority over artifacts.
+
+### I. Notarization Workflow
+- **Sovereign Bake**: Injects zero-opacity anchor nodes to every page before hashing. This forces a full, consistent re-serialization and prevents the "Multi-Page Hash Divergence" common in standard PDF libraries.
+- **Audit Handshaking**: The platform generates a separate **Audit Certificate** PDF. This artifact contains the cryptographic page hashes, the P-256 sovereign signature, and a hidden shard of the user's public certificate.
+
+### II. Neural Content Audit
+Verification is no longer just a checksum. When verifying an artifact, you can execute a full **Neural Audit**:
+- **Academic Grading**: Gemini 3 Pro performs a deep-scan of the text to assign an **Academic Grade (A-F)** and a technical rigor score (0-100).
+- **Assurance Summary**: A qualitative evaluation identifies the document's tone, clarity, and depth, ensuring the content matches the signer's intent.
+
+### III. Request Spectrum
+Collaborative signing is built-in. Use the **Request** tab to stage a document for a peer. They will receive a notification in their **Team Space** with a deep link to sign and return the artifact.
   `
 };

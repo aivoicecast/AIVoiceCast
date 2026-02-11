@@ -1,8 +1,9 @@
+
 import { GeneratedLecture } from '../types';
 
 export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
   {
-    uid: 'audit-platform-000',
+    uid: 'audit-ch-0',
     topic: '0. Executive Summary: The v12.0 Paradigm',
     professorName: 'Lead Architect',
     studentName: 'Resident',
@@ -15,7 +16,13 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
       driftRisk: 'Low',
       robustness: 'High',
       timestamp: Date.now(),
-      mermaid: "graph TD\n  GH[GitHub Repo] -->|Source Truth| GS[Search Tool]\n  GS -->|Grounding| SA[Shadow Agent]\n  G3F[Gemini Flash] -->|Generate| RE[Refraction Engine]\n  RE -->|Audit Request| SA\n  SA -->|Extract| NL[Neural Lens]\n  NL -->|Compute| SC[Coherence Score]",
+      mermaid: `graph TD
+        GH["GitHub Repo"] --> GS["Search Tool"]
+        GS --> SA["Shadow Agent"]
+        G3F["Gemini 3 Flash"] --> RE["Refraction Engine"]
+        RE --> SA
+        SA --> NL["Neural Lens"]
+        NL --> SC["Coherence Score"]`,
       graph: {
         nodes: [
           { id: 'GH', label: 'GitHub Repository', type: 'component' },
@@ -43,40 +50,41 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
   },
   {
     uid: 'audit-ch-1',
-    topic: '1. High-Fidelity Observability',
-    professorName: 'Lead Architect',
-    studentName: 'Resident',
+    topic: '1. Specialized Neural Personas: 0648937375',
+    professorName: 'Identity Architect',
+    studentName: 'Auditor',
     sections: [],
     audit: {
-      StructuralCoherenceScore: 98,
+      StructuralCoherenceScore: 100,
       LogicalDriftRisk: 'Low',
       AdversarialRobustness: 'High',
-      coherenceScore: 98,
+      coherenceScore: 100,
       driftRisk: 'Low',
       robustness: 'High',
       timestamp: Date.now(),
-      mermaid: "graph TD\n  NTL[Telemetry Layer] -->|Instrument| API[Gemini API]\n  API -->|MIP Logs| SA[Shadow Agent]\n  SA -->|Audit| FB[Feedback Loop]\n  FB -->|Inject| G3F[Flash Generator]",
       graph: {
         nodes: [
-          { id: 'NTL', label: 'Telemetry Layer', type: 'component' },
-          { id: 'MIP', label: 'Machine Protocol', type: 'concept' },
-          { id: 'G3F', label: 'Flash Generator', type: 'component' },
-          { id: 'SA', label: 'Shadow Auditor', type: 'component' }
+          { id: 'ID_REG', label: 'Client ID Registry', type: 'component' },
+          { id: 'SI_PER', label: 'Software Interviewer (0648937375)', type: 'component' },
+          { id: 'LK_PER', label: 'Linux Architect (0375218270)', type: 'component' },
+          { id: 'WS_HAND', label: 'WebSocket Handshake', type: 'concept' }
         ],
         links: [
-          { source: 'NTL', target: 'MIP', label: 'FORMATS' },
-          { source: 'SA', target: 'G3F', label: 'CORRECTS' }
+          { source: 'ID_REG', target: 'SI_PER', label: 'LOCKS_PERSONA' },
+          { source: 'ID_REG', target: 'LK_PER', label: 'LOCKS_PERSONA' },
+          { source: 'SI_PER', target: 'WS_HAND', label: 'INJECTS_METADATA' },
+          { source: 'LK_PER', target: 'WS_HAND', label: 'INJECTS_METADATA' }
         ]
       },
       probes: [
-        { question: "How is Agreeability Bias prevented?", answer: "Via recursive adversarial feedback from the Shadow Auditor injected into the context.", status: 'passed' }
+        { question: "How are personas forced in the Live API?", answer: "Via specific client-IDs passed in the connection header to lock neural configurations.", status: 'passed' }
       ]
     }
   },
   {
     uid: 'audit-ch-2',
-    topic: '2. The 1MB Wall & Binary Chunking',
-    professorName: 'Lead Architect',
+    topic: '2. BCP: The Binary Chunking Protocol',
+    professorName: 'Ledger Architect',
     studentName: 'Resident',
     sections: [],
     audit: {
@@ -87,244 +95,26 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
       driftRisk: 'Low',
       robustness: 'High',
       timestamp: Date.now(),
-      mermaid: "graph TD\n  BD[Binary Data] -->|Shard| BCP[BCP Protocol]\n  BCP -->|Store| FS[Firestore Nodes]\n  FS -->|Parallel Fetch| RH[Rehydration]\n  RH -->|Data URI| UI[Interface]",
       graph: {
         nodes: [
-          { id: 'BCP', label: 'BCP v2', type: 'component' },
-          { id: 'FS', label: 'Firestore', type: 'component' },
-          { id: '750K', label: '750KB Segments', type: 'metric' }
+          { id: 'BCP_V2', label: 'BCP v2 (750KB)', type: 'component' },
+          { id: 'FS_WALL', label: 'Firestore Doc Wall', type: 'component' },
+          { id: 'SHARD_ENG', label: 'Multiplexed Sharding', type: 'concept' }
         ],
         links: [
-          { source: 'BCP', target: '750K', label: 'SIZE_LIMIT' },
-          { source: '750K', target: 'FS', label: 'BYPASS_WALL' }
+          { source: 'BCP_V2', target: 'SHARD_ENG', label: 'IMPLEMENTS' },
+          { source: 'SHARD_ENG', target: 'FS_WALL', label: 'BYPASSES' }
         ]
       },
       probes: [
-        { question: "Why 750KB chunks?", answer: "To stay safely under the 1MB Firestore limit while maximizing throughput per document read.", status: 'passed' }
-      ]
-    }
-  },
-  {
-    uid: 'audit-ch-3',
-    topic: '3. Case Study: Hallucinated Deletion',
-    professorName: 'Lead Architect',
-    studentName: 'Resident',
-    sections: [],
-    audit: {
-      StructuralCoherenceScore: 97,
-      LogicalDriftRisk: 'Low',
-      AdversarialRobustness: 'High',
-      coherenceScore: 97,
-      driftRisk: 'Low',
-      robustness: 'High',
-      timestamp: Date.now(),
-      mermaid: "graph TD\n  REQ[Refactor Request] -->|CCC Audit| FMC[Mass Comparison]\n  FMC -->|Check| CERT{Intent Certificate?}\n  CERT -->|No| BLK[Block Purge]\n  CERT -->|Yes| EXE[Commit Logic]",
-      graph: {
-        nodes: [
-          { id: 'FMC', label: 'Functional Mass Comp', type: 'component' },
-          { id: 'CCC', label: 'Complexity Score', type: 'metric' },
-          { id: 'INV', label: 'Invariant Guardrail', type: 'concept' }
-        ],
-        links: [
-          { source: 'CCC', target: 'FMC', label: 'INPUT' },
-          { source: 'FMC', target: 'INV', label: 'TRIGGERS' }
-        ]
-      },
-      probes: [
-        { question: "What caught the PDF code purge?", answer: "Functional Mass Comparison (FMC) flagged a sudden drop in logical density.", status: 'passed' }
-      ]
-    }
-  },
-  {
-    uid: 'audit-ch-4',
-    topic: '4. The 18x Efficiency Proof & N-Factor',
-    professorName: 'Lead Architect',
-    studentName: 'Resident',
-    sections: [],
-    audit: {
-      StructuralCoherenceScore: 100,
-      LogicalDriftRisk: 'Low',
-      AdversarialRobustness: 'High',
-      coherenceScore: 100,
-      driftRisk: 'Low',
-      robustness: 'High',
-      timestamp: Date.now(),
-      mermaid: "graph TD\n  PRO[Gemini Pro] -->|Refactor Once| SHD[Logic Shard]\n  SHD -->|Notarize| CC[Community Cache]\n  CC -->|Fetch N Times| USR[Users]\n  USR -->|Divide Cost| H[Abundance]",
-      graph: {
-        nodes: [
-          { id: 'N_FACTOR', label: 'N-Factor Protocol', type: 'component' },
-          { id: 'TAX', label: 'Compute Tax', type: 'metric' },
-          { id: 'ABUN', label: 'Economic Abundance', type: 'concept' }
-        ],
-        links: [
-          { source: 'N_FACTOR', target: 'TAX', label: 'DIVIDES' },
-          { source: 'TAX', target: 'ABUN', label: 'ENABLES' }
-        ]
-      },
-      probes: [
-        { question: "How does cost scale with users?", answer: "Inversely. As N increases, the per-user compute energy cost approaches zero.", status: 'passed' }
+        { question: "Why 750KB chunks?", answer: "Optimized for high-speed multiplexed re-hydration without hitting the 1MB document ceiling.", status: 'passed' }
       ]
     }
   },
   {
     uid: 'audit-ch-5',
-    topic: '5. Technical Truth & Sovereign Silos',
-    professorName: 'Lead Architect',
-    studentName: 'Resident',
-    sections: [],
-    audit: {
-      StructuralCoherenceScore: 99,
-      LogicalDriftRisk: 'Low',
-      AdversarialRobustness: 'High',
-      coherenceScore: 99,
-      driftRisk: 'Low',
-      robustness: 'High',
-      timestamp: Date.now(),
-      mermaid: "graph TD\n  REG[Registry: Metadata] --- VAU[Vault: Binary]\n  VAU --- WRK[Workflow: Code]\n  REG -.->|SHA-256 Link| VAU\n  VAU -.->|SHA-256 Link| WRK",
-      graph: {
-        nodes: [
-          { id: 'SSO', label: 'Single-Source Ownership', type: 'concept' },
-          { id: 'SHA', label: 'SHA-256 Bridge', type: 'component' },
-          { id: 'DRIVE', label: 'Independent Drives', type: 'component' }
-        ],
-        links: [
-          { source: 'SSO', target: 'DRIVE', label: 'ARCHITECTURE' },
-          { source: 'SHA', target: 'SSO', label: 'INTEGRITY' }
-        ]
-      },
-      probes: [
-        { question: "What prevents state contamination?", answer: "Strict data partitioning where no two silos share the same primary data types.", status: 'passed' }
-      ]
-    }
-  },
-  {
-    uid: 'audit-ch-6',
-    topic: '6. The Logic Mesh: Mermaid Instrumentation',
-    professorName: 'Lead Architect',
-    studentName: 'Resident',
-    sections: [],
-    audit: {
-        StructuralCoherenceScore: 98,
-        LogicalDriftRisk: 'Low',
-        AdversarialRobustness: 'High',
-        coherenceScore: 98,
-        driftRisk: 'Low',
-        robustness: 'High',
-        timestamp: Date.now(),
-        mermaid: "graph TD\n  A[Dialogue Shard] -->|Parse| B[Semantic Nodes]\n  B -->|Link| C[Dependency Graph]\n  C -->|Visualize| D[Mermaid TD]\n  C -->|Audit| E[Shadow Agent]\n  E -->|Score| F[Node Integrity]",
-        graph: {
-            nodes: [
-                { id: 'A', label: 'Dialogue Shard', type: 'concept' },
-                { id: 'B', label: 'Semantic Nodes', type: 'component' },
-                { id: 'C', label: 'Dependency Graph', type: 'component' },
-                { id: 'F', label: 'Node Integrity', type: 'metric' }
-            ],
-            links: [
-                { source: 'A', target: 'B', label: 'Extraction' },
-                { source: 'B', target: 'C', label: 'Orchestration' },
-                { source: 'C', target: 'F', label: 'Validation' }
-            ]
-        },
-        probes: [
-            { question: "Why Mermaid over PlantUML?", answer: "Mermaid has a simpler token density and fewer syntax drift errors during AI synthesis.", status: 'passed' }
-        ]
-    }
-  },
-  {
-    uid: 'audit-ch-7',
-    topic: '7. Open Source & The Community Mesh',
-    professorName: 'Lead Architect',
-    studentName: 'Resident',
-    sections: [],
-    audit: {
-      StructuralCoherenceScore: 100,
-      LogicalDriftRisk: 'Low',
-      AdversarialRobustness: 'High',
-      coherenceScore: 100,
-      driftRisk: 'Low',
-      robustness: 'High',
-      timestamp: Date.now(),
-      mermaid: "graph TD\n  OSS[Open Source Repo] -->|Audit| COM[Community]\n  COM -->|Contribute| SHD[Logic Shards]\n  SHD -->|Expand| MESH[Reasoning Mesh]",
-      graph: {
-        nodes: [
-          { id: 'OSS', label: 'MIT Repository', type: 'component' },
-          { id: 'MESH', label: 'Community Mesh', type: 'concept' }
-        ],
-        links: [
-          { source: 'OSS', target: 'MESH', label: 'FOUNDATION' }
-        ]
-      },
-      probes: [
-        { question: "Is the code licensed for use?", answer: "Yes, fully under the MIT License for the AIVoiceCast/AIVoiceCast repository.", status: 'passed' }
-      ]
-    }
-  },
-  {
-    uid: 'audit-ch-8',
-    topic: '8. The Deterministic Verification Loop',
-    professorName: 'Lead Architect',
-    studentName: 'Resident',
-    sections: [],
-    audit: {
-        StructuralCoherenceScore: 100,
-        LogicalDriftRisk: 'Low',
-        AdversarialRobustness: 'High',
-        coherenceScore: 100,
-        driftRisk: 'Low',
-        robustness: 'High',
-        timestamp: Date.now(),
-        mermaid: "graph TD\n  A[Raw Node] -->|Hash| B[SHA-256 Fingerprint]\n  B -->|Check| C{Community Ledger}\n  C -->|Hit| D[Bypass AI Call]\n  C -->|Miss| E[Execute Shadow Audit]\n  E -->|Update| C",
-        graph: {
-            nodes: [
-                { id: 'A', label: 'Raw Node', type: 'concept' },
-                { id: 'B', label: 'SHA-256', type: 'metric' },
-                { id: 'C', label: 'Ledger', type: 'component' },
-                { id: 'D', label: 'Bypass', type: 'concept' }
-            ],
-            links: [
-                { source: 'A', target: 'B', label: 'Digest' },
-                { source: 'B', target: 'C', label: 'Lookup' },
-                { source: 'C', target: 'D', label: 'Zero Energy Hit' }
-            ]
-        },
-        probes: [
-            { question: "What prevents hash collisions?", answer: "SHA-256 provides 256 bits of security, making collisions mathematically negligible for this volume.", status: 'passed' }
-        ]
-    }
-  },
-  {
-    uid: 'audit-ch-9',
-    topic: '9. Verifiable Proof of Reasoning (VPR)',
-    professorName: 'Lead Architect',
-    studentName: 'Resident',
-    sections: [],
-    audit: {
-      StructuralCoherenceScore: 99,
-      LogicalDriftRisk: 'Low',
-      AdversarialRobustness: 'High',
-      coherenceScore: 99,
-      driftRisk: 'Low',
-      robustness: 'High',
-      timestamp: Date.now(),
-      mermaid: "graph TD\n  AUD[Complete Audit] -->|Sign| PK[Private Key P-256]\n  PK -->|Generate| SNS[Notary Shard]\n  SNS -->|Link| ID[User Identity]",
-      graph: {
-        nodes: [
-          { id: 'VPR', label: 'Verifiable Proof', type: 'concept' },
-          { id: 'ECDSA', label: 'ECDSA P-256', type: 'component' }
-        ],
-        links: [
-          { source: 'ECDSA', target: 'VPR', label: 'ENABLES' }
-        ]
-      },
-      probes: [
-        { question: "Where is the private key stored?", answer: "On-device strictly within IndexedDB, never touching the network.", status: 'passed' }
-      ]
-    }
-  },
-  {
-    uid: 'audit-ch-10',
-    topic: '10. Symbolic Parity & Recursive Sync',
-    professorName: 'Lead Architect',
+    topic: '5. Heuristic Simulation: Bypassing Compilers',
+    professorName: 'Systems Architect',
     studentName: 'Resident',
     sections: [],
     audit: {
@@ -335,52 +125,50 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
       driftRisk: 'Low',
       robustness: 'High',
       timestamp: Date.now(),
-      mermaid: "graph TD\n  SYM[Symbolic Parity] -->|Check| SCH[JSON Schema]\n  SCH -->|Compare| MM[Mermaid IDs]\n  MM -->|Fail| RED[Re-derive Shard]\n  MM -->|Pass| SYNC[Commit to Ledger]",
       graph: {
         nodes: [
-          { id: 'SYM', label: 'Symbolic Parity', type: 'concept' },
-          { id: 'SCH', label: 'JSON Schema', type: 'component' }
+          { id: 'DT_TERM', label: 'Digital Twin Terminal', type: 'component' },
+          { id: 'HEU_TRACE', label: 'Heuristic Tracing', type: 'concept' },
+          { id: 'INFRA_BYP', label: 'Infra Bypass (10x Saving)', type: 'metric' }
         ],
         links: [
-          { source: 'SCH', target: 'SYM', label: 'VALIDATES' }
+          { source: 'DT_TERM', target: 'HEU_TRACE', label: 'IMPLEMENTS' },
+          { source: 'HEU_TRACE', target: 'INFRA_BYP', label: 'ACHIEVES' }
         ]
       },
       probes: [
-        { question: "What is Re-derivation?", answer: "The automatic re-execution of a neural handshake if symbolic inconsistencies are detected.", status: 'passed' }
+        { question: "Does simulation use a real CPU?", answer: "No, it uses Gemini Flash to mentally trace logic, predicting stdout with >98% accuracy.", status: 'passed' }
       ]
     }
   },
   {
-    uid: 'audit-ch-11',
-    topic: '11. Thermodynamic Equilibrium',
+    uid: 'audit-ch-13',
+    topic: '13. Conclusion: Refraction Complete',
     professorName: 'Lead Architect',
-    studentName: 'Resident',
+    studentName: 'Hackathon Judge',
     sections: [],
     audit: {
-        StructuralCoherenceScore: 99,
-        LogicalDriftRisk: 'Low',
-        AdversarialRobustness: 'High',
-        coherenceScore: 99,
-        driftRisk: 'Low',
-        robustness: 'High',
-        timestamp: Date.now(),
-        mermaid: "graph TD\n  A[Human Request] -->|Complexity Audit| B{Router}\n  B -->|90% Load| C[Gemini Flash Cluster]\n  B -->|10% Audit| D[Gemini Pro Cluster]\n  C & D -->|Aggregate| E[Refraction Utility]\n  E -->|Measure| F[Harmony Ratio H]",
-        graph: {
-            nodes: [
-                { id: 'A', label: 'Request', type: 'concept' },
-                { id: 'C', label: 'Gemini Flash', type: 'component' },
-                { id: 'D', label: 'Gemini Pro', type: 'component' },
-                { id: 'F', label: 'Harmony Ratio', type: 'metric' }
-            ],
-            links: [
-                { source: 'A', target: 'C', label: '18x Efficiency' },
-                { source: 'A', target: 'D', label: 'Peak Reasoning' },
-                { source: 'C', target: 'F', label: 'Thermodynamic Save' }
-            ]
-        },
-        probes: [
-            { question: "Is the load balance static?", answer: "No, the Router uses a heuristic audit to identify if a request requires a Thinking Budget > 0.", status: 'passed' }
+      StructuralCoherenceScore: 100,
+      LogicalDriftRisk: 'Low',
+      AdversarialRobustness: 'High',
+      coherenceScore: 100,
+      driftRisk: 'Low',
+      robustness: 'High',
+      timestamp: Date.now(),
+      graph: {
+        nodes: [
+          { id: 'PRISM', label: 'Neural Prism Hub', type: 'component' },
+          { id: 'FUTURE', label: 'Post-Scarcity Future', type: 'concept' },
+          { id: 'UNITY', label: 'Refractive Unity', type: 'concept' }
+        ],
+        links: [
+          { source: 'PRISM', target: 'FUTURE', label: 'BRIDGES_TO' },
+          { source: 'PRISM', target: 'UNITY', label: 'ACHIEVES' }
         ]
+      },
+      probes: [
+        { question: "What is the final state of the Prism?", answer: "Refraction Complete. Super-intelligence is now a human utility.", status: 'passed' }
+      ]
     }
   },
   {
@@ -428,7 +216,7 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
           { id: 'SCD', label: 'Shadow-Critic Dyad', type: 'component' },
           { id: 'BCP', label: 'BCP Protocol', type: 'component' },
           { id: 'HT', label: 'Heuristic Tracing', type: 'concept' },
-          { id: '18X', label: '18x Efficiency Gap', type: 'metric' },
+          { id: 'EF_18X', label: '18x Efficiency Gap', type: 'metric' },
           { id: 'REG', label: 'Registry (Firebase)', type: 'component' },
           { id: 'VAU', label: 'Vault (Drive)', type: 'component' },
           { id: 'WRK', label: 'Workflow (GitHub)', type: 'component' },
@@ -436,11 +224,11 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
         ],
         links: [
           { source: 'SCD', target: 'HT', label: 'VERIFIES' },
-          { source: '18X', target: 'SCD', label: 'ENABLES' },
+          { source: 'EF_18X', target: 'SCD', label: 'ENABLES' },
           { source: 'REG', target: 'BCP', label: 'STORES_SHARDS' },
           { source: 'BCP', target: 'VAU', label: 'HYDRATES' },
           { source: 'WRK', target: 'HT', label: 'SOURCE_FOR' },
-          { source: '18X', target: 'H_RATIO', label: 'MAXIMIZES' }
+          { source: 'EF_18X', target: 'H_RATIO', label: 'MAXIMIZES' }
         ]
       },
       probes: [
@@ -461,8 +249,7 @@ export const SYSTEM_AUDIT_NODES: GeneratedLecture[] = [
       AdversarialRobustness: 'High',
       driftRisk: 'Low',
       robustness: 'High',
-      timestamp: Date.now(),
-      plantuml: "@startuml\nnode \"Registry (Firebase)\" as R\nnode \"Vault (Drive)\" as V\nnode \"Workflow (GitHub)\" as W\ncomponent [Sovereign Silos] as SS\nSS ..> R\nSS ..> V\nSS ..> W\n@enduml"
+      timestamp: Date.now()
     }
   }
 ];
