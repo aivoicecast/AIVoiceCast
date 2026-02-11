@@ -1,0 +1,31 @@
+# Ignore everything by default
+*
+
+# Allow specific files needed for the build
+!package.json
+!package-lock.json
+!index.html
+!index.tsx
+!vite.config.ts
+!tsconfig.json
+!tailwind.config.js
+!postcss.config.js
+!public/
+!components/
+!services/
+!utils/
+!types.ts
+!nginx.conf
+
+# Do not ignore the build output if building locally
+!dist/
+
+# Specifically ignore sensitive or bulky local files
+node_modules
+.git
+.env
+.env.local
+README.md
+Dockerfile
+cloudbuild.yaml
+cloudbuild-dev.yaml
